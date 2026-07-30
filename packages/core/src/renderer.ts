@@ -435,7 +435,6 @@ class ExternalOutputQueue {
 }
 
 const CHAR_FLAG_CONTINUATION = 0xc0000000 >>> 0
-const CHAR_FLAG_IMAGE = 0x40000000 >>> 0
 const CHAR_FLAG_MASK = 0xc0000000 >>> 0
 
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
@@ -443,10 +442,10 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public height: number
   public terminalWidth: number
   public terminalHeight: number
-  public resolution = null
+  public resolution: PixelResolution | null
   public frameId = 0
   public widthMethod: WidthMethod
-  public capabilities: TerminalCapabilities | null = null
+  public capabilities: TerminalCapabilities | null
   public hasSelection: boolean = false
   public currentFocusedRenderable: Renderable | null = null
   public keyInput: KeyHandler
@@ -454,12 +453,22 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 
   private lifecyclePasses: Set<Renderable> = new Set()
 
-  constructor(width: number, height: number, widthMethod: WidthMethod) {
+  constructor(
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    terminalWidth: number = width,
+    terminalHeight: number = height,
+    resolution: PixelResolution | null = null,
+    capabilities: TerminalCapabilities | null = null,
+  ) {
     super()
     this.width = width
     this.height = height
-    this.terminalWidth = width
-    this.terminalHeight = height
+    this.terminalWidth = terminalWidth
+    this.terminalHeight = terminalHeight
+    this.resolution = resolution
+    this.capabilities = capabilities
     this.widthMethod = widthMethod
     this.keyInput = new KeyHandler()
     this._internalKeyInput = new InternalKeyHandler()
@@ -1881,7 +1890,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const tailColumn = renderer.getPendingSplitTailColumn()
     const firstLineOffset = !startOnNewLine && tailColumn > 0 && tailColumn < renderer.width ? tailColumn : 0
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(renderer.width, 1, renderer.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      renderer.width,
+      1,
+      renderer.widthMethod,
+      renderer._terminalWidth,
+      renderer._terminalHeight,
+      renderer.resolution,
+      renderer.capabilities,
+    )
     let firstLineOffsetOwner: Renderable | null = null
     const renderContext = Object.create(snapshotContext) as RenderContext
     Object.defineProperty(renderContext, "claimFirstLineOffset", {
@@ -2023,6 +2040,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       snapshotContext.width = width
       snapshotContext.widthMethod = widthMethod
+      snapshotContext.terminalWidth = renderer._terminalWidth
+      snapshotContext.terminalHeight = renderer._terminalHeight
+      snapshotContext.resolution = renderer.resolution
+      snapshotContext.capabilities = renderer.capabilities
       publicRoot.width = width
 
       const renderPass = (height: number): void => {
@@ -2215,7 +2236,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      this.height,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
@@ -2346,7 +2375,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       while (x > 0) {
         const cp = chars[y * snapshot.width + x - 1]
-        if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_IMAGE) {
+        if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION) {
           x -= 1
           continue
         }
@@ -2457,7 +2486,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private createStdoutSnapshotCommit(line: string, trailingNewline: boolean): ExternalOutputCommit {
     // Convert captured stdout into the same commit shape used by writeToScrollback.
     // One commit format keeps split append behavior consistent across both sources.
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, 1, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      1,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const maxWidth = Math.max(1, this.width)
     const lineCells = [...line]
     const rowColumns = Math.min(lineCells.length, maxWidth)

@@ -177,6 +177,8 @@ In split-footer mode with `externalOutputMode: "capture-stdout"`, the renderer a
 
 Both APIs require `screenMode: "split-footer"` and `externalOutputMode: "capture-stdout"`. They throw otherwise.
 
+Scrollback snapshots use the same image protocol resolution as live `ImageRenderable` instances. Kitty uses conventional placement, Sixel uses the renderable's detected pixel geometry, and blocks use Unicode quadrant cells. Native scrollback placement starts once the footer is pinned and the image rectangle is addressable; unsupported snapshot layouts use the normal block fallback.
+
 ### `renderer.writeToScrollback(writer)`
 
 Render a renderable tree into an off-screen buffer and commit it as one scrollback snapshot.
@@ -265,6 +267,8 @@ surface.destroy()
 | `destroy()`                                 | Tear down the surface and its backing buffer                                     |
 
 `commitRows` throws if you call it before `render()`, or if the renderer's width or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
+
+For an `ImageRenderable`, await `image.loadPromise`, then call `surface.render()` and `surface.commitRows(...)`. `surface.settle()` waits for syntax highlighting, not image loading. The queued snapshot retains the image until native output publication, so the surface can be destroyed immediately after the commit.
 
 For Solid, use the binding-level helpers that wrap `writeToScrollback` with JSX support. See [`createScrollbackWriter` / `writeSolidToScrollback`](/docs/bindings/solid#scrollback-writers). The React binding does not currently provide an equivalent JSX scrollback helper.
 

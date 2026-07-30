@@ -2275,7 +2275,7 @@ test "renderer - pinned split scrollback repaints live native images after appen
     try std.testing.expect(placement_index > append_index);
 }
 
-test "renderer - split scrollback omits image graphics and fallback markers" {
+test "renderer - split scrollback materializes image fallback cells" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
@@ -2299,12 +2299,116 @@ test "renderer - split scrollback omits image graphics and fallback markers" {
     try std.testing.expect(std.mem.indexOfScalar(u8, output, 'X') != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") == null);
-    for (buffer.quadrantChars) |char| {
-        if (char == ' ') continue;
-        var encoded: [4]u8 = undefined;
-        const len = try std.unicode.utf8Encode(@intCast(char), &encoded);
-        try std.testing.expect(std.mem.indexOf(u8, output, encoded[0..len]) == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "█") != null);
+}
+
+test "renderer - split scrollback uses native Kitty when Kitty is selected" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
     }
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    var snapshot = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .link_pool = &local_link_pool });
+    defer snapshot.deinit();
+    snapshot.clear(ansi.rgbColor(1, 2, 3, 255), null);
+    try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+    _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+
+    const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 1, false, true, 2, false, true, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
+
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=p") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, ",U=1,") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\u{10EEEE}") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "█") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "48;2;1;2;3") == null);
+}
+
+test "renderer - failed Kitty scrollback preparation does not publish the batch" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0, 255, 0, 0, 255, 255,
+    }, 2, 1, 8);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\\x1b_Gi=31337;OK\x1b\\");
+    var snapshot = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .link_pool = &local_link_pool });
+    defer snapshot.deinit();
+    try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+    _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+    const split_scrollback = test_renderer.renderer.splitScrollback;
+    const render_offset = test_renderer.renderer.renderOffset;
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    test_renderer.renderer.allocator = failing.allocator();
+    const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 1, false, true, 2, false, true, true);
+    test_renderer.renderer.allocator = std.testing.allocator;
+
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, result.status);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+    try std.testing.expectEqualDeep(split_scrollback, test_renderer.renderer.splitScrollback);
+    try std.testing.expectEqual(render_offset, test_renderer.renderer.renderOffset);
+    try std.testing.expectEqual(@as(usize, 1), snapshot.image_placements.items.len);
+}
+
+test "renderer - split scrollback emits native Sixel images when placement geometry is available" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+    var snapshot = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .link_pool = &local_link_pool });
+    defer snapshot.deinit();
+    try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+
+    const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 1, false, true, 2, false, true, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
+
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.saveCursorState) != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.restoreCursorState) != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "█") == null);
+
+    var covered = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .link_pool = &local_link_pool });
+    defer covered.deinit();
+    try std.testing.expect(try covered.drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try covered.drawText("X", 0, 0, .{ 255, 255, 255, 255 }, null, 0);
+    const covered_result = test_renderer.renderer.commitSplitFooterSnapshotBatched(covered, 1, false, true, 2, false, true, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, covered_result.status);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), 'X') != null);
 }
 
 test "renderer - commitSplitFooterSnapshot settling phase moves footer downward" {

@@ -8,6 +8,7 @@ import {
   type CliRenderer,
   type ImageRenderProtocol,
   type KeyEvent,
+  type ScrollbackSurface,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -45,6 +46,9 @@ class SplitFooterImageDemo {
   private protocolIndex = 0
   private fit: "fit" | "cover" | "fill" = "fit"
   private commitCount = 0
+  private imageCommitCount = 0
+  private imageCommitPending = false
+  private imageCommitSurface: ScrollbackSurface | null = null
   private lastAction = "Ready"
   private destroyed = false
 
@@ -150,12 +154,16 @@ class SplitFooterImageDemo {
     const requested = PROTOCOLS[this.protocolIndex]
     const effective = this.image.effectiveProtocol
     const mode = this.renderer.externalOutputMode
+    const terminal = this.renderer.capabilities?.terminal
+    const terminalLabel = terminal
+      ? `${terminal.name || "unknown"}${terminal.version ? ` ${terminal.version}` : ""}`
+      : "detecting"
     const commitHint = mode === "capture-stdout" ? "W appends a scrollback snapshot" : "W requires capture mode"
     this.status.content = [
       `${SOURCES[this.sourceIndex].name}  ${requested.toUpperCase()} -> ${effective.toUpperCase()}  ${this.fit.toUpperCase()}`,
-      `footer ${this.renderer.footerHeight} rows  /  ${mode}  /  ${this.commitCount} scrollback commits`,
-      "I source   P protocol   F fit   [ ] height   M output mode",
-      `${commitHint}. The image itself stays on the live footer surface.`,
+      `footer ${this.renderer.footerHeight}  /  ${mode}  /  ${terminalLabel}  /  text ${this.commitCount}  image ${this.imageCommitCount}`,
+      "A bare image   C composed image   W text snapshot   I source   P protocol   F fit",
+      `[ ] height   M output mode   ${commitHint}. Native history follows detected image support.`,
       this.lastAction,
     ].join("\n")
     this.status.fg = mode === "capture-stdout" ? PALETTE.text : PALETTE.warning
@@ -239,6 +247,82 @@ class SplitFooterImageDemo {
     this.refreshStatus()
   }
 
+  private async writeImageToScrollback(composed: boolean): Promise<void> {
+    if (this.imageCommitPending) {
+      this.lastAction = "An image scrollback commit is already loading"
+      this.refreshStatus()
+      return
+    }
+    if (this.renderer.externalOutputMode !== "capture-stdout") {
+      this.lastAction = "Switch to capture mode before writing an image to scrollback"
+      this.refreshStatus()
+      return
+    }
+
+    this.imageCommitPending = true
+    const commit = this.imageCommitCount + 1
+    const source = SOURCES[this.sourceIndex]
+    const variant = composed ? "composed image" : "bare image"
+    const surface = this.renderer.createScrollbackSurface({ startOnNewLine: true })
+    this.imageCommitSurface = surface
+    this.lastAction = `Loading ${source.name} for ${variant} scrollback commit ${commit}`
+    this.refreshStatus()
+
+    const width = Math.max(1, Math.min(composed ? 34 : 30, surface.width))
+    const height = composed ? 10 : 8
+    const image = new ImageRenderable(surface.renderContext, {
+      id: `split-footer-image-history-${composed ? "composed" : "bare"}-${commit}`,
+      source: source.path,
+      protocol: PROTOCOLS[this.protocolIndex],
+      fit: this.fit,
+      width: composed ? "100%" : width,
+      height: composed ? "100%" : height,
+    })
+    if (composed) {
+      const card = new BoxRenderable(surface.renderContext, {
+        id: `split-footer-image-history-card-${commit}`,
+        width,
+        height,
+        border: true,
+        borderColor: PALETTE.accent,
+        title: `${source.name} / ${PROTOCOLS[this.protocolIndex].toUpperCase()}`,
+        backgroundColor: PALETTE.imagePanel,
+        padding: 1,
+      })
+      card.add(image)
+      surface.root.add(card)
+    } else {
+      surface.root.add(image)
+    }
+
+    try {
+      await image.loadPromise
+      if (this.destroyed || surface.isDestroyed) return
+      if (this.renderer.externalOutputMode !== "capture-stdout") {
+        this.lastAction = "Image loaded, but output mode changed before commit"
+        return
+      }
+      if (!image.image || image.loadError) {
+        this.lastAction = `Image scrollback load failed: ${String(image.loadError ?? "no image")}`
+        return
+      }
+
+      surface.render()
+      surface.commitRows(0, surface.height, { rowColumns: width, trailingNewline: true })
+      this.imageCommitCount = commit
+      this.lastAction = `${variant} scrollback commit ${commit} queued with detected native support and block fallback`
+    } catch (error) {
+      if (!this.destroyed) {
+        this.lastAction = `Image scrollback commit failed: ${error instanceof Error ? error.message : String(error)}`
+      }
+    } finally {
+      if (!surface.isDestroyed) surface.destroy()
+      if (this.imageCommitSurface === surface) this.imageCommitSurface = null
+      this.imageCommitPending = false
+      this.refreshStatus()
+    }
+  }
+
   private handleKeyPress = (key: KeyEvent): void => {
     if (key.ctrl || key.meta || key.option) return
     switch (key.name) {
@@ -270,6 +354,14 @@ class SplitFooterImageDemo {
         key.preventDefault()
         this.writeScrollbackSnapshot()
         return
+      case "a":
+        key.preventDefault()
+        void this.writeImageToScrollback(false)
+        return
+      case "c":
+        key.preventDefault()
+        void this.writeImageToScrollback(true)
+        return
     }
   }
 
@@ -284,6 +376,8 @@ class SplitFooterImageDemo {
     this.renderer.off("capabilities", this.refreshStatus)
     this.renderer.off(CliRenderEvents.RESIZE, this.refreshStatus)
     this.renderer.off(CliRenderEvents.DESTROY, this.handleRendererDestroy)
+    this.imageCommitSurface?.destroy()
+    this.imageCommitSurface = null
     if (!this.shell.isDestroyed) this.shell.destroyRecursively()
     if (!this.renderer.isDestroyed) {
       this.renderer.externalOutputMode = "passthrough"
