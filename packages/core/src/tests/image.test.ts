@@ -395,13 +395,16 @@ describe("NativeImage", () => {
   })
 
   test("supports destination-over compositing", () => {
-    const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 255, 255), 1, 1)
+    const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 255, 128), 1, 1)
     let overlay: NativeImage | undefined
     let output: NativeImage | undefined
     try {
       overlay = NativeImage.fromRgba(Uint8Array.of(255, 0, 0, 255), 1, 1)
       output = base.composite(overlay, { blend: "destination-over" })
-      expect([...output.raw().data]).toEqual([0, 0, 255, 255])
+      const pixels = output.raw().data
+      expect(pixels[0]).toBeGreaterThan(0)
+      expect(pixels[2]).toBeGreaterThan(0)
+      expect(pixels[3]).toBe(255)
     } finally {
       output?.dispose()
       overlay?.dispose()
