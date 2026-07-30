@@ -4355,11 +4355,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     //   d) detach the handler now that no more data will flow
     //   e) close the feed (releases chunk memory once async handlers settle)
     //
-    // Memory-lifetime invariant: `lib.destroyRenderer` calls into Zig's
-    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP — feed memory is
-    // owned by the TS side and only released by `feed.close()` at step (e).
-    // Consequently, step (c)'s drain operates on still-valid chunk memory;
-    // there is no use-after-free window between (b) and (e).
+    // Memory-lifetime invariant: `FeedBackend.deinit` releases its staging
+    // buffer but does not own feed chunks. Those remain valid until the TS side
+    // calls `feed.close()` at step (e), so step (c) can safely drain them.
     //
     // Caller note: `feed.close()` is queued as a microtask when async handlers
     // from the final drain are still pending. If the caller tears down the
