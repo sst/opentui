@@ -9,12 +9,13 @@ skill:
 
 # Environment variables
 
-OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, so you can set these in your shell or in a `.env` file.
+OpenTUI reads environment variables from `process.env`. Bun loads `.env` automatically; with Node.js, use the shell or Node's configured environment-file support.
 
 ## Variables
 
 | Variable                        | Type      | Default | Description                                                     |
 | ------------------------------- | --------- | ------- | --------------------------------------------------------------- |
+| `OTUI_ASSET_ROOT`               | `string`  | `""`    | Absolute root for relocated OpenTUI runtime assets              |
 | `OTUI_TS_STYLE_WARN`            | `string`  | `false` | Enable warnings for missing syntax styles                       |
 | `OTUI_TREE_SITTER_WORKER_PATH`  | `string`  | `""`    | Path to the Tree-sitter worker                                  |
 | `XDG_CONFIG_HOME`               | `string`  | `""`    | Base directory for user-specific configuration files            |
@@ -23,10 +24,10 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 | `OTUI_DEBUG_FFI`                | `boolean` | `false` | Enable debug logging for the FFI bindings                       |
 | `OTUI_SHOW_STATS`               | `boolean` | `false` | Show the debug overlay at startup                               |
 | `OTUI_TRACE_FFI`                | `boolean` | `false` | Enable tracing for the FFI bindings                             |
-| `OPENTUI_FORCE_WCWIDTH`         | `boolean` | `false` | Use wcwidth for character width calculations                    |
-| `OPENTUI_FORCE_UNICODE`         | `boolean` | `false` | Force Mode 2026 Unicode support in terminal capabilities        |
-| `OPENTUI_GRAPHICS`              | `boolean` | `true`  | Enable Kitty graphics protocol detection                        |
-| `OPENTUI_FORCE_NOZWJ`           | `boolean` | `false` | Use no_zwj width method (Unicode without ZWJ joining)           |
+| `OPENTUI_FORCE_WCWIDTH`         | presence  | unset   | Use wcwidth for character width calculations                    |
+| `OPENTUI_FORCE_UNICODE`         | presence  | unset   | Force Mode 2026 Unicode support in terminal capabilities        |
+| `OPENTUI_GRAPHICS`              | `string`  | auto    | Override Kitty graphics protocol detection                      |
+| `OPENTUI_FORCE_NOZWJ`           | presence  | unset   | Use no_zwj width method (Unicode without ZWJ joining)           |
 | `OPENTUI_LIBC`                  | `string`  | unset   | Select Linux native libc package (`glibc`, `musl`)              |
 | `OPENTUI_FORCE_EXPLICIT_WIDTH`  | `string`  | -       | Force explicit width detection (`true`/`1` or `false`/`0`)      |
 | `OPENTUI_NOTIFICATION_PROTOCOL` | `string`  | `auto`  | Force notification protocol (`osc9`, `osc777`, `osc99`, `none`) |
@@ -42,6 +43,9 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 
 ## Notes
 
+- `OTUI_TS_STYLE_WARN` is a presence-like string setting: any explicit nonempty value, including `false`, enables warnings.
+- `OPENTUI_FORCE_WCWIDTH`, `OPENTUI_FORCE_UNICODE`, and `OPENTUI_FORCE_NOZWJ` are native presence flags. Any value, including `0` or `false`, enables the corresponding override. Leave them unset to disable them.
+- `OPENTUI_GRAPHICS` recognizes the exact lowercase values `false`/`0` and `true`/`1`; other values leave automatic behavior unchanged.
 - `OPENTUI_FORCE_EXPLICIT_WIDTH=false` skips OSC 66 queries on older terminals.
 - Linux uses the glibc native package by default. Set `OPENTUI_LIBC=musl` before importing OpenTUI, or define `process.env.OPENTUI_LIBC` as `"musl"` at standalone build time, to use the musl native package. See [Standalone Executables](/docs/reference/standalone-executables).
 - `OPENTUI_NOTIFICATION_PROTOCOL=none` disables notifications. Protocol overrides should only be used when terminal detection cannot identify a supported notification protocol.
@@ -53,3 +57,9 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 - `OTUI_NO_NATIVE_RENDER` still runs the render loop. In `"split-footer"` mode, the current output flush path can still emit ANSI cursor movement and clear sequences.
 - `OTUI_DUMP_CAPTURES` runs from the renderer exit handler. A direct `renderer.destroy()` call does not trigger it by itself.
 - `OTUI_STDIN_LOG=/tmp/opentui-stdin.bin` records stdin exactly as OpenTUI receives it, before parsing. The file is truncated when the renderer starts. It is binary and may contain passwords or other sensitive input, so store and share it carefully. Recording uses synchronous file writes and is intended only for short debugging sessions.
+
+## `OTUI_ASSET_ROOT`
+
+`OTUI_ASSET_ROOT` relocates OpenTUI runtime assets, including the native library, parser worker, default parsers, and Tree-sitter WASM. It is primarily used by [Node.js single executable applications](/docs/reference/standalone-executables#nodejs-sea).
+
+The value must be an absolute directory. Place every file beneath it using the exact `key` returned by `getNodeAssets()` from `@opentui/core/node-assets`. Set it before importing or executing bundled OpenTUI code. An empty value is treated as unset; when a nonempty root is set, a missing requested asset throws and does not fall back to package-relative files.

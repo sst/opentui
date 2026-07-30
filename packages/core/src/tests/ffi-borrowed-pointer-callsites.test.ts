@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
+  AudioCaptureStatsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
+  GridDrawOptionsStruct,
+  LogicalCursorStruct,
+  MeasureResultStruct,
   NativeAudioStreamCloseReason,
   NativeAudioStreamFormat,
   NativeAudioStreamState,
   StyledChunkStruct,
+  VisualCursorStruct,
 } from "../zig-structs.js"
 import { RGBA } from "../lib/RGBA.js"
 import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
@@ -58,6 +63,205 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("reuses owned output storage while preserving public result identity", () => {
+    const originals = {
+      editBufferGetCursorPosition: symbols.editBufferGetCursorPosition,
+      editorViewGetVisualCursor: symbols.editorViewGetVisualCursor,
+      textBufferViewMeasureForDimensions: symbols.textBufferViewMeasureForDimensions,
+      audioGetStreamStats: symbols.audioGetStreamStats,
+    }
+    const outputBuffers: Record<string, ArrayBuffer[]> = {
+      logical: [],
+      visual: [],
+      measure: [],
+      audio: [],
+    }
+    let logicalOffset = 1
+    let visualOffset = 10
+    let lineCount = 2
+    let bytesReceived = 20n
+
+    symbols.editBufferGetCursorPosition = (_buffer, output: ArrayBuffer) => {
+      outputBuffers.logical.push(output)
+      LogicalCursorStruct.packInto({ row: 0, col: logicalOffset, offset: logicalOffset++ }, new DataView(output), 0)
+    }
+    symbols.editorViewGetVisualCursor = (_view, output: ArrayBuffer) => {
+      outputBuffers.visual.push(output)
+      VisualCursorStruct.packInto(
+        { visualRow: 0, visualCol: visualOffset, logicalRow: 0, logicalCol: visualOffset, offset: visualOffset++ },
+        new DataView(output),
+        0,
+      )
+    }
+    symbols.textBufferViewMeasureForDimensions = (_view, _width, _height, output: ArrayBuffer) => {
+      outputBuffers.measure.push(output)
+      MeasureResultStruct.packInto({ lineCount: lineCount++, widthColsMax: 8 }, new DataView(output), 0)
+      return 1
+    }
+    symbols.audioGetStreamStats = (_engine, _streamId, output: ArrayBuffer) => {
+      outputBuffers.audio.push(output)
+      AudioStreamStatsStruct.packInto(
+        {
+          bytesReceived: bytesReceived++,
+          framesDecoded: 2n,
+          framesPlayed: 1n,
+          state: NativeAudioStreamState.Playing,
+          sampleRate: 48_000,
+          channels: 2,
+          bufferedFrames: 100,
+          capacityFrames: 200,
+          underruns: 0,
+          errorCode: 0,
+          readyGeneration: 1,
+        },
+        new DataView(output),
+        0,
+      )
+      return 0
+    }
+
+    try {
+      const logicalFirst = lib.editBufferGetCursorPosition(1 as any)
+      const logicalSecond = lib.editBufferGetCursorPosition(1 as any)
+      expect(logicalFirst).not.toBe(logicalSecond)
+      expect(logicalFirst.offset).toBe(1)
+      expect(logicalSecond.offset).toBe(2)
+
+      const visualFirst = lib.editorViewGetVisualCursor(2 as any)
+      const visualSecond = lib.editorViewGetVisualCursor(2 as any)
+      expect(visualFirst).not.toBe(visualSecond)
+      expect(visualFirst.offset).toBe(10)
+      expect(visualSecond.offset).toBe(11)
+
+      const measureFirst = lib.textBufferViewMeasureForDimensions(3 as any, 8, 10)!
+      const measureSecond = lib.textBufferViewMeasureForDimensions(3 as any, 8, 10)!
+      expect(measureFirst).not.toBe(measureSecond)
+      expect(measureFirst.lineCount).toBe(2)
+      expect(measureSecond.lineCount).toBe(3)
+
+      const audioFirst = lib.audioGetStreamStats(4 as any, 5)!
+      const audioSecond = lib.audioGetStreamStats(4 as any, 5)!
+      expect(audioFirst).not.toBe(audioSecond)
+      expect(audioFirst.bytesReceived).toBe(20n)
+      expect(audioSecond.bytesReceived).toBe(21n)
+
+      for (const buffers of Object.values(outputBuffers)) {
+        expect(buffers).toHaveLength(2)
+        expect(buffers[0]).toBeInstanceOf(ArrayBuffer)
+        expect(buffers[1]).toBe(buffers[0])
+      }
+    } finally {
+      Object.assign(symbols, originals)
+    }
+  })
+
+  test("grid draw repacks and forwards one owning ArrayBuffer", () => {
+    const calls: any[][] = []
+    const original = symbols.bufferDrawGrid
+    const fg = RGBA.fromValues(1, 1, 1, 1)
+    const bg = RGBA.fromValues(0, 0, 0, 1)
+    symbols.bufferDrawGrid = (...args: any[]) => calls.push(args)
+    try {
+      const chars = new Uint32Array(11)
+      const offsets = new Int32Array([0, 1])
+      lib.bufferDrawGrid(1 as any, chars, fg, bg, offsets, 1, offsets, 1, {
+        drawInner: true,
+        drawOuter: false,
+      })
+      const firstBuffer = calls[0]![8] as ArrayBuffer
+      expect(firstBuffer).toBeInstanceOf(ArrayBuffer)
+      expect(new Uint8Array(firstBuffer).slice(0, GridDrawOptionsStruct.size)).toEqual(new Uint8Array([1, 0]))
+
+      lib.bufferDrawGrid(1 as any, chars, fg, bg, offsets, 1, offsets, 1, {
+        drawInner: false,
+        drawOuter: true,
+      })
+      expect(calls[1]![8]).toBe(firstBuffer)
+      expect(new Uint8Array(firstBuffer).slice(0, GridDrawOptionsStruct.size)).toEqual(new Uint8Array([0, 1]))
+    } finally {
+      symbols.bufferDrawGrid = original
+    }
+  })
+
+  test("all cursor queries return fresh results from reused native storage", () => {
+    const logicalQueries = [
+      "editBufferGetCursorPosition",
+      "editBufferGetNextWordBoundary",
+      "editBufferGetPrevWordBoundary",
+      "editBufferGetEOL",
+    ] as const
+    const visualQueries = [
+      "editorViewGetVisualCursor",
+      "editorViewGetNextWordBoundary",
+      "editorViewGetPrevWordBoundary",
+      "editorViewGetEOL",
+      "editorViewGetVisualSOL",
+      "editorViewGetVisualEOL",
+    ] as const
+    const originals = new Map<string, (...args: any[]) => any>()
+
+    try {
+      for (const [index, name] of logicalQueries.entries()) {
+        originals.set(name, symbols[name])
+        const outputBuffers: ArrayBuffer[] = []
+        let offset = index + 2
+        symbols[name] = (...args: any[]) => {
+          const output = args.at(-1) as ArrayBuffer
+          outputBuffers.push(output)
+          LogicalCursorStruct.packInto({ row: index, col: index + 1, offset: offset++ }, new DataView(output), 0)
+        }
+        const first = (lib as any)[name](1)
+        const second = (lib as any)[name](1)
+        expect(first).not.toBe(second)
+        expect(first).toEqual({ row: index, col: index + 1, offset: index + 2 })
+        expect(second).toEqual({ row: index, col: index + 1, offset: index + 3 })
+        expect(outputBuffers[1]).toBe(outputBuffers[0])
+      }
+
+      originals.set("editBufferOffsetToPosition", symbols.editBufferOffsetToPosition)
+      const positionBuffers: ArrayBuffer[] = []
+      symbols.editBufferOffsetToPosition = (_buffer, offset: number, output: ArrayBuffer) => {
+        positionBuffers.push(output)
+        LogicalCursorStruct.packInto({ row: 1, col: 2, offset }, new DataView(output), 0)
+        return 1
+      }
+      const firstPosition = lib.editBufferOffsetToPosition(1 as any, 9)
+      const secondPosition = lib.editBufferOffsetToPosition(1 as any, 10)
+      expect(firstPosition).toEqual({ row: 1, col: 2, offset: 9 })
+      expect(secondPosition).toEqual({ row: 1, col: 2, offset: 10 })
+      expect(positionBuffers[1]).toBe(positionBuffers[0])
+
+      for (const [index, name] of visualQueries.entries()) {
+        originals.set(name, symbols[name])
+        const outputBuffers: ArrayBuffer[] = []
+        let offset = index + 4
+        symbols[name] = (...args: any[]) => {
+          const output = args.at(-1) as ArrayBuffer
+          outputBuffers.push(output)
+          VisualCursorStruct.packInto(
+            {
+              visualRow: index,
+              visualCol: index + 1,
+              logicalRow: index + 2,
+              logicalCol: index + 3,
+              offset: offset++,
+            },
+            new DataView(output),
+            0,
+          )
+        }
+        const first = (lib as any)[name](1)
+        const second = (lib as any)[name](1)
+        expect(first).not.toBe(second)
+        expect(first.offset).toBe(index + 4)
+        expect(second.offset).toBe(index + 5)
+        expect(outputBuffers[1]).toBe(outputBuffers[0])
+      }
+    } finally {
+      for (const [name, original] of originals) symbols[name] = original
+    }
+  })
+
   test("audio stream structs preserve the native ABI", () => {
     expect(AudioStreamCreateOptionsStruct.size).toBe(32)
     expect(
@@ -128,6 +332,164 @@ describe("borrowed pointer call sites", () => {
       errorCode: 48,
       readyGeneration: 52,
     })
+  })
+
+  test("audio capture stats preserve the 40-byte native ABI", () => {
+    expect(AudioCaptureStatsStruct.size).toBe(40)
+    expect(
+      Object.fromEntries(
+        [
+          "framesReceived",
+          "framesRead",
+          "framesDropped",
+          "sampleRate",
+          "channels",
+          "bufferedFrames",
+          "capacityFrames",
+        ].map((name) => [name, fieldOffset(AudioCaptureStatsStruct, name)]),
+      ),
+    ).toEqual({
+      framesReceived: 0,
+      framesRead: 8,
+      framesDropped: 16,
+      sampleRate: 24,
+      channels: 28,
+      bufferedFrames: 32,
+      capacityFrames: 36,
+    })
+  })
+
+  test("audio capture wrappers pass transient buffers directly and normalize booleans", () => {
+    const originals = {
+      name: symbols.audioGetCaptureDeviceName,
+      isDefault: symbols.audioIsCaptureDeviceDefault,
+      start: symbols.audioStartCapture,
+      running: symbols.audioIsCaptureRunning,
+      read: symbols.audioReadCapture,
+      stats: symbols.audioGetCaptureStats,
+    }
+    const calls: Record<string, any[][]> = { name: [], start: [], read: [], stats: [] }
+    symbols.audioGetCaptureDeviceName = (...args: any[]) => {
+      calls.name.push(args)
+      ;(args[2] as Uint8Array).set(new TextEncoder().encode("Microphone"))
+      return 10
+    }
+    symbols.audioIsCaptureDeviceDefault = () => 1
+    symbols.audioIsCaptureRunning = () => 1
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.start.push(args)
+      return 0
+    }
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.read.push(args)
+      new Uint32Array(args[4] as ArrayBuffer)[0] = 2
+      return 0
+    }
+    symbols.audioGetCaptureStats = (...args: any[]) => {
+      calls.stats.push(args)
+      AudioCaptureStatsStruct.packInto(
+        {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+        new DataView(args[1] as ArrayBuffer),
+        0,
+      )
+      return 0
+    }
+
+    try {
+      expect(lib.audioGetCaptureDeviceName(1 as any, 2)).toBe("Microphone")
+      expect(lib.audioIsCaptureDeviceDefault(1 as any, 2)).toBe(true)
+      expect(lib.audioStartCapture(1 as any, { noFixedSizedCallback: true }, 1, 48_000)).toBe(0)
+      expect(lib.audioIsCaptureRunning(1 as any)).toBe(true)
+      const output = new Float32Array(4)
+      expect(lib.audioReadCapture(1 as any, output, 4)).toEqual({ status: 0, framesRead: 2 })
+      expect(lib.audioGetCaptureStats(1 as any)).toEqual({
+        status: 0,
+        stats: {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+      })
+
+      expect(calls.name[0]![2]).toBeInstanceOf(Uint8Array)
+      expect(calls.start[0]![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.read[0]![1]).toBe(output)
+      expect(calls.read[0]![2]).toBe(output.length)
+      expect(calls.read[0]![3]).toBe(4)
+      expect(calls.read[0]![4]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.stats[0]![1]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioGetCaptureDeviceName = originals.name
+      symbols.audioIsCaptureDeviceDefault = originals.isDefault
+      symbols.audioStartCapture = originals.start
+      symbols.audioIsCaptureRunning = originals.running
+      symbols.audioReadCapture = originals.read
+      symbols.audioGetCaptureStats = originals.stats
+    }
+  })
+
+  test("audio capture reads forward the destination sample capacity", () => {
+    const calls: any[][] = []
+    const original = symbols.audioReadCapture
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.push(args)
+      return -1
+    }
+    try {
+      const output = new Float32Array(3)
+      expect(lib.audioReadCapture(1 as any, output, 1)).toEqual({ status: -1, framesRead: 0 })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toHaveLength(5)
+      expect(calls[0]![1]).toBe(output)
+      expect(calls[0]![2]).toBe(output.length)
+      expect(calls[0]![3]).toBe(1)
+      expect(calls[0]![4]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioReadCapture = original
+    }
+  })
+
+  test("audio capture start contains option getter failures and defaults callback sizing", () => {
+    const calls: any[][] = []
+    const original = symbols.audioStartCapture
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.push(args)
+      return 0
+    }
+    try {
+      expect(lib.audioStartCapture(1 as any, undefined, 1, 48_000)).toBe(0)
+      const packed = new Uint8Array(calls[0]![1] as ArrayBuffer)
+      expect(packed[17]).toBe(1)
+
+      const options = Object.create({ periods: 3 }) as { periods?: number; noFixedSizedCallback?: boolean }
+      Object.defineProperty(options, "noFixedSizedCallback", { value: false, enumerable: false })
+      expect(lib.audioStartCapture(1 as any, options, 1, 48_000)).toBe(0)
+      const inherited = new DataView(calls[1]![1] as ArrayBuffer)
+      expect(inherited.getUint32(8, true)).toBe(3)
+      expect(inherited.getUint8(17)).toBe(0)
+
+      const throwing = {
+        get periods(): number {
+          throw new Error("getter failed")
+        },
+      }
+      expect(lib.audioStartCapture(1 as any, throwing, 1, 48_000)).toBe(-1)
+      expect(calls).toHaveLength(2)
+    } finally {
+      symbols.audioStartCapture = original
+    }
   })
 
   test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {

@@ -142,6 +142,20 @@ describe("TextBuffer", () => {
       expect(lib.textBufferGetTextRange(buffer.ptr, 0, 5, 0)).toBeNull()
       expect(lib.textBufferGetTextRangeByCoords(buffer.ptr, 0, 0, 0, 5, 0)).toBeNull()
     })
+
+    it("returns independently owned exact-length coordinate ranges", () => {
+      buffer.setText("Hello World")
+      const lib = (buffer as any).lib
+
+      const first = lib.textBufferGetTextRangeByCoords(buffer.ptr, 0, 0, 0, 5, 64) as Uint8Array
+      const second = lib.textBufferGetTextRangeByCoords(buffer.ptr, 0, 0, 0, 5, 64) as Uint8Array
+
+      expect(new TextDecoder().decode(first)).toBe("Hello")
+      expect(first.byteLength).toBe(5)
+      expect(first.buffer.byteLength).toBe(5)
+      expect(second).not.toBe(first)
+      expect(second.buffer).not.toBe(first.buffer)
+    })
   })
 
   describe("line highlights", () => {

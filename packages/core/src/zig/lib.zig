@@ -389,6 +389,72 @@ export fn audioClearPlaybackDeviceSelection(engine_handle: NativeHandle) void {
     native_audio.clearPlaybackDeviceSelection(object_ptr);
 }
 
+export fn audioRefreshCaptureDevices(engine_handle: NativeHandle) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.refreshCaptureDevices(object_ptr);
+}
+
+export fn audioGetCaptureDeviceCount(engine_handle: NativeHandle) u32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getCaptureDeviceCount(object_ptr);
+}
+
+export fn audioGetCaptureDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: u32) u32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return @intCast(native_audio.getCaptureDeviceName(object_ptr, index, out_ptr, @as(usize, max_len)));
+}
+
+export fn audioIsCaptureDeviceDefault(engine_handle: NativeHandle, index: u32) bool {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return false;
+    return native_audio.isCaptureDeviceDefault(object_ptr, index);
+}
+
+export fn audioSelectCaptureDevice(engine_handle: NativeHandle, index: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.selectCaptureDevice(object_ptr, index);
+}
+
+export fn audioClearCaptureDeviceSelection(engine_handle: NativeHandle) void {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return;
+    native_audio.clearCaptureDeviceSelection(object_ptr);
+}
+
+export fn audioStartCapture(
+    engine_handle: NativeHandle,
+    options_ptr: ?*const native_audio.StartOptions,
+    channels: u32,
+    capacity_frames: u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.startCapture(object_ptr, options_ptr, channels, capacity_frames);
+}
+
+export fn audioStopCapture(engine_handle: NativeHandle) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.stopCapture(object_ptr);
+}
+
+export fn audioIsCaptureRunning(engine_handle: NativeHandle) bool {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return false;
+    return native_audio.isCaptureRunning(object_ptr);
+}
+
+export fn audioReadCapture(
+    engine_handle: NativeHandle,
+    out_ptr: ?[*]f32,
+    out_sample_capacity: u32,
+    frame_count: u32,
+    out_frames_read: ?*u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.readCapture(object_ptr, out_ptr, out_sample_capacity, frame_count, out_frames_read);
+}
+
+export fn audioGetCaptureStats(engine_handle: NativeHandle, out_stats: ?*native_audio.CaptureStats) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.getCaptureStats(object_ptr, out_stats);
+}
+
 export fn audioStart(engine_handle: NativeHandle, options_ptr: ?*const native_audio.StartOptions) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.start(object_ptr, options_ptr);

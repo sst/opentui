@@ -117,6 +117,7 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 - `<scrollbox>` - Scrollable container
 - `<ascii_font>` - ASCII art text
 - `<markdown>` - Render Markdown content
+- [`<TimeToFirstDraw />`](/docs/components/time-to-first-draw) - Exported first-draw performance timestamp component
 
 QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
 
@@ -153,6 +154,8 @@ Render a Solid component tree into a CLI renderer.
 ```tsx
 import { render } from "@opentui/solid"
 
+const App = () => <text>Hello, Solid!</text>
+
 // Simple usage
 render(() => <App />)
 
@@ -175,6 +178,7 @@ Create a test renderer for snapshots and interaction tests.
 ```tsx
 import { testRender } from "@opentui/solid"
 
+const App = () => <text>Ready</text>
 const testSetup = await testRender(() => <App />, { width: 40, height: 10 })
 ```
 
@@ -183,9 +187,10 @@ const testSetup = await testRender(() => <App />, { width: 40, height: 10 })
 Register custom renderables as JSX intrinsic elements.
 
 ```tsx
+import { BoxRenderable } from "@opentui/core"
 import { extend } from "@opentui/solid"
 
-extend({ custom_box: CustomBoxRenderable })
+extend({ custom_box: BoxRenderable })
 ```
 
 ### `getComponentCatalogue()`
@@ -228,7 +233,7 @@ renderer.writeToScrollback(writer)
 | `height`          | `number`  | measured auto  | Override the snapshot height in rows (otherwise measured from layout)    |
 | `rowColumns`      | `number`  | snapshot width | Explicit last-row column count for tail tracking                         |
 | `startOnNewLine`  | `boolean` | `true`         | Insert a newline before this commit if the previous commit ended mid-row |
-| `trailingNewline` | `boolean` | -              | Append a newline after the final row                                     |
+| `trailingNewline` | `boolean` | `true`         | Append a newline after the final row                                     |
 
 The writer returns a `ScrollbackSnapshot` whose teardown disposes the inner Solid subtree after the snapshot renders. Use the core [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) APIs directly if you need streaming commits that re-render the same tree over time.
 
@@ -534,13 +539,13 @@ render(App)
 
 ## Differences from React bindings
 
-| Aspect             | Solid                                                  | React                                  |
-| ------------------ | ------------------------------------------------------ | -------------------------------------- |
-| Render function    | `render(() => <App />)`                                | `createRoot(renderer).render(<App />)` |
-| Component naming   | snake_case (`ascii_font`)                              | kebab-case (`ascii-font`)              |
-| State              | `createSignal`                                         | `useState`                             |
-| Effects            | `onMount`, `onCleanup`                                 | `useEffect`                            |
-| Resize hook        | `onResize(callback)`                                   | `useOnResize(callback)`                |
-| Dimensions         | Returns signal: `dimensions().width`                   | Returns object: `dimensions.width`     |
-| Extra hooks        | `onFocus`, `onBlur`, `usePaste`, `useSelectionHandler` | -                                      |
-| Special components | `Portal`, `Dynamic`                                    | -                                      |
+| Aspect                            | Solid                                                  | React                                                    |
+| --------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| Render function                   | `render(() => <App />)`                                | `createRoot(renderer).render(<App />)`                   |
+| Component naming                  | snake_case (`ascii_font`)                              | kebab-case (`ascii-font`)                                |
+| State                             | `createSignal`                                         | `useState`                                               |
+| Effects                           | `onMount`, `onCleanup`                                 | `useEffect`                                              |
+| Resize hook                       | `onResize(callback)`                                   | `useOnResize(callback)`                                  |
+| Dimensions                        | Returns signal: `dimensions().width`                   | Returns object: `dimensions.width`                       |
+| Focus, blur, paste, and selection | `onFocus`, `onBlur`, `usePaste`, `useSelectionHandler` | `useFocus`, `useBlur`, `usePaste`, `useSelectionHandler` |
+| Special components                | `Portal`, `Dynamic`                                    | -                                                        |
