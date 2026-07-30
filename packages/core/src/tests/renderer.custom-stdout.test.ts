@@ -261,6 +261,91 @@ test("split-footer Kitty scrollback does not rasterize images to terminal pixel 
   expect(output).toContain("after-image")
 })
 
+test("ScrollbackSurface rejects stale image geometry after a height-only resize", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 12)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;80;80t\x1b[9;1R"))
+  await renderer.idle()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 1,
+    height: 1,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+
+  renderer.resize(8, 6)
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(() => surface.commitRows(0, surface.height)).toThrow(
+    "ScrollbackSurface.commitRows requires render() after renderer geometry changes",
+  )
+
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;10;13')
+})
+
+test("ScrollbackSurface rejects stale image geometry after pixel resolution arrives", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[3;1R"))
+  await renderer.idle()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 1,
+    height: 1,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(() => surface.commitRows(0, surface.height)).toThrow(
+    "ScrollbackSurface.commitRows requires render() after renderer geometry changes",
+  )
+
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;10;13')
+})
+
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 24)
