@@ -186,6 +186,11 @@ const BLEND_IDS: Record<BlendMode, number> = {
   "destination-over": 2,
 }
 
+const PIXEL_FORMAT_BGRA: Record<PixelFormat, boolean> = {
+  rgba8: false,
+  bgra8: true,
+}
+
 const MAX_ENCODED_BYTES = 64 * 1024 * 1024
 
 function imageError(status: number): Error {
@@ -194,6 +199,12 @@ function imageError(status: number): Error {
 
 function checkStatus(status: number): void {
   if (status !== 0) throw imageError(status)
+}
+
+function requireMappedOption<T extends string, V>(mapping: Record<T, V>, value: T, name: string): V {
+  if (!Object.prototype.hasOwnProperty.call(mapping, value))
+    throw new TypeError(`Unsupported ${name}: ${String(value)}`)
+  return mapping[value]
 }
 
 function requireU32(value: number, name: string, allowZero = false): number {
@@ -481,7 +492,8 @@ export class NativeImage {
     if (height === undefined) height = Math.max(1, Math.round((this.height * width) / this.width))
     requireU32(width, "width")
     requireU32(height, "height")
-    return this.wrap(this.lib.imageResize(this.guard(), width, height, FILTER_IDS[options.kernel ?? "area"]))
+    const filter = requireMappedOption(FILTER_IDS, options.kernel ?? "area", "resize kernel")
+    return this.wrap(this.lib.imageResize(this.guard(), width, height, filter))
   }
 
   public extract(options: ExtractOptions): NativeImage {
@@ -536,7 +548,7 @@ export class NativeImage {
         overlay.guard(),
         requireI32(options.left ?? 0, "left"),
         requireI32(options.top ?? 0, "top"),
-        BLEND_IDS[options.blend ?? "source-over"],
+        requireMappedOption(BLEND_IDS, options.blend ?? "source-over", "blend mode"),
         Math.round(opacity * 255),
       ),
     )
@@ -545,7 +557,14 @@ export class NativeImage {
   public raw(format: PixelFormat = "rgba8"): RawImage {
     const stride = this.width * 4
     const data = new Uint8Array(stride * this.height)
-    checkStatus(this.lib.imageCopyPixels(this.guard(), data, stride, format === "bgra8"))
+    checkStatus(
+      this.lib.imageCopyPixels(
+        this.guard(),
+        data,
+        stride,
+        requireMappedOption(PIXEL_FORMAT_BGRA, format, "pixel format"),
+      ),
+    )
     return { data, width: this.width, height: this.height, stride, format, colorSpace: "srgb", alpha: "straight" }
   }
 
@@ -566,7 +585,8 @@ export class NativeImage {
     if (!(destination instanceof Uint8Array)) throw new TypeError("destination must be a Uint8Array")
     const stride = options.stride ?? this.width * 4
     requireU32(stride, "stride")
-    checkStatus(this.lib.imageCopyPixels(this.guard(), destination, stride, options.format === "bgra8"))
+    const bgra = requireMappedOption(PIXEL_FORMAT_BGRA, options.format ?? "rgba8", "pixel format")
+    checkStatus(this.lib.imageCopyPixels(this.guard(), destination, stride, bgra))
   }
 
   public dispose(): void {

@@ -200,6 +200,31 @@ describe("NativeImage", () => {
     }
   })
 
+  test("rejects unsupported pixel formats, resize kernels, and blend modes", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const destination = new Uint8Array(4)
+    const expectTypeError = (operation: () => unknown): void => {
+      let result: unknown
+      try {
+        result = operation()
+      } catch (error) {
+        expect(error).toBeInstanceOf(TypeError)
+        return
+      }
+      if (result instanceof NativeImage) result.dispose()
+      throw new Error("expected image operation to reject an unsupported option")
+    }
+
+    try {
+      expectTypeError(() => image.raw("rgb8" as never))
+      expectTypeError(() => image.copyTo(destination, { format: "rgb8" as never }))
+      expectTypeError(() => image.resize({ width: 1, kernel: "lanczos3" as never }))
+      expectTypeError(() => image.composite(image, { blend: "multiply" as never }))
+    } finally {
+      image.dispose()
+    }
+  })
+
   test("constructs and exports immutable RGBA images", () => {
     const source = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
     const image = NativeImage.fromRgba(source, 2, 1)
