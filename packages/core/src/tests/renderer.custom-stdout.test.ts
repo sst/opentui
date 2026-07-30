@@ -1,6 +1,7 @@
 import { test, expect, afterEach } from "bun:test"
 import { Writable } from "stream"
 import { createCliRenderer, CliRenderer, CliRenderEvents } from "../renderer.js"
+import { BoxRenderable } from "../renderables/Box.js"
 import { ImageRenderable } from "../renderables/Image.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
@@ -344,6 +345,53 @@ test("ScrollbackSurface rejects stale image geometry after pixel resolution arri
   await flushWritable(stdout)
 
   expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;10;13')
+})
+
+test("tall scrollback surfaces composite translucent Sixel images over snapshot backgrounds", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;6;8t\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const background = new BoxRenderable(surface.renderContext, {
+    width: 1,
+    height: 5,
+    backgroundColor: "#0000ff",
+  })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    left: 0,
+    top: 4,
+    width: 1,
+    height: 1,
+    fit: "fill",
+    opacity: 0.5,
+  })
+  background.add(image)
+  surface.root.add(background)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("#0;2;50;0;50")
 })
 
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
