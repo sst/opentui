@@ -3159,6 +3159,60 @@ test "FeedBackend - failed split batch restores unpublished scrollback state" {
     try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&spans));
 }
 
+test "FeedBackend - failed frame retries unsent terminal controls" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 4;
+    opts.max_bytes = 128;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 1, 1, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+        .clearOnShutdown = false,
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.setCursorPosition(1, 1, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    var spans: [8]native_span_feed.SpanInfo = undefined;
+    var count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+
+    cli_renderer.terminal.setCursorColor(ansi.rgbColor(0x12, 0x34, 0x56, 255));
+    cli_renderer.terminal.setCursorStyle(.line, false);
+    cli_renderer.terminal.setMousePointerStyle(.pointer);
+
+    const blocker = [_]u8{'x'} ** 65;
+    try feed.writeAtomic(&blocker);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, cli_renderer.render(false));
+
+    count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    count = feed.drainSpans(&spans);
+    var output: [256]u8 = undefined;
+    var output_len: usize = 0;
+    for (spans[0..count]) |span| {
+        const bytes = span.slice();
+        @memcpy(output[output_len .. output_len + bytes.len], bytes);
+        output_len += bytes.len;
+        feed.markSpanConsumed(span);
+    }
+
+    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b]12;#123456\x07") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], ansi.ANSI.cursorLine) != null);
+    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b]22;pointer\x07") != null);
+}
+
 test "FeedBackend - failed Sixel frame does not publish an unterminated DCS" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

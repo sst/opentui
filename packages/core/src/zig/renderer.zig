@@ -272,6 +272,7 @@ pub const CliRenderer = struct {
     lastCursorY: ?u32 = null,
     lastCursorVisible: ?bool = null,
     lastMousePointerStyle: Terminal.MousePointerStyle = .default,
+    mousePointerStateValid: bool = true,
     palette_rgba: [256]RGBA,
     default_fg_rgba: RGBA,
     default_bg_rgba: RGBA,
@@ -839,6 +840,13 @@ pub const CliRenderer = struct {
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.pendingImages.clearRetainingCapacity();
         self.force_full_repaint = true;
+        self.lastCursorStyleTag = null;
+        self.lastCursorBlinking = null;
+        self.lastCursorColorRGB = null;
+        self.lastCursorX = null;
+        self.lastCursorY = null;
+        self.lastCursorVisible = null;
+        self.mousePointerStateValid = false;
         return .failed;
     }
 
@@ -2400,13 +2408,14 @@ pub const CliRenderer = struct {
         }
 
         const mousePointer = self.terminal.getMousePointer();
-        if (mousePointer != self.lastMousePointerStyle) {
+        if (!self.mousePointerStateValid or mousePointer != self.lastMousePointerStyle) {
             if (!frame_started) {
                 beginRenderFrame(writer);
                 frame_started = true;
             }
             ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
             self.lastMousePointerStyle = mousePointer;
+            self.mousePointerStateValid = true;
         }
 
         // Only close sync if we opened it. This keeps true no-op frames empty.
