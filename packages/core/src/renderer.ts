@@ -3717,7 +3717,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }, this.resizeDebounceDelay)
   }
 
-  private queryPixelResolution() {
+  private queryPixelResolution(force: boolean = false) {
+    if (!force && this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      this.queryPixelResolutionOnResume = true
+      return
+    }
     this.pendingPixelResolutionQueries++
     if (this.pendingPixelResolutionQueries === 1) {
       this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
@@ -3750,11 +3754,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
-    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
-      this.queryPixelResolutionOnResume = true
-    } else {
-      this.queryPixelResolution()
-    }
+    this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
     this.stdinParser?.resetMouseState()
@@ -4080,7 +4080,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.queryPixelResolutionOnResume) {
       this.queryPixelResolutionOnResume = false
-      this.queryPixelResolution()
+      this.queryPixelResolution(true)
     }
 
     this.suspendedNonAltSurfacePreserved = false
