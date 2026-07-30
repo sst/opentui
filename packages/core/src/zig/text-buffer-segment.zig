@@ -37,7 +37,7 @@ pub const TextChunk = struct {
     mem_id: u8,
     byte_start: u32,
     byte_end: u32,
-    width: u16,
+    width: u32,
     flags: u8 = 0,
     graphemes: ?[]GraphemeInfo = null,
     wrap_offsets: ?[]utf8.WrapBreak = null,

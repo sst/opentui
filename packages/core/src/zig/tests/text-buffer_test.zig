@@ -1559,8 +1559,34 @@ test "TextBuffer setText - CRLF at SIMD boundary" {
     try std.testing.expectEqual(expected_len, written);
 }
 
-test "TextBuffer setText - line with multiple u16-sized chunks (SKIPPED)" {
-    return error.SkipZigTest;
+test "TextBuffer setText - line width past u16 maximum" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    for ([_]u32{ 65535, 65536, 70000 }) |length| {
+        const text = try std.testing.allocator.alloc(u8, length);
+        defer std.testing.allocator.free(text);
+        @memset(text, 'x');
+
+        try tb.setText(text);
+
+        try std.testing.expectEqual(length, tb.getLength());
+        try std.testing.expectEqual(length, iter_mod.lineWidthAt(tb.rope(), 0));
+        try std.testing.expectEqual(length, tb.rope().totalWeight());
+        try std.testing.expectEqual(length, iter_mod.coordsToOffset(tb.rope(), 0, length).?);
+        try std.testing.expectEqual(iter_mod.Coords{ .row = 0, .col = length }, iter_mod.offsetToCoords(tb.rope(), length).?);
+
+        const output = try std.testing.allocator.alloc(u8, length);
+        defer std.testing.allocator.free(output);
+        const written = tb.getPlainTextIntoBuffer(output);
+        try std.testing.expectEqual(@as(usize, length), written);
+        try std.testing.expectEqualSlices(u8, text, output);
+    }
 }
 
 test "TextBuffer setText - validate rope structure is correct" {

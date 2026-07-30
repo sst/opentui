@@ -227,6 +227,31 @@ describe("EditBufferRenderable", () => {
     expect(textarea.cursorOffset).toBe(6)
   })
 
+  test("tracks the cursor and viewport past 65535 columns", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      wrapMode: "none",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    for (const length of [65535, 65536, 70000]) {
+      textarea.clear()
+      textarea.insertText("x".repeat(length))
+      await renderOnce()
+
+      expect(textarea.plainText).toHaveLength(length)
+      expect(textarea.logicalCursor).toMatchObject({ row: 0, col: length, offset: length })
+      expect(textarea.visualCursor.offset).toBe(length)
+
+      const viewport = textarea.editorView.getViewport()
+      expect(viewport.offsetX).toBeLessThanOrEqual(length)
+      expect(viewport.offsetX + viewport.width).toBeGreaterThan(length)
+    }
+  })
+
   test("goes to exact current line boundaries through renderable api", async () => {
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
