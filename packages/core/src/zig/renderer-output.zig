@@ -566,6 +566,10 @@ pub const BufferedBackend = struct {
         }
     }
 
+    pub fn failFrame(self: *BufferedBackend) void {
+        self.frameWriteFailed = true;
+    }
+
     /// Give spike memory back once frames have been consistently small again.
     /// Runs at frame start when the active buffer is exclusively owned by the
     /// producer: in threaded mode the render thread only ever reads the buffer
@@ -817,6 +821,10 @@ pub const FeedBackend = struct {
     pub fn beginFrame(self: *FeedBackend) void {
         self.frameWriteFailed = false;
         self.frameBytes.clearRetainingCapacity();
+    }
+
+    pub fn failFrame(self: *FeedBackend) void {
+        self.frameWriteFailed = true;
     }
 
     pub fn endFrame(self: *FeedBackend) WriteStatus {
