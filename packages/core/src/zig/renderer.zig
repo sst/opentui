@@ -843,6 +843,7 @@ pub const CliRenderer = struct {
 
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.pendingImages.clearRetainingCapacity();
+        @memset(self.nextHitGrid, 0);
         self.force_full_repaint = true;
         self.lastCursorStyleTag = null;
         self.lastCursorBlinking = null;
@@ -852,6 +853,14 @@ pub const CliRenderer = struct {
         self.lastCursorVisible = null;
         self.mousePointerStateValid = false;
         return .failed;
+    }
+
+    fn commitPendingHitGrid(self: *CliRenderer) void {
+        self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
+        const previous = self.currentHitGrid;
+        self.currentHitGrid = self.nextHitGrid;
+        self.nextHitGrid = previous;
+        @memset(self.nextHitGrid, 0);
     }
 
     fn renderResult(self: *CliRenderer, status: RenderStatus) RenderResult {
@@ -914,6 +923,7 @@ pub const CliRenderer = struct {
             self.restoreSplitFrameState(start_split_state);
             return result;
         }
+        self.commitPendingHitGrid();
         self.commitPendingImageState();
 
         self.collectFrameStats(deltaTime);
@@ -1105,6 +1115,7 @@ pub const CliRenderer = struct {
                         if (status == .failed or self.imageRenderFailed) {
                             result_status = self.finishFailedFrame();
                         } else {
+                            self.commitPendingHitGrid();
                             self.commitPendingImageState();
                             result_status = status;
                             self.collectFrameStats(deltaTime);
@@ -1161,6 +1172,7 @@ pub const CliRenderer = struct {
                     if (status == .failed or self.imageRenderFailed) {
                         result_status = self.finishFailedFrame();
                     } else {
+                        self.commitPendingHitGrid();
                         self.commitPendingImageState();
                         result_status = status;
                         self.collectFrameStats(self.splitBatchDeltaTime);
@@ -1446,6 +1458,7 @@ pub const CliRenderer = struct {
         }
         const status = renderStatusFromWrite(write_status);
         if (status == .failed or self.imageRenderFailed) return self.finishFailedFrame();
+        self.commitPendingHitGrid();
         self.commitPendingImageState();
         return status;
     }
@@ -2460,17 +2473,6 @@ pub const CliRenderer = struct {
 
         self.nextRenderBuffer.clear(self.backgroundColor, null);
 
-        // Compare hit grids before swap to detect changes. This allows TypeScript to
-        // know if hover state needs rechecking without manually tracking dirty state.
-        self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
-
-        // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
-        // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
-        // the next frame.
-        const temp = self.currentHitGrid;
-        self.currentHitGrid = self.nextHitGrid;
-        self.nextHitGrid = temp;
-        @memset(self.nextHitGrid, 0);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {
