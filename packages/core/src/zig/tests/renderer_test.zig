@@ -2241,6 +2241,40 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     try std.testing.expectEqual(@as(usize, 1), sync_count);
 }
 
+test "renderer - pinned split scrollback repaints live native images after append" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+    _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    var snapshot = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{ .pool = pool });
+    defer snapshot.deinit();
+    try snapshot.drawText("line", 0, 0, .{ 255, 255, 255, 255 }, null, 0);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 4, false, true, 2, false, true, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
+
+    const output = test_renderer.memory.lastWrite();
+    const append_index = std.mem.indexOf(u8, output, "line") orelse return error.TestUnexpectedResult;
+    const placement_index = std.mem.indexOf(u8, output, "\x1b_Ga=p") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(placement_index > append_index);
+}
+
 test "renderer - split scrollback omits image graphics and fallback markers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -1358,9 +1358,6 @@ pub const CliRenderer = struct {
         const next_output_offset = self.splitScrollback.renderOffset(pinned_render_offset);
         const next_render_offset = self.clampSplitSurfaceOffset(previousSurfaceOffset, pinned_render_offset);
         const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
-        // Footer redraw is only needed when offset changes (settling/pinning) or
-        // when an explicit force was requested by the caller.
-        const redraw_footer = force or previousSurfaceOffset != next_render_offset;
         // When split scrollback is settled at the pinned boundary, newlines/wraps from
         // appended output must scroll only the upper pane. Without a temporary DECSTBM
         // region, terminals advance into the footer rows and overwrite them in place.
@@ -1368,6 +1365,11 @@ pub const CliRenderer = struct {
             pinned_render_offset > 0 and
             next_render_offset == pinned_render_offset and
             next_output_offset == next_render_offset;
+        // DECSTBM protects footer cells, but terminals can still scroll native
+        // graphics placements. Repaint those placements after every pinned append.
+        const repaint_native_images = use_bounded_scroll_region and
+            (self.hasCommittedProtocol(.kitty) or self.hasCommittedProtocol(.sixel));
+        const redraw_footer = force or previousSurfaceOffset != next_render_offset or repaint_native_images;
 
         if (snapshot_has_content or force) {
             if (snapshot_has_content) {
