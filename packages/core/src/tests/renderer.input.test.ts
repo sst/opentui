@@ -2120,6 +2120,28 @@ test("terminal setup while suspended queries pixel resolution after resume", asy
   }
 })
 
+test("a delayed pre-suspend resolution cannot consume the post-resume query", () => {
+  const originalQuery = currentRenderer.lib.queryPixelResolution
+  let queries = 0
+  currentRenderer.lib.queryPixelResolution = () => {
+    queries++
+  }
+
+  try {
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    currentRenderer.suspend()
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    currentRenderer.resume()
+    expect(queries).toBe(2)
+
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
+    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
+  } finally {
+    currentRenderer.lib.queryPixelResolution = originalQuery
+  }
+})
+
 test("terminal setup after destroy is a no-op", async () => {
   const originalQuery = currentRenderer.lib.queryPixelResolution
   let queries = 0
