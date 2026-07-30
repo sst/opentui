@@ -3735,9 +3735,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
     this.pendingPixelResolutionQueries++
-    if (this.pendingPixelResolutionQueries === 1) {
-      this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
-    }
+    this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
     this.lib.queryPixelResolution(this.rendererPtr)
   }
 
@@ -4038,7 +4036,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this.pendingPixelResolutionQueries = 0
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
       pixelResolutionQueryActive: false,
@@ -4090,6 +4087,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lib.resumeRenderer(this.rendererPtr)
     }
 
+    if (this.pendingPixelResolutionQueries > 0) {
+      this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
+    }
     if (this.queryPixelResolutionOnResume) {
       this.queryPixelResolutionOnResume = false
       this.queryPixelResolution(true)
