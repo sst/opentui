@@ -98,6 +98,9 @@ fn isMacOSSDKAvailable(b: *std.Build, sdk_path: []const u8) bool {
     return isMacOSSDKPath(sdk_path) and
         pathExists(b.pathJoin(&.{ sdk_path, "usr", "lib" })) and
         macOSSDKHasFramework(b, sdk_path, "CoreFoundation") and
+        macOSSDKHasFramework(b, sdk_path, "AppKit") and
+        macOSSDKHasFramework(b, sdk_path, "Foundation") and
+        macOSSDKHasFramework(b, sdk_path, "ImageIO") and
         macOSSDKHasFramework(b, sdk_path, "CoreAudio") and
         macOSSDKHasFramework(b, sdk_path, "AudioToolbox");
 }
@@ -291,12 +294,23 @@ fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_
     artifact.addLibraryPath(.{ .cwd_relative = lib_path });
 }
 
+fn addMacOSClipboardDependencies(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
+    artifact.addCSourceFile(.{
+        .file = b.path("clipboard/macos-shim.m"),
+        .flags = &.{ "-fobjc-arc", "-fobjc-arc-exceptions", "-isysroot", sdk_path },
+    });
+    artifact.linkFramework("AppKit");
+    artifact.linkFramework("Foundation");
+    artifact.linkFramework("ImageIO");
+    artifact.linkSystemLibrary("pthread");
+    addMacOSSDKSearchPaths(b, artifact, sdk_path);
+}
+
 fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
+    addMacOSClipboardDependencies(b, artifact, sdk_path);
     artifact.linkFramework("CoreFoundation");
     artifact.linkFramework("CoreAudio");
     artifact.linkFramework("AudioToolbox");
-    artifact.linkSystemLibrary("pthread");
-    addMacOSSDKSearchPaths(b, artifact, sdk_path);
 }
 
 fn addNativeAudioDependencies(
