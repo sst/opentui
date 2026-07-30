@@ -151,6 +151,19 @@ test("maxFps setter updates requestRender throttle timing", async () => {
   expect(renderCalled).toBe(true)
 })
 
+test("intermediateRender() replaces the pending live frame timer", async () => {
+  renderer.requestLive()
+  await Promise.resolve()
+
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(1)
+
+  renderer.intermediateRender()
+
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(1)
+})
+
 test("threaded output backpressure retries a skipped native frame", async () => {
   const internals = renderer as unknown as {
     lib: { render: (...args: unknown[]) => number }
