@@ -3159,6 +3159,42 @@ test "FeedBackend - failed split batch restores unpublished scrollback state" {
     try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&spans));
 }
 
+test "FeedBackend - failed split repaint restores unpublished transition state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 4;
+    opts.max_bytes = 128;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 4, 2, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+        .clearOnShutdown = false,
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 1, 1, 2, 1, 1);
+    const before_scrollback = cli_renderer.splitScrollback;
+    const before_offset = cli_renderer.renderOffset;
+    const before_transition = cli_renderer.pendingSplitFooterTransition;
+
+    const blocker = [_]u8{'x'} ** 65;
+    try feed.writeAtomic(&blocker);
+    const result = cli_renderer.repaintSplitFooter(2, true);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, result.status);
+    try std.testing.expectEqual(before_scrollback, cli_renderer.splitScrollback);
+    try std.testing.expectEqual(before_offset, cli_renderer.renderOffset);
+    try std.testing.expectEqual(before_transition, cli_renderer.pendingSplitFooterTransition);
+}
+
 test "FeedBackend - failed frame retries unsent terminal controls" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
