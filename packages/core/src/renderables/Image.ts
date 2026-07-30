@@ -94,9 +94,10 @@ export class ImageRenderable extends Renderable {
     return this._fit
   }
 
-  public set fit(value: ImageFit) {
-    if (this._fit === value) return
-    this._fit = value
+  public set fit(value: ImageFit | null | undefined) {
+    const next = value ?? "fit"
+    if (this._fit === next) return
+    this._fit = next
     this.requestRender()
   }
 
@@ -104,9 +105,10 @@ export class ImageRenderable extends Renderable {
     return this._protocol
   }
 
-  public set protocol(value: ImageRenderProtocol) {
-    if (this._protocol === value) return
-    this._protocol = value
+  public set protocol(value: ImageRenderProtocol | null | undefined) {
+    const next = value ?? "auto"
+    if (this._protocol === next) return
+    this._protocol = next
     this.requestRender()
   }
 
