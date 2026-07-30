@@ -2025,9 +2025,9 @@ test("pixel resolution response should not trigger keypress", async () => {
     keypresses.push(event)
   })
 
-  // Mark as waiting for resolution
+  // Mark one query as outstanding.
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.waitingForPixelResolution = true
+  currentRenderer.pendingPixelResolutionQueries = 1
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
   advanceCurrentClock()
@@ -2043,7 +2043,7 @@ test("chunked pixel resolution response", async () => {
   })
 
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.waitingForPixelResolution = true
+  currentRenderer.pendingPixelResolutionQueries = 1
 
   // Send pixel resolution in chunks (arriving quickly)
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;72"))
@@ -2054,6 +2054,28 @@ test("chunked pixel resolution response", async () => {
 
   expect(keypresses).toHaveLength(0)
   expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
+})
+
+test("latest outstanding pixel resolution response wins", () => {
+  const originalQuery = currentRenderer.lib.queryPixelResolution
+  let queries = 0
+  currentRenderer.lib.queryPixelResolution = () => {
+    queries++
+  }
+
+  try {
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    expect(queries).toBe(2)
+
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
+    expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
+
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
+    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
+  } finally {
+    currentRenderer.lib.queryPixelResolution = originalQuery
+  }
 })
 
 test("kitty full capability response arriving in realistic chunks", async () => {
@@ -2174,7 +2196,7 @@ test("delayed pixel resolution response stays in response path while query is ac
   })
 
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.waitingForPixelResolution = true
+  currentRenderer.pendingPixelResolutionQueries = 1
   // @ts-expect-error - accessing private helper for test coverage
   currentRenderer.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
 

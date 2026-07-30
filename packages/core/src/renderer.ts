@@ -764,7 +764,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
-  private waitingForPixelResolution: boolean = false
+  private pendingPixelResolutionQueries: number = 0
   private readonly clock: Clock
 
   private rendering: boolean = false
@@ -3376,13 +3376,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.addInputHandler((sequence: string) => {
-      if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+      if (isPixelResolutionResponse(sequence) && this.pendingPixelResolutionQueries > 0) {
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
         }
-        this.waitingForPixelResolution = false
-        this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)
+        this.pendingPixelResolutionQueries--
+        const queryActive = this.pendingPixelResolutionQueries > 0
+        this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: queryActive }, !queryActive)
         return true
       }
       return false
@@ -3716,8 +3717,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private queryPixelResolution() {
-    this.waitingForPixelResolution = true
-    this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
+    this.pendingPixelResolutionQueries++
+    if (this.pendingPixelResolutionQueries === 1) {
+      this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
+    }
     this.lib.queryPixelResolution(this.rendererPtr)
   }
 
@@ -4018,7 +4021,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this.waitingForPixelResolution = false
+    this.pendingPixelResolutionQueries = 0
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
       pixelResolutionQueryActive: false,
@@ -4188,7 +4191,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.themeModeState.cancelRefresh()
 
     this._isRunning = false
-    this.waitingForPixelResolution = false
+    this.pendingPixelResolutionQueries = 0
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,
