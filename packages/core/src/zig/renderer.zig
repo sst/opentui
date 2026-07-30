@@ -111,6 +111,12 @@ const SplitFooterTransition = struct {
     }
 };
 
+const SplitFrameState = struct {
+    scrollback: split_scrollback.SplitScrollback,
+    render_offset: u32,
+    transition: SplitFooterTransition,
+};
+
 const CommittedImage = struct {
     placement_id: u32,
     image_handle: u32,
@@ -194,9 +200,7 @@ pub const CliRenderer = struct {
     splitBatchActive: bool = false,
     splitBatchRedrawFooter: bool = false,
     splitBatchDeltaTime: f64 = 0,
-    splitBatchStartScrollback: split_scrollback.SplitScrollback = .{},
-    splitBatchStartRenderOffset: u32 = 0,
-    splitBatchStartTransition: SplitFooterTransition = .{},
+    splitBatchStartState: SplitFrameState = .{ .scrollback = .{}, .render_offset = 0, .transition = .{} },
     pendingSplitFooterTransition: SplitFooterTransition = .{},
 
     /// Output transport. Owned by the renderer; destroyed in `destroy()`.
@@ -854,12 +858,22 @@ pub const CliRenderer = struct {
         return .{ .renderOffset = self.renderOffset, .status = status };
     }
 
+    fn splitFrameState(self: *const CliRenderer) SplitFrameState {
+        return .{
+            .scrollback = self.splitScrollback,
+            .render_offset = self.renderOffset,
+            .transition = self.pendingSplitFooterTransition,
+        };
+    }
+
+    fn restoreSplitFrameState(self: *CliRenderer, state: SplitFrameState) void {
+        self.splitScrollback = state.scrollback;
+        self.renderOffset = state.render_offset;
+        self.pendingSplitFooterTransition = state.transition;
+    }
+
     fn finishSplitBatch(self: *CliRenderer, published: bool) void {
-        if (!published) {
-            self.splitScrollback = self.splitBatchStartScrollback;
-            self.renderOffset = self.splitBatchStartRenderOffset;
-            self.pendingSplitFooterTransition = self.splitBatchStartTransition;
-        }
+        if (!published) self.restoreSplitFrameState(self.splitBatchStartState);
         self.splitBatchActive = false;
         self.splitBatchRedrawFooter = false;
         self.splitBatchDeltaTime = 0;
@@ -879,6 +893,7 @@ pub const CliRenderer = struct {
 
         self.lastRenderTime = now;
         self.renderDebugOverlay();
+        const start_split_state = self.splitFrameState();
 
         // `inline else` monomorphizes the writer type per variant — one
         // dispatch site, zero vtable cost.
@@ -895,7 +910,9 @@ pub const CliRenderer = struct {
 
         const status = renderStatusFromWrite(write_status);
         if (status == .failed or self.imageRenderFailed) {
-            return self.finishFailedFrame();
+            const result = self.finishFailedFrame();
+            self.restoreSplitFrameState(start_split_state);
+            return result;
         }
         self.commitPendingImageState();
 
@@ -1011,16 +1028,12 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        const start_scrollback = self.splitScrollback;
-        const start_render_offset = self.renderOffset;
-        const start_transition = self.pendingSplitFooterTransition;
+        const start_split_state = self.splitFrameState();
         const status = self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
         var result_status = status;
         if (status == .failed) {
             result_status = self.finishFailedFrame();
-            self.splitScrollback = start_scrollback;
-            self.renderOffset = start_render_offset;
-            self.pendingSplitFooterTransition = start_transition;
+            self.restoreSplitFrameState(start_split_state);
         } else {
             self.collectFrameStats(deltaTime);
         }
@@ -1065,9 +1078,7 @@ pub const CliRenderer = struct {
                     var w = b.writer();
                     beginRenderFrame(&w);
                     var frame_started = true;
-                    self.splitBatchStartScrollback = self.splitScrollback;
-                    self.splitBatchStartRenderOffset = self.renderOffset;
-                    self.splitBatchStartTransition = self.pendingSplitFooterTransition;
+                    self.splitBatchStartState = self.splitFrameState();
                     self.applyPendingSplitFooterTransition(&w, &frame_started);
 
                     // Track batch lifetime so subsequent calls can append into the same
