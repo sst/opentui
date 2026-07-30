@@ -2,6 +2,7 @@
 import {
   BaseRenderable,
   createTextAttributes,
+  ImageRenderable,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -18,7 +19,7 @@ import {
   type TextNodeOptions,
 } from "@opentui/core"
 import { decodeHTMLStrict } from "entities"
-import { useContext } from "solid-js"
+import { onCleanup, useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"
 import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
 import { getNextId } from "./utils/id-counter.js"
@@ -202,6 +203,11 @@ export const {
     }
 
     const element = new elements[tagName](solidRenderer, { id })
+    if (element instanceof ImageRenderable) {
+      onCleanup(() => {
+        element.source = undefined
+      })
+    }
     log("Element created with id:", id)
     return element
   },
