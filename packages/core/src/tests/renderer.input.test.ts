@@ -2163,6 +2163,28 @@ test("a delayed pre-suspend resolution cannot consume the post-resume query", ()
   }
 })
 
+test("a buffered pre-suspend resolution is discarded without leaving a pending query", () => {
+  const originalQuery = currentRenderer.lib.queryPixelResolution
+  currentRenderer.lib.queryPixelResolution = () => {}
+
+  try {
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    currentRenderer.suspend()
+    currentRenderer.stdin.push(Buffer.from("\x1b[4;720;"))
+    currentRenderer.stdin.push(Buffer.from("1280t"))
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    currentRenderer.resume()
+
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
+    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
+
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;480;640t"))
+    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
+  } finally {
+    currentRenderer.lib.queryPixelResolution = originalQuery
+  }
+})
+
 test("terminal setup after destroy is a no-op", async () => {
   const originalQuery = currentRenderer.lib.queryPixelResolution
   let queries = 0

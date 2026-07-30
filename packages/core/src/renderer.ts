@@ -46,6 +46,7 @@ import {
 } from "./lib/terminal-palette.js"
 import { calculateRenderGeometry } from "./lib/render-geometry.js"
 import {
+  countPixelResolutionResponses,
   isCapabilityResponse,
   isPixelResolutionResponse,
   parsePixelResolution,
@@ -4059,7 +4060,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // listener. Adding a "data" listener can auto-resume a Readable, so the
     // drain must come first while the stream is still paused and read()
     // pulls from the internal buffer rather than being a flowing-mode no-op.
-    while (this.stdin.read() !== null) {}
+    const discardedInput: Uint8Array[] = []
+    let discarded: unknown
+    while ((discarded = this.stdin.read()) !== null) {
+      if (discarded instanceof Uint8Array) discardedInput.push(discarded)
+      else if (typeof discarded === "string") discardedInput.push(new TextEncoder().encode(discarded))
+    }
+    this.pendingPixelResolutionQueries = Math.max(
+      0,
+      this.pendingPixelResolutionQueries - countPixelResolutionResponses(discardedInput),
+    )
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
