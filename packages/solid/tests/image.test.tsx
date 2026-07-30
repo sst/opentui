@@ -93,6 +93,21 @@ describe("image component", () => {
     expect(imageRef!.effectiveProtocol).toBe("blocks")
   })
 
+  it("restores image defaults when style keys are removed", async () => {
+    let imageRef: ImageRenderable | undefined
+    const [configured, setConfigured] = createSignal(true)
+
+    testSetup = await testRender(
+      () => <image ref={imageRef} style={configured() ? { fit: "fill" as const, protocol: "kitty" as const } : {}} />,
+      { width: 4, height: 2 },
+    )
+    expect({ fit: imageRef!.fit, protocol: imageRef!.protocol }).toEqual({ fit: "fill", protocol: "kitty" })
+
+    setConfigured(false)
+
+    expect({ fit: imageRef!.fit, protocol: imageRef!.protocol }).toEqual({ fit: "fit", protocol: "auto" })
+  })
+
   it("cancels a pending image load when its component unmounts", async () => {
     let imageRef: ImageRenderable | undefined
     let streamController!: ReadableStreamDefaultController<Uint8Array>

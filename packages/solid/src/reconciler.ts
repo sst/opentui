@@ -332,9 +332,16 @@ export const {
         }
         break
       case "style":
-        for (const prop in value) {
-          const propVal = value[prop]
-          if (prev !== undefined && propVal === prev[prop]) continue
+        const nextStyle = value ?? {}
+        const previousStyle = prev ?? {}
+        for (const prop in previousStyle) {
+          if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
+          // @ts-expect-error todo validate if prop is actually settable
+          node[prop] = undefined
+        }
+        for (const prop in nextStyle) {
+          const propVal = nextStyle[prop]
+          if (propVal === previousStyle[prop]) continue
           // @ts-expect-error todo validate if prop is actually settable
           node[prop] = propVal
         }
