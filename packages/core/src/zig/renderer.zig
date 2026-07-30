@@ -1011,10 +1011,16 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
+        const start_scrollback = self.splitScrollback;
+        const start_render_offset = self.renderOffset;
+        const start_transition = self.pendingSplitFooterTransition;
         const status = self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
         var result_status = status;
         if (status == .failed) {
             result_status = self.finishFailedFrame();
+            self.splitScrollback = start_scrollback;
+            self.renderOffset = start_render_offset;
+            self.pendingSplitFooterTransition = start_transition;
         } else {
             self.collectFrameStats(deltaTime);
         }
