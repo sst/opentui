@@ -227,6 +227,49 @@ test("auto images use detected Sixel when pixel resolution is available", async 
   expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1bP0;1;0q")
 })
 
+test("split-footer Kitty scrollback does not rasterize images to terminal pixel dimensions", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 60)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 12,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[4;4320;7680t\x1b_Gi=31337;OK\x1b\\\x1b[48;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 80,
+    height: 48,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+
+  stdout.write("after-image\n")
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("\x1b_Ga=t")
+  expect(output).toContain("a=t,f=100")
+  expect(output).toContain("c=80,r=48")
+  expect(output).toContain("after-image")
+})
+
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 24)

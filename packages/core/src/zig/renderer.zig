@@ -1369,7 +1369,7 @@ pub const CliRenderer = struct {
         placement: OptimizedBuffer.ImagePlacement,
         image_id: u32,
     ) !void {
-        const transmit = try self.kittySnapshotTransmit(placement);
+        const transmit = try self.kittyPlacementTransmit(placement);
         defer if (transmit.owned) transmit.image.deinit();
         try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, self.terminal.isInTmux());
         try terminal_image.writeKittyPlacementAtCursor(
@@ -2019,16 +2019,6 @@ pub const CliRenderer = struct {
         }
         const opacity_image = try imageWithOpacity(source, placement.opacity);
         return .{ .image = opacity_image orelse source, .owned = opacity_image != null };
-    }
-
-    fn kittySnapshotTransmit(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) !KittyTransmit {
-        const transmit = try self.kittyPlacementTransmit(placement);
-        errdefer if (transmit.owned) transmit.image.deinit();
-        if (placement.pixel_width == 0 or placement.pixel_height == 0 or
-            (transmit.image.width() == placement.pixel_width and transmit.image.height() == placement.pixel_height)) return transmit;
-        const resized = try native_image.resize(self.allocator, transmit.image, placement.pixel_width, placement.pixel_height, .area);
-        if (transmit.owned) transmit.image.deinit();
-        return .{ .image = resized, .owned = true };
     }
 
     fn writeKittyImages(self: *CliRenderer, writer: anytype, force_place: bool) !void {
