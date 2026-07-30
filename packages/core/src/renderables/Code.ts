@@ -91,9 +91,9 @@ export class CodeRenderable extends TextBufferRenderable {
 
     if (this._content.length > 0) {
       if (this._initialStyledText && this._drawUnstyledText) {
-        this.textBuffer.setStyledText(this._initialStyledText)
+        this.setBufferStyledText(this._initialStyledText)
       } else {
-        this.textBuffer.setText(this._content)
+        this.setBufferText(this._content)
       }
       this.updateTextInfo()
       this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
@@ -118,9 +118,9 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (this._initialStyledText && this._drawUnstyledText) {
-        this.textBuffer.setStyledText(this._initialStyledText)
+        this.setBufferStyledText(this._initialStyledText)
       } else {
-        this.textBuffer.setText(value)
+        this.setBufferText(value)
       }
       this.setRenderedLineSources(undefined)
       this.updateTextInfo()
@@ -303,9 +303,9 @@ export class CodeRenderable extends TextBufferRenderable {
       this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
       if (this._initialStyledText) {
-        this.textBuffer.setStyledText(this._initialStyledText)
+        this.setBufferStyledText(this._initialStyledText)
       } else {
-        this.textBuffer.setText(content)
+        this.setBufferText(content)
       }
       this.setRenderedLineSources(undefined)
       this._shouldRenderTextBuffer = true
@@ -390,10 +390,10 @@ export class CodeRenderable extends TextBufferRenderable {
         if (this.isDestroyed) return
 
         const styledText = new StyledText(chunks)
-        this.textBuffer.setStyledText(styledText)
+        this.setBufferStyledText(styledText)
         this.setRenderedLineSources(renderedLineSources)
       } else {
-        this.textBuffer.setText(content)
+        this.setBufferText(content)
         this.setRenderedLineSources(undefined)
       }
 
@@ -410,7 +410,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
       console.warn("Code highlighting failed, falling back to plain text:", error)
       if (this.isDestroyed) return
-      this.textBuffer.setText(content)
+      this.setBufferText(content)
       this.setRenderedLineSources(undefined)
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
@@ -529,7 +529,7 @@ export class CodeRenderable extends TextBufferRenderable {
   }
 
   public getLineHighlights(lineIdx: number) {
-    return this.textBuffer.getLineHighlights(lineIdx)
+    return this.getBufferLineHighlights(lineIdx)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

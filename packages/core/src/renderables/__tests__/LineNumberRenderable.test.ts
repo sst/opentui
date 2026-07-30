@@ -90,7 +90,7 @@ Press ESC to return to main menu`
 class MockTextBuffer extends TextBufferRenderable {
   constructor(ctx: any, options: any) {
     super(ctx, options)
-    this.textBuffer.setText(options.text || "")
+    this.setBufferText(options.text || "")
   }
 }
 

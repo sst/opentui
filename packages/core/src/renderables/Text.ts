@@ -46,7 +46,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private updateTextBuffer(styledText: StyledText): void {
-    this.textBuffer.setStyledText(styledText)
+    this.setBufferStyledText(styledText)
     this.clearChunks(styledText)
   }
 
@@ -90,7 +90,7 @@ export class TextRenderable extends TextBufferRenderable {
         attributes: this._defaultAttributes,
         link: undefined,
       })
-      this.textBuffer.setStyledText(new StyledText(chunks))
+      this.setBufferStyledText(new StyledText(chunks))
       this.refreshLocalSelection()
       this.yogaNode.markDirty()
     }
@@ -122,6 +122,15 @@ export class TextRenderable extends TextBufferRenderable {
     this.updateTextInfo()
 
     this.requestRender()
+  }
+
+  public loadFile(path: string): void {
+    this.loadBufferFile(path)
+    this.updateTextInfo()
+  }
+
+  public get byteSize(): number {
+    return this.bufferByteSize
   }
 
   public onLifecyclePass = () => {
