@@ -38,6 +38,7 @@ try {
 | `imageInfo(data)`           | Encoded `Uint8Array` or `ArrayBuffer`; returns metadata without retaining an image handle            |
 
 Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
+`imageInfo()` performs a full temporary decode, then releases its native storage. `decode()` and `fromRgba()` copy their inputs and do not retain caller buffers.
 
 | Format | Behavior                                                             |
 | ------ | -------------------------------------------------------------------- |
@@ -52,14 +53,14 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 
 `image.info()` returns:
 
-| Field                         | Description                                                 |
-| ----------------------------- | ----------------------------------------------------------- |
-| `width`, `height`             | Decoded, orientation-corrected dimensions                   |
-| `sourceWidth`, `sourceHeight` | Encoded dimensions before orientation                       |
-| `format`                      | `png`, `jpeg`, `webp`, `gif`, or `raw-rgba`                 |
-| `colorStatus`                 | `explicit-srgb` or `assumed-srgb`                           |
-| `orientation`                 | `1` after decode; `imageInfo()` reports encoded orientation |
-| `hasAlpha`                    | Whether decoded pixels contain transparency                 |
+| Field                         | Description                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `width`, `height`             | Decoded, orientation-corrected dimensions                                                        |
+| `sourceWidth`, `sourceHeight` | Original input dimensions; before orientation for encoded inputs and preserved by derived images |
+| `format`                      | `png`, `jpeg`, `webp`, `gif`, or `raw-rgba`                                                      |
+| `colorStatus`                 | `explicit-srgb` or `assumed-srgb`                                                                |
+| `orientation`                 | `1` after decode; `imageInfo()` reports encoded orientation                                      |
+| `hasAlpha`                    | Whether decoded pixels contain transparency                                                      |
 
 | Method                          | Result                                                           |
 | ------------------------------- | ---------------------------------------------------------------- |
@@ -69,7 +70,7 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 | `width`, `height`               | Decoded dimensions                                               |
 | `ptr`                           | Opaque native `ImageHandle`, valid until disposal or `takeRaw()` |
 
-The default output stride is `width * 4`. A custom `copyTo()` stride must fit one row, and the destination must fit every row.
+`copyTo()` defaults to RGBA8 with stride `width * 4`; BGRA8 and custom strides are supported. A custom stride must fit one row, and the destination must fit every row.
 
 `takeRaw()` consumes an exclusively owned `NativeImage`; it throws while a native render buffer retains the image. Later accessors and operations throw, while `dispose()` remains a safe no-op. The returned `OwnedRawImage.data` directly views native memory. Dispose it only after every consumer has finished, because explicit disposal frees the native allocation and invalidates the view:
 
@@ -101,6 +102,7 @@ Operations are immutable: each returns a new `NativeImage`; the source remains u
 | `composite(overlay, options?)`          | Composite in linear light                            |
 
 Resize kernels are `area` (the default), `default`, `triangle`, `cubic-bspline`, `catmull-rom`, `mitchell`, and `nearest`. Blend modes are `source-over` (the default), `source`, and `destination-over`; opacity is `0..1`.
+`extend()` defaults omitted sides to zero and its background to transparent RGBA. `composite()` defaults to offset `(0, 0)`, `source-over`, and opacity `1`; negative offsets are clipped to the base image.
 
 Dispose every image you own, including operation results:
 
@@ -124,6 +126,6 @@ try {
 
 `ImageError` exposes numeric `status` and `code`: `invalid-handle`, `unsupported-format`, `unsupported-color-space`, `malformed-data`, `dimension-limit`, `memory-limit`, `invalid-argument`, `out-of-memory`, `output-too-small`, `internal-error`, or `unsupported-feature`. JavaScript argument validation uses `TypeError` and `RangeError`.
 
-Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB decoded storage. PNG `iCCP` and unsupported `gAMA`/`cHRM` profiles are rejected; unsupported `cICP` is treated as assumed sRGB.
+Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB decoded storage. Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise `iCCP` and non-sRGB `gAMA`/`cHRM` are rejected; unsupported `cICP` alone is assumed sRGB.
 
 To display an image, see [Image](/docs/components/image).

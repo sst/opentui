@@ -58,15 +58,15 @@ await render(
 )
 ```
 
-The `source`, callbacks, fit, and protocol props can be updated after construction. Replacing `source` keeps the current image visible until the replacement succeeds, cancels obsolete loading, and disposes stale native images. Setting `source` to `undefined` clears it.
+The `source`, callbacks, fit, and protocol props can be updated after construction. Replacing `source` keeps the current image visible until the replacement succeeds, cancels obsolete loading, and disposes stale native images. Setting `source` to `undefined` clears it; clearing `fit` or `protocol` restores `"fit"` or `"auto"`.
 
 ## Sizing
 
-| `fit`   | Behavior                                                    |
-| ------- | ----------------------------------------------------------- |
-| `fit`   | Contain the full image and preserve aspect ratio (default)  |
-| `cover` | Fill the renderable, preserve aspect ratio, and center-crop |
-| `fill`  | Fill the renderable and allow stretching                    |
+| `fit`   | Behavior                                                     |
+| ------- | ------------------------------------------------------------ |
+| `fit`   | Contain and center the full image; preserve aspect (default) |
+| `cover` | Fill the renderable, preserve aspect ratio, and center-crop  |
+| `fill`  | Fill the renderable and allow stretching                     |
 
 Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallback otherwise.
 
@@ -83,7 +83,7 @@ With global and per-image protocols set to `auto`, tmux uses blocks. Explicit Ki
 
 Overlapping images must use the same effective protocol. Layering and alpha composition across different effective protocols are not supported; leave overlapping images on `auto` or give them the same explicit `protocol`. Non-overlapping images may use different protocols.
 
-Kitty preserves image alpha, Sixel treats alpha below 128 as transparent, and blocks blend sampled alpha. Placement opacity scales Kitty alpha and dims Sixel toward cell backgrounds. Direct, unbuffered fills, text, and box borders cover images at whole-cell granularity without blending.
+Kitty preserves image alpha, Sixel treats alpha below 128 as transparent, and blocks blend sampled alpha. Placement opacity scales Kitty and block alpha; Sixel dims toward cell backgrounds. Direct, unbuffered fills, text, and box borders cover images at whole-cell granularity without blending.
 
 Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. See [Environment variables](/docs/reference/env-vars).
 
@@ -91,19 +91,19 @@ Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. 
 
 ## Options and state
 
-| Member               | Type                                       | Description                                        |
-| -------------------- | ------------------------------------------ | -------------------------------------------------- |
-| `source`             | `ImageSource`                              | Image source; optional                             |
-| `fit`                | `"fit" \| "cover" \| "fill"`               | Destination sizing                                 |
-| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"` | Requested rendering protocol                       |
-| `onLoad`             | `(image: NativeImage) => void`             | Called after the current source loads              |
-| `onError`            | `(error: unknown) => void`                 | Called when the current source fails               |
-| `image`              | `NativeImage \| null`                      | Currently displayed renderable-owned image         |
-| `loading`            | `boolean`                                  | Whether the current source is loading              |
-| `loadError`          | `unknown`                                  | Current load error, otherwise `null`               |
-| `loadPromise`        | `Promise<void> \| null`                    | Settles after the current load attempt             |
-| `effectiveProtocol`  | `kitty \| sixel \| blocks`                 | Resolved protocol                                  |
-| `cellAspectRatio`    | `number`                                   | Physical or fallback cell aspect ratio             |
-| `getFittedSize(...)` | `(width, height) => { width, height }`     | Resolve destination cells for the current fit mode |
+| Member               | Type                                                        | Description                                                     |
+| -------------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
+| `source`             | `ImageSource`                                               | Image source; optional                                          |
+| `fit`                | `"fit" \| "cover" \| "fill"`                                | Destination sizing                                              |
+| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"`                  | Requested rendering protocol                                    |
+| `onLoad`             | `(image: NativeImage) => void`                              | Called after the current source loads                           |
+| `onError`            | `(error: unknown) => void`                                  | Called when the current source fails                            |
+| `image`              | `NativeImage \| null`                                       | Currently displayed renderable-owned image                      |
+| `loading`            | `boolean`                                                   | Whether the current source is loading                           |
+| `loadError`          | `unknown`                                                   | Current load error, otherwise `null`                            |
+| `loadPromise`        | `Promise<void> \| null`                                     | Settles after the current load attempt                          |
+| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Resolved protocol                                               |
+| `cellAspectRatio`    | `number`                                                    | Physical or fallback cell aspect ratio                          |
+| `getFittedSize(...)` | `(width, height, cellAspect?, sourceWidth?, sourceHeight?)` | Resolve destination cells; omitted overrides use current values |
 
 The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Source replacement, clearing, and destruction release owned images.
