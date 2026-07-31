@@ -73,6 +73,15 @@ function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8
   return result
 }
 
+function pngCrc(bytes: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
 function injectPngChunk(png: Uint8Array, type: string, payload: Uint8Array): Uint8Array {
   const typeBytes = new TextEncoder().encode(type)
   const chunk = new Uint8Array(payload.length + 12)
@@ -80,13 +89,7 @@ function injectPngChunk(png: Uint8Array, type: string, payload: Uint8Array): Uin
   chunkView.setUint32(0, payload.length)
   chunk.set(typeBytes, 4)
   chunk.set(payload, 8)
-
-  let crc = 0xffffffff
-  for (const byte of chunk.subarray(4, 8 + payload.length)) {
-    crc ^= byte
-    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
-  }
-  chunkView.setUint32(8 + payload.length, (crc ^ 0xffffffff) >>> 0)
+  chunkView.setUint32(8 + payload.length, pngCrc(chunk.subarray(4, 8 + payload.length)))
 
   let offset = 8
   while (new TextDecoder().decode(png.subarray(offset + 4, offset + 8)) !== "IDAT") {
@@ -96,6 +99,15 @@ function injectPngChunk(png: Uint8Array, type: string, payload: Uint8Array): Uin
   result.set(png.subarray(0, offset))
   result.set(chunk, offset)
   result.set(png.subarray(offset), offset + chunk.length)
+  return result
+}
+
+function withPngDimensions(png: Uint8Array, width: number, height: number): Uint8Array {
+  const result = png.slice()
+  const view = new DataView(result.buffer, result.byteOffset)
+  view.setUint32(16, width)
+  view.setUint32(20, height)
+  view.setUint32(29, pngCrc(result.subarray(12, 29)))
   return result
 }
 
@@ -158,6 +170,18 @@ describe("NativeImage", () => {
 
     const supportedCicp = injectPngChunk(iccp, "cICP", Uint8Array.of(1, 13, 0, 1))
     expect(imageInfo(supportedCicp).colorStatus).toBe("explicit-srgb")
+  })
+
+  test("enforces the documented decoded image dimensions", () => {
+    for (const png of [withPngDimensions(PNG_1X1, 16_385, 1), withPngDimensions(PNG_1X1, 5_001, 5_000)]) {
+      try {
+        imageInfo(png)
+        throw new Error("expected oversized PNG to be rejected")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageError)
+        expect((error as ImageError).code).toBe("dimension-limit")
+      }
+    }
   })
 
   test("rejects unsupported encoded formats", () => {
