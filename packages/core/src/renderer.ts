@@ -701,6 +701,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
+  HANDLER_ERROR = "handler:error",
   EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
   BLUR = "blur",
@@ -3184,10 +3185,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     try {
       this.stdinParser.push(data)
-      this.drainStdinParser()
     } catch (error) {
       this.handleStdinParserFailure(error)
+      return
     }
+
+    this.drainStdinParser()
   }).bind(this)
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
@@ -3311,9 +3314,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private drainStdinParser(): void {
     if (!this.stdinParser) return
 
-    this.stdinParser.drain((event) => {
-      this.handleStdinEvent(event)
-    })
+    try {
+      this.stdinParser.drain((event) => {
+        this.handleStdinEvent(event)
+      })
+    } catch (error) {
+      this.emit(CliRenderEvents.HANDLER_ERROR, error)
+    }
   }
 
   private handleStdinEvent(event: StdinEvent): void {
