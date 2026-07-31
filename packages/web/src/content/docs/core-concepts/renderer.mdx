@@ -268,7 +268,7 @@ surface.destroy()
 | `commitRows(start, endExclusive, options?)` | Copy a row range out of the backing buffer and enqueue it as a scrollback commit |
 | `destroy()`                                 | Tear down the surface and its backing buffer                                     |
 
-`commitRows` throws if you call it before `render()`, or if the renderer's dimensions, pixel resolution, or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
+`commitRows` throws if you call it before `render()`, or if renderer width, terminal width or height, pixel resolution, or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
 
 For an `ImageRenderable`, await `image.loadPromise`, then call `surface.render()` and `surface.commitRows(...)`. `surface.settle()` waits for syntax highlighting, not image loading. The queued snapshot retains the image until native output publication, so the surface can be destroyed immediately after the commit.
 
