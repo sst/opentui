@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import {
   BoxRenderable,
   CliRenderer,
+  CliRenderEvents,
   ImageRenderable,
   RGBA,
   TextAttributes,
@@ -53,6 +54,7 @@ interface GalleryItem {
 let root: BoxRenderable | null = null
 let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
+let rendererDestroyHandler: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
 let overlayBox: BoxRenderable | null = null
@@ -209,6 +211,8 @@ async function startImageServer(gif: Uint8Array): Promise<{ server: Server; url:
 }
 
 export async function run(renderer: CliRenderer): Promise<void> {
+  rendererDestroyHandler = () => destroy(renderer)
+  renderer.on(CliRenderEvents.DESTROY, rendererDestroyHandler)
   const generation = ++runGeneration
   renderer.start()
   renderer.setBackgroundColor(P.page)
@@ -338,6 +342,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
 export function destroy(renderer: CliRenderer): void {
   runGeneration++
+  if (rendererDestroyHandler) renderer.off(CliRenderEvents.DESTROY, rendererDestroyHandler)
+  rendererDestroyHandler = null
   if (keyListener) renderer.keyInput.off("keypress", keyListener)
   keyListener = null
   root?.destroyRecursively()
