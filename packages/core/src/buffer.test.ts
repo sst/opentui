@@ -48,6 +48,22 @@ describe("OptimizedBuffer", () => {
     }
   })
 
+  it("releases drawn images when cleared", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    let raw: ReturnType<NativeImage["takeRaw"]> | undefined
+    try {
+      expect(buffer.drawImage(image, 0, 0, 1, 1)).toBe(true)
+      expect(() => image.takeRaw()).toThrow("native buffers retain the image")
+
+      buffer.clear()
+      raw = image.takeRaw()
+      expect([...raw.data]).toEqual([1, 2, 3, 255])
+    } finally {
+      raw?.dispose()
+      image.dispose()
+    }
+  })
+
   it("rejects invalid image draw geometry before FFI", () => {
     const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
     try {
