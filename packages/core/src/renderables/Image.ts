@@ -31,7 +31,9 @@ export function resolveImageRenderProtocol(
 }
 
 function pixelResolution(ctx: RenderContext): { width: number; height: number } | null {
-  const resolution = ctx.terminalWidth > 0 && ctx.terminalHeight > 0 ? ctx.resolution : null
+  const terminalWidth = ctx.terminalWidth ?? 0
+  const terminalHeight = ctx.terminalHeight ?? 0
+  const resolution = terminalWidth > 0 && terminalHeight > 0 ? ctx.resolution : null
   return resolution && resolution.width > 0 && resolution.height > 0 ? resolution : null
 }
 
@@ -114,8 +116,8 @@ export class ImageRenderable extends Renderable {
   public get cellAspectRatio(): number {
     const resolution = pixelResolution(this._ctx)
     if (!resolution) return 2
-    const cellWidth = resolution.width / this._ctx.terminalWidth
-    const cellHeight = resolution.height / this._ctx.terminalHeight
+    const cellWidth = resolution.width / this._ctx.terminalWidth!
+    const cellHeight = resolution.height / this._ctx.terminalHeight!
     return cellWidth > 0 && cellHeight > 0 ? cellHeight / cellWidth : 2
   }
 
@@ -164,10 +166,10 @@ export class ImageRenderable extends Renderable {
     const y = originY + Math.floor((this.height - fitted.height) / 2)
     const resolution = pixelResolution(this._ctx)
     const pixelWidth = resolution
-      ? Math.max(1, Math.round((fitted.width * resolution.width) / this._ctx.terminalWidth))
+      ? Math.max(1, Math.round((fitted.width * resolution.width) / this._ctx.terminalWidth!))
       : 0
     const pixelHeight = resolution
-      ? Math.max(1, Math.round((fitted.height * resolution.height) / this._ctx.terminalHeight))
+      ? Math.max(1, Math.round((fitted.height * resolution.height) / this._ctx.terminalHeight!))
       : 0
     let sourceX = 0
     let sourceY = 0

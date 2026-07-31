@@ -8,6 +8,7 @@ import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Imag
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { createTerminalCapabilities } from "../testing/terminal-capabilities.js"
+import type { RenderContext, TerminalCapabilities } from "../types.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
@@ -246,6 +247,17 @@ describe("ImageRenderable image loading", () => {
         true,
       ),
     ).toBe("blocks")
+  })
+
+  test("accepts legacy capability and render context shapes", () => {
+    const { image_protocol: _, ...legacyCapabilities } = createTerminalCapabilities({ kitty_graphics: true })
+    const capabilities: TerminalCapabilities = legacyCapabilities
+    const legacyContext: Omit<RenderContext, "terminalWidth" | "terminalHeight" | "resolution"> = renderer
+    const renderable = new ImageRenderable(legacyContext, {})
+
+    expect(resolveImageRenderProtocol("auto", capabilities, false)).toBe("kitty")
+    expect(renderable.cellAspectRatio).toBe(2)
+    renderable.destroy()
   })
 
   test("reports decode failures without installing an image", async () => {
