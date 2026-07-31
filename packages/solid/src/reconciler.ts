@@ -334,10 +334,12 @@ export const {
       case "style":
         const nextStyle = value ?? {}
         const previousStyle = prev ?? {}
-        for (const prop in previousStyle) {
-          if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
-          if (!(node instanceof ImageRenderable) || (prop !== "fit" && prop !== "protocol")) continue
-          node[prop] = undefined
+        if (node instanceof ImageRenderable) {
+          for (const prop in previousStyle) {
+            if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
+            if (prop !== "fit" && prop !== "protocol") continue
+            node[prop] = undefined
+          }
         }
         for (const prop in nextStyle) {
           const propVal = nextStyle[prop]

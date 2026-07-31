@@ -61,6 +61,8 @@ const renderer_image_bench = @import("bench/renderer-image_bench.zig");
 const buffer_cell_drawing_bench = @import("bench/buffer-cell-drawing_bench.zig");
 const renderer_overhead_bench = @import("bench/renderer-overhead_bench.zig");
 const buffer_image_overlap_bench = @import("bench/buffer-image-overlap_bench.zig");
+const image_operations_bench = @import("bench/image-operations_bench.zig");
+const renderer_output_bench = @import("bench/renderer-output_bench.zig");
 
 const BenchModule = struct {
     name: []const u8,
@@ -117,6 +119,8 @@ pub fn main() !void {
         .{ .name = buffer_cell_drawing_bench.benchName, .run = buffer_cell_drawing_bench.run },
         .{ .name = renderer_overhead_bench.benchName, .run = renderer_overhead_bench.run },
         .{ .name = buffer_image_overlap_bench.benchName, .run = buffer_image_overlap_bench.run },
+        .{ .name = image_operations_bench.benchName, .run = image_operations_bench.run },
+        .{ .name = renderer_output_bench.benchName, .run = renderer_output_bench.run },
     };
 
     const args = try std.process.argsAlloc(allocator);

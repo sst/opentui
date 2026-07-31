@@ -7,6 +7,7 @@ import { EditBuffer } from "../edit-buffer.js"
 import { EditorView } from "../editor-view.js"
 import { BorderCharArrays } from "../lib/border.js"
 import { RGBA } from "../lib/RGBA.js"
+import { NativeImage } from "../image.js"
 import { ptr } from "../platform/ffi.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { TextBuffer } from "../text-buffer.js"
@@ -225,6 +226,8 @@ function createScenarios(): ScenarioDefinition[] {
     },
     createFrameBufferScenario(false),
     createFrameBufferScenario(true),
+    createDrawImageScenario("cell", 1, 1),
+    createDrawImageScenario("frame", 40, 20),
     createDrawTextScenario("short", "x"),
     createDrawTextScenario("long", "OpenTUI direct FFI benchmark payload ".repeat(4)),
     createDrawTextScenario("unicode", "A界e\u0301👩‍🚀"),
@@ -297,6 +300,46 @@ function createScenarios(): ScenarioDefinition[] {
     createEditorSelectionScenario(true, false),
     createEditorSelectionScenario(true, true),
   ]
+}
+
+function createDrawImageScenario(label: string, width: number, height: number): ScenarioDefinition {
+  return {
+    name: `buffer_draw_image_${label}`,
+    operation: "OptimizedBuffer.drawImage",
+    description: `Clear and draw a retained image into a ${width}x${height} cell placement through the production wrapper`,
+    setup: () => {
+      const buffer = OptimizedBuffer.create(width, height)
+      const pixels = new Uint8Array(320 * 200 * 4)
+      for (let index = 0; index < pixels.length; index += 4) {
+        pixels[index] = (index >>> 2) & 0xff
+        pixels[index + 1] = ((index >>> 2) * 3) & 0xff
+        pixels[index + 2] = ((index >>> 2) * 7) & 0xff
+        pixels[index + 3] = 255
+      }
+      let image: NativeImage
+      try {
+        image = NativeImage.fromRgba(pixels, 320, 200)
+      } catch (error) {
+        buffer.destroy()
+        throw error
+      }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            buffer.clear(COLORS.bg)
+            signal += Number(buffer.drawImage(image, 0, 0, width, height, 320, 200, 0, 0, 320, 200, "auto"))
+          }
+          return signal
+        },
+        observe: () => bufferChecksum(buffer) + image.width + image.height,
+        teardown: () => {
+          buffer.destroy()
+          image.dispose()
+        },
+      }
+    },
+  }
 }
 
 function createReusableStorageScenarios(): ScenarioDefinition[] {

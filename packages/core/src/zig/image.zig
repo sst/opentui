@@ -785,9 +785,21 @@ pub fn resize(allocator: Allocator, source: *const Image, width: u32, height: u3
     return output;
 }
 
-fn srgbToLinear(value: u8) f32 {
-    const v: f32 = @as(f32, @floatFromInt(value)) / 255.0;
-    return if (v <= 0.04045) v / 12.92 else std.math.pow(f32, (v + 0.055) / 1.055, 2.4);
+const srgb_to_linear = table: {
+    @setEvalBranchQuota(100_000);
+    var values: [256]f32 = undefined;
+    for (&values, 0..) |*result, value| {
+        const normalized: f32 = @as(f32, @floatFromInt(value)) / 255.0;
+        result.* = if (normalized <= 0.04045)
+            normalized / 12.92
+        else
+            std.math.pow(f32, (normalized + 0.055) / 1.055, 2.4);
+    }
+    break :table values;
+};
+
+inline fn srgbToLinear(value: u8) f32 {
+    return srgb_to_linear[value];
 }
 
 fn linearToSrgb(value: f32) u8 {
@@ -868,10 +880,9 @@ pub fn copyPixels(image: *const Image, destination: []u8, stride: u32, bgra: boo
         for (0..image.width()) |x| {
             const src = src_offset + x * 4;
             const dst = dst_offset + x * 4;
-            destination[dst + 0] = image.pixels[src + 2];
-            destination[dst + 1] = image.pixels[src + 1];
-            destination[dst + 2] = image.pixels[src + 0];
-            destination[dst + 3] = image.pixels[src + 3];
+            const rgba = std.mem.readInt(u32, image.pixels[src..][0..4], .little);
+            const swapped = (rgba & 0xff00_ff00) | ((rgba & 0x0000_00ff) << 16) | ((rgba & 0x00ff_0000) >> 16);
+            std.mem.writeInt(u32, destination[dst..][0..4], swapped, .little);
         }
     }
     return .ok;

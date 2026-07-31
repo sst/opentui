@@ -328,6 +328,53 @@ fn appendKittyBenchmarks(
     }
 }
 
+fn appendKittyPngBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const names = [_][]const u8{ "Kitty PNG passthrough auto", "Kitty PNG decoded RGBA" };
+    var run_any = false;
+    for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
+    if (!run_any) return;
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const work_allocator = gpa.allocator();
+    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.png", 2 * 1024 * 1024);
+    defer work_allocator.free(encoded);
+    const decoded = try image.decode(work_allocator, encoded, .{});
+    defer decoded.deinit();
+
+    for ([_]struct { name: []const u8, format: terminal_image.KittyPixelFormat }{
+        .{ .name = names[0], .format = .auto },
+        .{ .name = names[1], .format = .rgba },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, @max(encoded.len, decoded.pixels.len) * 4 / 3 + 8192);
+        try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+        var stats: bench_utils.BenchStats = .{};
+        var checksum: usize = 0;
+        for (0..50) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+            stats.record(timer.read());
+            checksum +%= output.items.len + output.items[output.items.len / 2];
+        }
+        if (checksum == 0) return error.InvalidKittyPngBenchmark;
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+}
+
 fn appendImageSwitchBenchmarks(
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -367,7 +414,7 @@ fn appendImageSwitchBenchmarks(
     const Geometry = struct { x: u32, y: u32, width: u32, height: u32, output_width: u32, output_height: u32 };
     const fit = Geometry{ .x = 0, .y = 0, .width = 256, .height = 384, .output_width = 576, .output_height = 875 };
     const cover = Geometry{ .x = 19, .y = 0, .width = 218, .height = 384, .output_width = 576, .output_height = 1015 };
-    const iterations: usize = 20;
+    const iterations: usize = 50;
 
     const fit_crop = try image.extract(work_allocator, decoded, fit.x, fit.y, fit.width, fit.height);
     defer fit_crop.deinit();
@@ -390,7 +437,11 @@ fn appendImageSwitchBenchmarks(
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         var stats: bench_utils.BenchStats = .{};
-        for (0..iterations) |_| {
+        for (0..20) |_| {
+            const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
+            extracted.deinit();
+        }
+        for (0..100) |_| {
             var timer = try std.time.Timer.start();
             const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
             stats.record(timer.read());
@@ -514,7 +565,7 @@ fn appendImageSwitchBenchmarks(
         defer output.deinit(work_allocator);
         try output.ensureTotalCapacity(work_allocator, scenario.payload.len + 32);
         var checksum: usize = 0;
-        for (0..100) |_| {
+        for (0..500) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
             try terminal_image.writeSixelFramedPayload(output.writer(work_allocator), scenario.payload, false);
@@ -664,6 +715,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         }
     }
     try appendKittyBenchmarks(allocator, &results, show_mem, bench_filter);
+    try appendKittyPngBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);
     return results.toOwnedSlice(allocator);

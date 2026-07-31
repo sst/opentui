@@ -238,7 +238,7 @@ fn runStaticKittyPlacementCount(
     try drawStaticKittyPlacements(test_renderer.renderer.getNextBuffer(), value, image_handle, count);
     if (test_renderer.renderer.render(true) != .rendered) return error.RenderFailed;
 
-    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 10;
+    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 30;
     var cost = FrameCost{};
     for (0..iterations) |_| {
         try drawStaticKittyPlacements(test_renderer.renderer.getNextBuffer(), value, image_handle, count);
@@ -322,7 +322,7 @@ fn runDirtySixelOverlapCount(
     );
     if (test_renderer.renderer.render(false) == .failed) return error.RenderFailed;
 
-    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 10;
+    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 30;
     var cost = FrameCost{};
     for (0..iterations) |iteration| {
         try drawOverlappingSixelPlacements(
@@ -340,6 +340,104 @@ fn runDirtySixelOverlapCount(
         var timer = try std.time.Timer.start();
         if (test_renderer.renderer.render(false) == .failed) return error.RenderFailed;
         cost.stats.record(timer.read());
+        cost.total_bytes += test_renderer.memory.bytes.items.len;
+        cost.frames += 1;
+    }
+    return cost;
+}
+
+fn runSplitImageCommit(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    protocol: Protocol,
+    placement_count: usize,
+) !FrameCost {
+    var test_renderer = try test_renderer_mod.TestRenderer.create(allocator, TERM_WIDTH, TERM_HEIGHT, pool);
+    defer test_renderer.deinit();
+    switch (protocol) {
+        .kitty => test_renderer.renderer.terminal.caps.kitty_graphics = true,
+        .sixel => test_renderer.renderer.terminal.caps.sixel = true,
+        .blocks => {},
+    }
+
+    const image_width: u32 = if (placement_count == 1) 320 else 1;
+    const image_height: u32 = if (placement_count == 1) 200 else 1;
+    const value = try makeFrameImage(allocator, image_width, image_height, 19);
+    const image_handle = handles.insert(.image, @ptrCast(value)) catch |err| {
+        value.deinit();
+        return err;
+    };
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    const snapshot = try buffer.OptimizedBuffer.init(allocator, 40, 20, .{ .pool = pool });
+    defer snapshot.deinit();
+    const render_protocol: image.RenderProtocol = switch (protocol) {
+        .kitty => .kitty,
+        .sixel => .sixel,
+        .blocks => .blocks,
+    };
+    if (placement_count == 1) {
+        _ = try snapshot.drawImage(value, image_handle, 0, 0, 40, 20, 320, 200, 0, 0, 320, 200, render_protocol);
+    } else {
+        for (0..placement_count) |index| {
+            _ = try snapshot.drawImage(
+                value,
+                image_handle,
+                @intCast(index % 40),
+                @intCast(index / 40),
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                render_protocol,
+            );
+        }
+    }
+
+    const iterations: usize = switch (protocol) {
+        .kitty => 100,
+        .sixel => 30,
+        .blocks => 100,
+    };
+    var cost = FrameCost{};
+    for (0..iterations + 10) |iteration| {
+        if (protocol == .blocks) {
+            snapshot.clear(.{ 0, 0, 0, 255 }, null);
+            _ = try snapshot.drawImage(value, image_handle, 0, 0, 40, 20, 320, 200, 0, 0, 320, 200, render_protocol);
+        }
+        _ = test_renderer.renderer.resetSplitScrollback(TERM_HEIGHT, TERM_HEIGHT);
+        test_renderer.memory.bytes.clearRetainingCapacity();
+        test_renderer.memory.last_write_start = 0;
+        test_renderer.memory.last_write_len = 0;
+        var timer = try std.time.Timer.start();
+        const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(
+            snapshot,
+            snapshot.width,
+            false,
+            true,
+            TERM_HEIGHT,
+            false,
+            true,
+            true,
+        );
+        const elapsed = timer.read();
+        if (result.status == .failed) return error.RenderFailed;
+        const output = test_renderer.memory.bytes.items;
+        switch (protocol) {
+            .kitty => if (std.mem.indexOf(u8, output, "\x1b_Ga=t") == null) return error.MissingKittyImageOutput,
+            .sixel => if (std.mem.indexOf(u8, output, "\x1bP0;1;0q") == null) return error.MissingSixelImageOutput,
+            .blocks => if (snapshot.image_placements.items.len != 0) return error.MissingBlockImageFallback,
+        }
+        if (iteration < 10) continue;
+        cost.stats.record(elapsed);
         cost.total_bytes += test_renderer.memory.bytes.items.len;
         cost.frames += 1;
     }
@@ -442,6 +540,32 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         const cost = try runDirtySixelOverlapCount(allocator, pool, count);
         try results.append(allocator, .{
             .name = try std.fmt.allocPrint(allocator, "{s} ({d} bytes/frame)", .{ name, cost.bytesPerFrame() }),
+            .min_ns = cost.stats.min_ns,
+            .avg_ns = cost.stats.avg(),
+            .max_ns = cost.stats.max_ns,
+            .total_ns = cost.stats.total_ns,
+            .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
+            .mem_stats = null,
+        });
+    }
+
+    const split_scenarios = [_]struct {
+        name: []const u8,
+        protocol: Protocol,
+        placements: usize,
+    }{
+        .{ .name = "split Kitty image commit", .protocol = .kitty, .placements = 1 },
+        .{ .name = "split Sixel image commit", .protocol = .sixel, .placements = 1 },
+        .{ .name = "split block fallback image commit", .protocol = .blocks, .placements = 1 },
+        .{ .name = "split Kitty 128 image placements", .protocol = .kitty, .placements = 128 },
+    };
+    for (split_scenarios) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        const cost = try runSplitImageCommit(allocator, pool, scenario.protocol, scenario.placements);
+        try results.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s} ({d} bytes/frame)", .{ scenario.name, cost.bytesPerFrame() }),
             .min_ns = cost.stats.min_ns,
             .avg_ns = cost.stats.avg(),
             .max_ns = cost.stats.max_ns,
