@@ -497,7 +497,7 @@ pub fn inspect(allocator: Allocator, data: []const u8, limits: Limits, out: *Inf
     const probe_status = probeInternal(data, limits, &encoded_info, false);
     if (probe_status != .ok) return probe_status;
 
-    const decoded = decode(allocator, data, limits) catch |err| return statusFromError(err);
+    const decoded = decodeInternal(allocator, data, limits, false) catch |err| return statusFromError(err);
     defer decoded.deinit();
     encoded_info.has_alpha = decoded.metadata.has_alpha;
     out.* = encoded_info;
@@ -558,7 +558,7 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
     return image;
 }
 
-pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
+fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain_encoded_png: bool) !*Image {
     var image_info: Info = .{};
     const probe_status = probeInternal(data, limits, &image_info, false);
     if (probe_status != .ok) return switch (probe_status) {
@@ -622,7 +622,7 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     if (image_info.orientation == 1) {
         const image = try allocator.create(Image);
         errdefer allocator.destroy(image);
-        const encoded_png = if (format == .png) try allocator.dupe(u8, data) else null;
+        const encoded_png = if (format == .png and retain_encoded_png) try allocator.dupe(u8, data) else null;
         errdefer if (encoded_png) |bytes| allocator.free(bytes);
         image.* = .{
             .allocator = allocator,
@@ -658,6 +658,10 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
         },
     };
     return try orient(allocator, &unoriented, @intCast(image_info.orientation));
+}
+
+pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
+    return decodeInternal(allocator, data, limits, true);
 }
 
 fn pixelOffset(width: u32, x: u32, y: u32) usize {

@@ -44,6 +44,16 @@ test "image operations release partial allocations on OOM" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeWithAllocator, .{});
 }
 
+test "image inspection does not retain encoded PNG bytes" {
+    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
+    defer std.testing.allocator.free(png);
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 2 });
+    var info: image.Info = .{};
+
+    try std.testing.expectEqual(image.Status.ok, image.inspect(failing.allocator(), png, .{}, &info));
+    try std.testing.expect(!failing.has_induced_failure);
+}
+
 test "PNG probe and decode return canonical red RGBA" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png = try decodeBase64(encoded);
