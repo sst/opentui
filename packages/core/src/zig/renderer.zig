@@ -542,7 +542,7 @@ pub const CliRenderer = struct {
                 var delete_stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
                     delete_stream.writer(),
-                    self.kittyImageId(current.image_handle, current.placement_id),
+                    self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),
@@ -1943,8 +1943,7 @@ pub const CliRenderer = struct {
         self.pendingImages.clearRetainingCapacity();
     }
 
-    fn kittyImageId(self: *CliRenderer, image_handle: u32, placement_id: u32) u32 {
-        _ = image_handle;
+    fn kittyImageId(self: *CliRenderer, placement_id: u32) u32 {
         return self.imageIdSalt + placement_id;
     }
 
@@ -2036,7 +2035,7 @@ pub const CliRenderer = struct {
             } else false;
             if (!placement_found) try terminal_image.writeKittyDelete(
                 writer,
-                self.kittyImageId(current.image_handle, current.placement_id),
+                self.kittyImageId(current.placement_id),
                 null,
                 true,
                 tmux,
@@ -2048,7 +2047,7 @@ pub const CliRenderer = struct {
                 if (current.protocol == .kitty and current.image_handle == placement.image_handle) current else null
             else
                 null;
-            const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
+            const image_id = self.kittyImageId(placement.placement_id);
             const downscaled = kittyDownscaleApplies(placement);
             const retransmit = if (previous) |committed| blk: {
                 const previous_downscaled = kittyDownscaleAppliesTo(
@@ -2748,7 +2747,7 @@ pub const CliRenderer = struct {
                 var stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
                     stream.writer(),
-                    self.kittyImageId(current.image_handle, current.placement_id),
+                    self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),
