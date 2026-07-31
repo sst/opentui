@@ -152,7 +152,6 @@ class SplitFooterImageDemo {
   private refreshStatus = (): void => {
     if (this.destroyed || this.status.isDestroyed) return
     const requested = PROTOCOLS[this.protocolIndex]
-    const effective = this.image.effectiveProtocol
     const mode = this.renderer.externalOutputMode
     const terminal = this.renderer.capabilities?.terminal
     const terminalLabel = terminal
@@ -160,7 +159,7 @@ class SplitFooterImageDemo {
       : "detecting"
     const commitHint = mode === "capture-stdout" ? "W appends a scrollback snapshot" : "W requires capture mode"
     this.status.content = [
-      `${SOURCES[this.sourceIndex].name}  ${requested.toUpperCase()} -> ${effective.toUpperCase()}  ${this.fit.toUpperCase()}`,
+      `${SOURCES[this.sourceIndex].name}  ${requested.toUpperCase()}  ${this.fit.toUpperCase()}`,
       `footer ${this.renderer.footerHeight}  /  ${mode}  /  ${terminalLabel}  /  text ${this.commitCount}  image ${this.imageCommitCount}`,
       "A bare image   C composed image   W text snapshot   I source   P protocol   F fit",
       `[ ] height   M output mode   ${commitHint}. Native history follows the effective image protocol.`,

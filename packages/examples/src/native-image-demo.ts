@@ -73,8 +73,7 @@ const footerHeight = 3
 
 function updateControls(): void {
   if (!controlsText) return
-  const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = `F  ${fitMode.toUpperCase()}   P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}   O  ${overlayVisible ? "ON" : "OFF"}   A  ${boxAlphas[boxAlphaIndex]}   ARROWS  MOVE   ESC  MENU`
+  controlsText.content = `F  ${fitMode.toUpperCase()}   P  ${protocol.toUpperCase()}   O  ${overlayVisible ? "ON" : "OFF"}   A  ${boxAlphas[boxAlphaIndex]}   ARROWS  MOVE   ESC  MENU`
 }
 
 function updateOverlay(): void {
