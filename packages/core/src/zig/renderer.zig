@@ -1775,7 +1775,7 @@ pub const CliRenderer = struct {
 
     fn nextPlacementProtocol(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) ImageProtocol {
         const protocol = self.resolveImageProtocol(placement.protocol);
-        if (protocol == .sixel and (placement.pixel_width == 0 or placement.pixel_height == 0)) return .fallback;
+        if (protocol == .sixel and !native_image.dimensionsWithinLimits(placement.pixel_width, placement.pixel_height)) return .fallback;
         return protocol;
     }
 

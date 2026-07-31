@@ -202,6 +202,11 @@ fn checkedPixelBytes(width: u32, height: u32, limits: Limits) !usize {
     return @intCast(bytes);
 }
 
+pub fn dimensionsWithinLimits(width: u32, height: u32) bool {
+    _ = checkedPixelBytes(width, height, .{}) catch return false;
+    return true;
+}
+
 pub fn statusFromError(err: anyerror) Status {
     return switch (err) {
         error.UnsupportedFormat => .unsupported_format,
