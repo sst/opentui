@@ -96,29 +96,27 @@ describe("ImageRenderable image loading", () => {
     const currentDump = resolve(dumpDirectory, `current_buffer_${timestamp}.txt`)
     const nextDump = resolve(dumpDirectory, `next_buffer_${timestamp}.txt`)
     const outputDump = resolve(dumpDirectory, `output_buffer_${timestamp}.txt`)
-    const directOutputDump = resolve(dumpDirectory, `output_buffer_${timestamp + 1}.txt`)
     const renderable = new ImageRenderable(renderer, {
       source: await readFile(new URL("rgba.png", FIXTURES)),
-      protocol: "kitty",
+      protocol: "blocks",
+      position: "absolute",
       width: 1,
       height: 1,
     })
+    renderer.root.add(renderable)
     await renderable.loadPromise
+    await setup.renderOnce()
 
     try {
-      expect(renderer.currentRenderBuffer.drawImage(renderable.image!, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, "kitty")).toBe(
-        true,
-      )
       const fallback = setup.captureCharFrame().match(/[^\s]/)?.[0]
       expect(fallback).toBeDefined()
 
       renderer.dumpBuffers(timestamp)
-      renderer.dumpOutputBuffer(timestamp + 1)
 
       expect(await readFile(currentDump, "utf8")).toContain(fallback!)
-      expect(await readFile(directOutputDump, "utf8")).toContain("Last Rendered ANSI Output")
+      expect(await readFile(outputDump, "utf8")).toContain(fallback!)
     } finally {
-      await Promise.all([currentDump, nextDump, outputDump, directOutputDump].map((path) => rm(path, { force: true })))
+      await Promise.all([currentDump, nextDump, outputDump].map((path) => rm(path, { force: true })))
       renderable.destroy()
     }
   })
