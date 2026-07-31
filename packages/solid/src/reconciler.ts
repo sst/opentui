@@ -337,7 +337,6 @@ export const {
         for (const prop in previousStyle) {
           if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
           if (!(node instanceof ImageRenderable) || (prop !== "fit" && prop !== "protocol")) continue
-          // @ts-expect-error todo validate if prop is actually settable
           node[prop] = undefined
         }
         for (const prop in nextStyle) {
