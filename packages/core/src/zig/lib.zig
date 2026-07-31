@@ -1356,11 +1356,11 @@ export fn bufferDrawImage(
     buffer_handle: NativeHandle,
     image_handle: NativeHandle,
     options: *const ExternalImageDrawOptions,
-) bool {
-    const buffer_ptr = acquireBuffer(buffer_handle) orelse return false;
-    const image_ptr = acquireImage(image_handle) orelse return false;
-    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return false;
-    return buffer_ptr.drawImage(
+) u8 {
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    const image_ptr = acquireImage(image_handle) orelse return 0;
+    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return 0;
+    return @intFromBool(buffer_ptr.drawImage(
         image_ptr,
         image_handle,
         options.x,
@@ -1374,7 +1374,7 @@ export fn bufferDrawImage(
         options.source_width,
         options.source_height,
         protocol,
-    ) catch false;
+    ) catch false);
 }
 
 export fn linkAlloc(urlPtr: ?[*]const u8, urlLen: u32) u32 {
