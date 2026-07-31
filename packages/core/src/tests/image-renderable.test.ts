@@ -3,13 +3,36 @@ import { readFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { createCliRenderer } from "../renderer.js"
 import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Image.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
+import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
 import { createTerminalCapabilities } from "../testing/terminal-capabilities.js"
 import type { RenderContext, TerminalCapabilities } from "../types.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
+
+class ImageOutputStream extends TestWriteStream {
+  readonly writes: Buffer[] = []
+
+  override _write(chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    this.writes.push(Buffer.from(chunk))
+    callback()
+  }
+
+  take(): Buffer {
+    const output = Buffer.concat(this.writes)
+    this.writes.length = 0
+    return output
+  }
+}
+
+function flushWritable(stdout: NodeJS.WritableStream): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    stdout.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve()))
+  })
+}
 
 async function within<T>(promise: Promise<T>, message: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
@@ -249,6 +272,39 @@ describe("ImageRenderable image loading", () => {
         true,
       ),
     ).toBe("blocks")
+  })
+
+  test("renders Kitty and Sixel bytes through custom output", async () => {
+    const stdin = createTestStdin()
+    const stdout = new ImageOutputStream(8, 4) as ImageOutputStream & NodeJS.WriteStream
+    const outputRenderer = await createCliRenderer({ stdin, stdout, consoleMode: "disabled" })
+    try {
+      await flushWritable(stdout)
+      stdout.take()
+
+      stdin.emit("data", Buffer.from("\x1b_Gi=31337;OK\x1b\\"))
+      const image = new ImageRenderable(outputRenderer, {
+        source: await readFile(new URL("rgba.png", FIXTURES)),
+        protocol: "auto",
+        position: "absolute",
+        width: 2,
+        height: 1,
+      })
+      outputRenderer.root.add(image)
+      await image.loadPromise
+      outputRenderer.requestRender()
+      await outputRenderer.idle()
+      await flushWritable(stdout)
+      expect(stdout.take().toString("binary")).toContain("\x1b_G")
+
+      image.protocol = "sixel"
+      stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+      await outputRenderer.idle()
+      await flushWritable(stdout)
+      expect(stdout.take().toString("binary")).toContain("\x1bP0;1;0q")
+    } finally {
+      outputRenderer.destroy()
+    }
   })
 
   test("accepts legacy capability and render context shapes", () => {
