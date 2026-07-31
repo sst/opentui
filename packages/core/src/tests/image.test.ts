@@ -351,8 +351,14 @@ describe("NativeImage", () => {
         expect([...output.image.raw().data.filter((_, index) => index % 4 === 0)]).toEqual(output.red)
       }
       extracted = image.extract({ left: 1, top: 0, width: 2, height: 2 })
+      expect([extracted.width, extracted.height]).toEqual([2, 2])
+      expect([...extracted.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([2, 3, 5, 6])
       extended = extracted.extend({ top: 1, left: 1, background: [9, 8, 7, 6] })
-      expect([...extended.raw().data.slice(0, 4)]).toEqual([9, 8, 7, 6])
+      expect([extended.width, extended.height]).toEqual([3, 3])
+      expect([...extended.raw().data]).toEqual([
+        9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 2, 0, 0, 255, 3, 0, 0, 255, 9, 8, 7, 6, 5, 0, 0, 255, 6, 0, 0,
+        255,
+      ])
     } finally {
       extended?.dispose()
       extracted?.dispose()
