@@ -258,10 +258,15 @@ describe("ImageRenderable image loading", () => {
   test("accepts legacy capability and render context shapes", () => {
     const { image_protocol: _, ...legacyCapabilities } = createTerminalCapabilities({ kitty_graphics: true })
     const capabilities: TerminalCapabilities = legacyCapabilities
-    const legacyContext: Omit<RenderContext, "terminalWidth" | "terminalHeight" | "resolution"> = renderer
+    const omitted = new Set<PropertyKey>(["terminalWidth", "terminalHeight", "resolution"])
+    const legacyContext: Omit<RenderContext, "terminalWidth" | "terminalHeight" | "resolution"> = new Proxy(renderer, {
+      get: (target, property, receiver) =>
+        omitted.has(property) ? undefined : Reflect.get(target, property, receiver),
+    })
     const renderable = new ImageRenderable(legacyContext, {})
 
     expect(resolveImageRenderProtocol("auto", capabilities, false)).toBe("kitty")
+    expect((legacyContext as RenderContext).resolution).toBeUndefined()
     expect(renderable.cellAspectRatio).toBe(2)
     renderable.destroy()
   })
