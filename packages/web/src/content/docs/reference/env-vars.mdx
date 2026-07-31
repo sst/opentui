@@ -9,7 +9,7 @@ skill:
 
 # Environment variables
 
-OpenTUI reads environment variables from `process.env`. Bun loads `.env` automatically; with Node.js, use the shell or Node's configured environment-file support. Native terminal overrides are not forwarded to remote custom streams unless named in `forwardEnvKeys`.
+OpenTUI reads environment variables from `process.env`. Bun loads `.env` automatically; with Node.js, use the shell or Node's configured environment-file support. Remote sessions do not apply local terminal overrides unless they are named in `forwardEnvKeys`.
 
 ## Variables
 
