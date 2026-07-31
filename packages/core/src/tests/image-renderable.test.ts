@@ -73,6 +73,7 @@ describe("ImageRenderable image loading", () => {
     const currentDump = resolve(dumpDirectory, `current_buffer_${timestamp}.txt`)
     const nextDump = resolve(dumpDirectory, `next_buffer_${timestamp}.txt`)
     const outputDump = resolve(dumpDirectory, `output_buffer_${timestamp}.txt`)
+    const directOutputDump = resolve(dumpDirectory, `output_buffer_${timestamp + 1}.txt`)
     const renderable = new ImageRenderable(renderer, {
       source: await readFile(new URL("rgba.png", FIXTURES)),
       protocol: "kitty",
@@ -89,10 +90,12 @@ describe("ImageRenderable image loading", () => {
       expect(fallback).toBeDefined()
 
       renderer.dumpBuffers(timestamp)
+      renderer.dumpOutputBuffer(timestamp + 1)
 
       expect(await readFile(currentDump, "utf8")).toContain(fallback!)
+      expect(await readFile(directOutputDump, "utf8")).toContain("Last Rendered ANSI Output")
     } finally {
-      await Promise.all([currentDump, nextDump, outputDump].map((path) => rm(path, { force: true })))
+      await Promise.all([currentDump, nextDump, outputDump, directOutputDump].map((path) => rm(path, { force: true })))
       renderable.destroy()
     }
   })

@@ -3727,12 +3727,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public dumpBuffers(renderer: Pointer, timestamp?: number): void {
-    const ts = timestamp ?? Date.now()
+    const ts = BigInt(timestamp ?? Date.now())
     this.opentui.symbols.dumpBuffers(renderer, ts)
   }
 
   public dumpOutputBuffer(renderer: Pointer, timestamp?: number): void {
-    const ts = timestamp ?? Date.now()
+    const ts = BigInt(timestamp ?? Date.now())
     this.opentui.symbols.dumpOutputBuffer(renderer, ts)
   }
 
