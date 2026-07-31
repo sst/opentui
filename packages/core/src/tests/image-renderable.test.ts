@@ -95,7 +95,11 @@ describe("ImageRenderable image loading", () => {
       expect(await readFile(currentDump, "utf8")).toContain(fallback!)
       expect(await readFile(directOutputDump, "utf8")).toContain("Last Rendered ANSI Output")
     } finally {
-      await Promise.all([currentDump, nextDump, outputDump, directOutputDump].map((path) => rm(path, { force: true })))
+      if (process.versions.bun) {
+        await Promise.all(
+          [currentDump, nextDump, outputDump, directOutputDump].map((path) => rm(path, { force: true })),
+        )
+      }
       renderable.destroy()
     }
   })
