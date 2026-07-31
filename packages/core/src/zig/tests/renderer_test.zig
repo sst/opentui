@@ -20,6 +20,35 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+fn lastSixelFrame(output: []const u8) ![]const u8 {
+    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
+    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
+    return output[start .. end + 2];
+}
+
+fn drawTranslucentSixelGeometry(
+    target: *OptimizedBuffer,
+    value: *image.Image,
+    image_handle: u32,
+    cell_width: u32,
+    cell_height: u32,
+) !void {
+    const backgrounds = [_]buffer.RGBA{
+        ansi.rgbColor(0, 0, 0, 255),
+        ansi.rgbColor(255, 0, 0, 255),
+        ansi.rgbColor(0, 255, 0, 255),
+        ansi.rgbColor(0, 0, 255, 255),
+    };
+    for (backgrounds, 0..) |background, index| {
+        const x: u32 = if (cell_width == 1) 0 else @intCast(index % cell_width);
+        const y: u32 = if (cell_width == 1) @intCast(index) else @intCast(index / cell_width);
+        target.setRaw(x, y, .{ .char = ' ', .fg = ansi.rgbColor(255, 255, 255, 255), .bg = background, .attributes = 0 });
+    }
+    try target.pushOpacity(0.5);
+    defer target.popOpacity();
+    try std.testing.expect(try target.drawImage(value, image_handle, 0, 0, cell_width, cell_height, 4, 4, 0, 0, 4, 4, .sixel));
+}
+
 const CountingOutput = struct {
     writes: u32 = 0,
 
@@ -114,6 +143,42 @@ test "renderer emits Sixel only with known pixel dimensions" {
     test_renderer.renderer.getNextBuffer().popOpacity();
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expectEqual(@as(u64, 2), test_renderer.renderer.sixelCacheMisses);
+}
+
+test "renderer separates translucent Sixel cache entries by cell geometry" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var cached_renderer = try TestRenderer.create(std.testing.allocator, 2, 4, pool);
+    defer cached_renderer.deinit();
+    var fresh_renderer = try TestRenderer.create(std.testing.allocator, 2, 4, pool);
+    defer fresh_renderer.deinit();
+    const pixels = [_]u8{ 255, 255, 255, 255 } ** 16;
+    const value = try image.createFromRgba(std.testing.allocator, &pixels, 4, 4, 16);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    cached_renderer.renderer.terminal.caps.sixel = true;
+    fresh_renderer.renderer.terminal.caps.sixel = true;
+
+    try drawTranslucentSixelGeometry(cached_renderer.renderer.getNextBuffer(), value, image_handle, 1, 4);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cached_renderer.renderer.render(true));
+    try drawTranslucentSixelGeometry(cached_renderer.renderer.getNextBuffer(), value, image_handle, 2, 2);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cached_renderer.renderer.render(true));
+    try std.testing.expectEqual(@as(u64, 0), cached_renderer.renderer.sixelCacheHits);
+    try std.testing.expectEqual(@as(u64, 2), cached_renderer.renderer.sixelCacheMisses);
+
+    try drawTranslucentSixelGeometry(fresh_renderer.renderer.getNextBuffer(), value, image_handle, 2, 2);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, fresh_renderer.renderer.render(true));
+
+    try std.testing.expectEqualSlices(
+        u8,
+        try lastSixelFrame(fresh_renderer.memory.lastWrite()),
+        try lastSixelFrame(cached_renderer.memory.lastWrite()),
+    );
 }
 
 test "renderer does not copy identity Sixel geometry" {
