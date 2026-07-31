@@ -68,7 +68,7 @@ The `source`, callbacks, fit, and protocol props can be updated after constructi
 | `cover` | Fill the renderable, preserve aspect ratio, and center-crop  |
 | `fill`  | Fill the renderable and allow stretching                     |
 
-Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallback otherwise.
+Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallback otherwise. During startup and resize, Sixel images temporarily use blocks until current pixel geometry arrives.
 
 ## Rendering protocol
 
@@ -104,8 +104,8 @@ Split-footer scrollback snapshots follow the same protocol resolution as live im
 | `loading`            | `boolean`                                                   | Whether the current source is loading                           |
 | `loadError`          | `unknown`                                                   | Current load error, otherwise `null`                            |
 | `loadPromise`        | `Promise<void> \| null`                                     | Settles after the current load attempt                          |
-| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Resolved protocol                                               |
+| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Current resolved protocol; may change with capabilities or size |
 | `cellAspectRatio`    | `number`                                                    | Physical or fallback cell aspect ratio                          |
 | `getFittedSize(...)` | `(width, height, cellAspect?, sourceWidth?, sourceHeight?)` | Resolve destination cells; omitted overrides use current values |
 
-The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Source replacement, clearing, and destruction release owned images.
+The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Successful replacement, clearing, and destruction release owned images; failed replacement keeps the current image.

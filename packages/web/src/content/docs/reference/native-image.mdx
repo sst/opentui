@@ -126,6 +126,6 @@ try {
 
 `ImageError` exposes numeric `status` and `code`: `invalid-handle`, `unsupported-format`, `unsupported-color-space`, `malformed-data`, `dimension-limit`, `memory-limit`, `invalid-argument`, `out-of-memory`, `output-too-small`, `internal-error`, or `unsupported-feature`. JavaScript argument validation uses `TypeError` and `RangeError`.
 
-Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB decoded storage. Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise `iCCP` and non-sRGB `gAMA`/`cHRM` are rejected; unsupported `cICP` alone is assumed sRGB.
+Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB of RGBA storage per image. Decoded PNGs may also retain encoded bytes for Kitty passthrough. Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise `iCCP` and non-sRGB `gAMA`/`cHRM` are rejected; unsupported `cICP` alone is assumed sRGB.
 
 To display an image, see [Image](/docs/components/image).
