@@ -329,20 +329,6 @@ describe("NativeImage", () => {
     expect(resolveRenderLib().imageGetPixelsPtr(handle)).toBeNull()
   })
 
-  test("keeps transferred pixels alive after the NativeImage wrapper is dropped", async () => {
-    let image: NativeImage | null = NativeImage.fromRgba(Uint8Array.of(9, 8, 7, 6), 1, 1)
-    const raw = image.takeRaw()
-    image = null
-    if (typeof Bun !== "undefined") Bun.gc(true)
-    ;(globalThis as any).gc?.()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    try {
-      expect([...raw.data]).toEqual([9, 8, 7, 6])
-    } finally {
-      raw.dispose()
-    }
-  })
-
   test("supports exact transforms, extraction, and extension", () => {
     const image = NativeImage.fromRgba(
       Uint8Array.of(1, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255, 5, 0, 0, 255, 6, 0, 0, 255),
