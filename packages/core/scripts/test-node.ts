@@ -214,6 +214,7 @@ try {
         `--allow-fs-read=${workspaceRoot}`,
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-read=${path}`),
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-write=${path}`),
+        `--allow-fs-write=${resolve(packageRoot, "buffer_dump")}`,
         "--allow-net=127.0.0.1",
         "--allow-child-process",
         "--allow-worker",
