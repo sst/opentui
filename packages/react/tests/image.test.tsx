@@ -195,4 +195,26 @@ describe("React Renderer | image element", () => {
     expect(image.image).toBeNull()
     expect(image.loading).toBe(false)
   })
+
+  it("does not start an image load for an abandoned render", async () => {
+    const response = new Response(new ReadableStream<Uint8Array>({}))
+
+    function BrokenSibling(): never {
+      throw new Error("abandon image render")
+    }
+
+    testSetup = await testRender(
+      <>
+        <image source={response} />
+        <BrokenSibling />
+      </>,
+      { width: 4, height: 2 },
+    )
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    consoleError.mockClear()
+
+    act(() => testSetup!.renderer.destroy())
+
+    expect(response.bodyUsed).toBe(false)
+  })
 })
