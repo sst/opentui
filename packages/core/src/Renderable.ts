@@ -192,8 +192,8 @@ export abstract class BaseRenderable extends EventEmitter {
     return this._visible
   }
 
-  public set visible(value: boolean | null | undefined) {
-    this._visible = value ?? true
+  public set visible(value: boolean) {
+    this._visible = value
   }
 }
 
@@ -343,19 +343,18 @@ export abstract class Renderable extends BaseRenderable {
     return dir === 2 || dir === 3 ? "row" : "column"
   }
 
-  public set visible(value: boolean | null | undefined) {
-    const next = value ?? true
-    if (this._visible === next) return
+  public set visible(value: boolean) {
+    if (this._visible === value) return
 
     const wasVisible = this._visible
-    this._visible = next
-    this.yogaNode.setDisplay(next ? Display.Flex : Display.None)
+    this._visible = value
+    this.yogaNode.setDisplay(value ? Display.Flex : Display.None)
     bumpRenderListRevision(this._ctx)
 
     if (this._live) {
-      if (!wasVisible && next) {
+      if (!wasVisible && value) {
         this.propagateLiveCount(1)
-      } else if (wasVisible && !next) {
+      } else if (wasVisible && !value) {
         this.propagateLiveCount(-1)
       }
     }
@@ -370,8 +369,8 @@ export abstract class Renderable extends BaseRenderable {
     return this._opacity
   }
 
-  public set opacity(value: number | null | undefined) {
-    const clamped = value == null ? 1 : Math.max(0, Math.min(1, value))
+  public set opacity(value: number) {
+    const clamped = Math.max(0, Math.min(1, value))
     if (this._opacity !== clamped) {
       this._opacity = clamped
       bumpRenderListRevision(this._ctx)

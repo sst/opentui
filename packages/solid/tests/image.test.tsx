@@ -93,7 +93,7 @@ describe("image component", () => {
     expect(imageRef!.effectiveProtocol).toBe("blocks")
   })
 
-  it("restores image defaults when style keys are removed", async () => {
+  it("restores image defaults without clearing unrelated style keys", async () => {
     let imageRef: ImageRenderable | undefined
     const [configured, setConfigured] = createSignal(true)
 
@@ -120,7 +120,7 @@ describe("image component", () => {
       protocol: imageRef!.protocol,
       visible: imageRef!.visible,
       opacity: imageRef!.opacity,
-    }).toEqual({ fit: "fit", protocol: "auto", visible: true, opacity: 1 })
+    }).toEqual({ fit: "fit", protocol: "auto", visible: true, opacity: 0.5 })
   })
 
   it("cancels a pending image load when its component unmounts", async () => {
