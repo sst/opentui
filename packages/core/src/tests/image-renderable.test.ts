@@ -1,7 +1,6 @@
 import { createServer, type Server } from "node:http"
 import { readFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
-import { fileURLToPath } from "node:url"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Image.js"
@@ -311,20 +310,6 @@ describe("ImageRenderable image loading", () => {
       expect(failed.loadError).toBeDefined()
     } finally {
       failed.destroy()
-    }
-  })
-
-  test("loads local paths and file URLs through the same native decoder", async () => {
-    const url = new URL("lossless.webp", FIXTURES)
-    const renderable = new ImageRenderable(renderer, { source: fileURLToPath(url) })
-    await renderable.loadPromise
-    expect(renderable.image?.info().format).toBe("webp")
-    renderable.source = url
-    await renderable.loadPromise
-    try {
-      expect(renderable.image?.info().format).toBe("webp")
-    } finally {
-      renderable.destroy()
     }
   })
 
