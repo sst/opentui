@@ -3,6 +3,7 @@ import { readFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { ImageLoadError } from "../image.js"
 import { createCliRenderer } from "../renderer.js"
 import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Image.js"
 import { TextRenderable } from "../renderables/Text.js"
@@ -335,6 +336,35 @@ describe("ImageRenderable image loading", () => {
       expect(renderable.image).toBeNull()
       expect(renderable.loadError).toBeDefined()
       expect(onError).toHaveBeenCalledTimes(1)
+    } finally {
+      renderable.destroy()
+    }
+  })
+
+  test("reports Response stream failures after reading begins", async () => {
+    const cause = new Error("stream failed")
+    const errors: unknown[] = []
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(Uint8Array.of(1, 2, 3))
+          controller.error(cause)
+        },
+      }),
+    )
+    const renderable = new ImageRenderable(renderer, {
+      source: response,
+      onError: (error) => errors.push(error),
+    })
+
+    await renderable.loadPromise
+    try {
+      expect(renderable.loading).toBe(false)
+      expect(renderable.image).toBeNull()
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toBeInstanceOf(ImageLoadError)
+      expect((errors[0] as ImageLoadError).code).toBe("network")
+      expect((errors[0] as ImageLoadError).cause).toBe(cause)
     } finally {
       renderable.destroy()
     }
