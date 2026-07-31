@@ -654,6 +654,11 @@ export class MouseEvent {
   }
 }
 
+export interface CliRendererHandlerErrorEvent {
+  error: unknown
+  event: MouseEvent
+}
+
 export enum MouseButton {
   LEFT = 0,
   MIDDLE = 1,
@@ -3186,12 +3191,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     try {
       this.stdinParser.push(data)
+      this.drainStdinParser()
     } catch (error) {
       this.handleStdinParserFailure(error)
-      return
     }
-
-    this.drainStdinParser()
   }).bind(this)
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
@@ -3428,7 +3431,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     try {
       target.processMouseEvent(event)
     } catch (error) {
-      this.emit(CliRenderEvents.HANDLER_ERROR, { error, event })
+      const handled = this.emit(CliRenderEvents.HANDLER_ERROR, { error, event } satisfies CliRendererHandlerErrorEvent)
+      if (!handled) console.error("Error in mouse handler:", error)
     }
   }
 

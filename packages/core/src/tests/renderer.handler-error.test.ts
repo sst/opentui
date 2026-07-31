@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Renderable } from "../Renderable.js"
-import { CliRenderEvents, type MouseEvent } from "../renderer.js"
+import { CliRenderEvents, type CliRendererHandlerErrorEvent } from "../renderer.js"
 import { createTestRenderer } from "../testing.js"
 
 test("emits mouse handler errors without resetting input", async () => {
@@ -14,7 +14,8 @@ test("emits mouse handler errors without resetting input", async () => {
   })
   const child = new Renderable(renderer, { width: 2, height: 1 })
   const error = new Error("handler failed")
-  const errors: Array<{ error: unknown; event: MouseEvent }> = []
+  const errors: CliRendererHandlerErrorEvent[] = []
+  const sequences: string[] = []
   let handled = false
 
   try {
@@ -22,11 +23,16 @@ test("emits mouse handler errors without resetting input", async () => {
     target.add(child)
     await renderOnce()
     renderer.on(CliRenderEvents.HANDLER_ERROR, (value) => errors.push(value))
+    renderer.prependInputHandler((sequence) => {
+      sequences.push(sequence)
+      return true
+    })
     target.onMouseUp = () => {
       throw error
     }
 
-    await mockMouse.click(child.x, child.y)
+    renderer.stdin.emit("data", Buffer.from(`\x1b[<0;${child.x + 1};${child.y + 1}m\x1b[`))
+    renderer.stdin.emit("data", Buffer.from("A"))
 
     target.onMouseUp = () => {
       handled = true
@@ -37,6 +43,7 @@ test("emits mouse handler errors without resetting input", async () => {
     expect(errors[0].error).toBe(error)
     expect(errors[0].event.target).toBe(child)
     expect(errors[0].event.currentTarget).toBe(target)
+    expect(sequences).toContain("\x1b[A")
     expect(handled).toBe(true)
   } finally {
     renderer.destroy()

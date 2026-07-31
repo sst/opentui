@@ -55,7 +55,7 @@ async function directDispatch(): Promise<ScenarioResult> {
   try {
     const sharedEvent = event()
     return measure(
-      "direct-bubble",
+      "bubbling-only",
       directIterations,
       warmupCount,
       sampleCount,
@@ -134,7 +134,8 @@ function measure(
   for (let index = 0; index < warmups; index++) run()
   const values = Array.from({ length: samples }, run)
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length
-  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1)
+  const variance =
+    values.length > 1 ? values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1) : 0
   const sorted = values.toSorted((left, right) => left - right)
   const middle = Math.floor(sorted.length / 2)
   const median = sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
@@ -153,7 +154,7 @@ function integerArg(name: string, fallback: number): number {
   const prefix = `--${name}=`
   const value = process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length)
   if (!value) return fallback
-  const parsed = Number.parseInt(value, 10)
+  const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`invalid ${name}: ${value}`)
   return parsed
 }
