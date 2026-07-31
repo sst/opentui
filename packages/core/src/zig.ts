@@ -161,7 +161,7 @@ registerEnvVar({
 })
 registerEnvVar({
   name: "OPENTUI_GRAPHICS",
-  description: "Override Kitty graphics detection with the exact value true, 1, false, or 0",
+  description: "Control Kitty and Sixel graphics detection with the exact value true, 1, false, or 0",
   type: "string",
   required: false,
 })
