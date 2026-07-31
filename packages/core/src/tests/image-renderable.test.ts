@@ -363,6 +363,7 @@ describe("ImageRenderable image loading", () => {
       expect(errors[0]).toBeInstanceOf(ImageLoadError)
       expect((errors[0] as ImageLoadError).code).toBe("network")
       expect((errors[0] as ImageLoadError).cause).toBe(cause)
+      expect(response.body?.locked).toBe(false)
     } finally {
       renderable.destroy()
     }
