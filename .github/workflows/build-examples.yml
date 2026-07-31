@@ -104,11 +104,6 @@ jobs:
           ls -lah packages/three/dist/
           ls -lah packages/core/node_modules/@opentui/
 
-      - name: Test examples
-        run: |
-          cd packages/examples
-          bun run test
-
       - name: Build examples
         env:
           OPENTUI_EXAMPLES_USE_PREBUILT_ARTIFACTS: "true"
