@@ -308,6 +308,65 @@ test("split-footer Kitty scrollback does not rasterize images to terminal pixel 
   expect(output).toContain("after-image")
 })
 
+test("split-footer scrollback uses blocks for mixed protocols and overlapping images", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;6;8t\x1b_Gi=31337;OK\x1b\\\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const commitImages = async (images: Array<{ protocol: "kitty" | "sixel"; left?: number }>) => {
+    const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+    const renderables = images.map(
+      ({ protocol, left }) =>
+        new ImageRenderable(surface.renderContext, {
+          source: PNG_1X1,
+          protocol,
+          position: "absolute",
+          left,
+          width: 1,
+          height: 1,
+        }),
+    )
+    for (const image of renderables) surface.root.add(image)
+    await Promise.all(renderables.map((image) => image.loadPromise))
+    surface.render()
+    surface.commitRows(0, surface.height)
+    surface.destroy()
+    await renderer.idle()
+    await flushWritable(stdout)
+  }
+
+  await commitImages([
+    { protocol: "kitty", left: 0 },
+    { protocol: "sixel", left: 1 },
+  ])
+
+  let output = stdout.getWrittenBytes().toString("binary")
+  expect(output).not.toContain("\x1b_G")
+  expect(output).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+
+  stdout.clearWrites()
+  await commitImages([{ protocol: "kitty" }, { protocol: "kitty" }])
+
+  output = stdout.getWrittenBytes().toString("binary")
+  expect(output).not.toContain("\x1b_G")
+  expect(output).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+})
+
 test("ScrollbackSurface rejects stale image geometry after a height-only resize", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(8, 12)
