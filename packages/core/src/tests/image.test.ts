@@ -263,19 +263,6 @@ describe("NativeImage", () => {
     }
   })
 
-  test("clones, flips, and flops decoded images", async () => {
-    const image = NativeImage.decode(await readFile(new URL("rgba.png", FIXTURES)))
-    const outputs = [image.clone(), image.flip(), image.flop()]
-    try {
-      for (const output of outputs) {
-        expect(output.raw().data).toHaveLength(output.width * output.height * 4)
-      }
-    } finally {
-      for (const output of outputs) output.dispose()
-      image.dispose()
-    }
-  })
-
   test("rejects unsupported pixel formats, resize kernels, and blend modes", () => {
     const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
     const destination = new Uint8Array(4)
@@ -362,24 +349,28 @@ describe("NativeImage", () => {
       3,
       2,
     )
-    let rotated: NativeImage | undefined
-    let rotated270: NativeImage | undefined
     let extracted: NativeImage | undefined
     let extended: NativeImage | undefined
+    const transformed = [
+      { image: image.clone(), size: [3, 2], red: [1, 2, 3, 4, 5, 6] },
+      { image: image.rotate(90), size: [2, 3], red: [4, 1, 5, 2, 6, 3] },
+      { image: image.rotate(180), size: [3, 2], red: [6, 5, 4, 3, 2, 1] },
+      { image: image.rotate(270), size: [2, 3], red: [3, 6, 2, 5, 1, 4] },
+      { image: image.flip(), size: [3, 2], red: [4, 5, 6, 1, 2, 3] },
+      { image: image.flop(), size: [3, 2], red: [3, 2, 1, 6, 5, 4] },
+    ]
     try {
-      rotated = image.rotate(90)
-      rotated270 = image.rotate(270)
+      for (const output of transformed) {
+        expect([output.image.width, output.image.height]).toEqual(output.size)
+        expect([...output.image.raw().data.filter((_, index) => index % 4 === 0)]).toEqual(output.red)
+      }
       extracted = image.extract({ left: 1, top: 0, width: 2, height: 2 })
       extended = extracted.extend({ top: 1, left: 1, background: [9, 8, 7, 6] })
-      expect([rotated.width, rotated.height]).toEqual([2, 3])
-      expect([...rotated.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([4, 1, 5, 2, 6, 3])
-      expect([...rotated270.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([3, 6, 2, 5, 1, 4])
       expect([...extended.raw().data.slice(0, 4)]).toEqual([9, 8, 7, 6])
     } finally {
       extended?.dispose()
       extracted?.dispose()
-      rotated270?.dispose()
-      rotated?.dispose()
+      for (const output of transformed) output.image.dispose()
       image.dispose()
     }
   })
