@@ -299,8 +299,7 @@ function createScenarios(): ScenarioDefinition[] {
           includeVisibleBoxes: false,
           includeText: false,
         })
-        const batchSize = 5000
-        await ctx.renderOnce()
+        const batchSize = 1000
 
         return {
           renderablesPerIteration: state.stats.renderables * batchSize,

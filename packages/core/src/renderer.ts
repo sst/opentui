@@ -266,6 +266,11 @@ export interface CliRendererFrameEvent {
   frameId: number
 }
 
+export interface CliRendererRenderErrorEvent {
+  error: unknown
+  renderable: Renderable | undefined
+}
+
 export interface RendererSchedulerState {
   isRunning: boolean
   isRendering: boolean
@@ -899,7 +904,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
   private readonly stdinLogPath: string = env.OTUI_STDIN_LOG
 
-  private handleError: (error: Error) => void = ((error: Error) => {
+  private handleError: (error: unknown) => void = ((error: unknown) => {
     console.error(error)
 
     if (this._openConsoleOnError) {
@@ -4395,6 +4400,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     this.rendering = true
+    let renderFailed = false
     try {
       // Bump before any work so all callers this iteration see the new id.
       this._frameId++
@@ -4512,12 +4518,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     } catch (error) {
-      this.emit(CliRenderEvents.RENDER_ERROR, error)
-      if (this._isRunning && !this._isDestroyed) this.scheduleRenderTimer()
+      renderFailed = true
+      const event: CliRendererRenderErrorEvent = { error, renderable: this.root.takeCurrentRenderable() }
+      const handled = this.emit(CliRenderEvents.RENDER_ERROR, event)
+      if (!handled) this.handleError(error)
     } finally {
       this.rendering = false
       if (this._destroyPending) {
         this.finalizeDestroy()
+      }
+      if (renderFailed && (this._isRunning || this.immediateRerenderRequested) && !this._isDestroyed) {
+        this.immediateRerenderRequested = false
+        this.scheduleRenderTimer()
       }
       this.resolveIdleIfNeeded()
     }

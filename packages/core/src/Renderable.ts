@@ -1739,6 +1739,7 @@ export type RenderCommand =
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
+  private _currentRenderable: Renderable | undefined
   private appliedLayoutGeneration: number = -1
   private appliedRenderListRevision: number = -1
   private renderListReusable: boolean = false
@@ -1765,7 +1766,18 @@ export class RootRenderable extends Renderable {
     this.calculateLayout()
   }
 
+  public get currentRenderable(): Renderable | undefined {
+    return this._currentRenderable
+  }
+
+  public takeCurrentRenderable(): Renderable | undefined {
+    const renderable = this._currentRenderable
+    this._currentRenderable = undefined
+    return renderable
+  }
+
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    this._currentRenderable = undefined
     if (!this.visible) return
 
     // 0. Run lifecycle pass
@@ -1813,7 +1825,9 @@ export class RootRenderable extends Renderable {
         case "render":
           // Skip if renderable was destroyed during a previous render callback
           if (!command.renderable.isDestroyed) {
+            this._currentRenderable = command.renderable
             command.renderable.render(buffer, deltaTime)
+            this._currentRenderable = undefined
           }
           break
         case "pushScissorRect":
