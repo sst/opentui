@@ -54,14 +54,16 @@ describe("ImageRenderable image loading", () => {
       onLoad: (image) => loaded.push(image.info().format),
     })
     await renderable.loadPromise
+    const image = renderable.image!
     try {
       expect(renderable.loading).toBe(false)
       expect(renderable.loadError).toBeNull()
-      expect(renderable.image?.info().format).toBe("png")
+      expect(image.info().format).toBe("png")
       expect(loaded).toEqual(["png"])
     } finally {
       renderable.destroy()
     }
+    expect(() => image.info()).toThrow("disposed")
   })
 
   test("dumps image cells with their fallback glyphs", async () => {
