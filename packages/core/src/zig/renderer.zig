@@ -2392,6 +2392,11 @@ pub const CliRenderer = struct {
                     const state = &image_dirty_items[id - 1];
                     if (state.protocol == .fallback) break :blk;
                     if (!should_force and !state.clear and gp.isImageChar(currentCell.?.char)) {
+                        if (runLength > 0) {
+                            writer.writeAll(ansi.ANSI.reset) catch {};
+                            runStart = -1;
+                            runLength = 0;
+                        }
                         if (currentCell.?.char != cell.char) self.currentRenderBuffer.syncCell(x, y, cell);
                         continue;
                     }

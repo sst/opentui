@@ -566,6 +566,37 @@ test "renderer keeps Kitty placement under an alpha-colored plane" {
     try expectPlaneCoversImage(.kitty);
 }
 
+test "renderer splits changed background runs around clean Kitty image cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 5, 1, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    next.fillRect(0, 0, 5, 1, ansi.rgbColor(8, 11, 18, 255));
+    try std.testing.expect(try next.drawImage(value, image_handle, 1, 0, 2, 1, 2, 2, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    next.fillRect(0, 0, 5, 1, ansi.rgbColor(32, 43, 61, 255));
+    try std.testing.expect(try next.drawImage(value, image_handle, 1, 0, 2, 1, 2, 2, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;1H") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[0m\x1b[1;4H") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
+}
+
 test "renderer retransmits Sixel after removing an alpha-colored plane" {
     try expectPlaneCoversImage(.sixel);
 }
