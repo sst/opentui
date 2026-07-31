@@ -98,14 +98,29 @@ describe("image component", () => {
     const [configured, setConfigured] = createSignal(true)
 
     testSetup = await testRender(
-      () => <image ref={imageRef} style={configured() ? { fit: "fill" as const, protocol: "kitty" as const } : {}} />,
+      () => (
+        <image
+          ref={imageRef}
+          style={configured() ? { fit: "fill" as const, protocol: "kitty" as const, visible: true, opacity: 0.5 } : {}}
+        />
+      ),
       { width: 4, height: 2 },
     )
-    expect({ fit: imageRef!.fit, protocol: imageRef!.protocol }).toEqual({ fit: "fill", protocol: "kitty" })
+    expect({
+      fit: imageRef!.fit,
+      protocol: imageRef!.protocol,
+      visible: imageRef!.visible,
+      opacity: imageRef!.opacity,
+    }).toEqual({ fit: "fill", protocol: "kitty", visible: true, opacity: 0.5 })
 
     setConfigured(false)
 
-    expect({ fit: imageRef!.fit, protocol: imageRef!.protocol }).toEqual({ fit: "fit", protocol: "auto" })
+    expect({
+      fit: imageRef!.fit,
+      protocol: imageRef!.protocol,
+      visible: imageRef!.visible,
+      opacity: imageRef!.opacity,
+    }).toEqual({ fit: "fit", protocol: "auto", visible: true, opacity: 1 })
   })
 
   it("cancels a pending image load when its component unmounts", async () => {
