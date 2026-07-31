@@ -16,6 +16,13 @@ const PNG_1X1 = Uint8Array.from(
   ),
 )
 
+const ANIMATED_WEBP = Uint8Array.from(
+  Buffer.from(
+    "UklGRoYAAABXRUJQVlA4WAoAAAASAAAAAQAAAQAAQU5JTQYAAAD/////AABBTk1GKAAAAAAAAAAAAAEAAAEAAGQAAAJWUDhMDwAAAC8BQAAABxD9j/4HIqL/AQBBTk1GKgAAAAAAAAAAAAEAAAEAAGQAAAJWUDhMEQAAAC8BQAAQDxDzH/MfjBWI6H8IAA==",
+    "base64",
+  ),
+)
+
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
 function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8Array {
@@ -178,6 +185,18 @@ describe("NativeImage", () => {
         expect(image.raw().data).toHaveLength(image.width * image.height * 4)
       } finally {
         image.dispose()
+      }
+    }
+  })
+
+  test("rejects animated WebP", () => {
+    for (const operation of [() => imageInfo(ANIMATED_WEBP), () => NativeImage.decode(ANIMATED_WEBP)]) {
+      try {
+        operation()
+        throw new Error("expected animated WebP to be rejected")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageError)
+        expect((error as ImageError).code).toBe("unsupported-feature")
       }
     }
   })
