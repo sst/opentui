@@ -163,7 +163,7 @@ class SplitFooterImageDemo {
       `${SOURCES[this.sourceIndex].name}  ${requested.toUpperCase()} -> ${effective.toUpperCase()}  ${this.fit.toUpperCase()}`,
       `footer ${this.renderer.footerHeight}  /  ${mode}  /  ${terminalLabel}  /  text ${this.commitCount}  image ${this.imageCommitCount}`,
       "A bare image   C composed image   W text snapshot   I source   P protocol   F fit",
-      `[ ] height   M output mode   ${commitHint}. Native history follows detected image support.`,
+      `[ ] height   M output mode   ${commitHint}. Native history follows the effective image protocol.`,
       this.lastAction,
     ].join("\n")
     this.status.fg = mode === "capture-stdout" ? PALETTE.text : PALETTE.warning
@@ -310,7 +310,7 @@ class SplitFooterImageDemo {
       surface.render()
       surface.commitRows(0, surface.height, { rowColumns: width, trailingNewline: true })
       this.imageCommitCount = commit
-      this.lastAction = `${variant} scrollback commit ${commit} queued with detected native support and block fallback`
+      this.lastAction = `${variant} scrollback commit ${commit} queued with the effective protocol and block fallback`
     } catch (error) {
       if (!this.destroyed) {
         this.lastAction = `Image scrollback commit failed: ${error instanceof Error ? error.message : String(error)}`
