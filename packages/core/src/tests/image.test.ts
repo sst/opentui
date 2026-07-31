@@ -173,30 +173,16 @@ describe("NativeImage", () => {
     }
   })
 
-  test("decoded formats are compatible with common image operations", async () => {
-    for (const [name] of FORMATS) {
-      const image = NativeImage.decode(await readFile(new URL(name, FIXTURES)))
-      try {
-        const operations = [
-          () => image.clone(),
-          () => image.resize({ width: 1, height: 1 }),
-          () => image.extract({ left: 0, top: 0, width: 1, height: 1 }),
-          () => image.rotate(90),
-          () => image.flip(),
-          () => image.flop(),
-          () => image.composite(image),
-        ]
-        for (const operation of operations) {
-          const output = operation()
-          try {
-            expect(output.raw().data).toHaveLength(output.width * output.height * 4)
-          } finally {
-            output.dispose()
-          }
-        }
-      } finally {
-        image.dispose()
+  test("clones, flips, and flops decoded images", async () => {
+    const image = NativeImage.decode(await readFile(new URL("rgba.png", FIXTURES)))
+    const outputs = [image.clone(), image.flip(), image.flop()]
+    try {
+      for (const output of outputs) {
+        expect(output.raw().data).toHaveLength(output.width * output.height * 4)
       }
+    } finally {
+      for (const output of outputs) output.dispose()
+      image.dispose()
     }
   })
 

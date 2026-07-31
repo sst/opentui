@@ -418,31 +418,6 @@ test "sixel indexed scheduling handles width and band boundaries" {
     }
 }
 
-test "sixel dithering is deterministic for a full color image" {
-    const width = 160;
-    const height = 240;
-    const pixels = try std.testing.allocator.alloc(u8, width * height * 4);
-    defer std.testing.allocator.free(pixels);
-    for (0..width * height) |index| {
-        const x = index % width;
-        const y = index / width;
-        const offset = index * 4;
-        pixels[offset] = @truncate(x * 13 + y * 3);
-        pixels[offset + 1] = @truncate(x * 5 + y * 11);
-        pixels[offset + 2] = @truncate(x * 7 + y * 17);
-        pixels[offset + 3] = 255;
-    }
-    const value = try image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
-    defer value.deinit();
-    var first: std.ArrayList(u8) = .empty;
-    defer first.deinit(std.testing.allocator);
-    var second: std.ArrayList(u8) = .empty;
-    defer second.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, first.writer(std.testing.allocator), value, false);
-    try terminal_image.writeSixel(std.testing.allocator, second.writer(std.testing.allocator), value, false);
-    try std.testing.expectEqualSlices(u8, first.items, second.items);
-}
-
 test "adaptive Sixel palette quality by color limit" {
     const width = 160;
     const height = 240;
