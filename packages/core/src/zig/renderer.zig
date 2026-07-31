@@ -2980,6 +2980,11 @@ pub const CliRenderer = struct {
                 if (cell) |c| {
                     if (gp.isContinuationChar(c.char)) {
                         // skip
+                    } else if (gp.isImageChar(c.char)) {
+                        const fallback = buf.quadrantChars[gp.imageFallbackFromChar(c.char)];
+                        var utf8Buf: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(@intCast(fallback), &utf8Buf) catch unreachable;
+                        writer.writeAll(utf8Buf[0..len]) catch return;
                     } else if (gp.isGraphemeChar(c.char)) {
                         const gid: u32 = gp.graphemeIdFromChar(c.char);
                         const bytes = self.pool.get(gid) catch &[_]u8{};
