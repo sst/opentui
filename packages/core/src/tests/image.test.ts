@@ -65,6 +65,33 @@ function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8
   result.set(jpeg.slice(2), 2 + segment.length)
   return result
 }
+
+function injectPngChunk(png: Uint8Array, type: string, payload: Uint8Array): Uint8Array {
+  const typeBytes = new TextEncoder().encode(type)
+  const chunk = new Uint8Array(payload.length + 12)
+  const chunkView = new DataView(chunk.buffer)
+  chunkView.setUint32(0, payload.length)
+  chunk.set(typeBytes, 4)
+  chunk.set(payload, 8)
+
+  let crc = 0xffffffff
+  for (const byte of chunk.subarray(4, 8 + payload.length)) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+  }
+  chunkView.setUint32(8 + payload.length, (crc ^ 0xffffffff) >>> 0)
+
+  let offset = 8
+  while (new TextDecoder().decode(png.subarray(offset + 4, offset + 8)) !== "IDAT") {
+    offset += new DataView(png.buffer, png.byteOffset + offset, 4).getUint32(0) + 12
+  }
+  const result = new Uint8Array(png.length + chunk.length)
+  result.set(png.subarray(0, offset))
+  result.set(chunk, offset)
+  result.set(png.subarray(offset), offset + chunk.length)
+  return result
+}
+
 const FORMATS = [
   ["rgba.png", "png", false],
   ["baseline.jpg", "jpeg", false],
@@ -104,6 +131,26 @@ describe("NativeImage", () => {
     const corrupt = PNG_1X1.slice()
     corrupt[29] ^= 1
     expect(() => imageInfo(corrupt)).toThrow("malformed image data")
+  })
+
+  test("applies the documented PNG color-space policy", async () => {
+    const explicitSrgb = await readFile(new URL("rgba.png", FIXTURES))
+    expect(imageInfo(explicitSrgb).colorStatus).toBe("explicit-srgb")
+
+    const iccp = injectPngChunk(PNG_1X1, "iCCP", Uint8Array.of(0))
+    expect(() => imageInfo(iccp)).toThrow("unsupported image color space")
+
+    const badGamma = injectPngChunk(PNG_1X1, "gAMA", Uint8Array.of(0, 0, 0, 1))
+    expect(() => imageInfo(badGamma)).toThrow("unsupported image color space")
+
+    const badChromaticities = injectPngChunk(PNG_1X1, "cHRM", new Uint8Array(32))
+    expect(() => imageInfo(badChromaticities)).toThrow("unsupported image color space")
+
+    const unsupportedCicp = injectPngChunk(PNG_1X1, "cICP", Uint8Array.of(9, 9, 9, 9))
+    expect(imageInfo(unsupportedCicp).colorStatus).toBe("assumed-srgb")
+
+    const supportedCicp = injectPngChunk(iccp, "cICP", Uint8Array.of(1, 13, 0, 1))
+    expect(imageInfo(supportedCicp).colorStatus).toBe("explicit-srgb")
   })
 
   test("rejects unsupported encoded formats", () => {
