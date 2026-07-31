@@ -53,7 +53,6 @@ interface GalleryItem {
 let root: BoxRenderable | null = null
 let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
-let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
 let overlayBox: BoxRenderable | null = null
@@ -63,6 +62,7 @@ let overlayVisible = true
 let overlayX = 2
 let overlayY = 9
 let boxAlphaIndex = 1
+let runGeneration = 0
 
 const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 const boxAlphas = [0, 0.5, 1]
@@ -184,8 +184,8 @@ function createCard(renderer: CliRenderer, item: GalleryItem, index: number): Bo
   return card
 }
 
-async function startImageServer(gif: Uint8Array): Promise<string> {
-  server = createServer((request, response) => {
+async function startImageServer(gif: Uint8Array): Promise<{ server: Server; url: string }> {
+  const imageServer = createServer((request, response) => {
     if (request.url !== "/image") {
       response.writeHead(404).end()
       return
@@ -194,23 +194,34 @@ async function startImageServer(gif: Uint8Array): Promise<string> {
     response.end(gif)
   })
   await new Promise<void>((resolve, reject) => {
-    server!.once("error", reject)
-    server!.listen(0, "127.0.0.1", () => {
-      server!.off("error", reject)
+    imageServer.once("error", reject)
+    imageServer.listen(0, "127.0.0.1", () => {
+      imageServer.off("error", reject)
       resolve()
     })
   })
-  const address = server.address()
-  if (!address || typeof address === "string") throw new Error("Image demo server did not expose a TCP port")
-  return `http://127.0.0.1:${address.port}/image`
+  const address = imageServer.address()
+  if (!address || typeof address === "string") {
+    imageServer.close()
+    throw new Error("Image demo server did not expose a TCP port")
+  }
+  return { server: imageServer, url: `http://127.0.0.1:${address.port}/image` }
 }
 
 export async function run(renderer: CliRenderer): Promise<void> {
+  const generation = ++runGeneration
   renderer.start()
   renderer.setBackgroundColor(P.page)
 
   const [webpBytes, gifBytes] = await Promise.all([readFile(webpPath), readFile(gifPath)])
-  const gifUrl = await startImageServer(gifBytes)
+  if (generation !== runGeneration) return
+  const imageServer = await startImageServer(gifBytes)
+  if (generation !== runGeneration) {
+    imageServer.server.close()
+    return
+  }
+  server = imageServer.server
+  const gifUrl = imageServer.url
 
   root = new BoxRenderable(renderer, {
     id: "native-image-demo",
@@ -323,15 +334,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
     updateOverlay()
   }
   renderer.keyInput.on("keypress", keyListener)
-  capabilityListener = updateControls
-  renderer.on("capabilities", capabilityListener)
 }
 
 export function destroy(renderer: CliRenderer): void {
+  runGeneration++
   if (keyListener) renderer.keyInput.off("keypress", keyListener)
-  if (capabilityListener) renderer.off("capabilities", capabilityListener)
   keyListener = null
-  capabilityListener = null
   root?.destroyRecursively()
   root = null
   previews = []
