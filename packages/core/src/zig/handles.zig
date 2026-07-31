@@ -25,6 +25,8 @@ pub const ObjectKind = enum(u4) {
     audio_engine = 8,
     native_renderable = 9,
     image = 10,
+    clipboard_service = 11,
+    clipboard_operation = 12,
 };
 
 const SlotState = enum(u8) {
