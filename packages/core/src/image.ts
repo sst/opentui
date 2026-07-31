@@ -378,14 +378,14 @@ export class NativeImage {
   }
 
   public static async load(source: ImageSource, options: ImageLoadOptions = {}): Promise<NativeImage> {
+    if (source instanceof Response) {
+      return NativeImage.decode(await loadResponseBytes(source, source.url || "Response", options.signal))
+    }
     options.signal?.throwIfAborted()
     if (source instanceof Uint8Array || source instanceof ArrayBuffer) return NativeImage.decode(source)
     if (source instanceof Blob) {
       if (source.size > MAX_ENCODED_BYTES) throw imageError(6)
       return NativeImage.decode(await loadResponseBytes(new Response(source), "Blob", options.signal))
-    }
-    if (source instanceof Response) {
-      return NativeImage.decode(await loadResponseBytes(source, source.url || "Response", options.signal))
     }
 
     const url =

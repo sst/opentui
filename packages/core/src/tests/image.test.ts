@@ -538,6 +538,23 @@ describe("NativeImage", () => {
     expect(cancelled).toBe(true)
   })
 
+  test("cancels a direct Response body when already aborted", async () => {
+    let cancelled = false
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true
+        },
+      }),
+    )
+    const controller = new AbortController()
+    const reason = new Error("stop")
+    controller.abort(reason)
+
+    await expect(NativeImage.load(response, { signal: controller.signal })).rejects.toBe(reason)
+    expect(cancelled).toBe(true)
+  })
+
   test("loads local paths and file URLs", async () => {
     const url = new URL("rgba.png", FIXTURES)
     const fromPath = await NativeImage.load(fileURLToPath(url))
