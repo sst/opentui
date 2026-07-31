@@ -107,6 +107,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-darwin-x64
           cp packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib artifacts/native-darwin-x64/
+          cp packages/core/node_modules/@opentui/core-darwin-x64/LICENSE* artifacts/native-darwin-x64/
           cd artifacts
           zip -r native-darwin-x64.zip native-darwin-x64/
           test -f native-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
@@ -118,6 +119,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-darwin-arm64
           cp packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib artifacts/native-darwin-arm64/
+          cp packages/core/node_modules/@opentui/core-darwin-arm64/LICENSE* artifacts/native-darwin-arm64/
           cd artifacts
           zip -r native-darwin-arm64.zip native-darwin-arm64/
           test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
@@ -129,6 +131,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-linux-x64
           cp packages/core/node_modules/@opentui/core-linux-x64/libopentui.so artifacts/native-linux-x64/
+          cp packages/core/node_modules/@opentui/core-linux-x64/LICENSE* artifacts/native-linux-x64/
           cd artifacts
           zip -r native-linux-x64.zip native-linux-x64/
           test -f native-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
@@ -140,6 +143,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-linux-x64-musl
           cp packages/core/node_modules/@opentui/core-linux-x64-musl/libopentui.so artifacts/native-linux-x64-musl/
+          cp packages/core/node_modules/@opentui/core-linux-x64-musl/LICENSE* artifacts/native-linux-x64-musl/
           cd artifacts
           zip -r native-linux-x64-musl.zip native-linux-x64-musl/
           test -f native-linux-x64-musl.zip || (echo "❌ Failed to create linux-x64-musl zip" && exit 1)
@@ -151,6 +155,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-windows-x64
           cp packages/core/node_modules/@opentui/core-win32-x64/opentui.dll artifacts/native-windows-x64/
+          cp packages/core/node_modules/@opentui/core-win32-x64/LICENSE* artifacts/native-windows-x64/
           cd artifacts
           zip -r native-windows-x64.zip native-windows-x64/
           test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
@@ -162,6 +167,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-linux-arm64
           cp packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so artifacts/native-linux-arm64/
+          cp packages/core/node_modules/@opentui/core-linux-arm64/LICENSE* artifacts/native-linux-arm64/
           cd artifacts
           zip -r native-linux-arm64.zip native-linux-arm64/
           test -f native-linux-arm64.zip || (echo "❌ Failed to create linux-arm64 zip" && exit 1)
@@ -173,6 +179,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-linux-arm64-musl
           cp packages/core/node_modules/@opentui/core-linux-arm64-musl/libopentui.so artifacts/native-linux-arm64-musl/
+          cp packages/core/node_modules/@opentui/core-linux-arm64-musl/LICENSE* artifacts/native-linux-arm64-musl/
           cd artifacts
           zip -r native-linux-arm64-musl.zip native-linux-arm64-musl/
           test -f native-linux-arm64-musl.zip || (echo "❌ Failed to create linux-arm64-musl zip" && exit 1)
@@ -184,6 +191,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-windows-arm64
           cp packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll artifacts/native-windows-arm64/
+          cp packages/core/node_modules/@opentui/core-win32-arm64/LICENSE* artifacts/native-windows-arm64/
           cd artifacts
           zip -r native-windows-arm64.zip native-windows-arm64/
           test -f native-windows-arm64.zip || (echo "❌ Failed to create windows-arm64 zip" && exit 1)

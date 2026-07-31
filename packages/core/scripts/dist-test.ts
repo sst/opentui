@@ -85,6 +85,15 @@ function ensureBuildArtifacts(): void {
   if (!existsSync(nativePackageDir)) {
     throw new Error(`Missing native package directory at ${nativePackageDir}. Run bun run build first.`)
   }
+  if (!existsSync(join(nativePackageDir, "LICENSE-GHOSTTY"))) {
+    throw new Error("Native package is missing the Ghostty and Unicode license notices")
+  }
+  const leakedGhosttyFiles = readdirSync(nativePackageDir).filter(
+    (name) => name.includes("ghostty-vt") || name.endsWith(".a") || name.endsWith(".lib"),
+  )
+  if (leakedGhosttyFiles.length > 0) {
+    throw new Error(`Native package contains unbundled Ghostty artifacts: ${leakedGhosttyFiles.join(", ")}`)
+  }
 }
 
 function assertPortableDeclarations(): void {
@@ -228,6 +237,7 @@ const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
 const yoga = await import(${JSON.stringify(`${packageJson.name}/yoga`)})
 const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
 const nativePackage = await import(nativePackageName)
+const { dlopen } = await import("node:ffi")
 
 assert.equal(typeof core.createCliRenderer, "function")
 assert.equal(typeof core.Audio, "function")
@@ -247,6 +257,11 @@ assert.equal(core.Yoga.Node, yoga.Node)
 assert.equal(Object.getPrototypeOf(testing.MockTreeSitterClient.prototype), core.TreeSitterClient.prototype)
 assert.equal(typeof parserWorker, "object")
 assert.equal(typeof nativePackage.default, "string")
+const ghostty = dlopen(nativePackage.default, {
+  ghosttyVtSmokeTest: { arguments: [], return: "uint8" },
+})
+assert.equal(ghostty.functions.ghosttyVtSmokeTest(), 1)
+ghostty.lib.close()
 
 const manifest = nodeAssets.getNodeAssets({
   platform: process.platform,
@@ -324,6 +339,7 @@ function writeBunTest(bunDir: string): void {
   writeFileSync(
     join(bunDir, "index.test.ts"),
     `import { describe, expect, test } from "bun:test"
+import { dlopen, FFIType } from "bun:ffi"
 
 describe("${packageJson.name} dist smoke test", () => {
   test("imports portable and Bun-only entrypoints", async () => {
@@ -351,6 +367,11 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
+    const ghostty = dlopen(nativePackage.default, {
+      ghosttyVtSmokeTest: { args: [], returns: FFIType.u8 },
+    })
+    expect(ghostty.symbols.ghosttyVtSmokeTest()).toBe(1)
+    ghostty.close()
   })
 })
 `,

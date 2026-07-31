@@ -19,6 +19,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
+const ghostty_vt = @import("ghostty-vt.zig");
 const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
@@ -122,8 +123,13 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
+    _ = ghostty_vt;
     _ = native_renderable;
     _ = native_yoga;
+}
+
+export fn ghosttyVtSmokeTest() u8 {
+    return @intFromBool(ghostty_vt.isExpectedBuild() and ghostty_vt.smokeTest());
 }
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void) void {

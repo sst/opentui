@@ -19,13 +19,14 @@
     }
   },
   "scripts": {
+    "build:ghostty-vt": "bun scripts/build-ghostty-vt.ts",
     "build": "bun run build:native && bun run build:lib",
     "build:dev": "bun run build:native:dev && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "build:native:dev": "bun scripts/build.ts --native --dev",
-    "test:native": "cd src/zig && zig build test --summary all",
-    "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
+    "test:native": "bun run build:ghostty-vt && cd src/zig && zig build test --summary all",
+    "bench:native": "bun run build:ghostty-vt && cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
     "bench:layout": "bun src/benchmark/layout-benchmark.ts",
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
     "bench:render-traversal": "bun src/benchmark/render-traversal-benchmark.ts",
