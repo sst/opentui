@@ -701,6 +701,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
+  RENDER_ERROR = "render:error",
   EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
   BLUR = "blur",
@@ -4510,6 +4511,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderTimeout = null
         }
       }
+    } catch (error) {
+      this.emit(CliRenderEvents.RENDER_ERROR, error)
+      if (this._isRunning && !this._isDestroyed) this.scheduleRenderTimer()
     } finally {
       this.rendering = false
       if (this._destroyPending) {
