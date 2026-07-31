@@ -144,4 +144,55 @@ describe("React Renderer | image element", () => {
     expect(imageRef!.protocol).toBe("auto")
     expect(imageRef!.effectiveProtocol).toBe("blocks")
   })
+
+  it("cancels a pending image load when its component unmounts", async () => {
+    let imageRef: ImageRenderable | null = null
+    let setVisible!: (visible: boolean) => void
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    let cancelled = false
+    let loads = 0
+    let errors = 0
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller
+        },
+        cancel() {
+          cancelled = true
+        },
+      }),
+    )
+
+    function App() {
+      const [visible, setImageVisible] = useState(true)
+      setVisible = setImageVisible
+      return visible ? (
+        <image
+          ref={(renderable: ImageRenderable | null) => {
+            imageRef = renderable
+          }}
+          source={response}
+          onLoad={() => loads++}
+          onError={() => errors++}
+        />
+      ) : null
+    }
+
+    testSetup = await testRender(<App />, { width: 4, height: 2 })
+    const image = imageRef!
+    const pending = image.loadPromise!
+
+    act(() => setVisible(false))
+    if (!cancelled) {
+      streamController.enqueue(PNG_1X1)
+      streamController.close()
+    }
+    await pending
+
+    expect(cancelled).toBe(true)
+    expect(loads).toBe(0)
+    expect(errors).toBe(0)
+    expect(image.image).toBeNull()
+    expect(image.loading).toBe(false)
+  })
 })
