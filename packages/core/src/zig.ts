@@ -534,7 +534,7 @@ function getOpenTUILib(libPath?: string) {
     },
     bufferDrawImage: {
       args: ["u32", "u32", "ptr"],
-      returns: "bool",
+      returns: "u8",
     },
     bufferDrawPackedBuffer: {
       args: ["u32", "ptr", "u32", "u32", "u32", "u32", "u32"],
