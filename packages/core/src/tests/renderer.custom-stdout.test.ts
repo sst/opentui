@@ -228,6 +228,31 @@ test("auto images use detected Sixel when pixel resolution is available", async 
   expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1bP0;1;0q")
 })
 
+test("oversized pixel resolution replies leave images on block fallback", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "sixel",
+    position: "absolute",
+    width: 8,
+    height: 4,
+    fit: "fill",
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+
+  stdin.emit("data", Buffer.from("\x1b[4;4294967295;4294967295t"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.resolution).toBeNull()
+  expect(image.effectiveProtocol).toBe("blocks")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+})
+
 test("resized images wait for the new pixel resolution before using Sixel", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(8, 4)
