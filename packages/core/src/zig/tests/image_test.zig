@@ -13,6 +13,37 @@ fn decodeBase64(encoded: []const u8) ![]u8 {
     return decoded;
 }
 
+fn decodePngWithAllocator(allocator: std.mem.Allocator, png: []const u8) !void {
+    const decoded = try image.decode(allocator, png, .{});
+    defer decoded.deinit();
+}
+
+fn clonePngWithAllocator(allocator: std.mem.Allocator, png: []const u8) !void {
+    const decoded = try image.decode(allocator, png, .{});
+    defer decoded.deinit();
+    const cloned = try decoded.clone();
+    defer cloned.deinit();
+}
+
+fn resizeWithAllocator(allocator: std.mem.Allocator) !void {
+    const source = try image.createFromRgba(allocator, &[_]u8{
+        255, 0, 0,   255, 0,   255, 0,   255,
+        0,   0, 255, 255, 255, 255, 255, 255,
+    }, 2, 2, 8);
+    defer source.deinit();
+    const resized = try image.resize(allocator, source, 3, 3, .area);
+    defer resized.deinit();
+}
+
+test "image operations release partial allocations on OOM" {
+    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
+    defer std.testing.allocator.free(png);
+
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, decodePngWithAllocator, .{png});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, clonePngWithAllocator, .{png});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeWithAllocator, .{});
+}
+
 test "PNG probe and decode return canonical red RGBA" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png = try decodeBase64(encoded);

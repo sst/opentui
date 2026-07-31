@@ -12,6 +12,29 @@ const DecodedSixel = struct {
     }
 };
 
+fn quantizeWithAllocator(allocator: std.mem.Allocator) !void {
+    const value = try image.createFromRgba(allocator, &[_]u8{
+        255, 0, 0,   255, 0,   255, 0,   255,
+        0,   0, 255, 255, 255, 255, 255, 255,
+    }, 2, 2, 8);
+    defer value.deinit();
+    var quantized = try terminal_image.quantizeSixel(allocator, value, 4);
+    defer quantized.deinit();
+}
+
+fn writeIndexedWithAllocator(allocator: std.mem.Allocator) !void {
+    const indices = [_]u8{ 0, 1, 1, 0 };
+    const palette = [_][3]u8{ .{ 255, 0, 0 }, .{ 0, 255, 0 } };
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    try terminal_image.writeSixelIndexedPayload(allocator, output.writer(allocator), &indices, &palette, 2, 2);
+}
+
+test "Sixel preparation releases partial allocations on OOM" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, quantizeWithAllocator, .{});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, writeIndexedWithAllocator, .{});
+}
+
 fn parseUnsigned(bytes: []const u8, position: *usize) !usize {
     const start = position.*;
     var value: usize = 0;
