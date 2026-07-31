@@ -158,7 +158,8 @@ if (!existsSync(join(sourceRoot, ".git")) || run("git", ["rev-parse", "HEAD"], s
 }
 
 const ghosttyRootSource = join(sourceRoot, "src", "lib_vt.zig")
-const originalGhosttyRoot = run("git", ["show", `HEAD:${relative(sourceRoot, ghosttyRootSource)}`], sourceRoot, true)
+const ghosttyRootGitPath = relative(sourceRoot, ghosttyRootSource).replaceAll("\\", "/")
+const originalGhosttyRoot = run("git", ["show", `HEAD:${ghosttyRootGitPath}`], sourceRoot, true)
 let hiddenSymbolCount = 0
 const hiddenGhosttyRoot = originalGhosttyRoot.replace(/\.\{ \.name = ("ghostty_[^"]+") \}/g, (_, name: string) => {
   hiddenSymbolCount++
