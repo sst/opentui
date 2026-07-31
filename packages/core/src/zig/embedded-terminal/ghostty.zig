@@ -26,6 +26,85 @@ pub const TerminalOptions = extern struct {
     max_scrollback: usize,
 };
 
+pub const Color = extern struct {
+    r: u8,
+    g: u8,
+    b: u8,
+};
+
+pub const RenderColors = extern struct {
+    size: usize = @sizeOf(RenderColors),
+    background: Color = undefined,
+    foreground: Color = undefined,
+    cursor: Color = undefined,
+    cursor_has_value: bool = false,
+    palette: [256]Color = undefined,
+};
+
+pub const StyleColorTag = enum(c_int) {
+    none = 0,
+    palette = 1,
+    rgb = 2,
+    _,
+};
+
+pub const StyleColorValue = extern union {
+    palette: u8,
+    rgb: Color,
+    _padding: u64,
+};
+
+pub const StyleColor = extern struct {
+    tag: StyleColorTag,
+    value: StyleColorValue,
+};
+
+pub const Style = extern struct {
+    size: usize = @sizeOf(Style),
+    fg_color: StyleColor = undefined,
+    bg_color: StyleColor = undefined,
+    underline_color: StyleColor = undefined,
+    bold: bool = false,
+    italic: bool = false,
+    faint: bool = false,
+    blink: bool = false,
+    inverse: bool = false,
+    invisible: bool = false,
+    strikethrough: bool = false,
+    overline: bool = false,
+    underline: c_int = 0,
+};
+
+pub const Buffer = extern struct {
+    ptr: ?[*]u8,
+    cap: usize,
+    len: usize,
+};
+
+pub const RenderStateData = enum(c_int) {
+    invalid = 0,
+    cols = 1,
+    rows = 2,
+    dirty = 3,
+    row_iterator = 4,
+    cursor_visual_style = 10,
+    cursor_visible = 11,
+    cursor_blinking = 12,
+    cursor_viewport_has_value = 14,
+    cursor_viewport_x = 15,
+    cursor_viewport_y = 16,
+    cursor_viewport_wide_tail = 17,
+    _,
+};
+
+pub const CursorVisualStyle = enum(c_int) {
+    bar = 0,
+    block = 1,
+    underline = 2,
+    block_hollow = 3,
+    _,
+};
+
 pub const TerminalOption = enum(c_int) {
     userdata = 0,
     write_pty = 1,
@@ -103,6 +182,62 @@ pub const ScrollViewport = extern struct {
     value: ScrollViewportValue,
 };
 
+pub const RenderStateOption = enum(c_int) {
+    dirty = 0,
+    _,
+};
+
+pub const Dirty = enum(c_int) {
+    clean = 0,
+    partial = 1,
+    full = 2,
+    _,
+};
+
+pub const RowData = enum(c_int) {
+    invalid = 0,
+    dirty = 1,
+    raw = 2,
+    cells = 3,
+    selection = 4,
+    _,
+};
+
+pub const RowOption = enum(c_int) {
+    dirty = 0,
+    _,
+};
+
+pub const CellData = enum(c_int) {
+    invalid = 0,
+    raw = 1,
+    style = 2,
+    graphemes_len = 3,
+    graphemes_buf = 4,
+    bg_color = 5,
+    fg_color = 6,
+    selected = 7,
+    has_styling = 8,
+    graphemes_utf8 = 9,
+    _,
+};
+
+pub const RawCellData = enum(c_int) {
+    invalid = 0,
+    codepoint = 1,
+    content_tag = 2,
+    wide = 3,
+    _,
+};
+
+pub const CellWide = enum(c_int) {
+    narrow = 0,
+    wide = 1,
+    spacer_tail = 2,
+    spacer_head = 3,
+    _,
+};
+
 const TerminalNew = *const fn (?*const anyopaque, *Handle, TerminalOptions) callconv(.c) Result;
 const TerminalFree = *const fn (Handle) callconv(.c) void;
 const TerminalWrite = *const fn (Handle, ?[*]const u8, usize) callconv(.c) void;
@@ -110,6 +245,22 @@ const TerminalResize = *const fn (Handle, u16, u16, u32, u32) callconv(.c) Resul
 const TerminalSet = *const fn (Handle, TerminalOption, ?*const anyopaque) callconv(.c) Result;
 const TerminalModeGet = *const fn (Handle, u16, *bool) callconv(.c) Result;
 const TerminalScrollViewport = *const fn (Handle, ScrollViewport) callconv(.c) void;
+const RenderStateNew = *const fn (?*const anyopaque, *Handle) callconv(.c) Result;
+const RenderStateFree = *const fn (Handle) callconv(.c) void;
+const RenderStateUpdate = *const fn (Handle, Handle) callconv(.c) Result;
+const RenderStateGet = *const fn (Handle, RenderStateData, *anyopaque) callconv(.c) Result;
+const RenderStateSet = *const fn (Handle, RenderStateOption, *const anyopaque) callconv(.c) Result;
+const RenderStateColorsGet = *const fn (Handle, *RenderColors) callconv(.c) Result;
+const RowIteratorNew = *const fn (?*const anyopaque, *Handle) callconv(.c) Result;
+const RowIteratorFree = *const fn (Handle) callconv(.c) void;
+const RowIteratorNext = *const fn (Handle) callconv(.c) bool;
+const RowGet = *const fn (Handle, RowData, *anyopaque) callconv(.c) Result;
+const RowSet = *const fn (Handle, RowOption, *const anyopaque) callconv(.c) Result;
+const RowCellsNew = *const fn (?*const anyopaque, *Handle) callconv(.c) Result;
+const RowCellsFree = *const fn (Handle) callconv(.c) void;
+const RowCellsNext = *const fn (Handle) callconv(.c) bool;
+const RowCellsGet = *const fn (Handle, CellData, *anyopaque) callconv(.c) Result;
+const CellGet = *const fn (u64, RawCellData, *anyopaque) callconv(.c) Result;
 const KeyEventNew = *const fn (?*const anyopaque, *Handle) callconv(.c) Result;
 const KeyEventFree = *const fn (Handle) callconv(.c) void;
 const KeyEventSetAction = *const fn (Handle, KeyAction) callconv(.c) void;
@@ -147,6 +298,22 @@ pub const Api = struct {
     terminal_set: TerminalSet,
     terminal_mode_get: TerminalModeGet,
     terminal_scroll_viewport: TerminalScrollViewport,
+    render_state_new: RenderStateNew,
+    render_state_free: RenderStateFree,
+    render_state_update: RenderStateUpdate,
+    render_state_get: RenderStateGet,
+    render_state_set: RenderStateSet,
+    render_state_colors_get: RenderStateColorsGet,
+    row_iterator_new: RowIteratorNew,
+    row_iterator_free: RowIteratorFree,
+    row_iterator_next: RowIteratorNext,
+    row_get: RowGet,
+    row_set: RowSet,
+    row_cells_new: RowCellsNew,
+    row_cells_free: RowCellsFree,
+    row_cells_next: RowCellsNext,
+    row_cells_get: RowCellsGet,
+    cell_get: CellGet,
     key_event_new: KeyEventNew,
     key_event_free: KeyEventFree,
     key_event_set_action: KeyEventSetAction,
@@ -201,6 +368,22 @@ pub const Api = struct {
             .terminal_set = lookup(&library, TerminalSet, "ghostty_terminal_set") orelse return error.MissingSymbol,
             .terminal_mode_get = lookup(&library, TerminalModeGet, "ghostty_terminal_mode_get") orelse return error.MissingSymbol,
             .terminal_scroll_viewport = lookup(&library, TerminalScrollViewport, "ghostty_terminal_scroll_viewport") orelse return error.MissingSymbol,
+            .render_state_new = lookup(&library, RenderStateNew, "ghostty_render_state_new") orelse return error.MissingSymbol,
+            .render_state_free = lookup(&library, RenderStateFree, "ghostty_render_state_free") orelse return error.MissingSymbol,
+            .render_state_update = lookup(&library, RenderStateUpdate, "ghostty_render_state_update") orelse return error.MissingSymbol,
+            .render_state_get = lookup(&library, RenderStateGet, "ghostty_render_state_get") orelse return error.MissingSymbol,
+            .render_state_set = lookup(&library, RenderStateSet, "ghostty_render_state_set") orelse return error.MissingSymbol,
+            .render_state_colors_get = lookup(&library, RenderStateColorsGet, "ghostty_render_state_colors_get") orelse return error.MissingSymbol,
+            .row_iterator_new = lookup(&library, RowIteratorNew, "ghostty_render_state_row_iterator_new") orelse return error.MissingSymbol,
+            .row_iterator_free = lookup(&library, RowIteratorFree, "ghostty_render_state_row_iterator_free") orelse return error.MissingSymbol,
+            .row_iterator_next = lookup(&library, RowIteratorNext, "ghostty_render_state_row_iterator_next") orelse return error.MissingSymbol,
+            .row_get = lookup(&library, RowGet, "ghostty_render_state_row_get") orelse return error.MissingSymbol,
+            .row_set = lookup(&library, RowSet, "ghostty_render_state_row_set") orelse return error.MissingSymbol,
+            .row_cells_new = lookup(&library, RowCellsNew, "ghostty_render_state_row_cells_new") orelse return error.MissingSymbol,
+            .row_cells_free = lookup(&library, RowCellsFree, "ghostty_render_state_row_cells_free") orelse return error.MissingSymbol,
+            .row_cells_next = lookup(&library, RowCellsNext, "ghostty_render_state_row_cells_next") orelse return error.MissingSymbol,
+            .row_cells_get = lookup(&library, RowCellsGet, "ghostty_render_state_row_cells_get") orelse return error.MissingSymbol,
+            .cell_get = lookup(&library, CellGet, "ghostty_cell_get") orelse return error.MissingSymbol,
             .key_event_new = lookup(&library, KeyEventNew, "ghostty_key_event_new") orelse return error.MissingSymbol,
             .key_event_free = lookup(&library, KeyEventFree, "ghostty_key_event_free") orelse return error.MissingSymbol,
             .key_event_set_action = lookup(&library, KeyEventSetAction, "ghostty_key_event_set_action") orelse return error.MissingSymbol,

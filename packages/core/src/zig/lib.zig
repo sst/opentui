@@ -21,6 +21,8 @@ const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
 const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
+const embedded_terminal = @import("embedded-terminal/main.zig");
+pub const EmbeddedTerminal = embedded_terminal.EmbeddedTerminal;
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
 
@@ -90,6 +92,57 @@ fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRende
     return handles.acquire(handle, .native_renderable, native_renderable.NativeRenderable);
 }
 
+fn acquireEmbeddedTerminal(handle: NativeHandle) ?*EmbeddedTerminal {
+    return handles.acquire(handle, .embedded_terminal, EmbeddedTerminal);
+}
+
+const EmbeddedTerminalStatus = struct {
+    const invalid: i32 = -1;
+    const out_of_memory: i32 = -2;
+    const library_not_found: i32 = -3;
+    const missing_symbol: i32 = -4;
+    const out_of_space: i32 = -5;
+    const no_value: i32 = -6;
+    const invalid_unicode: i32 = -7;
+    const buffer_too_small: i32 = -8;
+};
+
+pub const ExternalEmbeddedTerminalComposeResult = extern struct {
+    rows: u32 = 0,
+    cells: u32 = 0,
+    dirty: u8 = 0,
+    _padding: [3]u8 = .{ 0, 0, 0 },
+};
+
+pub const ExternalEmbeddedTerminalCursor = extern struct {
+    x: u16 = 0,
+    y: u16 = 0,
+    has_value: u8 = 0,
+    visible: u8 = 0,
+    blinking: u8 = 0,
+    wide_tail: u8 = 0,
+    style: u8 = 1,
+    color_has_value: u8 = 0,
+    color_r: u8 = 0,
+    color_g: u8 = 0,
+    color_b: u8 = 0,
+    _padding: u8 = 0,
+};
+
+fn embeddedTerminalStatus(err: anyerror) i32 {
+    return switch (err) {
+        error.InvalidValue, error.InvalidDimensions => EmbeddedTerminalStatus.invalid,
+        error.OutOfMemory => EmbeddedTerminalStatus.out_of_memory,
+        error.LibraryNotFound => EmbeddedTerminalStatus.library_not_found,
+        error.MissingSymbol => EmbeddedTerminalStatus.missing_symbol,
+        error.OutOfSpace, error.ResponseOverflow => EmbeddedTerminalStatus.out_of_space,
+        error.NoValue => EmbeddedTerminalStatus.no_value,
+        error.InvalidUnicode => EmbeddedTerminalStatus.invalid_unicode,
+        error.BufferTooSmall => EmbeddedTerminalStatus.buffer_too_small,
+        else => EmbeddedTerminalStatus.invalid,
+    };
+}
+
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
     outPtr.* = .{
         .start_cols_ptr = EMPTY_U32[0..].ptr,
@@ -112,6 +165,16 @@ fn sliceFromPtrLen(ptr: ?[*]const u8, len: u32) []const u8 {
     return ptr.?[0..@as(usize, len)];
 }
 
+fn embeddedTerminalInput(ptr: ?[*]const u8, len: u32) ?[]const u8 {
+    if (len == 0) return "";
+    return (ptr orelse return null)[0..@as(usize, len)];
+}
+
+fn embeddedTerminalOutput(ptr: ?[*]u8, len: u32) ?[]u8 {
+    if (len == 0) return &.{};
+    return (ptr orelse return null)[0..@as(usize, len)];
+}
+
 inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
     return .{
         .bgColor = bg,
@@ -120,6 +183,8 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 }
 
 comptime {
+    std.debug.assert(@sizeOf(ExternalEmbeddedTerminalComposeResult) == 12);
+    std.debug.assert(@sizeOf(ExternalEmbeddedTerminalCursor) == 14);
     _ = native_span_feed;
     _ = native_audio;
     _ = native_renderable;
@@ -200,6 +265,219 @@ export fn nativeRenderableSetMeasureTarget(
 
     renderable.setMeasureTarget(target);
     return true;
+}
+
+export fn createEmbeddedTerminal(
+    cols: u16,
+    rows: u16,
+    max_scrollback: u32,
+    library_path_ptr: ?[*]const u8,
+    library_path_len: u32,
+    out_handle_ptr: ?*NativeHandle,
+) i32 {
+    const out_handle = out_handle_ptr orelse return EmbeddedTerminalStatus.invalid;
+    out_handle.* = INVALID_HANDLE;
+    const library_path = embeddedTerminalInput(library_path_ptr, library_path_len) orelse return EmbeddedTerminalStatus.invalid;
+    const terminal_value = EmbeddedTerminal.init(globalAllocator, .{
+        .cols = cols,
+        .rows = rows,
+        .max_scrollback = max_scrollback,
+        .library_path = if (library_path.len == 0) null else library_path,
+    }) catch |err| return embeddedTerminalStatus(err);
+    out_handle.* = handles.insert(.embedded_terminal, erasePtr(terminal_value)) catch {
+        terminal_value.deinit();
+        return EmbeddedTerminalStatus.out_of_memory;
+    };
+    return 0;
+}
+
+export fn destroyEmbeddedTerminal(handle: NativeHandle) void {
+    const token = handles.beginDestroy(handle, .embedded_terminal, EmbeddedTerminal) orelse return;
+    token.ptr.deinit();
+    handles.finishDestroy(token.handle);
+}
+
+export fn embeddedTerminalWrite(handle: NativeHandle, bytes_ptr: ?[*]const u8, bytes_len: u32) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const bytes = embeddedTerminalInput(bytes_ptr, bytes_len) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.write(bytes);
+    return 0;
+}
+
+export fn embeddedTerminalResize(handle: NativeHandle, cols: u16, rows: u16) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.resize(cols, rows) catch |err| return embeddedTerminalStatus(err);
+    return 0;
+}
+
+export fn embeddedTerminalInvalidate(handle: NativeHandle) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.invalidate() catch |err| return embeddedTerminalStatus(err);
+    return 0;
+}
+
+export fn embeddedTerminalScroll(handle: NativeHandle, delta: i32) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.scroll(delta);
+    return 0;
+}
+
+export fn embeddedTerminalCompose(
+    handle: NativeHandle,
+    buffer_handle: NativeHandle,
+    x: i32,
+    y: i32,
+    out_result_ptr: ?*ExternalEmbeddedTerminalComposeResult,
+) i32 {
+    const out_result = out_result_ptr orelse return EmbeddedTerminalStatus.invalid;
+    out_result.* = .{};
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const target = acquireBuffer(buffer_handle) orelse return EmbeddedTerminalStatus.invalid;
+    const result = terminal_value.compose(target, x, y) catch |err| return embeddedTerminalStatus(err);
+    out_result.* = .{
+        .rows = result.rows,
+        .cells = result.cells,
+        .dirty = @intCast(@intFromEnum(result.dirty)),
+    };
+    return 0;
+}
+
+export fn embeddedTerminalCursor(handle: NativeHandle, out_cursor_ptr: ?*ExternalEmbeddedTerminalCursor) i32 {
+    const out_cursor = out_cursor_ptr orelse return EmbeddedTerminalStatus.invalid;
+    out_cursor.* = .{};
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const cursor = terminal_value.cursor() catch |err| return embeddedTerminalStatus(err);
+    out_cursor.* = .{
+        .x = cursor.x,
+        .y = cursor.y,
+        .has_value = @intFromBool(cursor.has_value),
+        .visible = @intFromBool(cursor.visible),
+        .blinking = @intFromBool(cursor.blinking),
+        .wide_tail = @intFromBool(cursor.wide_tail),
+        .style = @intCast(@intFromEnum(cursor.style)),
+        .color_has_value = @intFromBool(cursor.color != null),
+        .color_r = if (cursor.color) |value| value.r else 0,
+        .color_g = if (cursor.color) |value| value.g else 0,
+        .color_b = if (cursor.color) |value| value.b else 0,
+    };
+    return 0;
+}
+
+export fn embeddedTerminalEncodeKey(
+    handle: NativeHandle,
+    action: u8,
+    key: i32,
+    mods: u16,
+    consumed_mods: u16,
+    composing: bool,
+    utf8_ptr: ?[*]const u8,
+    utf8_len: u32,
+    unshifted_codepoint: u32,
+    out_ptr: ?[*]u8,
+    out_len: u32,
+    out_required_ptr: ?*u32,
+) i32 {
+    const out_required = out_required_ptr orelse return EmbeddedTerminalStatus.invalid;
+    out_required.* = 0;
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const utf8_bytes = embeddedTerminalInput(utf8_ptr, utf8_len) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const key_action: embedded_terminal.KeyAction = switch (action) {
+        0 => .release,
+        1 => .press,
+        2 => .repeat,
+        else => return EmbeddedTerminalStatus.invalid,
+    };
+    const written = terminal_value.encodeKey(.{
+        .action = key_action,
+        .key = key,
+        .mods = mods,
+        .consumed_mods = consumed_mods,
+        .composing = composing,
+        .utf8 = utf8_bytes,
+        .unshifted_codepoint = unshifted_codepoint,
+    }, output) catch |err| {
+        out_required.* = @intCast(@min(terminal_value.required_output, std.math.maxInt(u32)));
+        return embeddedTerminalStatus(err);
+    };
+    out_required.* = @intCast(written);
+    return @intCast(written);
+}
+
+export fn embeddedTerminalEncodeMouse(
+    handle: NativeHandle,
+    action: u8,
+    button: i8,
+    mods: u16,
+    x: f32,
+    y: f32,
+    any_button_pressed: bool,
+    out_ptr: ?[*]u8,
+    out_len: u32,
+) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const mouse_action: embedded_terminal.MouseAction = switch (action) {
+        0 => .press,
+        1 => .release,
+        2 => .motion,
+        else => return EmbeddedTerminalStatus.invalid,
+    };
+    const mouse_button: ?embedded_terminal.MouseButton = switch (button) {
+        -1 => null,
+        0 => .unknown,
+        1 => .left,
+        2 => .right,
+        3 => .middle,
+        4 => .four,
+        5 => .five,
+        6 => .six,
+        7 => .seven,
+        else => return EmbeddedTerminalStatus.invalid,
+    };
+    const written = terminal_value.encodeMouse(.{
+        .action = mouse_action,
+        .button = mouse_button,
+        .mods = mods,
+        .x = x,
+        .y = y,
+        .any_button_pressed = any_button_pressed,
+    }, output) catch |err| return embeddedTerminalStatus(err);
+    return @intCast(written);
+}
+
+export fn embeddedTerminalEncodePaste(
+    handle: NativeHandle,
+    input_ptr: ?[*]const u8,
+    input_len: u32,
+    out_ptr: ?[*]u8,
+    out_len: u32,
+) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const input = embeddedTerminalInput(input_ptr, input_len) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const written = terminal_value.encodePaste(
+        input,
+        output,
+    ) catch |err| return embeddedTerminalStatus(err);
+    return @intCast(written);
+}
+
+export fn embeddedTerminalEncodeFocus(handle: NativeHandle, focused: bool, out_ptr: ?[*]u8, out_len: u32) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const written = terminal_value.encodeFocus(
+        focused,
+        output,
+    ) catch |err| return embeddedTerminalStatus(err);
+    return @intCast(written);
+}
+
+export fn embeddedTerminalDrainResponses(handle: NativeHandle, out_ptr: ?[*]u8, out_len: u32) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const written = terminal_value.drainResponses(output) catch |err| return embeddedTerminalStatus(err);
+    return @intCast(written);
 }
 
 export fn destroyEventSink(sink_handle: NativeHandle) void {
