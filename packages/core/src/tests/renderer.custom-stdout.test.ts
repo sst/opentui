@@ -317,6 +317,46 @@ test("split-footer Kitty scrollback does not rasterize images to terminal pixel 
   expect(output).toContain("after-image")
 })
 
+test("split-footer queues native image scrollback until the footer is pinned", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "kitty",
+    width: 1,
+    height: 1,
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes()).toHaveLength(0)
+
+  stdin.emit("data", Buffer.from("\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1b_Ga=t")
+  expect(stdout.getWrittenBytes().toString("utf8")).not.toContain("█")
+})
+
 test("split-footer scrollback uses blocks for mixed protocols and overlapping images", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(8, 6)
