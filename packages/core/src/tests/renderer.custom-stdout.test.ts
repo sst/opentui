@@ -418,6 +418,37 @@ test("resume does not join a partial pixel response to post-resume input", async
   }
 })
 
+test("resume preserves chunked escape input after a suspended pixel prefix", async () => {
+  for (const chunks of [["\x1b[A"], ["\x1b[", "A"]]) {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 4)
+    const renderer = await createCliRenderer({ stdin, stdout })
+    const keypresses: Array<{ name: string; raw: string }> = []
+    renderer.keyInput.on("keypress", (event) => {
+      keypresses.push({ name: event.name, raw: event.raw })
+    })
+
+    try {
+      await flushWritable(stdout)
+      stdin.emit("data", Buffer.from("\x1b"))
+      renderer.suspend()
+      renderer.resume()
+      for (const chunk of chunks) stdin.emit("data", Buffer.from(chunk))
+
+      expect({ chunks, keypresses }).toEqual({
+        chunks,
+        keypresses: [{ name: "up", raw: "\x1b[A" }],
+      })
+
+      stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+      await renderer.idle()
+      expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+    } finally {
+      renderer.destroy()
+    }
+  }
+})
+
 test("resume separates suspended escape input from a pixel resolution response", async () => {
   for (const timing of ["before-resume", "after-resume", "after-suspended-escape"] as const) {
     const stdin = createTestStdin()
