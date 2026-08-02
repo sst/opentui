@@ -759,10 +759,6 @@ export class StdinParser {
         const prefixLength = this.suspendedPixelResolutionPrefixLength
         this.state = { tag: "ground" }
         this.consumePrefix(prefixLength)
-        if (canStillBePixelResolutionPrefix(this.pending.view())) {
-          this.pendingTimeoutPaused = true
-          this.suspendedPixelResolutionPrefixLength = this.pending.length
-        }
       }
       this.scanPending()
 

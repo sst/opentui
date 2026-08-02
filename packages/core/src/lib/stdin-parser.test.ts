@@ -1365,6 +1365,8 @@ describe("StdinParser", () => {
         parser.pausePendingTimeout()
         parser.resumePendingTimeout()
         parser.push(Buffer.from("\x1b"))
+        parser.pausePendingTimeout()
+        parser.resumePendingTimeout()
         clock.advance(10)
         expect(snap(parser)).toEqual([])
 
