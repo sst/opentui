@@ -36,6 +36,17 @@ const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
+/// kitty's Unicode image placeholder (U+10EEEE, bare or carrying row/column
+/// diacritics). The terminal only treats plain cells of this codepoint as
+/// image placements; wrapped in OSC 66 text-sizing it draws blank cells
+/// where the image should be, so explicit-width output must skip them.
+/// https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders
+const KITTY_IMAGE_PLACEHOLDER_UTF8 = "\u{10EEEE}";
+
+inline fn isKittyImagePlaceholder(bytes: []const u8) bool {
+    return std.mem.startsWith(u8, bytes, KITTY_IMAGE_PLACEHOLDER_UTF8);
+}
+
 pub const RendererError = error{
     OutOfMemory,
     InvalidDimensions,
@@ -1117,7 +1128,7 @@ pub const CliRenderer = struct {
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
                         const graphemeWidth = gp.charRightExtent(cell.char) + 1;
-                        if (capabilities.explicit_width) {
+                        if (capabilities.explicit_width and !isKittyImagePlaceholder(bytes)) {
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
@@ -1427,7 +1438,7 @@ pub const CliRenderer = struct {
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
                         const graphemeWidth = gp.charRightExtent(cell.char) + 1;
-                        if (capabilities.explicit_width) {
+                        if (capabilities.explicit_width and !isKittyImagePlaceholder(bytes)) {
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
