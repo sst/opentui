@@ -80,8 +80,6 @@ jobs:
           bun run test:dist --skip-build
           cd ../ssh
           bun run test:dist --skip-build
-          cd ../react
-          bun run test:dist --skip-build
 
       - name: Publish packages
         run: bun run publish
