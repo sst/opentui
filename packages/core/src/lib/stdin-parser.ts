@@ -395,6 +395,25 @@ function canStillBePixelResolution(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 4 && state.semicolons === 2
 }
 
+function canStillBePixelResolutionPrefix(bytes: Uint8Array): boolean {
+  const fixedPrefix = [ESC, 0x5b, 0x34, 0x3b]
+  const fixedLength = Math.min(bytes.length, fixedPrefix.length)
+  for (let index = 0; index < fixedLength; index += 1) {
+    if (bytes[index] !== fixedPrefix[index]) return false
+  }
+  if (bytes.length <= fixedPrefix.length) return bytes.length > 0
+
+  let index = fixedPrefix.length
+  const heightStart = index
+  while (index < bytes.length && isAsciiDigit(bytes[index]!)) index += 1
+  if (index === bytes.length) return index > heightStart
+  if (index === heightStart || bytes[index] !== 0x3b) return false
+
+  index += 1
+  while (index < bytes.length && isAsciiDigit(bytes[index]!)) index += 1
+  return index === bytes.length
+}
+
 function canDeferParametricCsi(state: ParametricCsiLike, context: StdinParserProtocolContext): boolean {
   return (
     (context.kittyKeyboardEnabled && (canStillBeKittyU(state) || canStillBeKittySpecial(state))) ||
@@ -578,6 +597,8 @@ export class StdinParser {
   private destroyed = false
   // When the current incomplete unit first appeared. Null when nothing is pending.
   private pendingSinceMs: number | null = null
+  private pendingTimeoutPaused = false
+  private discardSuspendedLoneEscape = false
   // When true, the state machine treats the current incomplete prefix as
   // final and emits it as one atomic event (e.g. a lone ESC becomes an
   // Escape key). Set by the timeout, consumed by the next read() or drain().
@@ -713,6 +734,19 @@ export class StdinParser {
 
     let remainder = data
     while (remainder.length > 0) {
+      if (
+        this.discardSuspendedLoneEscape &&
+        this.protocolContext.pixelResolutionQueryActive &&
+        this.state.tag === "esc" &&
+        this.cursor === this.unitStart + 1 &&
+        remainder[0] === ESC
+      ) {
+        this.state = { tag: "ground" }
+        this.consumePrefix(this.cursor)
+        this.pendingTimeoutPaused = true
+        this.discardSuspendedLoneEscape = true
+      }
+
       if (this.paste) {
         remainder = this.consumePasteBytes(remainder)
         continue
@@ -818,6 +852,24 @@ export class StdinParser {
 
     this.clearTimeout()
     this.resetState()
+  }
+
+  public hasPendingPixelResolutionResponse(): boolean {
+    if (!this.protocolContext.pixelResolutionQueryActive || this.pending.length === 0) return false
+    return canStillBePixelResolutionPrefix(this.pending.view())
+  }
+
+  public pausePendingTimeout(): void {
+    this.ensureAlive()
+    this.pendingTimeoutPaused = true
+    this.discardSuspendedLoneEscape = this.state.tag === "esc" && this.cursor === this.unitStart + 1
+    this.clearTimeout()
+  }
+
+  public resumePendingTimeout(): void {
+    this.ensureAlive()
+    if (this.pending.length === 0) this.pendingTimeoutPaused = false
+    this.reconcileTimeoutState()
   }
 
   public resetMouseState(): void {
@@ -1841,6 +1893,8 @@ export class StdinParser {
   // and timeout state so the next scan iteration starts clean.
   private consumePrefix(endExclusive: number): void {
     this.pending.consume(endExclusive)
+    this.pendingTimeoutPaused = false
+    this.discardSuspendedLoneEscape = false
     this.cursor = 0
     this.unitStart = 0
     this.pendingSinceMs = null
@@ -1872,6 +1926,8 @@ export class StdinParser {
     this.cursor = 0
     this.unitStart = 0
     this.pendingSinceMs = null
+    this.pendingTimeoutPaused = false
+    this.discardSuspendedLoneEscape = false
     this.forceFlush = false
     this.state = { tag: "ground" }
   }
@@ -1959,6 +2015,11 @@ export class StdinParser {
       return
     }
 
+    if (this.pendingTimeoutPaused) {
+      this.clearTimeout()
+      return
+    }
+
     if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       this.clearTimeout()
       return
@@ -1996,6 +2057,8 @@ export class StdinParser {
     this.pending.reset(INITIAL_PENDING_CAPACITY)
     this.events.length = 0
     this.pendingSinceMs = null
+    this.pendingTimeoutPaused = false
+    this.discardSuspendedLoneEscape = false
     this.forceFlush = false
     this.justFlushedEsc = false
     this.state = { tag: "ground" }

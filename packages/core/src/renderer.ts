@@ -46,7 +46,6 @@ import {
 } from "./lib/terminal-palette.js"
 import { calculateRenderGeometry } from "./lib/render-geometry.js"
 import {
-  countPixelResolutionResponses,
   isCapabilityResponse,
   isPixelResolutionResponse,
   parsePixelResolution,
@@ -772,8 +771,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
-  private pendingPixelResolutionQueries: number = 0
-  private queryPixelResolutionOnResume: boolean = false
+  private waitingForPixelResolution: boolean = false
+  private pixelResolutionRequeryPending: boolean = false
   private readonly clock: Clock
 
   private rendering: boolean = false
@@ -836,7 +835,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
   private pendingSuspendedTerminalSetup: boolean = false
-  private pendingInitialTerminalSetup: boolean = false
   private suspendedNonAltSurfacePreserved: boolean = false
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
@@ -3102,11 +3100,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // TODO: All input management may move to native when zig finally has async io support again,
   // without rolling a full event loop
   public async setupTerminal(): Promise<void> {
-    if (this._isDestroyed || this._terminalIsSetup) return
-    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
-      this.pendingInitialTerminalSetup = true
-      return
-    }
+    if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
     const startupCursorCprActive = this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout"
@@ -3331,6 +3325,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinEvent(event: StdinEvent): void {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      if (event.type === "response" && isPixelResolutionResponse(event.sequence)) {
+        this.dispatchSequenceHandlers(event.sequence)
+      }
+      return
+    }
     switch (event.type) {
       case "key":
         if (this.dispatchSequenceHandlers(event.raw)) {
@@ -3390,14 +3390,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.addInputHandler((sequence: string) => {
-      if (isPixelResolutionResponse(sequence) && this.pendingPixelResolutionQueries > 0) {
+      if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+        this.waitingForPixelResolution = false
+        if (this.pixelResolutionRequeryPending) {
+          this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false })
+          this.queryPixelResolution()
+          return true
+        }
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
+          this.requestRender()
         }
-        this.pendingPixelResolutionQueries--
-        const queryActive = this.pendingPixelResolutionQueries > 0
-        this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: queryActive }, !queryActive)
+        this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)
         return true
       }
       return false
@@ -3739,12 +3744,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }, this.resizeDebounceDelay)
   }
 
-  private queryPixelResolution(force: boolean = false) {
-    if (!force && this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
-      this.queryPixelResolutionOnResume = true
-      return
-    }
-    this.pendingPixelResolutionQueries++
+  private queryPixelResolution() {
+    this.pixelResolutionRequeryPending = true
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED || this.waitingForPixelResolution) return
+    this.pixelResolutionRequeryPending = false
+    this.waitingForPixelResolution = true
     this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
     this.lib.queryPixelResolution(this.rendererPtr)
   }
@@ -3774,6 +3778,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
+    this._resolution = null
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
@@ -4048,11 +4053,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.removeExitListeners()
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
-      pixelResolutionQueryActive: false,
+      pixelResolutionQueryActive: this.waitingForPixelResolution,
       explicitWidthCprActive: false,
       startupCursorCprActive: false,
     })
-    this.stdinParser?.reset()
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
 
     this.themeModeState.cancelRefresh()
@@ -4067,25 +4073,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public resume(): void {
-    const setupTerminalAfterResume = this.pendingInitialTerminalSetup
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
 
-    // Drain any input buffered during suspension before registering the
-    // listener. Adding a "data" listener can auto-resume a Readable, so the
-    // drain must come first while the stream is still paused and read()
-    // pulls from the internal buffer rather than being a flowing-mode no-op.
-    const discardedInput: Uint8Array[] = []
-    let discarded: unknown
-    while ((discarded = this.stdin.read()) !== null) {
-      if (discarded instanceof Uint8Array) discardedInput.push(discarded)
-      else if (typeof discarded === "string") discardedInput.push(new TextEncoder().encode(discarded))
-    }
-    this.pendingPixelResolutionQueries = Math.max(
-      0,
-      this.pendingPixelResolutionQueries - countPixelResolutionResponses(discardedInput),
-    )
+    let drained: Buffer | string | null
+    while ((drained = this.stdin.read()) !== null) this.stdinListener(drained)
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
@@ -4096,12 +4091,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.suspendedNonAltSurfacePreserved &&
       this.renderOffset > 0
 
-    if (setupTerminalAfterResume) {
-      this.pendingInitialTerminalSetup = false
-      this.pendingSuspendedTerminalSetup = false
-      this._controlState = this._previousControlState
-      void this.setupTerminal()
-    } else if (this.pendingSuspendedTerminalSetup) {
+    if (this.pendingSuspendedTerminalSetup) {
       this.pendingSuspendedTerminalSetup = false
       if (resumePreservedNonAltSurface) {
         this.lib.resumeRenderer(this.rendererPtr)
@@ -4110,14 +4100,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     } else {
       this.lib.resumeRenderer(this.rendererPtr)
-    }
-
-    if (this.pendingPixelResolutionQueries > 0) {
-      this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
-    }
-    if (this.queryPixelResolutionOnResume) {
-      this.queryPixelResolutionOnResume = false
-      this.queryPixelResolution(true)
     }
 
     this.suspendedNonAltSurfacePreserved = false
@@ -4134,6 +4116,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.forceFullRepaintRequested = true
     this._controlState = this._previousControlState
+    if (this.pixelResolutionRequeryPending) this.queryPixelResolution()
+    this.stdinParser?.resumePendingTimeout()
 
     if (
       this._previousControlState === RendererControlState.AUTO_STARTED ||
@@ -4238,9 +4222,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.themeModeState.cancelRefresh()
 
     this._isRunning = false
-    this.pendingPixelResolutionQueries = 0
-    this.queryPixelResolutionOnResume = false
-    this.pendingInitialTerminalSetup = false
+    this.waitingForPixelResolution = false
+    this.pixelResolutionRequeryPending = false
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,

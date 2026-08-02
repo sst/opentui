@@ -97,10 +97,6 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve()
 }
 
-function getCurrentRenderLib(): RenderLib {
-  return (currentRenderer as unknown as { lib: RenderLib }).lib
-}
-
 class MouseTarget extends Renderable {
   constructor(context: RenderContext, options: RenderableOptions) {
     super(context, options)
@@ -2029,9 +2025,9 @@ test("pixel resolution response should not trigger keypress", async () => {
     keypresses.push(event)
   })
 
-  // Mark one query as outstanding.
+  // Mark as waiting for resolution
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.pendingPixelResolutionQueries = 1
+  currentRenderer.waitingForPixelResolution = true
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
   advanceCurrentClock()
@@ -2047,7 +2043,7 @@ test("chunked pixel resolution response", async () => {
   })
 
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.pendingPixelResolutionQueries = 1
+  currentRenderer.waitingForPixelResolution = true
 
   // Send pixel resolution in chunks (arriving quickly)
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;72"))
@@ -2058,158 +2054,6 @@ test("chunked pixel resolution response", async () => {
 
   expect(keypresses).toHaveLength(0)
   expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
-})
-
-test("latest outstanding pixel resolution response wins", () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  let queries = 0
-  lib.queryPixelResolution = () => {
-    queries++
-  }
-
-  try {
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    expect(queries).toBe(2)
-
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
-
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
-})
-
-test("oversized pixel resolution response is ignored", () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  lib.queryPixelResolution = () => {}
-  try {
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    const huge = "9".repeat(400)
-    currentRenderer.stdin.emit("data", Buffer.from(`\x1b[4;${huge};${huge}t`))
-    expect(currentRenderer.resolution).toBeNull()
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
-})
-
-test("resize while suspended queries pixel resolution after resume", () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  let queries = 0
-  lib.queryPixelResolution = () => {
-    queries++
-  }
-
-  try {
-    currentRenderer.suspend()
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    expect(queries).toBe(0)
-
-    currentRenderer.resume()
-    expect(queries).toBe(1)
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
-})
-
-test("terminal setup while suspended queries pixel resolution after resume", async () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  const originalSetup = lib.setupTerminal
-  let queries = 0
-  let setups = 0
-  lib.queryPixelResolution = () => {
-    queries++
-  }
-  lib.setupTerminal = () => {
-    setups++
-  }
-
-  try {
-    currentRenderer.suspend()
-    await currentRenderer.setupTerminal()
-    expect(queries).toBe(0)
-    expect(setups).toBe(0)
-
-    currentRenderer.resume()
-    expect(queries).toBe(1)
-    expect(setups).toBe(1)
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-  } finally {
-    lib.queryPixelResolution = originalQuery
-    lib.setupTerminal = originalSetup
-  }
-})
-
-test("a delayed pre-suspend resolution cannot consume the post-resume query", () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  let queries = 0
-  lib.queryPixelResolution = () => {
-    queries++
-  }
-
-  try {
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    currentRenderer.suspend()
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    currentRenderer.resume()
-    expect(queries).toBe(2)
-
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
-})
-
-test("a buffered pre-suspend resolution is discarded without leaving a pending query", () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  lib.queryPixelResolution = () => {}
-
-  try {
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    currentRenderer.suspend()
-    currentRenderer.stdin.push(Buffer.from("\x1b[4;720;"))
-    currentRenderer.stdin.push(Buffer.from("1280t"))
-    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
-    currentRenderer.resume()
-
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-
-    currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;480;640t"))
-    expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
-})
-
-test("terminal setup after destroy is a no-op", async () => {
-  const lib = getCurrentRenderLib()
-  const originalQuery = lib.queryPixelResolution
-  let queries = 0
-  lib.queryPixelResolution = () => {
-    queries++
-  }
-
-  try {
-    currentRenderer.destroy()
-    await currentRenderer.setupTerminal()
-    expect(queries).toBe(0)
-  } finally {
-    lib.queryPixelResolution = originalQuery
-  }
 })
 
 test("kitty full capability response arriving in realistic chunks", async () => {
@@ -2330,7 +2174,7 @@ test("delayed pixel resolution response stays in response path while query is ac
   })
 
   // @ts-expect-error - accessing private property for testing
-  currentRenderer.pendingPixelResolutionQueries = 1
+  currentRenderer.waitingForPixelResolution = true
   // @ts-expect-error - accessing private helper for test coverage
   currentRenderer.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
 

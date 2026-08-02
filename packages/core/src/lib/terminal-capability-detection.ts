@@ -82,50 +82,6 @@ export function isPixelResolutionResponse(sequence: string): boolean {
   return /\x1b\[4;\d+;\d+t/.test(sequence)
 }
 
-export function countPixelResolutionResponses(chunks: readonly Uint8Array[]): number {
-  let state = 0
-  let heightDigits = false
-  let widthDigits = false
-  let count = 0
-
-  const reset = (byte: number): void => {
-    state = byte === 0x1b ? 1 : 0
-    heightDigits = false
-    widthDigits = false
-  }
-
-  for (const chunk of chunks) {
-    for (const byte of chunk) {
-      const digit = byte >= 0x30 && byte <= 0x39
-      if (state === 0) {
-        if (byte === 0x1b) state = 1
-      } else if (state === 1) {
-        if (byte === 0x5b) state = 2
-        else reset(byte)
-      } else if (state === 2) {
-        if (byte === 0x34) state = 3
-        else reset(byte)
-      } else if (state === 3) {
-        if (byte === 0x3b) state = 4
-        else reset(byte)
-      } else if (state === 4) {
-        if (digit) heightDigits = true
-        else if (byte === 0x3b && heightDigits) state = 5
-        else reset(byte)
-      } else if (digit) {
-        widthDigits = true
-      } else if (byte === 0x74 && widthDigits) {
-        count++
-        reset(0)
-      } else {
-        reset(byte)
-      }
-    }
-  }
-
-  return count
-}
-
 /**
  * Parse pixel resolution from response sequence.
  * Returns { width, height } or null if not a valid resolution response.
@@ -135,13 +91,9 @@ export function parsePixelResolution(sequence: string): { width: number; height:
   if (match) {
     const width = Number(match[2])
     const height = Number(match[1])
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > 0xffffffff || height > 0xffffffff) {
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > 0x7fffffff || height > 0x7fffffff)
       return null
-    }
-    return {
-      width,
-      height,
-    }
+    return { width, height }
   }
   return null
 }
