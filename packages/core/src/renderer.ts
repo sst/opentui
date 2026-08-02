@@ -266,6 +266,11 @@ export interface CliRendererFrameEvent {
   frameId: number
 }
 
+export interface CliRendererErrorEvent {
+  error: Error
+  renderable: Renderable | undefined
+}
+
 export interface RendererSchedulerState {
   isRunning: boolean
   isRendering: boolean
@@ -707,6 +712,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
+  RENDER_ERROR = "render:error",
   HANDLER_ERROR = "handler:error",
   EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
@@ -4410,6 +4416,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     this.rendering = true
+    let renderFailed = false
     try {
       // Bump before any work so all callers this iteration see the new id.
       this._frameId++
@@ -4526,10 +4533,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderTimeout = null
         }
       }
+    } catch (error) {
+      renderFailed = true
+      const renderError = error instanceof Error ? error : new Error(String(error))
+      const event: CliRendererErrorEvent = { error: renderError, renderable: this.root.takeCurrentRenderable() }
+      const handled = this.emit(CliRenderEvents.RENDER_ERROR, event)
+      if (!handled) this.handleError(renderError)
     } finally {
       this.rendering = false
       if (this._destroyPending) {
         this.finalizeDestroy()
+      }
+      if (renderFailed && (this._isRunning || this.immediateRerenderRequested) && !this._isDestroyed) {
+        this.immediateRerenderRequested = false
+        this.scheduleRenderTimer()
       }
       this.resolveIdleIfNeeded()
     }
