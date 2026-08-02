@@ -1,7 +1,7 @@
 import { type LineInfo, type RenderContext } from "../types.js"
 import { StyledText } from "../lib/styled-text.js"
 import { SyntaxStyle } from "../syntax-style.js"
-import { getTreeSitterClient, TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { getTreeSitterClient, TreeSitterClient, TreeSitterClientDestroyedError } from "../lib/tree-sitter/index.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
@@ -405,6 +405,10 @@ export class CodeRenderable extends TextBufferRenderable {
     } catch (error) {
       if (snapshotId !== this._highlightSnapshotId) {
         this.requestRender()
+        return
+      }
+
+      if (this.isDestroyed || error instanceof TreeSitterClientDestroyedError) {
         return
       }
 

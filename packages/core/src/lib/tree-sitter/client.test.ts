@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:test"
-import { TreeSitterClient } from "./client.js"
+import { TreeSitterClient, TreeSitterClientDestroyedError } from "./client.js"
 import { tmpdir } from "os"
 import { join } from "path"
 import { existsSync } from "fs"
@@ -145,8 +145,7 @@ describe("TreeSitterClient", () => {
       const outcome = await initializeOutcome
       expect(outcome.status).toBe("rejected")
       if (outcome.status === "rejected") {
-        expect(outcome.error).toBeInstanceOf(Error)
-        expect((outcome.error as Error).message).toBe("Client destroyed during initialization")
+        expect(outcome.error).toBeInstanceOf(TreeSitterClientDestroyedError)
       }
       expect(client.isInitialized()).toBe(false)
     } finally {
@@ -1228,8 +1227,8 @@ describe("TreeSitterClient Edge Cases", () => {
     // Immediately destroy
     await client.destroy()
 
-    // Init promise should reject with specific error
-    await expect(initPromise).rejects.toThrow("Client destroyed during initialization")
+    // Init promise should reject with a destroy-specific error
+    await expect(initPromise).rejects.toBeInstanceOf(TreeSitterClientDestroyedError)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(client.isInitialized()).toBe(false)
@@ -1358,6 +1357,44 @@ describe("TreeSitterClient Edge Cases", () => {
     } finally {
       await client.destroy()
       await Promise.all(outcomes)
+    }
+  })
+
+  test("should reject pending requests with TreeSitterClientDestroyedError when destroyed", async () => {
+    const client = new TreeSitterClient({ dataPath })
+    await client.initialize()
+
+    const internals = client as unknown as {
+      worker?: {
+        postMessage: (message: { type?: string }) => void
+      }
+    }
+    const worker = internals.worker
+    expect(worker).toBeDefined()
+    if (!worker) {
+      throw new Error("Expected initialized client to have a worker")
+    }
+
+    const originalPostMessage = worker.postMessage.bind(worker)
+    worker.postMessage = (message) => {
+      if (message.type !== "ONESHOT_HIGHLIGHT") {
+        originalPostMessage(message)
+      }
+    }
+
+    const observe = <T>(promise: Promise<T>) =>
+      promise.then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      )
+
+    const outcome = observe(client.highlightOnce("const value = 1", "javascript"))
+    await client.destroy()
+
+    const settled = await outcome
+    expect(settled.status).toBe("rejected")
+    if (settled.status === "rejected") {
+      expect(settled.error).toBeInstanceOf(TreeSitterClientDestroyedError)
     }
   })
 

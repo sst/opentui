@@ -1,10 +1,10 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { CodeRenderable } from "./Code.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA } from "../lib/RGBA.js"
 import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing.js"
 import { ManualClock } from "../testing/manual-clock.js"
-import { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { TreeSitterClient, TreeSitterClientDestroyedError } from "../lib/tree-sitter/index.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { BoxRenderable } from "./Box.js"
 import { TextAttributes, type CapturedFrame } from "../types.js"
@@ -2385,4 +2385,70 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
   await renderOnce()
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
+})
+
+test("CodeRenderable - does not warn when highlighting fails because the client was destroyed", async () => {
+  const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    conceal: false,
+  })
+
+  try {
+    currentRenderer.root.add(codeRenderable)
+    await renderOnce()
+
+    expect(mockClient.isHighlighting()).toBe(true)
+
+    mockClient.rejectHighlightOnce(0, new TreeSitterClientDestroyedError())
+    await waitForHighlight(codeRenderable)
+
+    expect(warnSpy).not.toHaveBeenCalled()
+  } finally {
+    warnSpy.mockRestore()
+  }
+})
+
+test("CodeRenderable - still warns when highlighting fails with a real error", async () => {
+  const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    conceal: false,
+  })
+
+  try {
+    currentRenderer.root.add(codeRenderable)
+    await renderOnce()
+
+    expect(mockClient.isHighlighting()).toBe(true)
+
+    mockClient.rejectHighlightOnce(0, new Error("synthetic highlighting failure"))
+    await waitForHighlight(codeRenderable)
+
+    expect(warnSpy).toHaveBeenCalledWith("Code highlighting failed, falling back to plain text:", expect.any(Error))
+  } finally {
+    warnSpy.mockRestore()
+  }
 })

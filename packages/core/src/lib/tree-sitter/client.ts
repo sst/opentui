@@ -37,6 +37,13 @@ declare global {
   const OTUI_TREE_SITTER_WORKER_PATH: string
 }
 
+export class TreeSitterClientDestroyedError extends Error {
+  constructor() {
+    super("TreeSitter client destroyed")
+    this.name = "TreeSitterClientDestroyedError"
+  }
+}
+
 interface EditQueueItem {
   edits: Edit[]
   newContent: string
@@ -715,12 +722,12 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     })
     this.destroyPromise = destroyPromise
 
-    const destroyError = new Error("Client destroyed during initialization")
+    const destroyError = new TreeSitterClientDestroyedError()
     this.lifecycleGeneration++
     this.initialized = false
     this.initializePromise = undefined
     this.rejectActiveInitialization(destroyError)
-    this.rejectPendingRequests(new Error("TreeSitter client destroyed"))
+    this.rejectPendingRequests(destroyError)
 
     for (const callback of this.destroyCallbacks) {
       try {

@@ -6,6 +6,7 @@ export class MockTreeSitterClient extends TreeSitterClient {
   private _highlightPromises: Array<{
     promise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }>
     resolve: (result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void
+    reject: (error: Error) => void
     timeout?: TimerHandle
   }> = []
   private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
@@ -27,7 +28,7 @@ export class MockTreeSitterClient extends TreeSitterClient {
     content: string,
     filetype: string,
   ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
-    const { promise, resolve } = Promise.withResolvers<{
+    const { promise, resolve, reject } = Promise.withResolvers<{
       highlights?: SimpleHighlight[]
       warning?: string
       error?: string
@@ -45,7 +46,7 @@ export class MockTreeSitterClient extends TreeSitterClient {
       }, this._autoResolveTimeout)
     }
 
-    this._highlightPromises.push({ promise, resolve, timeout })
+    this._highlightPromises.push({ promise, resolve, reject, timeout })
 
     return promise
   }
@@ -61,6 +62,17 @@ export class MockTreeSitterClient extends TreeSitterClient {
         this._clock.clearTimeout(item.timeout)
       }
       item.resolve(this._mockResult)
+      this._highlightPromises.splice(index, 1)
+    }
+  }
+
+  rejectHighlightOnce(index: number = 0, error: Error = new Error("highlight failed")) {
+    if (index >= 0 && index < this._highlightPromises.length) {
+      const item = this._highlightPromises[index]
+      if (item.timeout) {
+        this._clock.clearTimeout(item.timeout)
+      }
+      item.reject(error)
       this._highlightPromises.splice(index, 1)
     }
   }
