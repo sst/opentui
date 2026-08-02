@@ -266,8 +266,8 @@ export interface CliRendererFrameEvent {
   frameId: number
 }
 
-export interface CliRendererRenderErrorEvent {
-  error: unknown
+export interface CliRendererErrorEvent {
+  error: Error
   renderable: Renderable | undefined
 }
 
@@ -625,6 +625,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
+  public readonly currentTarget: Renderable | null = null
   public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
@@ -656,6 +657,11 @@ export class MouseEvent {
   public preventDefault(): void {
     this._defaultPrevented = true
   }
+}
+
+export interface CliRendererHandlerErrorEvent {
+  error: unknown
+  event: MouseEvent
 }
 
 export enum MouseButton {
@@ -707,6 +713,7 @@ export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
   RENDER_ERROR = "render:error",
+  HANDLER_ERROR = "handler:error",
   EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
   BLUR = "blur",
@@ -904,7 +911,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
   private readonly stdinLogPath: string = env.OTUI_STDIN_LOG
 
-  private handleError: (error: unknown) => void = ((error: unknown) => {
+  private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
 
     if (this._openConsoleOnError) {
@@ -3410,7 +3417,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
   ): MouseEvent {
     const event = new MouseEvent(target, attributes)
-    target.processMouseEvent(event)
+    this.sendMouseEvent(target, event)
 
     if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
       let current: Renderable | null = target
@@ -3424,6 +3431,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return event
+  }
+
+  private sendMouseEvent(target: Renderable, event: MouseEvent): void {
+    try {
+      target.processMouseEvent(event)
+    } catch (error) {
+      const handled = this.emit(CliRenderEvents.HANDLER_ERROR, { error, event } satisfies CliRendererHandlerErrorEvent)
+      if (!handled) console.error("Error in mouse handler:", error)
+    }
   }
 
   private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
@@ -3466,7 +3482,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (scrollTarget) {
         const event = new MouseEvent(scrollTarget, mouseEvent)
-        scrollTarget.processMouseEvent(event)
+        this.sendMouseEvent(scrollTarget, event)
       }
       return true
     }
@@ -3504,7 +3520,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           isDragging: true,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
 
       return true
@@ -3516,7 +3532,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           isDragging: true,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
 
       this.finishSelection()
@@ -3541,7 +3557,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           type: "out",
         })
-        this.lastOverRenderable.processMouseEvent(event)
+        this.sendMouseEvent(this.lastOverRenderable, event)
       }
       this.lastOverRenderable = maybeRenderable
       if (maybeRenderable) {
@@ -3550,13 +3566,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           type: "over",
           source: this.capturedRenderable,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
     }
 
     if (this.capturedRenderable && mouseEvent.type !== "up") {
       const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-      this.capturedRenderable.processMouseEvent(event)
+      this.sendMouseEvent(this.capturedRenderable, event)
       return true
     }
 
@@ -3565,15 +3581,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         ...mouseEvent,
         type: "drag-end",
       })
-      this.capturedRenderable.processMouseEvent(event)
-      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      this.sendMouseEvent(this.capturedRenderable, event)
+      this.sendMouseEvent(this.capturedRenderable, new MouseEvent(this.capturedRenderable, mouseEvent))
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
           ...mouseEvent,
           type: "drop",
           source: this.capturedRenderable,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
       this.lastOverRenderable = this.capturedRenderable
       this.lastOverRenderableNum = this.capturedRenderable.num
@@ -3633,7 +3649,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Fire out on old element
     if (lastOver && !lastOver.isDestroyed) {
       const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
-      lastOver.processMouseEvent(event)
+      this.sendMouseEvent(lastOver, event)
     }
 
     this.lastOverRenderable = hitRenderable
@@ -3645,7 +3661,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         ...baseEvent,
         type: "over",
       })
-      hitRenderable.processMouseEvent(event)
+      this.sendMouseEvent(hitRenderable, event)
     }
   }
   public setMousePointer(style: MousePointerStyle): void {
@@ -4519,9 +4535,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     } catch (error) {
       renderFailed = true
-      const event: CliRendererRenderErrorEvent = { error, renderable: this.root.takeCurrentRenderable() }
+      const renderError = error instanceof Error ? error : new Error(String(error))
+      const event: CliRendererErrorEvent = { error: renderError, renderable: this.root.takeCurrentRenderable() }
       const handled = this.emit(CliRenderEvents.RENDER_ERROR, event)
-      if (!handled) this.handleError(error)
+      if (!handled) this.handleError(renderError)
     } finally {
       this.rendering = false
       if (this._destroyPending) {

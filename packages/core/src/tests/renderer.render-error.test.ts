@@ -1,21 +1,30 @@
 import { expect, spyOn, test } from "bun:test"
-import { Renderable } from "../Renderable.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { CliRenderEvents, type CliRendererRenderErrorEvent } from "../renderer.js"
+import { CliRenderEvents, type CliRendererErrorEvent } from "../renderer.js"
 import { createTestRenderer } from "../testing.js"
+import type { RenderContext } from "../types.js"
 
 class ThrowingRenderable extends Renderable {
   public shouldThrow = true
 
+  constructor(
+    ctx: RenderContext,
+    options: RenderableOptions,
+    private readonly error: unknown = new Error("render failed"),
+  ) {
+    super(ctx, options)
+  }
+
   protected renderSelf(_buffer: OptimizedBuffer, _deltaTime: number): void {
-    if (this.shouldThrow) throw new Error("render failed")
+    if (this.shouldThrow) throw this.error
   }
 }
 
 test("emits render errors and continues rendering", async () => {
   const { renderer, waitFor } = await createTestRenderer({})
   const target = new ThrowingRenderable(renderer, { width: 1, height: 1 })
-  const errors: CliRendererRenderErrorEvent[] = []
+  const errors: CliRendererErrorEvent[] = []
   const animationError = new Error("animation failed")
 
   try {
@@ -45,7 +54,7 @@ test("emits render errors and continues rendering", async () => {
 test("a one-shot render can request recovery from an error listener", async () => {
   const { renderer, waitFor } = await createTestRenderer({})
   const target = new ThrowingRenderable(renderer, { width: 1, height: 1 })
-  const errors: CliRendererRenderErrorEvent[] = []
+  const errors: CliRendererErrorEvent[] = []
 
   try {
     renderer.root.add(target)
@@ -66,7 +75,7 @@ test("a one-shot render can request recovery from an error listener", async () =
 
 test("reports an unobserved render error", async () => {
   const { renderer, waitFor } = await createTestRenderer({ openConsoleOnError: false })
-  const target = new ThrowingRenderable(renderer, { width: 1, height: 1 })
+  const target = new ThrowingRenderable(renderer, { width: 1, height: 1 }, "render failed")
   const consoleError = spyOn(console, "error").mockImplementation(() => {})
 
   try {

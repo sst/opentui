@@ -30,6 +30,7 @@
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
     "bench:render-traversal": "bun src/benchmark/render-traversal-benchmark.ts",
     "bench:render-runtimes": "bun src/benchmark/render-runtime-benchmark.ts",
+    "bench:mouse-events": "bun src/benchmark/mouse-event-benchmark.ts",
     "bench:render-compare": "bun src/benchmark/render-runtime-compare.ts",
     "bench:ffi-fast-path": "bun src/benchmark/ffi-fast-path-benchmark.ts",
     "bench:ffi-fast-path-paired": "bun src/benchmark/ffi-fast-path-paired-benchmark.ts",
