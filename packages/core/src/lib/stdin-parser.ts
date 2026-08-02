@@ -739,7 +739,7 @@ export class StdinParser {
         this.protocolContext.pixelResolutionQueryActive &&
         this.state.tag === "esc" &&
         this.cursor === this.unitStart + 1 &&
-        remainder[0] === ESC
+        remainder[0] !== 0x5b
       ) {
         this.state = { tag: "ground" }
         this.consumePrefix(this.cursor)
