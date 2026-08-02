@@ -348,6 +348,36 @@ test("resume preserves an incomplete pixel resolution response buffered while su
   expect(renderer.resolution).toEqual({ width: 160, height: 80 })
 })
 
+test("resume does not join a pre-suspend escape to post-resume input", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  const keypresses: Array<{ name: string; raw: string; meta: boolean }> = []
+  renderer.keyInput.on("keypress", (event) => {
+    keypresses.push({ name: event.name, raw: event.raw, meta: event.meta })
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b"))
+  renderer.suspend()
+  renderer.resume()
+  stdin.emit("data", Buffer.from("a"))
+
+  expect(keypresses).toEqual([{ name: "a", raw: "a", meta: false }])
+  expect(renderer.resolution).toBeNull()
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(0)
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  await renderer.idle()
+  expect(keypresses).toEqual([{ name: "a", raw: "a", meta: false }])
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+})
+
 test("resume separates suspended escape input from a pixel resolution response", async () => {
   for (const timing of ["before-resume", "after-resume", "after-suspended-escape"] as const) {
     const stdin = createTestStdin()
