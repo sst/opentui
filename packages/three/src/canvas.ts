@@ -1,7 +1,6 @@
 import { GPUCanvasContextMock } from "bun-webgpu"
 import { RGBA, type OptimizedBuffer } from "@opentui/core"
 import { SuperSampleType } from "./WGPURenderer.js"
-import { Jimp } from "jimp"
 
 // @ts-ignore
 import shaderTemplate from "./shaders/supersampling.wgsl" with { type: "text" }
@@ -98,6 +97,7 @@ export class CLICanvas {
   }
 
   public async saveToFile(filePath: string): Promise<void> {
+    const { Jimp } = await import("jimp")
     const bytesPerPixel = 4 // RGBA
     const unalignedBytesPerRow = this.width * bytesPerPixel
     const alignedBytesPerRow = Math.ceil(unalignedBytesPerRow / 256) * 256

@@ -1595,6 +1595,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public processMouseEvent(event: MouseEvent): void {
+    ;(event as { currentTarget: Renderable | null }).currentTarget = this
     this._mouseListener?.call(this, event)
     this._mouseListeners[event.type]?.call(this, event)
     this.onMouseEvent(event)
