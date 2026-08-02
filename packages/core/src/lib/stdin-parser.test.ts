@@ -1327,6 +1327,23 @@ describe("StdinParser", () => {
       }
     })
 
+    test("separates every suspended pixel response prefix from later input", () => {
+      const response = Buffer.from("\x1b[4;1080;1920t")
+
+      for (let split = 1; split < response.length; split++) {
+        const parser = createParser({ protocolContext: { pixelResolutionQueryActive: true } })
+        try {
+          parser.push(response.subarray(0, split))
+          parser.pausePendingTimeout()
+          parser.resumePendingTimeout()
+          parser.push(Buffer.from("a"))
+          expect(snap(parser)).toEqual([k("a", { raw: "a" })])
+        } finally {
+          parser.destroy()
+        }
+      }
+    })
+
     test("reset restores a paused pending timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
