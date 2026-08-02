@@ -5,6 +5,7 @@ const buffer = @import("../buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const image = @import("../image.zig");
 const link = @import("../link.zig");
 
 const OptimizedBuffer = buffer.OptimizedBuffer;
@@ -328,6 +329,46 @@ fn runTranslucentTextBuffers(
     return results.toOwnedSlice(allocator);
 }
 
+fn runTranslucentFillOverImageMarkers(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    const name = "translucent fillRect over image markers";
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return allocator.alloc(BenchResult, 0);
+
+    const source = try image.createFromRgba(allocator, &[_]u8{ 10, 20, 30, 255 }, 1, 1, 4);
+    defer source.deinit();
+    const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
+    defer buf.deinit();
+    const overlay = rgba(0.2, 0.3, 0.8, 0.5);
+
+    var stats: BenchStats = .{};
+    for (0..iterations) |_| {
+        buf.clear(CLEAR_BG, null);
+        _ = try buf.drawImage(source, 1, 0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, 0, 0, 0, 0, 1, 1, .auto);
+
+        var timer = try std.time.Timer.start();
+        buf.fillRect(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, overlay);
+        stats.record(timer.read());
+    }
+
+    const results = try allocator.alloc(BenchResult, 1);
+    results[0] = .{
+        .name = name,
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
+        .iterations = iterations,
+        .stddev_ns = stats.standardDeviation(),
+        .rme_95 = stats.relativeMarginOfError95(),
+        .mem_stats = null,
+    };
+    return results;
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -345,6 +386,9 @@ pub fn run(
 
     const text_buffers_results = try runTranslucentTextBuffers(allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, text_buffers_results);
+
+    const image_marker_results = try runTranslucentFillOverImageMarkers(allocator, pool, iterations, bench_filter);
+    try all_results.appendSlice(allocator, image_marker_results);
 
     return all_results.toOwnedSlice(allocator);
 }

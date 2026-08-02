@@ -1,6 +1,6 @@
 ---
 name: opentui
-description: Build terminal UIs with OpenTUI. Covers core, components, audio, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
+description: Build terminal UIs with OpenTUI. Covers core, components, native images, audio, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
 ---
 
 # OpenTUI Skill
@@ -23,12 +23,13 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 - Keymap: `/docs/keymap/overview`
 - React: `/docs/bindings/react`
 - Solid: `/docs/bindings/solid`
-- Components: `/docs/components/text`, `/docs/components/input`
+- Components: `/docs/components/text`, `/docs/components/input`, `/docs/components/image`
 - Layout: `/docs/core-concepts/layout`
 - Keyboard: `/docs/core-concepts/keyboard`
 - Plugins: `/docs/plugins/slots`
 - Runtime and packaging: `/docs/reference/env-vars`, `/docs/reference/standalone-executables`
 - Package entrypoints: `/docs/reference/package-entrypoints`
+- Native images: `/docs/reference/native-image`
 - QR encoding: `/docs/reference/qr-encoder`
 - SSH: `/docs/reference/ssh`
 - Three.js WebGPU: `/docs/reference/three`
@@ -49,9 +50,11 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | `plugins`, `plugin`, `slots`, `registry`, `extensions`                                             | `docs/plugins/slots.mdx`                    |
 | `text`, `styling`, `content`, `selection`                                                          | `docs/components/text.mdx`                  |
 | `input`, `form`, `editing`, `focus`                                                                | `docs/components/input.mdx`                 |
+| `image`, `image-renderable`, `image-display`, `kitty`, `sixel`                                     | `docs/components/image.mdx`                 |
 | `env`, `environment`, `configuration`, `flags`                                                     | `docs/reference/env-vars.mdx`               |
 | `standalone`, `executable`, `bun-compile`, `node-sea`, `node-assets`                               | `docs/reference/standalone-executables.mdx` |
 | `package-exports`, `entrypoints`, `subpath-exports`, `imports`                                     | `docs/reference/package-entrypoints.mdx`    |
+| `native-image`, `image-decode`, `png`, `jpeg`, `webp`, `gif`, `rgba`, `pixels`, `resize`           | `docs/reference/native-image.mdx`           |
 | `qr`, `qrcode`, `qr-encoder`, `svg-qr`, `gs1`, `eci`, `structured-append`                          | `docs/reference/qr-encoder.mdx`             |
 | `ssh`, `remote-tui`, `ssh-server`, `authentication`, `middleware`                                  | `docs/reference/ssh.mdx`                    |
 | `three`, `threejs`, `webgpu`, `3d`, `sprites`, `physics`                                           | `docs/reference/three.mdx`                  |
@@ -72,9 +75,11 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 - `docs/plugins/slots.mdx`
 - `docs/components/text.mdx`
 - `docs/components/input.mdx`
+- `docs/components/image.mdx`
 - `docs/reference/env-vars.mdx`
 - `docs/reference/standalone-executables.mdx`
 - `docs/reference/package-entrypoints.mdx`
+- `docs/reference/native-image.mdx`
 - `docs/reference/qr-encoder.mdx`
 - `docs/reference/ssh.mdx`
 - `docs/reference/three.mdx`

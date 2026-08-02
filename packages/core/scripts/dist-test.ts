@@ -205,6 +205,9 @@ function writeConsumerPackage(consumerDir: string, coreTarball: string, nativeTa
           [packageJson.name]: coreDependency,
           [nativePackageName]: nativeDependency,
         },
+        overrides: {
+          [nativePackageName]: nativeDependency,
+        },
       },
       null,
       2,
@@ -236,6 +239,8 @@ assert.equal(typeof core.AudioCaptureStreamError, "function")
 assert.equal(typeof core.AudioRecorder, "function")
 assert.equal(typeof core.AudioRecorderError, "function")
 assert.equal(typeof core.AudioStreamError, "function")
+assert.equal(typeof core.NativeImage, "function")
+assert.equal(typeof core.ImageRenderable, "function")
 assert.equal(typeof core.Audio.prototype.openCapture, "function")
 assert.equal(typeof core.Audio.prototype.recordToFile, "function")
 assert.equal(typeof core.createIcyStreamDemuxer, "function")
@@ -262,6 +267,15 @@ assert.deepEqual(
 const buffer = core.OptimizedBuffer.create(2, 1, "unicode")
 assert.equal(buffer.width, 2)
 buffer.destroy()
+
+const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+const raw = image.takeRaw()
+try {
+  assert.deepEqual([...raw.data], [1, 2, 3, 255])
+  assert.throws(() => image.info(), /disposed/)
+} finally {
+  raw.dispose()
+}
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
 const client = new core.TreeSitterClient({ dataPath })
@@ -341,6 +355,8 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof core.AudioRecorder).toBe("function")
     expect(typeof core.AudioRecorderError).toBe("function")
     expect(typeof core.AudioStreamError).toBe("function")
+    expect(typeof core.NativeImage).toBe("function")
+    expect(typeof core.ImageRenderable).toBe("function")
     expect(typeof core.Audio.prototype.openCapture).toBe("function")
     expect(typeof core.Audio.prototype.recordToFile).toBe("function")
     expect(core.NativeAudioStreamCloseReason.TransportError).toBe(1)
@@ -351,6 +367,15 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
+
+    const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const raw = image.takeRaw()
+    try {
+      expect([...raw.data]).toEqual([1, 2, 3, 255])
+      expect(() => image.info()).toThrow(/disposed/)
+    } finally {
+      raw.dispose()
+    }
   })
 })
 `,

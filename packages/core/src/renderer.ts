@@ -445,9 +445,12 @@ const CHAR_FLAG_MASK = 0xc0000000 >>> 0
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
   public width: number
   public height: number
+  public terminalWidth: number
+  public terminalHeight: number
+  public resolution: PixelResolution | null
   public frameId = 0
   public widthMethod: WidthMethod
-  public capabilities: TerminalCapabilities | null = null
+  public capabilities: TerminalCapabilities | null
   public hasSelection: boolean = false
   public currentFocusedRenderable: Renderable | null = null
   public keyInput: KeyHandler
@@ -455,10 +458,22 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 
   private lifecyclePasses: Set<Renderable> = new Set()
 
-  constructor(width: number, height: number, widthMethod: WidthMethod) {
+  constructor(
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    terminalWidth: number = width,
+    terminalHeight: number = height,
+    resolution: PixelResolution | null = null,
+    capabilities: TerminalCapabilities | null = null,
+  ) {
     super()
     this.width = width
     this.height = height
+    this.terminalWidth = terminalWidth
+    this.terminalHeight = terminalHeight
+    this.resolution = resolution
+    this.capabilities = capabilities
     this.widthMethod = widthMethod
     this.keyInput = new KeyHandler()
     this._internalKeyInput = new InternalKeyHandler()
@@ -518,6 +533,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "ZELLIJ_PANE_ID",
   "TERM",
   "OPENTUI_GRAPHICS",
+  "OPENTUI_IMAGE_PROTOCOL",
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_FEATURES",
@@ -1043,6 +1059,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let feed: NativeSpanFeed | null = null
     if (useFeedOutput) {
       try {
+        // Keep high-level feeds growable and uncapped so control/shutdown writes
+        // can publish while async Writable callbacks still pin earlier chunks.
         feed = NativeSpanFeed.create()
       } catch (error) {
         throw new Error(
@@ -1886,7 +1904,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const tailColumn = renderer.getPendingSplitTailColumn()
     const firstLineOffset = !startOnNewLine && tailColumn > 0 && tailColumn < renderer.width ? tailColumn : 0
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(renderer.width, 1, renderer.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      renderer.width,
+      1,
+      renderer.widthMethod,
+      renderer._terminalWidth,
+      renderer._terminalHeight,
+      renderer.resolution,
+      renderer.capabilities,
+    )
     let firstLineOffsetOwner: Renderable | null = null
     const renderContext = Object.create(snapshotContext) as RenderContext
     Object.defineProperty(renderContext, "claimFirstLineOffset", {
@@ -1924,6 +1950,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let surfaceWidth = renderer.width
     let surfaceHeight = 1
     let surfaceWidthMethod = renderer.widthMethod
+    let surfaceTerminalWidth = renderer._terminalWidth
+    let surfaceTerminalHeight = renderer._terminalHeight
+    let surfaceResolutionWidth = renderer.resolution?.width ?? null
+    let surfaceResolutionHeight = renderer.resolution?.height ?? null
     let surfaceDestroyed = false
     let hasRendered = false
     let nextCommitStartOnNewLine = startOnNewLine
@@ -1948,7 +1978,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     const assertGeometryStillCurrent = (): void => {
-      if (renderer.width !== surfaceWidth || renderer.widthMethod !== surfaceWidthMethod) {
+      if (
+        renderer.width !== surfaceWidth ||
+        renderer.widthMethod !== surfaceWidthMethod ||
+        renderer._terminalWidth !== surfaceTerminalWidth ||
+        renderer._terminalHeight !== surfaceTerminalHeight ||
+        (renderer.resolution?.width ?? null) !== surfaceResolutionWidth ||
+        (renderer.resolution?.height ?? null) !== surfaceResolutionHeight
+      ) {
         throw new Error("ScrollbackSurface.commitRows requires render() after renderer geometry changes")
       }
     }
@@ -2028,6 +2065,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       snapshotContext.width = width
       snapshotContext.widthMethod = widthMethod
+      snapshotContext.terminalWidth = renderer._terminalWidth
+      snapshotContext.terminalHeight = renderer._terminalHeight
+      snapshotContext.resolution = renderer.resolution
+      snapshotContext.capabilities = renderer.capabilities
       publicRoot.width = width
 
       const renderPass = (height: number): void => {
@@ -2058,6 +2099,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           surfaceWidth = width
           surfaceHeight = measuredHeight
           surfaceWidthMethod = widthMethod
+          surfaceTerminalWidth = renderer._terminalWidth
+          surfaceTerminalHeight = renderer._terminalHeight
+          surfaceResolutionWidth = renderer.resolution?.width ?? null
+          surfaceResolutionHeight = renderer.resolution?.height ?? null
           hasRendered = true
           return
         }
@@ -2070,6 +2115,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       surfaceWidth = width
       surfaceHeight = targetHeight
       surfaceWidthMethod = widthMethod
+      surfaceTerminalWidth = renderer._terminalWidth
+      surfaceTerminalHeight = renderer._terminalHeight
+      surfaceResolutionWidth = renderer.resolution?.width ?? null
+      surfaceResolutionHeight = renderer.resolution?.height ?? null
       hasRendered = true
     }
 
@@ -2220,7 +2269,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      this.height,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
@@ -2462,7 +2519,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private createStdoutSnapshotCommit(line: string, trailingNewline: boolean): ExternalOutputCommit {
     // Convert captured stdout into the same commit shape used by writeToScrollback.
     // One commit format keeps split append behavior consistent across both sources.
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, 1, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      1,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const maxWidth = Math.max(1, this.width)
     const lineCells = [...line]
     const rowColumns = Math.min(lineCells.length, maxWidth)
@@ -2579,6 +2644,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let acceptedCommits = 0
     let nativeBackpressured = false
     let nativeFailed = false
+    let nextRenderOffset = this.renderOffset
 
     for (const [index, commit] of commits.entries()) {
       // Force repaint only on the last commit in a frame. Repainting after every
@@ -2612,14 +2678,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         break
       }
 
-      this.renderOffset = nativeResult.renderOffset
-      this.recordSplitCommit(commit)
+      nextRenderOffset = nativeResult.renderOffset
       hasCommittedOutput = true
       acceptedCommits++
-    }
-
-    if (acceptedCommits > 0) {
-      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (nativeFailed) {
@@ -2629,6 +2690,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (nativeBackpressured) {
       this.scheduleRenderAfterFeedIdle()
       return "backpressured"
+    }
+
+    if (acceptedCommits > 0) {
+      this.renderOffset = nextRenderOffset
+      for (const commit of commits.slice(0, acceptedCommits)) this.recordSplitCommit(commit)
+      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (!hasCommittedOutput) {
@@ -4346,11 +4413,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     //   d) detach the handler now that no more data will flow
     //   e) close the feed (releases chunk memory once async handlers settle)
     //
-    // Memory-lifetime invariant: `lib.destroyRenderer` calls into Zig's
-    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP — feed memory is
-    // owned by the TS side and only released by `feed.close()` at step (e).
-    // Consequently, step (c)'s drain operates on still-valid chunk memory;
-    // there is no use-after-free window between (b) and (e).
+    // Memory-lifetime invariant: `FeedBackend.deinit` releases its staging
+    // buffer but does not own feed chunks. Those remain valid until the TS side
+    // calls `feed.close()` at step (e), so step (c) can safely drain them.
     //
     // Caller note: `feed.close()` is queued as a microtask when async handlers
     // from the final drain are still pending. If the caller tears down the

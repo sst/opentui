@@ -126,6 +126,29 @@ canvas.frameBuffer.drawFrameBuffer(
 )
 ```
 
+### drawImage
+
+Place a native image into destination cells:
+
+```typescript
+const placed = canvas.frameBuffer.drawImage(
+  image,
+  x,
+  y,
+  width,
+  height,
+  pixelWidth,
+  pixelHeight,
+  sourceX,
+  sourceY,
+  sourceWidth,
+  sourceHeight,
+  protocol,
+)
+```
+
+`x`, `y`, `width`, and `height` use terminal cells. `pixelWidth` and `pixelHeight` use terminal pixels and default to `0`; source coordinates default to the full image, and `protocol` defaults to `"auto"`. Sixel requires nonzero pixel dimensions or falls back to blocks. `false` means no visible valid placement was recorded. A successful placement retains the native image until the buffer is cleared, resized, or destroyed. Ownership is not transferred; the caller must still dispose its `NativeImage`.
+
 ### colorMatrix / colorMatrixUniform
 
 Apply native 4x4 RGBA matrix transforms for post-processing effects. Use `colorMatrixUniform` for full-buffer

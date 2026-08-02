@@ -1,8 +1,17 @@
 import { test, expect, afterEach } from "bun:test"
 import { Writable } from "stream"
 import { createCliRenderer, CliRenderer, CliRenderEvents } from "../renderer.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { ImageRenderable } from "../renderables/Image.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
+
+const PNG_1X1 = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+)
 
 // Collecting Writable used as a mock stdout. Because it is !== process.stdout,
 // createCliRenderer allocates a NativeSpanFeed and pipes bytes through it.
@@ -159,6 +168,492 @@ test("non-process stdout: rendered bytes flow to the custom Writable", async () 
   // ANSI escape sequences contain ESC (0x1b).
   expect(received.includes(0x1b)).toBe(true)
 })
+
+test("auto images use detected Kitty graphics and delete cleared placements", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b_Gi=31337;OK\x1b\\"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    width: 2,
+    height: 1,
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.capabilities?.kitty_graphics).toBe(true)
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1b_G")
+
+  stdout.clearWrites()
+  image.source = undefined
+  await renderer.idle()
+  await flushWritable(stdout)
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("a=d")
+})
+
+test("auto images use detected Sixel when pixel resolution is available", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;80;80t"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    width: 2,
+    height: 1,
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.capabilities?.sixel).toBe(true)
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1bP0;1;0q")
+})
+
+test("oversized pixel resolution replies leave images on block fallback", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "sixel",
+    position: "absolute",
+    width: 8,
+    height: 4,
+    fit: "fill",
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+
+  stdin.emit("data", Buffer.from("\x1b[4;4294967295;4294967295t"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.resolution).toBeNull()
+  expect(image.effectiveProtocol).toBe("blocks")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+})
+
+test("Sixel placements beyond native image limits use block fallback", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "sixel",
+    position: "absolute",
+    width: 8,
+    height: 4,
+    fit: "fill",
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+
+  stdin.emit("data", Buffer.from("\x1b[4;20000;20000t"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.resolution).toEqual({ width: 20000, height: 20000 })
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+})
+
+test("resized images wait for the new pixel resolution before using Sixel", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "sixel",
+    position: "absolute",
+    width: 2,
+    height: 1,
+    fit: "fill",
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
+  expect(image.effectiveProtocol).toBe("sixel")
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;20;20')
+
+  stdout.clearWrites()
+  renderer.resize(16, 4)
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  const pendingOutput = stdout.getWrittenBytes().toString("binary")
+  expect(pendingOutput).toContain("\x1b[14t")
+  expect(pendingOutput).not.toContain('0;1;0q"1;1;10;20')
+  expect(renderer.resolution).toBeNull()
+  expect(image.effectiveProtocol).toBe("blocks")
+  expect(pendingOutput).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;160t"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.resolution).toEqual({ width: 160, height: 80 })
+  expect(image.effectiveProtocol).toBe("sixel")
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;20;20')
+})
+
+test("split-footer Kitty scrollback does not rasterize images to terminal pixel dimensions", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 60)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 12,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[4;4320;7680t\x1b_Gi=31337;OK\x1b\\\x1b[48;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 80,
+    height: 48,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+
+  stdout.write("after-image\n")
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("\x1b_Ga=t")
+  expect(output).toContain("a=t,f=100")
+  expect(output).toContain("c=80,r=48")
+  expect(output).toContain("after-image")
+})
+
+test("split-footer queues native image scrollback until the footer is pinned", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "kitty",
+    width: 1,
+    height: 1,
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes()).toHaveLength(0)
+
+  stdin.emit("data", Buffer.from("\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1b_Ga=t")
+  expect(stdout.getWrittenBytes().toString("utf8")).not.toContain("█")
+})
+
+test("split-footer scrollback uses blocks for mixed protocols and overlapping images", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;6;8t\x1b_Gi=31337;OK\x1b\\\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const commitImages = async (images: Array<{ protocol: "kitty" | "sixel"; left?: number }>) => {
+    const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+    const renderables = images.map(
+      ({ protocol, left }) =>
+        new ImageRenderable(surface.renderContext, {
+          source: PNG_1X1,
+          protocol,
+          position: "absolute",
+          left,
+          width: 1,
+          height: 1,
+        }),
+    )
+    for (const image of renderables) surface.root.add(image)
+    await Promise.all(renderables.map((image) => image.loadPromise))
+    surface.render()
+    surface.commitRows(0, surface.height)
+    surface.destroy()
+    await renderer.idle()
+    await flushWritable(stdout)
+  }
+
+  await commitImages([
+    { protocol: "kitty", left: 0 },
+    { protocol: "sixel", left: 1 },
+  ])
+
+  let output = stdout.getWrittenBytes().toString("binary")
+  expect(output).not.toContain("\x1b_G")
+  expect(output).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+
+  stdout.clearWrites()
+  await commitImages([{ protocol: "kitty" }, { protocol: "kitty" }])
+
+  output = stdout.getWrittenBytes().toString("binary")
+  expect(output).not.toContain("\x1b_G")
+  expect(output).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+})
+
+test("ScrollbackSurface rejects stale image geometry after a height-only resize", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 12)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;80;80t\x1b[9;1R"))
+  await renderer.idle()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 1,
+    height: 1,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+
+  renderer.resize(8, 6)
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(() => surface.commitRows(0, surface.height)).toThrow(
+    "ScrollbackSurface.commitRows requires render() after renderer geometry changes",
+  )
+
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;10;13')
+})
+
+test("ScrollbackSurface rejects stale image geometry after pixel resolution arrives", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[3;1R"))
+  await renderer.idle()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    width: 1,
+    height: 1,
+    fit: "fill",
+  })
+  surface.root.add(image)
+  await image.loadPromise
+  surface.render()
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(() => surface.commitRows(0, surface.height)).toThrow(
+    "ScrollbackSurface.commitRows requires render() after renderer geometry changes",
+  )
+
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;10;13')
+})
+
+test("tall scrollback surfaces composite translucent Sixel images over snapshot backgrounds", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 6)
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;6;8t\x1b[3;1R"))
+  await renderer.idle()
+  await flushWritable(stdout)
+  stdout.clearWrites()
+
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const background = new BoxRenderable(surface.renderContext, {
+    width: 1,
+    height: 5,
+    backgroundColor: "#0000ff",
+  })
+  const image = new ImageRenderable(surface.renderContext, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    left: 0,
+    top: 4,
+    width: 1,
+    height: 1,
+    fit: "fill",
+    opacity: 0.5,
+  })
+  background.add(image)
+  surface.root.add(background)
+  await image.loadPromise
+  surface.render()
+  surface.commitRows(0, surface.height)
+  surface.destroy()
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("#0;2;50;0;50")
+})
+
+for (const testCase of [
+  {
+    name: "Kitty",
+    capabilities: "\x1b[4;6;8t\x1b_Gi=31337;OK\x1b\\\x1b[3;1R",
+    placement: "\x1b_Ga=p",
+  },
+  {
+    name: "Sixel",
+    capabilities: "\x1b[?1;4c\x1b[4;6;8t\x1b[3;1R",
+    placement: "\x1bP0;1;0q",
+  },
+]) {
+  test(`pinned split-footer appends repaint unchanged live ${testCase.name} images`, async () => {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 6)
+    const renderer = await createCliRenderer({
+      stdin,
+      stdout,
+      screenMode: "split-footer",
+      footerHeight: 3,
+      externalOutputMode: "capture-stdout",
+      consoleMode: "disabled",
+    })
+    destroyFns.push(() => renderer.destroy())
+
+    stdin.emit("data", Buffer.from(testCase.capabilities))
+    const image = new ImageRenderable(renderer, {
+      source: PNG_1X1,
+      protocol: "auto",
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 1,
+      height: 1,
+      fit: "fill",
+    })
+    renderer.root.add(image)
+    await image.loadPromise
+    renderer.requestRender()
+    await renderer.idle()
+    await (renderer as any)._feed.idle()
+    stdout.clearWrites()
+
+    const appended = `pin${testCase.name[0]}`
+    stdout.write(`${appended}\n`)
+    renderer.requestRender()
+    await renderer.idle()
+    await (renderer as any)._feed.idle()
+
+    const output = stdout.getWrittenBytes().toString("binary")
+    const appendIndex = output.indexOf(appended)
+    const placementIndex = output.indexOf(testCase.placement)
+    expect(output).toContain(appended)
+    expect(placementIndex).toBeGreaterThan(appendIndex)
+  })
+}
 
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
   const stdin = createTestStdin()
@@ -871,6 +1366,32 @@ test("destroy emits shutdown ANSI sequence through the custom Writable", async (
   expect(shutdownBytes).toContain("\x1b[?25h") // showCursor
 })
 
+test("destroy preserves shutdown output while slow writes pin initial feed chunks", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+
+  const feed = (renderer as any)._feed
+  expect(feed).not.toBeNull()
+  await feed.idle()
+  stdout.clearWrites()
+
+  stdout.delayMs = 100
+  // Two delayed writes pin the default feed's initial chunks during shutdown.
+  renderer.setTerminalTitle("pin-feed-1")
+  renderer.setTerminalTitle("pin-feed-2")
+  renderer.destroy()
+
+  await new Promise<void>((resolve, reject) => {
+    stdout.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve()))
+  })
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("\x1b]0;pin-feed-1\x07")
+  expect(output).toContain("\x1b]0;pin-feed-2\x07")
+  expect(output).toContain("\x1b[?25h")
+})
+
 // ---- Backpressure ----
 
 test("slow Writable marks feed as backpressured until write callback settles", async () => {
@@ -1036,6 +1557,45 @@ test("split-footer custom stdout retains captured commits when native fails and 
 
   expect(rendererAny.externalOutputQueue.size).toBe(0)
   expect(stdout.getWrittenBytes().toString("binary")).toContain("captured-while-native-failed")
+})
+
+test("split-footer retains the whole batch when final native publication fails", async () => {
+  const clock = new ManualClock()
+  const stdout = createCollectingStdout(80, 24)
+  const renderer = new CliRenderer(createTestStdin(), stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+    clock,
+  })
+  ;(renderer as any).updateScheduled = false
+  clock.runAll()
+  destroyFns.push(() => renderer.destroy())
+
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
+  let calls = 0
+  rendererAny.lib.commitSplitFooterSnapshot = (...args: any[]) => {
+    calls++
+    const finalizeFrame = args[8]
+    return { renderOffset: rendererAny.renderOffset, status: finalizeFrame ? 2 : 0 }
+  }
+
+  stdout.write("first\nsecond\n")
+  expect(rendererAny.externalOutputQueue.size).toBe(2)
+
+  try {
+    await rendererAny.loop()
+    expect(calls).toBe(2)
+    expect(rendererAny.externalOutputQueue.size).toBe(2)
+  } finally {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+  }
+
+  await rendererAny.loop()
+  await (rendererAny._feed?.idle() ?? Promise.resolve())
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("first")
+  expect(output).toContain("second")
 })
 
 test("split-footer native failure without a feed does not schedule automatic retries", async () => {
