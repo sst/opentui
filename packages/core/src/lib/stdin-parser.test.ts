@@ -1344,6 +1344,20 @@ describe("StdinParser", () => {
       }
     })
 
+    test("query cancellation separates a suspended pixel prefix from later input", () => {
+      const parser = createParser({ protocolContext: { pixelResolutionQueryActive: true } })
+      try {
+        parser.push(Buffer.from("\x1b[4;1080"))
+        parser.pausePendingTimeout()
+        parser.resumePendingTimeout()
+        parser.updateProtocolContext({ pixelResolutionQueryActive: false })
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a", { raw: "a" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("reset restores a paused pending timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
