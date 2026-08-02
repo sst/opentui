@@ -14,8 +14,7 @@
   "type": "module",
   "scripts": {
     "build": "bun scripts/build.ts",
-    "publish": "bun scripts/publish.ts",
-    "test": "bun test"
+    "publish": "bun scripts/publish.ts"
   },
   "exports": {
     ".": {
