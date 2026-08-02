@@ -410,8 +410,10 @@ function canStillBePixelResolutionPrefix(bytes: Uint8Array): boolean {
   if (index === heightStart || bytes[index] !== 0x3b) return false
 
   index += 1
+  const widthStart = index
   while (index < bytes.length && isAsciiDigit(bytes[index]!)) index += 1
-  return index === bytes.length
+  if (index === bytes.length) return true
+  return index > widthStart && bytes[index] === 0x74
 }
 
 function canDeferParametricCsi(state: ParametricCsiLike, context: StdinParserProtocolContext): boolean {
@@ -598,7 +600,7 @@ export class StdinParser {
   // When the current incomplete unit first appeared. Null when nothing is pending.
   private pendingSinceMs: number | null = null
   private pendingTimeoutPaused = false
-  private discardSuspendedLoneEscape = false
+  private suspendedPixelResolutionPrefixLength = 0
   // When true, the state machine treats the current incomplete prefix as
   // final and emits it as one atomic event (e.g. a lone ESC becomes an
   // Escape key). Set by the timeout, consumed by the next read() or drain().
@@ -734,19 +736,6 @@ export class StdinParser {
 
     let remainder = data
     while (remainder.length > 0) {
-      if (
-        this.discardSuspendedLoneEscape &&
-        this.protocolContext.pixelResolutionQueryActive &&
-        this.state.tag === "esc" &&
-        this.cursor === this.unitStart + 1 &&
-        remainder[0] !== 0x5b
-      ) {
-        this.state = { tag: "ground" }
-        this.consumePrefix(this.cursor)
-        this.pendingTimeoutPaused = true
-        this.discardSuspendedLoneEscape = true
-      }
-
       if (this.paste) {
         remainder = this.consumePasteBytes(remainder)
         continue
@@ -762,6 +751,19 @@ export class StdinParser {
 
       this.pending.append(remainder.subarray(0, appendEnd))
       remainder = remainder.subarray(appendEnd)
+      if (
+        this.suspendedPixelResolutionPrefixLength > 0 &&
+        this.protocolContext.pixelResolutionQueryActive &&
+        !canStillBePixelResolutionPrefix(this.pending.view())
+      ) {
+        const prefixLength = this.suspendedPixelResolutionPrefixLength
+        this.state = { tag: "ground" }
+        this.consumePrefix(prefixLength)
+        if (canStillBePixelResolutionPrefix(this.pending.view())) {
+          this.pendingTimeoutPaused = true
+          this.suspendedPixelResolutionPrefixLength = this.pending.length
+        }
+      }
       this.scanPending()
 
       if (this.paste && this.pending.length > 0) {
@@ -862,7 +864,7 @@ export class StdinParser {
   public pausePendingTimeout(): void {
     this.ensureAlive()
     this.pendingTimeoutPaused = true
-    this.discardSuspendedLoneEscape = this.state.tag === "esc" && this.cursor === this.unitStart + 1
+    this.suspendedPixelResolutionPrefixLength = this.pending.length
     this.clearTimeout()
   }
 
@@ -1894,7 +1896,7 @@ export class StdinParser {
   private consumePrefix(endExclusive: number): void {
     this.pending.consume(endExclusive)
     this.pendingTimeoutPaused = false
-    this.discardSuspendedLoneEscape = false
+    this.suspendedPixelResolutionPrefixLength = 0
     this.cursor = 0
     this.unitStart = 0
     this.pendingSinceMs = null
@@ -1927,7 +1929,7 @@ export class StdinParser {
     this.unitStart = 0
     this.pendingSinceMs = null
     this.pendingTimeoutPaused = false
-    this.discardSuspendedLoneEscape = false
+    this.suspendedPixelResolutionPrefixLength = 0
     this.forceFlush = false
     this.state = { tag: "ground" }
   }
@@ -2058,7 +2060,7 @@ export class StdinParser {
     this.events.length = 0
     this.pendingSinceMs = null
     this.pendingTimeoutPaused = false
-    this.discardSuspendedLoneEscape = false
+    this.suspendedPixelResolutionPrefixLength = 0
     this.forceFlush = false
     this.justFlushedEsc = false
     this.state = { tag: "ground" }
