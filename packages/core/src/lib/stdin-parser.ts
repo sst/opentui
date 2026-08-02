@@ -642,6 +642,12 @@ export class StdinParser {
   public updateProtocolContext(patch: Partial<StdinParserProtocolContext>): void {
     this.ensureAlive()
     this.protocolContext = { ...this.protocolContext, ...patch }
+    if (!this.protocolContext.pixelResolutionQueryActive && this.suspendedPixelResolutionPrefixLength > 0) {
+      const prefixLength = this.suspendedPixelResolutionPrefixLength
+      this.state = { tag: "ground" }
+      this.consumePrefix(prefixLength)
+      this.scanPending()
+    }
     this.reconcileDeferredStateWithProtocolContext()
     this.reconcileTimeoutState()
   }
