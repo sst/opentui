@@ -1661,6 +1661,76 @@ describe("StdinParser", () => {
       }
     })
 
+    test("paste at exactly maxPasteBytes is emitted unchanged", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~abcd\x1b[201~"))
+        expect(snap(p)).toEqual([paste("abcd")])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("paste exceeding maxPasteBytes is dropped entirely", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~abcde\x1b[201~"))
+        expect(snap(p)).toEqual([])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("oversized paste body does not leak key/mouse/response events", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~"))
+        p.push(Buffer.from("x".repeat(64 * 1024)))
+        p.push(Buffer.from("\x1b[201~"))
+        expect(snap(p)).toEqual([])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("oversized paste recovers normal input after the end marker", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~"))
+        p.push(Buffer.from("x".repeat(1000)))
+        p.push(Buffer.from("\x1b[201~"))
+        expect(snap(p)).toEqual([])
+        p.push(Buffer.from("z"))
+        expect(snap(p)).toEqual([k("z")])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("oversized paste recognizes an end marker split across the size boundary", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~abcdef"))
+        p.push(Buffer.from("g\x1b[20"))
+        p.push(Buffer.from("1~z"))
+        expect(snap(p)).toEqual([k("z")])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("oversized paste split across many small chunks is still dropped", () => {
+      const p = createParser({ maxPasteBytes: 4 })
+      try {
+        p.push(Buffer.from("\x1b[200~"))
+        for (let i = 0; i < 1000; i++) p.push(Buffer.from("x"))
+        p.push(Buffer.from("\x1b[201~"))
+        expect(snap(p)).toEqual([])
+      } finally {
+        p.destroy()
+      }
+    })
+
     test("trailing bytes after paste end are parsed normally", () => {
       const p = createParser()
       try {

@@ -51,6 +51,12 @@ export interface StdinParserProtocolContext {
 export interface StdinParserOptions {
   timeoutMs?: number
   maxPendingBytes?: number
+  // Maximum bytes retained for one bracketed paste. A paste whose body would
+  // exceed this is dropped in full when its end marker arrives (no truncated
+  // event, no leak of body bytes into key/mouse/response events), while the
+  // parser keeps scanning for the end marker to recover normal input. This is
+  // a memory bound only; a missing end marker has no automatic recovery.
+  maxPasteBytes?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
@@ -101,10 +107,17 @@ type ParserState =
 // Collects paste body incrementally, bypassing the main ByteQueue so large
 // pastes don't grow the parser buffer. Keeps only a small tail for end-marker
 // detection across chunk boundaries.
+//
+// Retention is bounded by maxPasteBytes. Once the accumulated body would
+// exceed the limit, overLimit is set and the body stops being retained: the
+// parser keeps scanning for the end marker (using only the small tail) but
+// drops the whole paste when it completes, so oversized bytes never become
+// key/mouse/response events and retained memory stays bounded.
 interface PasteCollector {
   tail: Uint8Array
   parts: Uint8Array[]
   totalLength: number
+  overLimit: boolean
 }
 
 // 20ms is to distinguish a lone ESC keypress from the start of an
@@ -112,6 +125,13 @@ interface PasteCollector {
 // this as a balanced default for now.
 const DEFAULT_TIMEOUT_MS = 20
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
+// Upper bound on bytes retained for a single bracketed paste. A paste whose
+// body would exceed this is dropped entirely when its end marker arrives; it
+// never emits a truncated event or leaks body bytes as key/mouse/response
+// events. There is no automatic recovery from a missing end marker (bytes are
+// indistinguishable from delayed paste content), so an unterminated paste is
+// bounded here and recovered via reset()/destroy().
+const DEFAULT_MAX_PASTE_BYTES = 16 * 1024 * 1024
 const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b
 const BEL = 0x07
@@ -533,6 +553,7 @@ function createPasteCollector(): PasteCollector {
     tail: EMPTY_BYTES,
     parts: [],
     totalLength: 0,
+    overLimit: false,
   }
 }
 
@@ -568,6 +589,7 @@ export class StdinParser {
   private readonly events: StdinEvent[] = []
   private readonly timeoutMs: number
   private readonly maxPendingBytes: number
+  private readonly maxPasteBytes: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private readonly useKittyKeyboard: boolean
@@ -598,6 +620,7 @@ export class StdinParser {
   constructor(options: StdinParserOptions = {}) {
     this.timeoutMs = normalizePositiveOption(options.timeoutMs, DEFAULT_TIMEOUT_MS)
     this.maxPendingBytes = normalizePositiveOption(options.maxPendingBytes, DEFAULT_MAX_PENDING_BYTES)
+    this.maxPasteBytes = normalizePositiveOption(options.maxPasteBytes, DEFAULT_MAX_PASTE_BYTES)
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
@@ -1887,6 +1910,10 @@ export class StdinParser {
   // across chunk boundaries. Bytes that can't be part of the end marker are
   // appended to the paste collector without decoding.
   //
+  // A paste whose retained body exceeds maxPasteBytes stops being collected
+  // (see pushPasteBytes): the end marker is still scanned for, but the whole
+  // paste is dropped instead of emitting a truncated event.
+  //
   // Returns any bytes that follow the end marker — those go back through
   // normal parsing in the push() loop.
   private consumePasteBytes(chunk: Uint8Array): Uint8Array {
@@ -1897,10 +1924,12 @@ export class StdinParser {
     if (endIndex !== -1) {
       this.pushPasteBytes(combined.subarray(0, endIndex))
 
-      this.events.push({
-        type: "paste",
-        bytes: joinPasteBytes(paste.parts, paste.totalLength),
-      })
+      if (!paste.overLimit) {
+        this.events.push({
+          type: "paste",
+          bytes: joinPasteBytes(paste.parts, paste.totalLength),
+        })
+      }
 
       this.paste = null
       return combined.subarray(endIndex + BRACKETED_PASTE_END.length)
@@ -1918,16 +1947,35 @@ export class StdinParser {
     return EMPTY_BYTES
   }
 
+  // Appends paste body bytes to the collector until maxPasteBytes is reached.
+  // Beyond that point the body is discarded: overLimit is set, retained parts
+  // are freed, and consumePasteBytes() drops the paste entirely when its end
+  // marker arrives. The sliding tail (which lives on the collector, not in
+  // parts) is untouched so end-marker detection stays chunk-boundary
+  // invariant even while the body is being discarded.
   private pushPasteBytes(bytes: Uint8Array): void {
     if (bytes.length === 0) {
+      return
+    }
+
+    const paste = this.paste!
+    if (paste.overLimit) {
+      return
+    }
+
+    const nextLength = paste.totalLength + bytes.length
+    if (nextLength > this.maxPasteBytes) {
+      paste.overLimit = true
+      paste.parts = []
+      paste.totalLength = 0
       return
     }
 
     // Copy here because subarray() inputs may alias the caller's chunk or the
     // parser's pending buffer across pushes. The emitted paste event must keep
     // the original bytes even if those backing buffers are later reused.
-    this.paste!.parts.push(Uint8Array.from(bytes))
-    this.paste!.totalLength += bytes.length
+    paste.parts.push(Uint8Array.from(bytes))
+    paste.totalLength = nextLength
   }
 
   private reconcileDeferredStateWithProtocolContext(): void {
