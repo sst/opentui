@@ -129,6 +129,8 @@ describe("parsePixelResolution", () => {
     expect(parsePixelResolution("a")).toBeNull()
     expect(parsePixelResolution("\x1b[A")).toBeNull()
     expect(parsePixelResolution("\x1b[?1016;2$y")).toBeNull()
+    expect(parsePixelResolution("\x1b[4;4294967295;4294967295t")).toBeNull()
+    expect(parsePixelResolution(`\x1b[4;${"9".repeat(400)};80t`)).toBeNull()
   })
 })
 

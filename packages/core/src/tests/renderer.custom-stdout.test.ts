@@ -40,6 +40,21 @@ function createCollectingStdout(columns = 80, rows = 24): CollectingStdout {
   return new CollectingWriteStream(columns, rows) as CollectingStdout
 }
 
+function flushWritable(stdout: NodeJS.WritableStream): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    stdout.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve()))
+  })
+}
+
+function countPixelResolutionQueries(stdout: CollectingStdout): number {
+  return (
+    stdout
+      .getWrittenBytes()
+      .toString("binary")
+      .match(/\x1b\[14t/g)?.length ?? 0
+  )
+}
+
 function createPlainStdout(): NodeJS.WriteStream {
   return new Writable({
     write(_c, _e, cb) {
@@ -197,6 +212,324 @@ test("process.stdout: no feed is allocated (stdout-direct path)", async () => {
   // goes straight to process.stdout.
   expect((renderer as any)._feed).toBeNull()
   expect(() => renderer.destroy()).not.toThrow()
+})
+
+test("resize ignores an outstanding pixel resolution reply", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  renderer.resize(16, 4)
+  renderer.resize(24, 4)
+  await flushWritable(stdout)
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(renderer.resolution).toBeNull()
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;240t"))
+  await renderer.idle()
+
+  expect(renderer.resolution).toEqual({ width: 240, height: 80 })
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+})
+
+test("resize while suspended refreshes pixel resolution after resume", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  await renderer.idle()
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+
+  renderer.suspend()
+  stdout.clearWrites()
+  renderer.resize(16, 4)
+  renderer.resize(24, 4)
+  await flushWritable(stdout)
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+  stdout.clearWrites()
+
+  renderer.resume()
+  await flushWritable(stdout)
+  expect(renderer.resolution).toBeNull()
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;240t"))
+  await renderer.idle()
+  expect(renderer.resolution).toEqual({ width: 240, height: 80 })
+})
+
+test("resume rejects a delayed pre-suspend pixel resolution reply", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  renderer.suspend()
+  renderer.resize(16, 4)
+  renderer.resume()
+  await flushWritable(stdout)
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  expect(renderer.resolution).toBeNull()
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;160t"))
+  await renderer.idle()
+
+  expect(renderer.resolution).toEqual({ width: 160, height: 80 })
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+})
+
+test("resume preserves an outstanding pixel resolution query without requerying", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  renderer.suspend()
+  renderer.resume()
+  await flushWritable(stdout)
+  expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  await renderer.idle()
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+})
+
+test("resume preserves an incomplete pixel resolution response buffered while suspended", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  const keypresses: string[] = []
+  renderer.keyInput.on("keypress", (event) => keypresses.push(event.raw))
+  destroyFns.push(() => renderer.destroy())
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  renderer.suspend()
+  renderer.resize(16, 4)
+  stdin.push(Buffer.from("\x1b[4;80"))
+  renderer.resume()
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(0)
+
+  stdin.emit("data", Buffer.from(";80t"))
+  expect(renderer.resolution).toBeNull()
+  await flushWritable(stdout)
+  expect(keypresses).toEqual([])
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;160t"))
+  await renderer.idle()
+  expect(renderer.resolution).toEqual({ width: 160, height: 80 })
+})
+
+test("resume does not join a pre-suspend escape to post-resume input", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  const keypresses: Array<{ name: string; raw: string; meta: boolean }> = []
+  renderer.keyInput.on("keypress", (event) => {
+    keypresses.push({ name: event.name, raw: event.raw, meta: event.meta })
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(1)
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b"))
+  renderer.suspend()
+  renderer.resume()
+  stdin.emit("data", Buffer.from("a"))
+
+  expect(keypresses).toEqual([{ name: "a", raw: "a", meta: false }])
+  expect(renderer.resolution).toBeNull()
+  await flushWritable(stdout)
+  expect(countPixelResolutionQueries(stdout)).toBe(0)
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  await renderer.idle()
+  expect(keypresses).toEqual([{ name: "a", raw: "a", meta: false }])
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+})
+
+test("resume does not join a partial pixel response to post-resume input", async () => {
+  const response = Buffer.from("\x1b[4;80;80t")
+
+  for (let split = 2; split < response.length; split++) {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 4)
+    const renderer = await createCliRenderer({ stdin, stdout })
+    const keypresses: Array<{ name: string; raw: string; meta: boolean }> = []
+    renderer.keyInput.on("keypress", (event) => {
+      keypresses.push({ name: event.name, raw: event.raw, meta: event.meta })
+    })
+
+    try {
+      await flushWritable(stdout)
+      expect(countPixelResolutionQueries(stdout)).toBe(1)
+      stdout.clearWrites()
+
+      stdin.emit("data", response.subarray(0, split))
+      renderer.suspend()
+      renderer.resume()
+      stdin.emit("data", Buffer.from("a"))
+
+      expect({ split, keypresses }).toEqual({
+        split,
+        keypresses: [{ name: "a", raw: "a", meta: false }],
+      })
+      expect(renderer.resolution).toBeNull()
+      await flushWritable(stdout)
+      expect(countPixelResolutionQueries(stdout)).toBe(0)
+
+      stdin.emit("data", response)
+      await renderer.idle()
+      expect(keypresses).toEqual([{ name: "a", raw: "a", meta: false }])
+      expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+    } finally {
+      renderer.destroy()
+    }
+  }
+})
+
+test("resume preserves chunked escape input after a suspended pixel prefix", async () => {
+  for (const chunks of [["\x1b[A"], ["\x1b[", "A"]]) {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 4)
+    const renderer = await createCliRenderer({ stdin, stdout })
+    const keypresses: Array<{ name: string; raw: string }> = []
+    renderer.keyInput.on("keypress", (event) => {
+      keypresses.push({ name: event.name, raw: event.raw })
+    })
+
+    try {
+      await flushWritable(stdout)
+      stdin.emit("data", Buffer.from("\x1b"))
+      renderer.suspend()
+      renderer.resume()
+      for (const chunk of chunks) stdin.emit("data", Buffer.from(chunk))
+
+      expect({ chunks, keypresses }).toEqual({
+        chunks,
+        keypresses: [{ name: "up", raw: "\x1b[A" }],
+      })
+
+      stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+      await renderer.idle()
+      expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+    } finally {
+      renderer.destroy()
+    }
+  }
+})
+
+test("resume separates suspended escape input from a pixel resolution response", async () => {
+  for (const timing of ["before-resume", "after-resume", "after-suspended-escape"] as const) {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 4)
+    const renderer = await createCliRenderer({ stdin, stdout })
+    const keypresses: string[] = []
+    renderer.keyInput.on("keypress", (event) => keypresses.push(event.raw))
+
+    try {
+      await flushWritable(stdout)
+      expect(countPixelResolutionQueries(stdout)).toBe(1)
+      stdout.clearWrites()
+
+      stdin.emit("data", Buffer.from("\x1b"))
+      renderer.suspend()
+      if (timing === "before-resume") stdin.push(Buffer.from("\x1b[4;80;80t"))
+      if (timing === "after-suspended-escape") stdin.push(Buffer.from("\x1b"))
+      renderer.resume()
+      if (timing === "after-resume") stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+      if (timing === "after-suspended-escape") {
+        await new Promise<void>((resolve) => setTimeout(resolve, 25))
+        stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+      }
+      await renderer.idle()
+
+      expect({
+        timing,
+        keypresses,
+        resolution: renderer.resolution,
+        queryCount: countPixelResolutionQueries(stdout),
+      }).toEqual({
+        timing,
+        keypresses: [],
+        resolution: { width: 80, height: 80 },
+        queryCount: 0,
+      })
+    } finally {
+      renderer.destroy()
+    }
+  }
+})
+
+test("resume preserves every pixel resolution response split across suspension", async () => {
+  const staleResponse = Buffer.from("\x1b[4;80;80t")
+
+  for (let split = 1; split < staleResponse.length; split++) {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 4)
+    const renderer = await createCliRenderer({ stdin, stdout })
+    const keypresses: string[] = []
+    renderer.keyInput.on("keypress", (event) => keypresses.push(event.raw))
+
+    try {
+      await flushWritable(stdout)
+      expect(countPixelResolutionQueries(stdout)).toBe(1)
+      stdout.clearWrites()
+
+      stdin.emit("data", staleResponse.subarray(0, split))
+      renderer.suspend()
+      renderer.resize(16, 4)
+      await new Promise<void>((resolve) => setTimeout(resolve, 25))
+      stdin.push(staleResponse.subarray(split))
+      renderer.resume()
+      await flushWritable(stdout)
+
+      expect(keypresses).toEqual([])
+      expect(renderer.resolution).toBeNull()
+      expect({
+        split,
+        queryCount: countPixelResolutionQueries(stdout),
+      }).toEqual({ split, queryCount: 1 })
+
+      stdout.clearWrites()
+      stdin.emit("data", Buffer.from("\x1b[4;80;160t"))
+      await renderer.idle()
+      expect(renderer.resolution).toEqual({ width: 160, height: 80 })
+      expect(stdout.getWrittenBytes().toString("binary")).not.toContain("\x1b[14t")
+    } finally {
+      renderer.destroy()
+    }
+  }
 })
 
 test("feed-backed renderer retries one skipped frame after feed idle", async () => {

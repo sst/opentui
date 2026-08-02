@@ -778,6 +778,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private waitingForPixelResolution: boolean = false
+  private pixelResolutionRequeryPending: boolean = false
   private readonly clock: Clock
 
   private rendering: boolean = false
@@ -3330,6 +3331,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinEvent(event: StdinEvent): void {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      if (event.type === "response" && isPixelResolutionResponse(event.sequence)) {
+        this.dispatchSequenceHandlers(event.sequence)
+      }
+      return
+    }
     switch (event.type) {
       case "key":
         if (this.dispatchSequenceHandlers(event.raw)) {
@@ -3390,11 +3397,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.addInputHandler((sequence: string) => {
       if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+        this.waitingForPixelResolution = false
+        if (this.pixelResolutionRequeryPending) {
+          this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false })
+          this.queryPixelResolution()
+          return true
+        }
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
+          this.requestRender()
         }
-        this.waitingForPixelResolution = false
         this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)
         return true
       }
@@ -3738,6 +3751,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private queryPixelResolution() {
+    this.pixelResolutionRequeryPending = true
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED || this.waitingForPixelResolution) return
+    this.pixelResolutionRequeryPending = false
     this.waitingForPixelResolution = true
     this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
     this.lib.queryPixelResolution(this.rendererPtr)
@@ -3768,6 +3784,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
+    this._resolution = null
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
@@ -4040,14 +4057,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this.waitingForPixelResolution = false
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
-      pixelResolutionQueryActive: false,
+      pixelResolutionQueryActive: this.waitingForPixelResolution,
       explicitWidthCprActive: false,
       startupCursorCprActive: false,
     })
-    this.stdinParser?.reset()
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
 
     this.themeModeState.cancelRefresh()
@@ -4066,11 +4083,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
 
-    // Drain any input buffered during suspension before registering the
-    // listener. Adding a "data" listener can auto-resume a Readable, so the
-    // drain must come first while the stream is still paused and read()
-    // pulls from the internal buffer rather than being a flowing-mode no-op.
-    while (this.stdin.read() !== null) {}
+    let drained: Buffer | string | null
+    while ((drained = this.stdin.read()) !== null) this.stdinListener(drained)
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
@@ -4106,6 +4122,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.forceFullRepaintRequested = true
     this._controlState = this._previousControlState
+    if (this.pixelResolutionRequeryPending) this.queryPixelResolution()
+    this.stdinParser?.resumePendingTimeout()
 
     if (
       this._previousControlState === RendererControlState.AUTO_STARTED ||
@@ -4211,6 +4229,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._isRunning = false
     this.waitingForPixelResolution = false
+    this.pixelResolutionRequeryPending = false
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,
