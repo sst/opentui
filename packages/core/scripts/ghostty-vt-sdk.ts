@@ -34,6 +34,16 @@ export function resolveGhosttyVtRootOverride(value: string | undefined, baseDir:
   return value ? resolve(baseDir, value) : undefined
 }
 
+export function normalizeGhosttyVtRootEnvironment(
+  environment: Record<string, string | undefined>,
+  baseDir: string,
+): string | undefined {
+  const root = resolveGhosttyVtRootOverride(environment.OPENTUI_GHOSTTY_VT_ROOT, baseDir)
+  if (root) environment.OPENTUI_GHOSTTY_VT_ROOT = root
+  else delete environment.OPENTUI_GHOSTTY_VT_ROOT
+  return root
+}
+
 export function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex")
 }

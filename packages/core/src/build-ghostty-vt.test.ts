@@ -9,6 +9,7 @@ import {
   ghosttyVtManifestTargets,
   type GhosttyVtConfig,
   type GhosttyVtTarget,
+  normalizeGhosttyVtRootEnvironment,
   readGhosttyVtSourceRevision,
   restoreGhosttyVtSource,
   resolveGhosttyVtRootOverride,
@@ -43,6 +44,10 @@ describe("Ghostty VT SDK cache", () => {
   test("treats an empty external SDK root as unset", () => {
     expect(resolveGhosttyVtRootOverride(undefined, "/tmp/build")).toBeUndefined()
     expect(resolveGhosttyVtRootOverride("", "/tmp/build")).toBeUndefined()
+
+    const environment = { OPENTUI_GHOSTTY_VT_ROOT: "" }
+    expect(normalizeGhosttyVtRootEnvironment(environment, "/tmp/build")).toBeUndefined()
+    expect(environment).not.toHaveProperty("OPENTUI_GHOSTTY_VT_ROOT")
   })
 
   test("resolves a relative external SDK root from the core package", () => {
