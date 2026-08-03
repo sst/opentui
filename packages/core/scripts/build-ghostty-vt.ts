@@ -1,41 +1,27 @@
 import { spawnSync } from "node:child_process"
-import { createHash } from "node:crypto"
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-
-type Config = {
-  repository: string
-  revision: string
-  version: string
-  zigVersion: string
-  simd: boolean
-  symbolVisibility: "hidden"
-  macosMinimumVersion: string
-  patchRevision: number
-}
-
-type SdkManifest = Config & {
-  headersSha256: string
-  targets: Record<string, { archive: string; sha256: string; zig: string }>
-}
-
-type Target = {
-  zig: string
-  output: string
-  archive: string
-}
+import {
+  ghosttyVtArchivePath,
+  ghosttyVtHeadersSha256,
+  ghosttyVtManifestTargets,
+  type GhosttyVtConfig,
+  type GhosttyVtTarget,
+  validGhosttyVtTargets,
+  validateGhosttyVtSdk,
+} from "./ghostty-vt-sdk"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const repoRoot = resolve(root, "../..")
-const config = JSON.parse(readFileSync(join(root, "ghostty-vt.json"), "utf8")) as Config
+const config = JSON.parse(readFileSync(join(root, "ghostty-vt.json"), "utf8")) as GhosttyVtConfig
 const ghosttyCacheRoot = join(repoRoot, ".cache", "ghostty-vt")
 const cacheRoot = join(ghosttyCacheRoot, config.revision)
 const sourceRoot = join(cacheRoot, "source")
 const sdkRoot = resolve(process.env.OPENTUI_GHOSTTY_VT_ROOT ?? join(ghosttyCacheRoot, "sdk"))
 const force = process.argv.includes("--force")
 
-const targets: Target[] = [
+const targets: GhosttyVtTarget[] = [
   { zig: "x86_64-linux-gnu.2.17", output: "x86_64-linux", archive: "libghostty-vt.a" },
   { zig: "aarch64-linux-gnu.2.17", output: "aarch64-linux", archive: "libghostty-vt.a" },
   { zig: "x86_64-linux-musl", output: "x86_64-linux-musl", archive: "libghostty-vt.a" },
@@ -57,7 +43,7 @@ function run(command: string, args: string[], cwd: string, capture = false): str
   return capture ? result.stdout.trim() : ""
 }
 
-function hostTargets(): Target[] {
+function hostTargets(): GhosttyVtTarget[] {
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : process.arch
   if (process.platform === "linux") {
     return targets.filter((target) => target.zig === `${arch}-linux-gnu.2.17` || target.zig === `${arch}-linux-musl`)
@@ -66,7 +52,7 @@ function hostTargets(): Target[] {
   return targets.filter((target) => target.output === `${arch}-${os}`)
 }
 
-function requestedTargets(): Target[] {
+function requestedTargets(): GhosttyVtTarget[] {
   if (process.argv.includes("--all")) return targets
   const value = process.argv.find((arg) => arg.startsWith("--target="))?.slice("--target=".length)
   if (!value) return hostTargets()
@@ -75,64 +61,9 @@ function requestedTargets(): Target[] {
   return [target]
 }
 
-function archivePath(target: Target): string {
-  return join(sdkRoot, "lib", target.output, target.archive)
-}
-
-function sha256(path: string): string {
-  return createHash("sha256").update(readFileSync(path)).digest("hex")
-}
-
-function headersSha256(): string {
-  const root = join(sdkRoot, "include")
-  const files: string[] = []
-  const visit = (directory: string) => {
-    for (const name of readdirSync(directory).sort()) {
-      const path = join(directory, name)
-      if (statSync(path).isDirectory()) visit(path)
-      else files.push(path)
-    }
-  }
-  visit(root)
-  const hash = createHash("sha256")
-  for (const path of files) {
-    hash.update(relative(root, path).replaceAll("\\", "/"))
-    hash.update("\0")
-    hash.update(readFileSync(path))
-  }
-  return hash.digest("hex")
-}
-
-function validateSdk(requested: Target[]): boolean {
-  if (!existsSync(join(sdkRoot, "include", "ghostty", "vt.h"))) return false
-  try {
-    const manifest = JSON.parse(readFileSync(join(sdkRoot, "manifest.json"), "utf8")) as SdkManifest
-    for (const key of [
-      "repository",
-      "revision",
-      "version",
-      "zigVersion",
-      "simd",
-      "symbolVisibility",
-      "macosMinimumVersion",
-      "patchRevision",
-    ] as const) {
-      if (manifest[key] !== config[key]) return false
-    }
-    if (manifest.headersSha256 !== headersSha256()) return false
-    for (const target of requested) {
-      const entry = manifest.targets[target.output]
-      if (!entry || entry.zig !== target.zig || entry.archive !== target.archive) return false
-      if (!existsSync(archivePath(target)) || entry.sha256 !== sha256(archivePath(target))) return false
-    }
-  } catch {
-    return false
-  }
-  return true
-}
-
 const requested = requestedTargets()
-if (!force && validateSdk(requested)) {
+const validTargets = validGhosttyVtTargets(sdkRoot, config, targets)
+if (!force && requested.every((target) => validTargets.has(target.output))) {
   console.log(`Using cached libghostty-vt SDK at ${sdkRoot}`)
   process.exit(0)
 }
@@ -141,7 +72,10 @@ if (process.env.OPENTUI_GHOSTTY_VT_ROOT) {
   throw new Error(`OPENTUI_GHOSTTY_VT_ROOT is incomplete for: ${requested.map((target) => target.output).join(", ")}`)
 }
 
-if (existsSync(sdkRoot) && !validateSdk([])) rmSync(sdkRoot, { recursive: true, force: true })
+if (existsSync(sdkRoot) && !validateGhosttyVtSdk(sdkRoot, config, [])) {
+  rmSync(sdkRoot, { recursive: true, force: true })
+  validTargets.clear()
+}
 
 const zigVersion = run("zig", ["version"], root, true)
 if (zigVersion !== config.zigVersion) {
@@ -182,7 +116,7 @@ if (staticOnlyGhosttyBuild === originalGhosttyBuild)
 writeFileSync(ghosttyBuildSource, staticOnlyGhosttyBuild + "\n")
 
 for (const target of requested) {
-  if (!force && existsSync(archivePath(target)) && existsSync(join(sdkRoot, "include", "ghostty", "vt.h"))) continue
+  if (!force && validTargets.has(target.output)) continue
 
   const prefix = join(cacheRoot, "build", target.output)
   rmSync(prefix, { recursive: true, force: true })
@@ -207,12 +141,14 @@ for (const target of requested) {
 
   const builtArchive = join(prefix, "lib", target.archive)
   if (!existsSync(builtArchive)) throw new Error(`Ghostty build did not produce ${builtArchive}`)
-  mkdirSync(dirname(archivePath(target)), { recursive: true })
-  cpSync(builtArchive, archivePath(target))
+  const archive = ghosttyVtArchivePath(sdkRoot, target)
+  mkdirSync(dirname(archive), { recursive: true })
+  cpSync(builtArchive, archive)
   if (!existsSync(join(sdkRoot, "include", "ghostty", "vt.h"))) {
     mkdirSync(join(sdkRoot, "include"), { recursive: true })
     cpSync(join(sourceRoot, "include", "ghostty"), join(sdkRoot, "include", "ghostty"), { recursive: true })
   }
+  validTargets.add(target.output)
 }
 
 writeFileSync(
@@ -220,15 +156,8 @@ writeFileSync(
   JSON.stringify(
     {
       ...config,
-      headersSha256: headersSha256(),
-      targets: Object.fromEntries(
-        targets
-          .filter((target) => existsSync(archivePath(target)))
-          .map((target) => [
-            target.output,
-            { archive: target.archive, sha256: sha256(archivePath(target)), zig: target.zig },
-          ]),
-      ),
+      headersSha256: ghosttyVtHeadersSha256(sdkRoot),
+      targets: ghosttyVtManifestTargets(sdkRoot, targets, validTargets),
     },
     null,
     2,
