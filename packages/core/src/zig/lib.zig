@@ -2828,6 +2828,10 @@ export fn imageInfo(data_ptr: ?[*]const u8, data_len: u32, out_info: ?*native_im
     return @intFromEnum(native_image.inspect(globalAllocator, data_ptr.?[0..data_len], .{}, output));
 }
 
+export fn imageClearIccCache() void {
+    native_image.clearIccCache();
+}
+
 export fn imageDecode(data_ptr: ?[*]const u8, data_len: u32, out_handle: ?*NativeHandle) u32 {
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;

@@ -1256,6 +1256,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageClearIccCache: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
@@ -2665,6 +2666,7 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
 
   imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
+  imageClearIccCache: () => void
   imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
   imageCreateFromRgba: (
     pixels: Uint8Array,
@@ -2909,12 +2911,16 @@ class FFIRenderLib implements RenderLib {
       this.setLogCallback(null)
     } finally {
       try {
-        this.opentui.close()
+        this.imageClearIccCache()
       } finally {
-        this.eventCallbackWrapper = null
-        this.logCallbackWrapper = null
-        this.nativeSpanFeedCallbackWrapper = null
-        this.nativeSpanFeedHandlers.clear()
+        try {
+          this.opentui.close()
+        } finally {
+          this.eventCallbackWrapper = null
+          this.logCallbackWrapper = null
+          this.nativeSpanFeedCallbackWrapper = null
+          this.nativeSpanFeedHandlers.clear()
+        }
       }
     }
   }
@@ -5658,6 +5664,10 @@ class FFIRenderLib implements RenderLib {
 
   public imageDestroy(image: ImageHandle): void {
     this.opentui.symbols.imageDestroy(image)
+  }
+
+  public imageClearIccCache(): void {
+    this.opentui.symbols.imageClearIccCache()
   }
 
   public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {

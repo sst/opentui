@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
+var icc_cache_mutex: std.Thread.Mutex = .{};
 
 extern fn ot_image_png_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
 extern fn ot_image_png_decode(
@@ -26,6 +27,8 @@ extern fn ot_image_icc_transform_rgba(
     width: u32,
     height: u32,
 ) c_int;
+extern fn ot_image_icc_cache_clear() void;
+extern fn ot_image_icc_cache_stats(hits: *u64, misses: *u64, entries: *u32) void;
 extern fn ot_image_gif_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32, has_alpha: *u32) c_int;
 extern fn ot_image_gif_decode_first_frame(
     data: [*]const u8,
@@ -332,6 +335,26 @@ fn statusFromIccResult(result: c_int) Status {
     };
 }
 
+pub const IccCacheStats = struct {
+    hits: u64,
+    misses: u64,
+    entries: u32,
+};
+
+pub fn clearIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    ot_image_icc_cache_clear();
+}
+
+pub fn getIccCacheStats() IccCacheStats {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    var stats: IccCacheStats = undefined;
+    ot_image_icc_cache_stats(&stats.hits, &stats.misses, &stats.entries);
+    return stats;
+}
+
 fn parseExifOrientation(data: []const u8) u8 {
     var tiff = data;
     if (tiff.len >= 6 and std.mem.eql(u8, tiff[0..6], "Exif\x00\x00")) tiff = tiff[6..];
@@ -509,6 +532,8 @@ fn scanPng(data: []const u8) !PngMetadata {
 }
 
 fn transformPngIcc(compressed: []const u8, color_type: u8, pixels: []u8, width: u32, height: u32) !void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
     const result = ot_image_icc_transform_rgba(
         compressed.ptr,
         @intCast(compressed.len),
@@ -623,12 +648,15 @@ fn probeInternal(
 
     if (metadata.iccp_compressed_len > 0) {
         const compressed = data[metadata.iccp_compressed_offset..][0..metadata.iccp_compressed_len];
-        const icc_status = statusFromIccResult(ot_image_icc_validate(
+        icc_cache_mutex.lock();
+        const icc_result = ot_image_icc_validate(
             compressed.ptr,
             @intCast(compressed.len),
             metadata.color_type,
             max_icc_profile_bytes,
-        ));
+        );
+        icc_cache_mutex.unlock();
+        const icc_status = statusFromIccResult(icc_result);
         if (icc_status != .ok) return icc_status;
     }
 

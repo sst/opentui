@@ -92,6 +92,47 @@ test "PNG probe and decode return canonical red RGBA" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
 }
 
+test "ICC transforms are cached across images and materialization" {
+    image.clearIccCache();
+    defer image.clearIccCache();
+    const rgb_encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3.png.base64"), "\r\n");
+    const rgb_png = try decodeBase64(rgb_encoded);
+    defer std.testing.allocator.free(rgb_png);
+
+    const first = try image.decode(std.testing.allocator, rgb_png, .{});
+    defer first.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 0, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    const second = try image.decode(std.testing.allocator, rgb_png, .{});
+    defer second.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 1, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+    _ = try first.ensurePixels();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 2, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    const rgba_encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3-rgba.png.base64"), "\r\n");
+    const rgba_png = try decodeBase64(rgba_encoded);
+    defer std.testing.allocator.free(rgba_png);
+    const rgba = try image.decode(std.testing.allocator, rgba_png, .{});
+    defer rgba.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 4, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    image.clearIccCache();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 0, .misses = 0, .entries = 0 }, image.getIccCacheStats());
+
+    const gray_encoded = std.mem.trim(u8, @embedFile("fixtures/gray-profile.png.base64"), "\r\n");
+    const gray_png = try decodeBase64(gray_encoded);
+    defer std.testing.allocator.free(gray_png);
+    const gray = try image.decode(std.testing.allocator, gray_png, .{});
+    defer gray.deinit();
+
+    const gray_alpha_encoded = std.mem.trim(u8, @embedFile("fixtures/gray-alpha-profile.png.base64"), "\r\n");
+    const gray_alpha_png = try decodeBase64(gray_alpha_encoded);
+    defer std.testing.allocator.free(gray_alpha_png);
+    const gray_alpha = try image.decode(std.testing.allocator, gray_alpha_png, .{});
+    defer gray_alpha.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 2, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+}
+
 test "lazy PNG materialization preserves admitted decode limits" {
     const encoded = std.mem.trim(u8, @embedFile("fixtures/wide-opaque.png.base64"), "\r\n");
     const png = try decodeBase64(encoded);

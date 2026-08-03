@@ -130,6 +130,8 @@ Encoded input is limited to 64 MiB. Images and operation outputs are limited to 
 
 Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise RGB or grayscale ICC v2/v4 monitor profiles are converted to sRGB with Little CMS. `iCCP` takes precedence over `sRGB`, `gAMA`, and `cHRM`; unsupported `cICP` falls through to lower-priority metadata.
 
+OpenTUI keeps the eight most recently used validated ICC profiles and sRGB transforms. Profiles are matched by complete decompressed ICC bytes and RGB/grayscale mode, then cleared when the native library is unloaded.
+
 Opaque, orientation-free PNGs retain their encoded bytes without decoding pixels immediately. Unchanged Kitty rendering sends the original PNG, including its ICC profile, as `f=100`; the terminal performs PNG decoding and color management. Pixel decoding and ICC conversion occur once on demand for `raw()`, pixel copying, image operations, Sixel, blocks, or a Kitty crop, resize, or opacity change. Consequently, corrupt IDAT data can be accepted for direct Kitty passthrough and fail only if a decoded-pixel path is later requested.
 
 To load and display an encoded source, see [Image](/docs/components/image). To draw an existing or transformed `NativeImage`, use [`OptimizedBuffer.drawImage()`](/docs/components/frame-buffer#drawimage).
