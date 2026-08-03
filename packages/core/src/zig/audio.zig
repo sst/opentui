@@ -15,6 +15,7 @@ pub const Status = struct {
 pub const max_voices: usize = 32;
 pub const default_sample_rate: u32 = 48_000;
 pub const default_playback_channels: u32 = 2;
+pub const max_capture_channels: u32 = @intCast(c.MA_MAX_CHANNELS);
 const stream_input_capacity: u32 = 256 * 1024;
 // Bounds endless invalid input during decoder setup; StreamOptions can raise it for valid metadata.
 pub const default_stream_probe_bytes: u32 = 1024 * 1024;
@@ -26,6 +27,7 @@ const stream_channels: u32 = 2;
 const stream_bytes_per_frame: u32 = stream_channels * @sizeOf(f32);
 const max_stream_ring_bytes: u32 = 0x7fffffff - (@as(u32, c.MA_SIMD_ALIGNMENT) - 1);
 pub const max_stream_pcm_capacity_frames: u32 = max_stream_ring_bytes / stream_bytes_per_frame;
+const max_capture_ring_bytes: usize = 0x7fffffff - (@as(usize, c.MA_SIMD_ALIGNMENT) - 1);
 
 pub const CreateOptions = extern struct {
     sample_rate: u32 = default_sample_rate,
@@ -111,6 +113,141 @@ pub const Stats = extern struct {
     lock_misses: u32,
     last_peak: f32,
     last_rms: f32,
+};
+
+pub const CaptureStats = extern struct {
+    frames_received: u64,
+    frames_read: u64,
+    frames_dropped: u64,
+    sample_rate: u32,
+    channels: u32,
+    buffered_frames: u32,
+    capacity_frames: u32,
+};
+
+fn captureSampleCount(channels: u32, capacity_frames: u32) ?usize {
+    if (channels == 0 or channels > max_capture_channels or capacity_frames == 0) return null;
+
+    const bytes_per_frame = std.math.mul(usize, @as(usize, channels), @sizeOf(f32)) catch return null;
+    const buffer_bytes = std.math.mul(usize, @as(usize, capacity_frames), bytes_per_frame) catch return null;
+    if (buffer_bytes > max_capture_ring_bytes) return null;
+    return std.math.mul(usize, @as(usize, capacity_frames), @as(usize, channels)) catch null;
+}
+
+pub const CaptureBuffer = struct {
+    allocator: std.mem.Allocator,
+    samples: []f32,
+    ring: c.ma_pcm_rb = undefined,
+    sample_rate: u32,
+    channels: u32,
+    capacity_frames: u32,
+    frames_received: u64 = 0,
+    frames_read: u64 = 0,
+    frames_dropped: u64 = 0,
+
+    pub fn create(
+        allocator: std.mem.Allocator,
+        sample_rate: u32,
+        channels: u32,
+        capacity_frames: u32,
+    ) error{ InvalidArguments, OutOfMemory, DeviceInitFailed }!*CaptureBuffer {
+        const sample_count = captureSampleCount(channels, capacity_frames) orelse return error.InvalidArguments;
+        const capture = allocator.create(CaptureBuffer) catch return error.OutOfMemory;
+        errdefer allocator.destroy(capture);
+
+        const samples = allocator.alloc(f32, sample_count) catch return error.OutOfMemory;
+        errdefer allocator.free(samples);
+
+        capture.* = .{
+            .allocator = allocator,
+            .samples = samples,
+            .sample_rate = sample_rate,
+            .channels = channels,
+            .capacity_frames = capacity_frames,
+        };
+        if (c.ma_pcm_rb_init(c.ma_format_f32, channels, capacity_frames, samples.ptr, null, &capture.ring) != c.MA_SUCCESS) {
+            return error.DeviceInitFailed;
+        }
+        c.ma_pcm_rb_set_sample_rate(&capture.ring, sample_rate);
+        return capture;
+    }
+
+    pub fn destroy(self: *CaptureBuffer) void {
+        c.ma_pcm_rb_uninit(&self.ring);
+        self.allocator.free(self.samples);
+        self.allocator.destroy(self);
+    }
+
+    // This is the sole producer path. It never waits for space and drops the newest frames on overflow.
+    pub fn write(self: *CaptureBuffer, input: [*]const f32, frame_count: u32) void {
+        if (frame_count == 0) return;
+        _ = @atomicRmw(u64, &self.frames_received, .Add, frame_count, .monotonic);
+
+        const frames_to_write = @min(frame_count, c.ma_pcm_rb_available_write(&self.ring));
+        var total_written: u32 = 0;
+        while (total_written < frames_to_write) {
+            var contiguous_frames = frames_to_write - total_written;
+            var pcm_ptr: ?*anyopaque = null;
+            if (c.ma_pcm_rb_acquire_write(&self.ring, &contiguous_frames, &pcm_ptr) != c.MA_SUCCESS or
+                contiguous_frames == 0 or pcm_ptr == null)
+            {
+                break;
+            }
+
+            const sample_offset = @as(usize, total_written) * @as(usize, self.channels);
+            const sample_count = @as(usize, contiguous_frames) * @as(usize, self.channels);
+            const aligned_pcm: *align(@alignOf(f32)) anyopaque = @alignCast(pcm_ptr.?);
+            const pcm = @as([*]f32, @ptrCast(aligned_pcm))[0..sample_count];
+            @memcpy(pcm, input[sample_offset .. sample_offset + sample_count]);
+            if (c.ma_pcm_rb_commit_write(&self.ring, contiguous_frames) != c.MA_SUCCESS) break;
+            total_written += contiguous_frames;
+        }
+
+        const dropped = frame_count - total_written;
+        if (dropped > 0) {
+            _ = @atomicRmw(u64, &self.frames_dropped, .Add, dropped, .monotonic);
+        }
+    }
+
+    // This is the sole consumer path. Native FFI entry is serialized, while the ring synchronizes with the producer.
+    pub fn read(self: *CaptureBuffer, output: [*]f32, frame_count: u32) u32 {
+        const frames_to_read = @min(frame_count, c.ma_pcm_rb_available_read(&self.ring));
+        var total_read: u32 = 0;
+        while (total_read < frames_to_read) {
+            var contiguous_frames = frames_to_read - total_read;
+            var pcm_ptr: ?*anyopaque = null;
+            if (c.ma_pcm_rb_acquire_read(&self.ring, &contiguous_frames, &pcm_ptr) != c.MA_SUCCESS or
+                contiguous_frames == 0 or pcm_ptr == null)
+            {
+                break;
+            }
+
+            const sample_offset = @as(usize, total_read) * @as(usize, self.channels);
+            const sample_count = @as(usize, contiguous_frames) * @as(usize, self.channels);
+            const aligned_pcm: *align(@alignOf(f32)) anyopaque = @alignCast(pcm_ptr.?);
+            const pcm = @as([*]const f32, @ptrCast(aligned_pcm))[0..sample_count];
+            @memcpy(output[sample_offset .. sample_offset + sample_count], pcm);
+            if (c.ma_pcm_rb_commit_read(&self.ring, contiguous_frames) != c.MA_SUCCESS) break;
+            total_read += contiguous_frames;
+        }
+
+        if (total_read > 0) {
+            _ = @atomicRmw(u64, &self.frames_read, .Add, total_read, .monotonic);
+        }
+        return total_read;
+    }
+
+    pub fn snapshot(self: *CaptureBuffer) CaptureStats {
+        return .{
+            .frames_received = @atomicLoad(u64, &self.frames_received, .monotonic),
+            .frames_read = @atomicLoad(u64, &self.frames_read, .monotonic),
+            .frames_dropped = @atomicLoad(u64, &self.frames_dropped, .monotonic),
+            .sample_rate = self.sample_rate,
+            .channels = self.channels,
+            .buffered_frames = c.ma_pcm_rb_available_read(&self.ring),
+            .capacity_frames = self.capacity_frames,
+        };
+    }
 };
 
 const Sound = struct {
@@ -201,6 +338,10 @@ pub const Engine = struct {
     groups: std.ArrayList(*SoundGroup),
     playback_devices: std.ArrayList(c.ma_device_info),
     selected_playback_index: ?u32 = null,
+    capture_devices: std.ArrayList(c.ma_device_info),
+    selected_capture_index: ?u32 = null,
+    selected_capture_device_id: c.ma_device_id = undefined,
+    has_selected_capture_device: bool = false,
     voices: [max_voices]Voice,
     streams: [max_voices]?*Stream,
     stream_generations: [max_voices]u32,
@@ -209,6 +350,9 @@ pub const Engine = struct {
     stats: Stats,
     device: c.ma_device = undefined,
     has_device: bool = false,
+    capture_device: c.ma_device = undefined,
+    has_capture_device: bool = false,
+    capture: ?*CaptureBuffer = null,
     output_channels: u8 = 2,
     lock_miss_count: u32 = 0,
     tap_enabled: bool = false,
@@ -231,6 +375,10 @@ pub const Engine = struct {
             .groups = .empty,
             .playback_devices = .empty,
             .selected_playback_index = null,
+            .capture_devices = .empty,
+            .selected_capture_index = null,
+            .selected_capture_device_id = undefined,
+            .has_selected_capture_device = false,
             .voices = [_]Voice{.{}} ** max_voices,
             .streams = [_]?*Stream{null} ** max_voices,
             .stream_generations = [_]u32{1} ** max_voices,
@@ -246,6 +394,9 @@ pub const Engine = struct {
             },
             .device = undefined,
             .has_device = false,
+            .capture_device = undefined,
+            .has_capture_device = false,
+            .capture = null,
             .output_channels = output_channels,
             .lock_miss_count = 0,
             .tap_enabled = false,
@@ -258,6 +409,7 @@ pub const Engine = struct {
     }
 
     pub fn deinit(self: *Engine) void {
+        stopCaptureDevice(self);
         self.lock.lock();
 
         if (self.has_device) {
@@ -281,6 +433,11 @@ pub const Engine = struct {
             requestStreamCancellation(stream);
         }
         self.lock.unlock();
+
+        if (self.capture) |capture| {
+            capture.destroy();
+            self.capture = null;
+        }
 
         for (&self.streams) |*stream_ptr| {
             const stream = stream_ptr.* orelse continue;
@@ -306,6 +463,7 @@ pub const Engine = struct {
         self.sounds.deinit(self.allocator);
         self.groups.deinit(self.allocator);
         self.playback_devices.deinit(self.allocator);
+        self.capture_devices.deinit(self.allocator);
 
         if (self.tap_buffer) |buffer| {
             self.allocator.free(buffer);
@@ -811,7 +969,27 @@ fn refreshPlaybackDevicesLocked(engine: *Engine) i32 {
     return Status.ok;
 }
 
-fn copyPlaybackDeviceName(device: *const c.ma_device_info, out_ptr: [*]u8, max_len: usize) usize {
+fn refreshCaptureDevicesLocked(engine: *Engine) i32 {
+    const context_status = ensureContextInitialized(engine);
+    if (context_status != Status.ok) return context_status;
+
+    var capture_infos: [*c]c.ma_device_info = null;
+    var capture_count: c.ma_uint32 = 0;
+    const result = c.ma_context_get_devices(&engine.context, null, null, &capture_infos, &capture_count);
+    if (result != c.MA_SUCCESS) return Status.err_device;
+
+    engine.capture_devices.clearRetainingCapacity();
+
+    if (capture_infos != null and capture_count > 0) {
+        const count: usize = @intCast(capture_count);
+        const devices = capture_infos[0..count];
+        engine.capture_devices.appendSlice(engine.allocator, devices) catch return Status.err_no_space;
+    }
+
+    return Status.ok;
+}
+
+fn copyDeviceName(device: *const c.ma_device_info, out_ptr: [*]u8, max_len: usize) usize {
     if (max_len == 0) return 0;
 
     var name_len: usize = 0;
@@ -1105,7 +1283,7 @@ pub fn getPlaybackDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_l
 
     const idx: usize = @intCast(index);
     if (idx >= e.playback_devices.items.len) return 0;
-    return copyPlaybackDeviceName(&e.playback_devices.items[idx], out_ptr.?, max_len);
+    return copyDeviceName(&e.playback_devices.items[idx], out_ptr.?, max_len);
 }
 
 pub fn isPlaybackDeviceDefault(engine: *Engine, index: u32) bool {
@@ -1152,6 +1330,200 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
         c.ma_device_uninit(&e.device);
         e.has_device = false;
     }
+}
+
+pub fn refreshCaptureDevices(engine: *Engine) i32 {
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    return refreshCaptureDevicesLocked(e);
+}
+
+pub fn getCaptureDeviceCount(engine: *Engine) u32 {
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    return @intCast(e.capture_devices.items.len);
+}
+
+pub fn getCaptureDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_len: usize) usize {
+    if (out_ptr == null) return 0;
+
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    const idx: usize = @intCast(index);
+    if (idx >= e.capture_devices.items.len) return 0;
+    return copyDeviceName(&e.capture_devices.items[idx], out_ptr.?, max_len);
+}
+
+pub fn isCaptureDeviceDefault(engine: *Engine, index: u32) bool {
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    const idx: usize = @intCast(index);
+    if (idx >= e.capture_devices.items.len) return false;
+    return e.capture_devices.items[idx].isDefault != c.MA_FALSE;
+}
+
+pub fn selectCaptureDevice(engine: *Engine, index: u32) i32 {
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    if (e.has_capture_device) return Status.err_invalid;
+    if (e.capture_devices.items.len == 0) {
+        const refresh_status = refreshCaptureDevicesLocked(e);
+        if (refresh_status != Status.ok) return refresh_status;
+    }
+
+    const idx: usize = @intCast(index);
+    if (idx >= e.capture_devices.items.len) return Status.err_not_found;
+
+    e.selected_capture_index = index;
+    e.selected_capture_device_id = e.capture_devices.items[idx].id;
+    e.has_selected_capture_device = true;
+    return Status.ok;
+}
+
+pub fn clearCaptureDeviceSelection(engine: *Engine) void {
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    e.selected_capture_index = null;
+    e.has_selected_capture_device = false;
+}
+
+fn captureCallback(
+    device_ptr: ?*c.ma_device,
+    output_ptr: ?*anyopaque,
+    input_ptr: ?*const anyopaque,
+    frame_count: c.ma_uint32,
+) callconv(.c) void {
+    _ = output_ptr;
+    const device = device_ptr orelse return;
+    const input = input_ptr orelse return;
+    const user_data = device.pUserData orelse return;
+    const capture: *CaptureBuffer = @ptrCast(@alignCast(user_data));
+    const aligned_input: *align(@alignOf(f32)) const anyopaque = @alignCast(input);
+    capture.write(@ptrCast(aligned_input), @intCast(frame_count));
+}
+
+fn stopCaptureDevice(engine: *Engine) void {
+    if (!engine.has_capture_device) return;
+    c.ma_device_uninit(&engine.capture_device);
+    engine.has_capture_device = false;
+}
+
+pub fn isCaptureRunning(engine: *Engine) bool {
+    if (!engine.has_capture_device) return false;
+    const state = c.ma_device_get_state(&engine.capture_device);
+    return state == c.ma_device_state_starting or state == c.ma_device_state_started;
+}
+
+pub fn startCapture(
+    engine: *Engine,
+    options_ptr: ?*const StartOptions,
+    channels: u32,
+    capacity_frames: u32,
+) i32 {
+    if (captureSampleCount(channels, capacity_frames) == null) return Status.err_invalid;
+
+    const e = engine;
+    if (e.has_capture_device) {
+        if (isCaptureRunning(e)) return Status.ok;
+        c.ma_device_uninit(&e.capture_device);
+        e.has_capture_device = false;
+    }
+
+    const next_capture = CaptureBuffer.create(e.allocator, e.sample_rate, channels, capacity_frames) catch |err| switch (err) {
+        error.InvalidArguments => return Status.err_invalid,
+        error.OutOfMemory => return Status.err_no_space,
+        error.DeviceInitFailed => return Status.err_device,
+    };
+    var next_capture_owned = true;
+    defer if (next_capture_owned) next_capture.destroy();
+
+    const context_status = ensureContextInitialized(e);
+    if (context_status != Status.ok) return context_status;
+
+    var selected_device_id: ?*const c.ma_device_id = null;
+    if (e.has_selected_capture_device) {
+        selected_device_id = &e.selected_capture_device_id;
+    }
+
+    var default_options = StartOptions{};
+    default_options.no_fixed_sized_callback = true;
+    const options = if (options_ptr) |opts| opts.* else default_options;
+    var config = c.ma_device_config_init(c.ma_device_type_capture);
+    config.sampleRate = e.sample_rate;
+    config.periodSizeInFrames = options.period_size_in_frames;
+    config.periodSizeInMilliseconds = options.period_size_in_milliseconds;
+    config.periods = options.periods;
+    config.performanceProfile = toPerformanceProfile(options.performance_profile);
+    config.noPreSilencedOutputBuffer = toMaBool8(options.no_pre_silenced_output_buffer);
+    config.noClip = toMaBool8(options.no_clip);
+    config.noDisableDenormals = toMaBool8(options.no_disable_denormals);
+    config.noFixedSizedCallback = toMaBool8(options.no_fixed_sized_callback);
+    config.capture.format = c.ma_format_f32;
+    config.capture.channels = channels;
+    config.capture.shareMode = toShareMode(options.share_mode);
+    config.capture.pDeviceID = selected_device_id;
+    config.wasapi.noAutoConvertSRC = toMaBool8(options.wasapi_no_auto_convert_src);
+    config.wasapi.noDefaultQualitySRC = toMaBool8(options.wasapi_no_default_quality_src);
+    config.alsa.noMMap = toMaBool32(options.alsa_no_mmap);
+    config.alsa.noAutoFormat = toMaBool32(options.alsa_no_auto_format);
+    config.alsa.noAutoChannels = toMaBool32(options.alsa_no_auto_channels);
+    config.alsa.noAutoResample = toMaBool32(options.alsa_no_auto_resample);
+    config.dataCallback = captureCallback;
+    config.pUserData = next_capture;
+
+    if (c.ma_device_init(&e.context, &config, &e.capture_device) != c.MA_SUCCESS) {
+        return Status.err_device;
+    }
+    if (c.ma_device_start(&e.capture_device) != c.MA_SUCCESS) {
+        c.ma_device_uninit(&e.capture_device);
+        return Status.err_device;
+    }
+
+    const previous_capture = e.capture;
+    e.capture = next_capture;
+    next_capture_owned = false;
+    e.has_capture_device = true;
+    if (previous_capture) |previous| previous.destroy();
+    return Status.ok;
+}
+
+pub fn stopCapture(engine: *Engine) i32 {
+    stopCaptureDevice(engine);
+    return Status.ok;
+}
+
+pub fn readCapture(
+    engine: *Engine,
+    out_ptr: ?[*]f32,
+    out_sample_capacity: u32,
+    frame_count: u32,
+    out_frames_read: ?*u32,
+) i32 {
+    const frames_read = out_frames_read orelse return Status.err_invalid;
+    frames_read.* = 0;
+    const output = out_ptr orelse return Status.err_invalid;
+
+    const capture = engine.capture orelse return Status.err_not_found;
+    const required_samples = std.math.mul(u32, frame_count, capture.channels) catch return Status.err_invalid;
+    if (out_sample_capacity < required_samples) return Status.err_invalid;
+    frames_read.* = capture.read(output, frame_count);
+    return Status.ok;
+}
+
+pub fn getCaptureStats(engine: *Engine, out_stats: ?*CaptureStats) i32 {
+    const stats = out_stats orelse return Status.err_invalid;
+    const capture = engine.capture orelse return Status.err_not_found;
+    stats.* = capture.snapshot();
+    return Status.ok;
 }
 
 pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {

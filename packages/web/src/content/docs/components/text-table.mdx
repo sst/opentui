@@ -1,0 +1,153 @@
+---
+title: TextTable
+description: Render styled, wrapping, and selectable tabular text
+order: 17
+skill:
+  intents: [text-table, table, tabular-data, styled-cells, table-selection]
+---
+
+# TextTable
+
+`TextTableRenderable` lays out a two-dimensional array of styled text cells. It supports intrinsic or full-width columns, constrained wrapping, independent inner and outer borders, cell padding, and text selection.
+
+TextTable currently has an imperative renderable API. It is not registered as a built-in React or Solid component.
+
+## Basic usage
+
+```typescript
+import { TextTableRenderable, bold, fg, type TextChunk, type TextTableContent } from "@opentui/core"
+
+const cell = (text: string): TextChunk[] => [{ __isChunk: true, text }]
+
+const content: TextTableContent = [
+  [[bold("Service")], [bold("Status")], [bold("Notes")]],
+  [cell("api"), [fg("#00d4aa")("OK")], cell("latency 28ms")],
+  [cell("worker"), [fg("#b8a0ff")("DEGRADED")], cell("queue depth: 124")],
+]
+
+const table = new TextTableRenderable(renderer, {
+  width: "100%",
+  wrapMode: "word",
+  columnWidthMode: "content",
+  borderStyle: "rounded",
+  content,
+})
+
+renderer.root.add(table)
+```
+
+## Content
+
+The public content types are:
+
+```typescript
+type TextTableCellContent = TextChunk[] | null | undefined
+type TextTableContent = TextTableCellContent[][]
+```
+
+Use styled-text helpers such as `bold()`, `fg()`, and `bg()` to build each cell's `TextChunk[]`. `null`, `undefined`, and missing cells render as empty text. Rows may have different lengths; the table uses the longest row's column count and fills missing cells with empty content.
+
+The first row has no special behavior. Styling it as a header is a convention; TextTable has no header option or separate header model.
+
+Replace the table data through the `content` setter:
+
+```typescript
+table.content = [
+  [[bold("Name")], [bold("State")]],
+  [cell("worker-1"), [fg("#22c55e")("ready")]],
+]
+```
+
+## Column sizing and wrapping
+
+`columnWidthMode` controls what happens when the available width exceeds the content's intrinsic width:
+
+- `"full"` expands columns evenly to fill the width constraint. This is the default.
+- `"content"` keeps the table at its intrinsic width when additional space is available.
+
+When content is wider than a finite width constraint, `wrapMode: "word"` or `"char"` allows the table to shrink columns and grow rows. `wrapMode: "none"` preserves intrinsic column widths instead of shrinking over-wide content.
+
+`columnFitter` chooses how constrained width is distributed:
+
+- `"proportional"` preserves more width for intrinsically wider columns. This is the default.
+- `"balanced"` keeps constrained columns closer to an even visual width while respecting their intrinsic sizes.
+
+```typescript
+const table = new TextTableRenderable(renderer, {
+  width: 50,
+  wrapMode: "word",
+  columnWidthMode: "full",
+  columnFitter: "balanced",
+  content,
+})
+```
+
+## Borders and spacing
+
+`border` controls separators between cells. `outerBorder` controls the boundary around the table. When `outerBorder` is omitted, it follows the initial `border` value and later `border` assignments. Assigning `outerBorder` to a different value makes it independent; assigning its current value is a no-op and leaves that relationship unchanged.
+
+```typescript
+// Outer border without inner cell separators
+const table = new TextTableRenderable(renderer, {
+  border: false,
+  outerBorder: true,
+  content,
+})
+```
+
+`showBorders: false` suppresses border glyph painting without removing the space reserved by enabled inner or outer borders. `columnGap` adds space between columns only when inner vertical borders are disabled.
+
+`cellPadding` sets both axes. `cellPaddingX` and `cellPaddingY` override that value per axis. Padding and gap values are floored and clamped to zero; non-finite values use the default `0`.
+
+## Selection
+
+Selection starts only within cell content, not on border glyphs. Selection within one cell can be partial. A vertical drag that remains in the anchor column selects that column; moving into another column changes to grid selection.
+
+`getSelectedText()` joins selected cells in a row with tabs and joins selected rows with newlines, excluding table borders:
+
+```typescript
+renderer.on("selection", () => {
+  console.log(table.getSelectedText())
+})
+```
+
+Selection-related methods are:
+
+| Method                          | Result                                                            |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `shouldStartSelection(x, y)`    | Whether the global position is selectable cell content            |
+| `onSelectionChanged(selection)` | Applies a renderer selection and reports whether text is selected |
+| `hasSelection()`                | Whether any cell has a selection                                  |
+| `getSelection()`                | The first selected cell's `{ start, end }` range, or `null`       |
+| `getSelectedText()`             | Tab/newline-delimited selected cell text                          |
+
+## Options
+
+TextTable also accepts the standard [renderable layout options](/docs/core-concepts/renderables#layout-properties).
+
+| Option                  | Type                                           | Default          | Description                                             |
+| ----------------------- | ---------------------------------------------- | ---------------- | ------------------------------------------------------- |
+| `content`               | `TextTableContent`                             | `[]`             | Rows of styled cell chunks                              |
+| `wrapMode`              | `"none" \| "char" \| "word"`                   | `"word"`         | Cell text wrapping behavior                             |
+| `columnWidthMode`       | `"content" \| "full"`                          | `"full"`         | Preserve intrinsic width or fill the width constraint   |
+| `columnFitter`          | `"proportional" \| "balanced"`                 | `"proportional"` | Width allocation when columns must shrink               |
+| `cellPadding`           | `number`                                       | `0`              | Horizontal and vertical padding on each side of a cell  |
+| `cellPaddingX`          | `number`                                       | `cellPadding`    | Horizontal padding on each side                         |
+| `cellPaddingY`          | `number`                                       | `cellPadding`    | Vertical padding on each side                           |
+| `columnGap`             | `number`                                       | `0`              | Gap between columns when inner vertical borders are off |
+| `showBorders`           | `boolean`                                      | `true`           | Paint enabled border glyphs                             |
+| `border`                | `boolean`                                      | `true`           | Enable inner row and column separators                  |
+| `outerBorder`           | `boolean`                                      | `border`         | Enable the table boundary                               |
+| `borderStyle`           | `"single" \| "double" \| "rounded" \| "heavy"` | `"single"`       | Border glyph set                                        |
+| `borderColor`           | `ColorInput`                                   | `"#FFFFFF"`      | Border foreground color                                 |
+| `borderBackgroundColor` | `ColorInput`                                   | `"transparent"`  | Border background color                                 |
+| `backgroundColor`       | `ColorInput`                                   | `"transparent"`  | Buffered table surface background                       |
+| `fg`                    | `ColorInput`                                   | `"#FFFFFF"`      | Default cell text foreground                            |
+| `bg`                    | `ColorInput`                                   | `"transparent"`  | Default cell text background                            |
+| `attributes`            | `number`                                       | `0`              | Default text attribute bitmask                          |
+| `selectable`            | `boolean`                                      | `true`           | Allow cell text selection                               |
+| `selectionBg`           | `ColorInput`                                   | -                | Selection background override                           |
+| `selectionFg`           | `ColorInput`                                   | -                | Selection foreground override                           |
+| `flexShrink`            | `number`                                       | `0`              | Inherited layout shrink factor                          |
+
+The renderable always uses a buffered surface. The mutable table-specific properties are `content`, `wrapMode`, `columnWidthMode`, `columnFitter`, `cellPadding`, `cellPaddingX`, `cellPaddingY`, `columnGap`, `showBorders`, `border`, `outerBorder`, `borderStyle`, and `borderColor`.

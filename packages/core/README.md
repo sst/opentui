@@ -4,11 +4,11 @@ OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. Th
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) - API and usage guide
+- [Getting Started](https://opentui.com/docs/getting-started) - API and usage guide
 - [Development Guide](docs/development.md) - Building, testing, and contributing
-- [Tree-Sitter](docs/tree-sitter.md) - Syntax highlighting integration
-- [Renderables vs Constructs](docs/renderables-vs-constructs.md) - Understanding the component model
-- [Environment Variables](docs/env-vars.md) - Configuration options
+- [Tree-Sitter](https://opentui.com/docs/reference/tree-sitter) - Syntax highlighting integration
+- [Renderables vs Constructs](https://opentui.com/docs/core-concepts/renderables-vs-constructs) - Understanding the component model
+- [Environment Variables](https://opentui.com/docs/reference/env-vars) - Configuration options
 
 ## Install
 

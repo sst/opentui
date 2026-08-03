@@ -15,6 +15,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "build:examples": "bun examples/build.ts",
+    "bench:reconciler": "bun scripts/reconciler-benchmark.ts",
     "publish": "bun scripts/publish.ts",
     "test:dist": "bun scripts/test-packed-consumer.ts",
     "test:js:node": "bun scripts/test-node.ts",

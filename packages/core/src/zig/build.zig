@@ -160,6 +160,129 @@ fn addMiniaudioShim(
     });
 }
 
+fn appendCFlags(b: *std.Build, base: []const []const u8, extra: []const []const u8) []const []const u8 {
+    const flags = b.allocator.alloc([]const u8, base.len + extra.len) catch @panic("OOM");
+    @memcpy(flags[0..base.len], base);
+    @memcpy(flags[base.len..], extra);
+    return flags;
+}
+
+fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
+    const flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden" },
+    };
+
+    artifact.addCSourceFile(.{
+        .file = b.path("image-shim.c"),
+        .flags = flags,
+    });
+
+    // One upstream SIMD sRGB idiom forms `fp32_to_srgb8_tab4 - 912`; its
+    // clamped indexes 912...1015 resolve to actual table elements 0...103.
+    // The reads are in range, but the pre-array pointer trips C bounds
+    // instrumentation. Disable only `bounds` for this translation unit;
+    // pointer-overflow, alignment, and other sanitizers remain enabled. This
+    // is separate from our coefficient-copy alignment patch. See vendor/stb/README.md.
+    const resize_flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" },
+    };
+    artifact.addCSourceFile(.{
+        .file = b.path("image-resize-shim.c"),
+        .flags = resize_flags,
+    });
+
+    const webp_flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
+    };
+    const webp_dispatch_flags = if (target.result.cpu.arch == .x86_64)
+        appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
+    else
+        webp_flags;
+    artifact.addIncludePath(b.path("vendor/libwebp"));
+    artifact.addCSourceFile(.{
+        .file = b.path("image-webp-config.c"),
+        .flags = webp_dispatch_flags,
+    });
+    artifact.addCSourceFiles(.{
+        .root = b.path("vendor/libwebp"),
+        .files = &.{
+            "src/dec/alpha_dec.c",
+            "src/dec/buffer_dec.c",
+            "src/dec/frame_dec.c",
+            "src/dec/idec_dec.c",
+            "src/dec/io_dec.c",
+            "src/dec/quant_dec.c",
+            "src/dec/tree_dec.c",
+            "src/dec/vp8_dec.c",
+            "src/dec/vp8l_dec.c",
+            "src/dec/webp_dec.c",
+            "src/dsp/alpha_processing.c",
+            "src/dsp/cpu.c",
+            "src/dsp/dec.c",
+            "src/dsp/dec_clip_tables.c",
+            "src/dsp/filters.c",
+            "src/dsp/lossless.c",
+            "src/dsp/rescaler.c",
+            "src/dsp/upsampling.c",
+            "src/dsp/yuv.c",
+            "src/utils/bit_reader_utils.c",
+            "src/utils/color_cache_utils.c",
+            "src/utils/filters_utils.c",
+            "src/utils/huffman_utils.c",
+            "src/utils/palette.c",
+            "src/utils/quant_levels_dec_utils.c",
+            "src/utils/random_utils.c",
+            "src/utils/rescaler_utils.c",
+            "src/utils/thread_utils.c",
+            "src/utils/utils.c",
+        },
+        .flags = webp_dispatch_flags,
+    });
+
+    switch (target.result.cpu.arch) {
+        .x86_64 => {
+            artifact.addCSourceFiles(.{
+                .root = b.path("vendor/libwebp"),
+                .files = &.{
+                    "src/dsp/alpha_processing_sse2.c",
+                    "src/dsp/dec_sse2.c",
+                    "src/dsp/filters_sse2.c",
+                    "src/dsp/lossless_sse2.c",
+                    "src/dsp/rescaler_sse2.c",
+                    "src/dsp/upsampling_sse2.c",
+                    "src/dsp/yuv_sse2.c",
+                },
+                .flags = webp_flags,
+            });
+            artifact.addCSourceFile(.{
+                .file = b.path("image-webp-sse41.c"),
+                .flags = webp_flags,
+            });
+            artifact.addCSourceFile(.{
+                .file = b.path("image-webp-avx2.c"),
+                .flags = webp_flags,
+            });
+        },
+        .aarch64 => artifact.addCSourceFiles(.{
+            .root = b.path("vendor/libwebp"),
+            .files = &.{
+                "src/dsp/alpha_processing_neon.c",
+                "src/dsp/dec_neon.c",
+                "src/dsp/filters_neon.c",
+                "src/dsp/lossless_neon.c",
+                "src/dsp/rescaler_neon.c",
+                "src/dsp/upsampling_neon.c",
+                "src/dsp/yuv_neon.c",
+            },
+            .flags = webp_flags,
+        }),
+        else => {},
+    }
+}
+
 fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
     const include_path = b.pathJoin(&.{ sdk_path, "usr", "include" });
     const framework_path = b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks" });
@@ -186,12 +309,14 @@ fn addNativeAudioDependencies(
     macos_sdk_path: ?[]const u8,
 ) void {
     addMiniaudioShim(b, artifact, target, macos_sdk_path);
+    addImageShim(b, artifact, target, macos_sdk_path);
 
     switch (target.result.os.tag) {
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
         .linux => {
             artifact.linkSystemLibrary("dl");
             artifact.linkSystemLibrary("pthread");
+            artifact.linkSystemLibrary("m");
         },
         else => {},
     }
@@ -337,6 +462,9 @@ pub fn build(b: *std.Build) void {
         .name = "opentui-bench",
         .root_module = bench_mod,
     });
+    bench_exe.linkLibC();
+    addImageShim(b, bench_exe, native_target, macos_sdk_path);
+    if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_exe, macos_sdk_path.?);
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
         run_bench.addArgs(args);

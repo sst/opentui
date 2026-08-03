@@ -34,6 +34,8 @@ pub const BenchResult = struct {
     max_ns: u64,
     total_ns: u64,
     iterations: usize,
+    stddev_ns: ?f64 = null,
+    rme_95: ?f64 = null,
     mem_stats: ?[]const MemStat,
 };
 
@@ -43,17 +45,42 @@ pub const BenchStats = struct {
     max_ns: u64 = 0,
     total_ns: u64 = 0,
     count: usize = 0,
+    mean_ns: f64 = 0,
+    m2_ns: f64 = 0,
 
     pub fn record(self: *BenchStats, elapsed_ns: u64) void {
         self.min_ns = @min(self.min_ns, elapsed_ns);
         self.max_ns = @max(self.max_ns, elapsed_ns);
         self.total_ns += elapsed_ns;
         self.count += 1;
+        const value: f64 = @floatFromInt(elapsed_ns);
+        const delta = value - self.mean_ns;
+        self.mean_ns += delta / @as(f64, @floatFromInt(self.count));
+        self.m2_ns += delta * (value - self.mean_ns);
     }
 
     pub fn avg(self: *const BenchStats) u64 {
         if (self.count == 0) return 0;
         return self.total_ns / self.count;
+    }
+
+    pub fn standardDeviation(self: *const BenchStats) ?f64 {
+        if (self.count < 2) return null;
+        return @sqrt(self.m2_ns / @as(f64, @floatFromInt(self.count - 1)));
+    }
+
+    pub fn relativeMarginOfError95(self: *const BenchStats) ?f64 {
+        const stddev = self.standardDeviation() orelse return null;
+        if (self.mean_ns == 0) return null;
+        const degrees_of_freedom = self.count - 1;
+        const critical_values = [_]f64{
+            0,     12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+            2.201, 2.179,  2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080,
+            2.074, 2.069,  2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+        };
+        const critical = if (degrees_of_freedom < critical_values.len) critical_values[degrees_of_freedom] else 1.96;
+        const standard_error = stddev / @sqrt(@as(f64, @floatFromInt(self.count)));
+        return critical * standard_error / self.mean_ns * 100;
     }
 };
 
@@ -83,6 +110,8 @@ pub const BenchRunner = struct {
             .max_ns = stats.max_ns,
             .total_ns = stats.total_ns,
             .iterations = stats.count,
+            .stddev_ns = stats.standardDeviation(),
+            .rme_95 = stats.relativeMarginOfError95(),
             .mem_stats = mem_stats,
         });
     }
@@ -215,6 +244,7 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     var min_col_width: usize = 3; // minimum for "Min"
     var avg_col_width: usize = 3; // minimum for "Avg"
     var max_col_width: usize = 3; // minimum for "Max"
+    var rme_col_width: usize = 6; // minimum for "RME95%"
 
     // Create a map to store column widths for each memory stat
     var mem_col_widths: std.ArrayListUnmanaged(usize) = .{};
@@ -231,6 +261,12 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
         const min = formatDuration(result.min_ns);
         const avg = formatDuration(result.avg_ns);
         const max = formatDuration(result.max_ns);
+        var rme_buf: [32]u8 = undefined;
+        const rme_str = if (result.rme_95) |rme|
+            std.fmt.bufPrint(&rme_buf, "{d:.2}%", .{rme}) catch unreachable
+        else
+            "-";
+        if (rme_str.len > rme_col_width) rme_col_width = rme_str.len;
 
         var min_buf: [32]u8 = undefined;
         const min_str = std.fmt.bufPrint(&min_buf, "{d:.2}{s}", .{ min.value, min.unit }) catch unreachable;
@@ -264,7 +300,7 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     }
 
     // Print header
-    var total_width = max_name_len + 3 + min_col_width + 3 + avg_col_width + 3 + max_col_width;
+    var total_width = max_name_len + 3 + min_col_width + 3 + avg_col_width + 3 + max_col_width + 3 + rme_col_width;
     for (mem_col_widths.items) |width| {
         total_width += 3 + width;
     }
@@ -291,6 +327,11 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     try writer.writeAll("\x1b[36m");
     try writer.writeAll("Max");
     try writer.splatByteAll(' ', max_col_width - 3);
+    try writer.writeAll("\x1b[0m\x1b[2m | \x1b[0m");
+
+    try writer.writeAll("\x1b[36m");
+    try writer.writeAll("RME95%");
+    try writer.splatByteAll(' ', rme_col_width - 6);
     try writer.writeAll("\x1b[0m");
 
     // Dynamic memory stat headers
@@ -315,6 +356,8 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
         const min = formatDuration(result.min_ns);
         const avg = formatDuration(result.avg_ns);
         const max = formatDuration(result.max_ns);
+        var rme_buf: [32]u8 = undefined;
+        const rme_str = if (result.rme_95) |rme| try std.fmt.bufPrint(&rme_buf, "{d:.2}%", .{rme}) else "-";
 
         // Format duration strings
         var min_buf: [32]u8 = undefined;
@@ -369,6 +412,15 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
         try writer.writeAll(max.color);
         try writer.writeAll(max_str);
         try writer.writeAll("\x1b[0m");
+
+        try writer.writeAll("\x1b[2m | \x1b[0m");
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[48;5;234m");
+        }
+        if (rme_str.len < rme_col_width) {
+            try writer.splatByteAll(' ', rme_col_width - rme_str.len);
+        }
+        try writer.writeAll(rme_str);
 
         // Dynamic memory stats columns
         for (mem_stat_names.items, 0..) |stat_name, i| {

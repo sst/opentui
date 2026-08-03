@@ -3,11 +3,11 @@ import { glob } from "astro/loaders"
 import { z } from "astro/zod"
 
 const docs = defineCollection({
-  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/docs" }),
+  loader: glob({ pattern: "**/*.mdx", base: "./src/content/docs" }),
   schema: z.object({
     title: z.string(),
     description: z.string().optional(),
-    order: z.number().int().nonnegative().optional(),
+    order: z.number().int().positive(),
     navTitle: z.string().optional(),
     skill: z
       .object({

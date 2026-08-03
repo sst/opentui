@@ -2,6 +2,7 @@
 import {
   BaseRenderable,
   createTextAttributes,
+  ImageRenderable,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -18,7 +19,7 @@ import {
   type TextNodeOptions,
 } from "@opentui/core"
 import { decodeHTMLStrict } from "entities"
-import { useContext } from "solid-js"
+import { onCleanup, useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"
 import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
 import { getNextId } from "./utils/id-counter.js"
@@ -202,6 +203,11 @@ export const {
     }
 
     const element = new elements[tagName](solidRenderer, { id })
+    if (element instanceof ImageRenderable) {
+      onCleanup(() => {
+        element.source = undefined
+      })
+    }
     log("Element created with id:", id)
     return element
   },
@@ -326,9 +332,18 @@ export const {
         }
         break
       case "style":
-        for (const prop in value) {
-          const propVal = value[prop]
-          if (prev !== undefined && propVal === prev[prop]) continue
+        const nextStyle = value ?? {}
+        const previousStyle = prev ?? {}
+        if (node instanceof ImageRenderable) {
+          for (const prop in previousStyle) {
+            if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
+            if (prop !== "fit" && prop !== "protocol") continue
+            node[prop] = undefined
+          }
+        }
+        for (const prop in nextStyle) {
+          const propVal = nextStyle[prop]
+          if (propVal === previousStyle[prop]) continue
           // @ts-expect-error todo validate if prop is actually settable
           node[prop] = propVal
         }

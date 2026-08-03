@@ -1,0 +1,102 @@
+---
+title: Package entrypoints
+description: Public package roots and subpaths across the OpenTUI workspace
+order: 5
+skill:
+  entry: true
+  intents: [package-exports, entrypoints, subpath-exports, imports]
+---
+
+# Package entrypoints
+
+OpenTUI packages use explicit `exports` maps. Import only the root and subpaths listed below; source-file deep imports are not public package entrypoints.
+
+## @opentui/core
+
+| Entrypoint                                       | Public purpose                                                                                                         |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `@opentui/core`                                  | Main imperative renderer, renderables, buffers, input, audio, plugins, Tree-sitter client, utilities, and shared types |
+| `@opentui/core/testing`                          | Test renderer, input/mouse drivers, capability fixtures, clocks, spies, Tree-sitter mock, and frame recorder           |
+| `@opentui/core/runtime-plugin`                   | Bun runtime-module plugin factory, module-ID helpers, rewrite options, and runtime module entry types                  |
+| `@opentui/core/runtime-plugin-support`           | Installs core runtime-plugin support as an import side effect and re-exports its setup API                             |
+| `@opentui/core/runtime-plugin-support/configure` | Configurable `ensureRuntimePluginSupport()` without import-time installation                                           |
+| `@opentui/core/yoga`                             | Native Yoga `Config`/`Node`, enums, constants, layout values, and callback types                                       |
+| `@opentui/core/tree-sitter/update-assets`        | `updateAssets`, `runUpdateAssetsCli`, and `UpdateOptions` for Tree-sitter assets                                       |
+| `@opentui/core/parser.worker`                    | Tree-sitter parser worker module; no named application API                                                             |
+| `@opentui/core/node-assets`                      | `getNodeAssets(target)` plus `NodeAsset` and `NodeAssetTarget` for Node distribution assets                            |
+
+`runtime-plugin`, both runtime-plugin-support entries, and the Tree-sitter update CLI use Bun-specific tooling. See the [Plugin API](/docs/plugins/core) and [Tree-sitter reference](/docs/reference/tree-sitter) for their workflows.
+
+## @opentui/react
+
+| Entrypoint                                        | Public purpose                                                                                             |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `@opentui/react`                                  | React renderer root, intrinsic catalogue, components, hooks, slots, `TimeToFirstDraw`, and component types |
+| `@opentui/react/renderer`                         | Published alias for the root renderer exports, including `createRoot` and `Root`                           |
+| `@opentui/react/test-utils`                       | React-aware `testRender(node, options)` over `@opentui/core/testing`                                       |
+| `@opentui/react/runtime-plugin-support`           | Installs the React runtime-module plugin as an import side effect                                          |
+| `@opentui/react/runtime-plugin-support/configure` | Configurable React `ensureRuntimePluginSupport()` without import-time installation                         |
+| `@opentui/react/jsx-runtime`                      | Automatic JSX runtime: `Fragment`, `jsx`, `jsxs`, and OpenTUI JSX types                                    |
+| `@opentui/react/jsx-dev-runtime`                  | Development JSX runtime: `Fragment`, `jsxDEV`, and OpenTUI JSX types                                       |
+
+The runtime-plugin-support entries use Bun's plugin API. Normal applications use the root and compiler-selected JSX runtime; use `/test-utils` only in tests.
+
+## @opentui/solid
+
+| Entrypoint                                        | Public purpose                                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@opentui/solid`                                  | Solid renderer, root `render`/`testRender`, reconciler helpers, elements, scrollback, slots, hooks, and types |
+| `@opentui/solid/preload`                          | Bun preload that installs the Solid source transform                                                          |
+| `@opentui/solid/bun-plugin`                       | Solid transform plugin factory/default export and installation/reset helpers                                  |
+| `@opentui/solid/runtime-plugin-support`           | Installs Solid transform and runtime-module support as an import side effect                                  |
+| `@opentui/solid/runtime-plugin-support/configure` | Configurable Solid runtime support without import-time installation                                           |
+| `@opentui/solid/components`                       | `extend`, `getComponentCatalogue`, and component extension types                                              |
+| `@opentui/solid/jsx-runtime`                      | Automatic JSX runtime and OpenTUI JSX namespace                                                               |
+| `@opentui/solid/jsx-dev-runtime`                  | Development JSX runtime and OpenTUI JSX namespace                                                             |
+
+`preload`, `bun-plugin`, and both runtime-plugin-support entries are Bun-specific. The root and JSX runtime setup are covered in [Solid.js bindings](/docs/bindings/solid).
+
+## @opentui/keymap
+
+| Entrypoint                        | Public purpose                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `@opentui/keymap`                 | Host-agnostic `Keymap`, extension context, key stringifiers, and shared types                 |
+| `@opentui/keymap/extras`          | Binding lookup, command-binding, and formatting helpers                                       |
+| `@opentui/keymap/extras/graph`    | Graph snapshots and graph projection types                                                    |
+| `@opentui/keymap/addons`          | Universal parser, field, metadata, leader, sequence, command, and diagnostics addons          |
+| `@opentui/keymap/addons/opentui`  | Universal addons plus OpenTUI base-layout and edit-buffer/textarea helpers                    |
+| `@opentui/keymap/testing`         | Host-agnostic fake host, targets/events, diagnostics, and `createTestKeymap`                  |
+| `@opentui/keymap/html`            | DOM host/event adapter and bare/default HTML keymap factories                                 |
+| `@opentui/keymap/opentui`         | `CliRenderer`/`Renderable` host adapter and bare/default OpenTUI keymap factories             |
+| `@opentui/keymap/react`           | OpenTUI React provider, hooks, and store-backed reactive matcher                              |
+| `@opentui/keymap/solid`           | OpenTUI Solid provider, hooks, selector, and signal-backed reactive matcher                   |
+| `@opentui/keymap/runtime-modules` | Runtime-module map for the keymap root, extras, addons, adapters, and lazy framework bindings |
+
+Adapter entrypoints intentionally do not re-export the shared engine. Import `Keymap`, key stringifiers, and shared types from `@opentui/keymap`. See the [Keymap overview](/docs/keymap/overview) for how the entrypoints compose.
+
+## @opentui/qrcode
+
+| Entrypoint              | Public purpose                                                            |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `@opentui/qrcode`       | QR encoder, segment/ECC APIs, SVG/terminal output, and `QRCodeRenderable` |
+| `@opentui/qrcode/react` | `registerQRCode()` for the React `qr-code` intrinsic                      |
+| `@opentui/qrcode/solid` | `registerQRCode()` for the Solid `qr_code` intrinsic                      |
+
+See [QR encoder](/docs/reference/qr-encoder) and [QR Code component](/docs/components/qr-code) for the two API layers.
+
+## @opentui/ssh
+
+| Entrypoint     | Public purpose                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `@opentui/ssh` | SSH server builder, authentication, middleware, sessions, logging, errors, and public types |
+
+The package has no framework-specific subpaths; hand the session renderer to the React or Solid root API. See [SSH](/docs/reference/ssh).
+
+## @opentui/three
+
+| Entrypoint                       | Public purpose                                                                                        |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `@opentui/three`                 | Three.js WebGPU renderer, renderable, sprites, effects, resource pools, physics adapters, and `THREE` |
+| `@opentui/three/runtime-modules` | Runtime-module map containing the `@opentui/three` root for Bun-loaded plugins                        |
+
+Both entrypoints are Bun-only. See [Three.js WebGPU](/docs/reference/three).
