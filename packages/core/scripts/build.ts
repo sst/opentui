@@ -195,14 +195,12 @@ const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
-  if (!process.env.OPENTUI_GHOSTTY_VT_ROOT) {
-    runCommand(
-      "bun",
-      ["scripts/build-ghostty-vt.ts", ...(buildAll ? ["--all"] : [])],
-      rootDir,
-      "Error: Ghostty VT build failed",
-    )
-  }
+  runCommand(
+    "bun",
+    ["scripts/build-ghostty-vt.ts", ...(buildAll ? ["--all"] : [])],
+    rootDir,
+    "Error: Ghostty VT build failed",
+  )
 
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
   if (process.env.OPENTUI_GHOSTTY_VT_ROOT) {

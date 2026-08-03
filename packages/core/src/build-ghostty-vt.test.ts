@@ -113,4 +113,16 @@ describe("Ghostty VT SDK cache", () => {
     expect(existsSync(join(sourceRoot, "untracked.zig"))).toBe(false)
     expect(existsSync(join(sourceRoot, ".zig-cache", "cache"))).toBe(true)
   })
+
+  test("validates an external SDK before starting the native build", () => {
+    testRoot = mkdtempSync(join(tmpdir(), "opentui-ghostty-vt-external-"))
+    const result = spawnSync(process.execPath, ["scripts/build.ts", "--native"], {
+      cwd: join(import.meta.dirname, ".."),
+      encoding: "utf8",
+      env: { ...process.env, OPENTUI_GHOSTTY_VT_ROOT: testRoot },
+    })
+
+    expect(result.status).not.toBe(0)
+    expect(`${result.stdout}${result.stderr}`).toContain("OPENTUI_GHOSTTY_VT_ROOT is incomplete")
+  })
 })
