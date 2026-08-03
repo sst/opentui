@@ -223,10 +223,15 @@ pub fn statusFromError(err: anyerror) Status {
 const PngMetadata = struct {
     width: u32,
     height: u32,
+    encoded_len: usize = 0,
     orientation: u8 = 1,
     has_alpha: bool,
     color_status: ColorStatus = .assumed_srgb,
 };
+
+fn isPngTrailingWhitespace(byte: u8) bool {
+    return byte == 0x20 or byte == 0x09 or byte == 0x0A or byte == 0x0D;
+}
 
 fn parseExifOrientation(data: []const u8) u8 {
     var tiff = data;
@@ -364,7 +369,11 @@ fn scanPng(data: []const u8) !PngMetadata {
         } else if (std.mem.eql(u8, kind, "IDAT")) {
             saw_idat = true;
         } else if (std.mem.eql(u8, kind, "IEND")) {
-            if (length != 0 or !saw_idat or chunk_end != data.len) return error.MalformedInput;
+            if (length != 0 or !saw_idat) return error.MalformedInput;
+            for (data[chunk_end..]) |byte| {
+                if (!isPngTrailingWhitespace(byte)) return error.MalformedInput;
+            }
+            if (metadata) |*value| value.encoded_len = chunk_end;
             saw_iend = true;
             break;
         }
@@ -386,9 +395,10 @@ fn scanPng(data: []const u8) !PngMetadata {
     return result;
 }
 
-fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bool) Status {
+fn probeInternal(data: []const u8, limits: Limits, out: *Info, effective_len: ?*usize, validate_jpeg: bool) Status {
     if (data.len == 0 or data.len > std.math.maxInt(u32)) return .invalid_argument;
     if (data.len > limits.max_encoded_bytes) return .memory_limit;
+    if (effective_len) |value| value.* = data.len;
     const format = detectFormat(data);
     if (format == .unknown) return .unsupported_format;
     if (format == .jpeg) {
@@ -466,11 +476,13 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bo
         return .ok;
     }
     const metadata = scanPng(data) catch |err| return statusFromError(err);
+    if (effective_len) |value| value.* = metadata.encoded_len;
     _ = checkedPixelBytes(metadata.width, metadata.height, limits) catch |err| return statusFromError(err);
 
     var decoder_width: u32 = 0;
     var decoder_height: u32 = 0;
-    const png_probe_status = ot_image_png_probe(data.ptr, @intCast(data.len), &decoder_width, &decoder_height);
+    const png_data = data[0..metadata.encoded_len];
+    const png_probe_status = ot_image_png_probe(png_data.ptr, @intCast(png_data.len), &decoder_width, &decoder_height);
     if (png_probe_status == 2) return .out_of_memory;
     if (png_probe_status != 0 or decoder_width != metadata.width or decoder_height != metadata.height) return .malformed_input;
 
@@ -489,12 +501,12 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bo
 }
 
 pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
-    return probeInternal(data, limits, out, true);
+    return probeInternal(data, limits, out, null, true);
 }
 
 pub fn inspect(allocator: Allocator, data: []const u8, limits: Limits, out: *Info) Status {
     var encoded_info: Info = .{};
-    const probe_status = probeInternal(data, limits, &encoded_info, false);
+    const probe_status = probeInternal(data, limits, &encoded_info, null, false);
     if (probe_status != .ok) return probe_status;
 
     const decoded = decodeInternal(allocator, data, limits, false) catch |err| return statusFromError(err);
@@ -560,7 +572,8 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
 
 fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain_encoded_png: bool) !*Image {
     var image_info: Info = .{};
-    const probe_status = probeInternal(data, limits, &image_info, false);
+    var effective_len = data.len;
+    const probe_status = probeInternal(data, limits, &image_info, &effective_len, false);
     if (probe_status != .ok) return switch (probe_status) {
         .unsupported_format => error.UnsupportedFormat,
         .unsupported_feature => error.UnsupportedFeature,
@@ -576,10 +589,11 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
     var source_owned = true;
     defer if (source_owned) allocator.free(source);
     const format: Format = @enumFromInt(image_info.format);
+    const decode_data = if (format == .png) data[0..effective_len] else data;
     const decode_status = switch (format) {
         .png => ot_image_png_decode(
-            data.ptr,
-            @intCast(data.len),
+            decode_data.ptr,
+            @intCast(decode_data.len),
             source.ptr,
             source.len,
             image_info.source_width,
@@ -622,7 +636,7 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
     if (image_info.orientation == 1) {
         const image = try allocator.create(Image);
         errdefer allocator.destroy(image);
-        const encoded_png = if (format == .png and retain_encoded_png) try allocator.dupe(u8, data) else null;
+        const encoded_png = if (format == .png and retain_encoded_png) try allocator.dupe(u8, decode_data) else null;
         errdefer if (encoded_png) |bytes| allocator.free(bytes);
         image.* = .{
             .allocator = allocator,
