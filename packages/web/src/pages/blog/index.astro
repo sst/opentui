@@ -1,0 +1,46 @@
+---
+import Blog from "../../layouts/Blog.astro"
+import { getCollection } from "astro:content"
+
+const posts = (await getCollection("blog"))
+  .filter((post) => import.meta.env.PROD ? !post.data.draft : true)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+})
+---
+
+<Blog title="Blog - OpenTUI" description="">
+  <div class="blog-index">
+    <header class="blog-index-header">
+      <h1>Blog</h1>
+      <p>About everything OpenTUI</p>
+    </header>
+
+    {
+      posts.length === 0 ? (
+        <p class="blog-empty">No posts yet. Check back soon.</p>
+      ) : (
+        <ul class="blog-list">
+          {posts.map((post) => (
+            <li>
+              <a href={`/blog/${post.id}`} class="blog-row">
+                <div class="blog-row-main">
+                  <h2>{post.data.title}</h2>
+                  {post.data.description && <p>{post.data.description}</p>}
+                </div>
+                <div class="blog-row-meta">
+                  {post.data.author && <span class="blog-row-author">{post.data.author}</span>}
+                  <time datetime={post.data.date.toISOString()}>{dateFormatter.format(post.data.date)}</time>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</Blog>

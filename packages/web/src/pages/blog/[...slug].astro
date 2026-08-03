@@ -1,0 +1,58 @@
+---
+import { getCollection, render } from "astro:content"
+import Blog from "../../layouts/Blog.astro"
+
+export async function getStaticPaths() {
+  const posts = (await getCollection("blog")).filter((post) =>
+    import.meta.env.PROD ? !post.data.draft : true,
+  )
+  return posts.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }))
+}
+
+const { entry } = Astro.props
+const { Content } = await render(entry)
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+})
+---
+
+<Blog title={`${entry.data.title} - OpenTUI Blog`} description={entry.data.description}>
+  <article class="blog-post">
+    <a href="/blog" class="blog-back">← All posts</a>
+    <header class="blog-post-header">
+      <div class="blog-card-meta">
+        <time datetime={entry.data.date.toISOString()}>{dateFormatter.format(entry.data.date)}</time>
+        {entry.data.author && <span class="blog-card-author">{entry.data.author}</span>}
+      </div>
+      <h1>{entry.data.title}</h1>
+      {entry.data.description && <p class="blog-post-lede">{entry.data.description}</p>}
+      {
+        entry.data.tags.length > 0 && (
+          <ul class="blog-tags">
+            {entry.data.tags.map((tag) => (
+              <li>{tag}</li>
+            ))}
+          </ul>
+        )
+      }
+    </header>
+
+    {
+      entry.data.cover && (
+        <div class="blog-post-cover">
+          <img src={entry.data.cover} alt="" />
+        </div>
+      )
+    }
+
+    <div class="content blog-content">
+      <Content />
+    </div>
+  </article>
+</Blog>

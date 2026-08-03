@@ -1,0 +1,73 @@
+---
+import Base from "./Base.astro"
+
+interface Props {
+  title: string
+  description?: string
+}
+
+const { title, description } = Astro.props
+const currentPath = Astro.url.pathname
+const isActive = (path: string) => currentPath === path || currentPath === `${path}/`
+---
+
+<Base title={title} description={description}>
+  <div class="docs-page">
+    <div class="docs-container">
+      <header class="header">
+        <div class="header-content">
+          <a href="/" class="logo">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="3" width="20" height="18" fill="currentColor" />
+              <rect x="6" y="8" width="3" height="8" fill="hsl(0, 20%, 99%)" />
+            </svg>
+            OpenTUI
+          </a>
+          <nav class="nav">
+            <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="/docs/getting-started">Docs</a>
+            <a href="/blog" class:list={{ active: isActive("/blog") }}>Blog</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="blog-layout">
+          <slot />
+        </div>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-content">
+          <span>OpenTUI - Terminal UIs</span>
+          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const btn = document.createElement('button')
+      btn.className = 'copy-btn'
+      btn.setAttribute('aria-label', 'Copy code')
+      btn.innerHTML = `
+        <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `
+      pre.appendChild(btn)
+
+      btn.addEventListener('click', async () => {
+        const code = (pre as HTMLElement).dataset.code || ''
+        await navigator.clipboard.writeText(code)
+        btn.classList.add('copied')
+        setTimeout(() => btn.classList.remove('copied'), 1500)
+      })
+    })
+  </script>
+</Base>
