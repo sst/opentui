@@ -21,7 +21,7 @@ const config = JSON.parse(readFileSync(join(root, "ghostty-vt.json"), "utf8")) a
 const ghosttyCacheRoot = join(repoRoot, ".cache", "ghostty-vt")
 const cacheRoot = join(ghosttyCacheRoot, config.revision)
 const sourceRoot = join(cacheRoot, "source")
-const externalSdkRoot = resolveGhosttyVtRootOverride(process.env.OPENTUI_GHOSTTY_VT_ROOT, process.cwd())
+const externalSdkRoot = resolveGhosttyVtRootOverride(process.env.OPENTUI_GHOSTTY_VT_ROOT, root)
 const sdkRoot = externalSdkRoot ?? join(ghosttyCacheRoot, "sdk")
 const force = process.argv.includes("--force")
 
