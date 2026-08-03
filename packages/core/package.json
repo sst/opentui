@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "type": "module",
   "imports": {
     "#opentui/runtime-assets": {
@@ -24,12 +24,14 @@
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "build:native:dev": "bun scripts/build.ts --native --dev",
+    "vendor:update:images": "sh src/zig/vendor/update.sh",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
     "bench:layout": "bun src/benchmark/layout-benchmark.ts",
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
     "bench:render-traversal": "bun src/benchmark/render-traversal-benchmark.ts",
     "bench:render-runtimes": "bun src/benchmark/render-runtime-benchmark.ts",
+    "bench:mouse-events": "bun src/benchmark/mouse-event-benchmark.ts",
     "bench:render-compare": "bun src/benchmark/render-runtime-compare.ts",
     "bench:ffi-fast-path": "bun src/benchmark/ffi-fast-path-benchmark.ts",
     "bench:ffi-fast-path-paired": "bun src/benchmark/ffi-fast-path-paired-benchmark.ts",
@@ -65,14 +67,14 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@opentui/core-darwin-x64": "0.4.5",
-    "@opentui/core-darwin-arm64": "0.4.5",
-    "@opentui/core-linux-x64": "0.4.5",
-    "@opentui/core-linux-arm64": "0.4.5",
-    "@opentui/core-win32-x64": "0.4.5",
-    "@opentui/core-win32-arm64": "0.4.5",
-    "@opentui/core-linux-x64-musl": "0.4.5",
-    "@opentui/core-linux-arm64-musl": "0.4.5"
+    "@opentui/core-darwin-x64": "0.5.0",
+    "@opentui/core-darwin-arm64": "0.5.0",
+    "@opentui/core-linux-x64": "0.5.0",
+    "@opentui/core-linux-arm64": "0.5.0",
+    "@opentui/core-win32-x64": "0.5.0",
+    "@opentui/core-win32-arm64": "0.5.0",
+    "@opentui/core-linux-x64-musl": "0.5.0",
+    "@opentui/core-linux-arm64-musl": "0.5.0"
   },
   "exports": {
     ".": {

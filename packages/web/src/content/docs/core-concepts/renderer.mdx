@@ -34,30 +34,30 @@ The factory function does three things:
 
 This page covers the options that most apps set directly. `CliRendererConfig` also includes lower-level hooks for testing and tuning, such as `clock`, `postProcessFns`, `prependInputHandlers`, `bufferedOutput`, `useThread`, and stats options.
 
-| Option                | Type                           | Default                          | Description                                                                             |
-| --------------------- | ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------- |
-| `screenMode`          | `ScreenMode`                   | `"alternate-screen"`             | How the renderer uses terminal space ([details](#screen-modes))                         |
-| `footerHeight`        | `number`                       | `12`                             | Requested footer rows for `"split-footer"` mode                                         |
-| `stdin`               | `NodeJS.ReadStream`            | `process.stdin`                  | Input stream; raw mode is used when available                                           |
-| `stdout`              | `NodeJS.WriteStream`           | `process.stdout`                 | Output stream for native frames and stdout interception ([details](#custom-streams))    |
-| `width`               | `number`                       | `stdout.columns \|\| 80`         | Fallback columns for non-TTY/custom `stdout`                                            |
-| `height`              | `number`                       | `stdout.rows \|\| 24`            | Fallback rows for non-TTY/custom `stdout`                                               |
-| `remote`              | `boolean`                      | custom: `true`; process: `false` | Treat output as a remote terminal and skip default env forwarding                       |
-| `externalOutputMode`  | `ExternalOutputMode`           | varies                           | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
-| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`              | How the built-in console overlay behaves ([details](#console-mode))                     |
-| `exitOnCtrlC`         | `boolean`                      | `true`                           | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
-| `exitSignals`         | `NodeJS.Signals[]`             | see below                        | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
-| `clearOnShutdown`     | `boolean`                      | `true`                           | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
-| `targetFps`           | `number`                       | `30`                             | Target frames per second for the render loop                                            |
-| `maxFps`              | `number`                       | `60`                             | Maximum FPS cap for immediate re-renders                                                |
-| `useMouse`            | `boolean`                      | `true`                           | Enable mouse input                                                                      |
-| `autoFocus`           | `boolean`                      | `true`                           | Focus the nearest focusable renderable on left click                                    |
-| `enableMouseMovement` | `boolean`                      | `true`                           | Track mouse movement, not just clicks and scrolls                                       |
-| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                             | Kitty keyboard protocol settings, or `null` to disable                                  |
-| `backgroundColor`     | `ColorInput`                   | transparent                      | Background color for the render buffer                                                  |
-| `consoleOptions`      | `ConsoleOptions`               | -                                | Options forwarded to the built-in console overlay                                       |
-| `openConsoleOnError`  | `boolean`                      | `true` (dev)                     | Open the console overlay on uncaught errors                                             |
-| `onDestroy`           | `() => void`                   | -                                | Run after the renderer finishes cleanup                                                 |
+| Option                | Type                           | Default                             | Description                                                                             |
+| --------------------- | ------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `screenMode`          | `ScreenMode`                   | `"alternate-screen"`                | How the renderer uses terminal space ([details](#screen-modes))                         |
+| `footerHeight`        | `number`                       | `12`                                | Requested footer rows for `"split-footer"` mode                                         |
+| `stdin`               | `NodeJS.ReadStream`            | `process.stdin`                     | Input stream; raw mode is used when available                                           |
+| `stdout`              | `NodeJS.WriteStream`           | `process.stdout`                    | Output stream for native frames and stdout interception ([details](#custom-streams))    |
+| `width`               | `number`                       | `stdout.columns \|\| 80`            | Fallback columns for non-TTY/custom `stdout`                                            |
+| `height`              | `number`                       | `stdout.rows \|\| 24`               | Fallback rows for non-TTY/custom `stdout`                                               |
+| `remote`              | `boolean`                      | feed custom: `true`; otherwise auto | Override remote-terminal detection and env forwarding                                   |
+| `externalOutputMode`  | `ExternalOutputMode`           | varies                              | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
+| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`                 | How the built-in console overlay behaves ([details](#console-mode))                     |
+| `exitOnCtrlC`         | `boolean`                      | `true`                              | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
+| `exitSignals`         | `NodeJS.Signals[]`             | see below                           | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
+| `clearOnShutdown`     | `boolean`                      | `true`                              | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
+| `targetFps`           | `number`                       | `30`                                | Target frames per second for the render loop                                            |
+| `maxFps`              | `number`                       | `60`                                | Maximum FPS cap for immediate re-renders                                                |
+| `useMouse`            | `boolean`                      | `true`                              | Enable mouse input                                                                      |
+| `autoFocus`           | `boolean`                      | `true`                              | Focus the nearest focusable renderable on left click                                    |
+| `enableMouseMovement` | `boolean`                      | `true`                              | Track mouse movement, not just clicks and scrolls                                       |
+| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                                | Kitty keyboard protocol settings, or `null` to disable                                  |
+| `backgroundColor`     | `ColorInput`                   | transparent                         | Background color for the render buffer                                                  |
+| `consoleOptions`      | `ConsoleOptions`               | -                                   | Options forwarded to the built-in console overlay                                       |
+| `openConsoleOnError`  | `boolean`                      | `true` (dev)                        | Open the console overlay on uncaught errors                                             |
+| `onDestroy`           | `() => void`                   | -                                   | Run after the renderer finishes cleanup                                                 |
 
 You can also change `screenMode`, `footerHeight`, `externalOutputMode`, and `consoleMode` at runtime through their
 matching `renderer` properties.
@@ -145,7 +145,9 @@ const renderer = await createCliRenderer({
 })
 ```
 
-Initial size comes from `stdout.columns` / `stdout.rows`, then `width` / `height`, then `80x24`. For custom `stdout`, `remote` defaults to `true`; set `remote: false` only when the stream behaves like the local terminal and should receive default terminal env forwarding.
+Initial size comes from `stdout.columns` / `stdout.rows`, then `width` / `height`, then `80x24`. Feed-backed custom output defaults `remote` to `true`; process stdout and `bufferedOutput: "memory"` preserve native SSH/mosh auto-detection. Set `remote: false` only when a custom stream behaves like the local terminal and should receive default terminal env forwarding.
+
+Remote custom streams do not forward local terminal variables by default. To apply image overrides explicitly, set `forwardEnvKeys: ["OPENTUI_GRAPHICS", "OPENTUI_IMAGE_PROTOCOL"]`.
 
 When `stdout` is not `process.stdout`, the renderer creates a `NativeSpanFeed` unless `bufferedOutput: "memory"` is set. It forwards native frame bytes to the original `stdout.write` and keeps each borrowed native chunk alive until the write callback runs, providing asynchronous backpressure. Applications normally should not create this low-level transport directly; see the [NativeSpanFeed reference](/docs/reference/native-span-feed) for its ownership and lifecycle rules.
 
@@ -176,6 +178,8 @@ const renderer = await createCliRenderer({
 In split-footer mode with `externalOutputMode: "capture-stdout"`, the renderer also owns a programmatic append path above the footer. Use it when you want rich, styled output in scrollback instead of raw `console.log` text — colors, wrapping, syntax-highlighted code, and markdown. Every append goes through the same FIFO queue as captured stdout, so ordering stays deterministic even when both sources interleave.
 
 Both APIs require `screenMode: "split-footer"` and `externalOutputMode: "capture-stdout"`. They throw otherwise.
+
+Scrollback snapshots use the same image protocol resolution as live `ImageRenderable` instances. Kitty uses conventional placement, Sixel uses the renderable's detected pixel geometry, and blocks use Unicode quadrant cells. Native scrollback placement starts once the footer is pinned and the image rectangle is addressable; unsupported snapshot layouts use the normal block fallback.
 
 ### `renderer.writeToScrollback(writer)`
 
@@ -264,7 +268,9 @@ surface.destroy()
 | `commitRows(start, endExclusive, options?)` | Copy a row range out of the backing buffer and enqueue it as a scrollback commit |
 | `destroy()`                                 | Tear down the surface and its backing buffer                                     |
 
-`commitRows` throws if you call it before `render()`, or if the renderer's width or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
+`commitRows` throws if you call it before `render()`, or if renderer width, terminal width or height, pixel resolution, or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
+
+For an `ImageRenderable`, await `image.loadPromise`, then call `surface.render()` and `surface.commitRows(...)`. `surface.settle()` waits for syntax highlighting, not image loading. The queued snapshot retains the image until native output publication, so the surface can be destroyed immediately after the commit.
 
 For Solid, use the binding-level helpers that wrap `writeToScrollback` with JSX support. See [`createScrollbackWriter` / `writeSolidToScrollback`](/docs/bindings/solid#scrollback-writers). The React binding does not currently provide an equivalent JSX scrollback helper.
 

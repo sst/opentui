@@ -4,6 +4,15 @@ const gp = @import("../grapheme.zig");
 const GraphemePool = gp.GraphemePool;
 const GraphemeTracker = gp.GraphemeTracker;
 
+test "image cell markers use the unused character tag" {
+    const marker = gp.packImageCell(12345, 9);
+    try std.testing.expect(gp.isImageChar(marker));
+    try std.testing.expect(!gp.isGraphemeChar(marker));
+    try std.testing.expect(!gp.isContinuationChar(marker));
+    try std.testing.expectEqual(@as(u32, 12345), gp.imageIdFromChar(marker));
+    try std.testing.expectEqual(@as(u4, 9), gp.imageFallbackFromChar(marker));
+}
+
 test "GraphemePool - can initialize and cleanup" {
     // Just verify init/deinit don't crash
     var pool = GraphemePool.init(std.testing.allocator);

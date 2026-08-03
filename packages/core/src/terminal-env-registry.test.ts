@@ -13,4 +13,5 @@ test("native terminal environment registrations match native string semantics", 
   const generated = generateEnvMarkdown()
   expect(generated).toContain("## OPENTUI_FORCE_WCWIDTH")
   expect(generated).toContain("**Default:** *unset*")
+  expect(generated).toContain("Control Kitty and Sixel graphics detection")
 })

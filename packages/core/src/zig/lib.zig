@@ -23,6 +23,7 @@ const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
+const native_image = @import("image.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -90,6 +91,10 @@ fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRende
     return handles.acquire(handle, .native_renderable, native_renderable.NativeRenderable);
 }
 
+fn acquireImage(handle: NativeHandle) ?*native_image.Image {
+    return handles.acquire(handle, .image, native_image.Image);
+}
+
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
     outPtr.* = .{
         .start_cols_ptr = EMPTY_U32[0..].ptr,
@@ -124,6 +129,7 @@ comptime {
     _ = native_audio;
     _ = native_renderable;
     _ = native_yoga;
+    _ = native_image;
 }
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void) void {
@@ -960,6 +966,7 @@ pub const ExternalCapabilities = extern struct {
     explicit_cursor_positioning: bool,
     remote: bool,
     multiplexer: u8,
+    image_protocol: u8,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -999,6 +1006,7 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .remote = caps.remote,
         .multiplexer = @intFromEnum(term.multiplexer),
+        .image_protocol = @intFromEnum(term.image_protocol),
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -1328,6 +1336,45 @@ export fn bufferClearOpacity(buffer_handle: NativeHandle) void {
 export fn bufferDrawSuperSampleBuffer(buffer_handle: NativeHandle, x: u32, y: u32, pixelData: [*]const u8, len: u32, format: u8, alignedBytesPerRow: u32) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
+}
+
+pub const ExternalImageDrawOptions = extern struct {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+    protocol: u32,
+};
+
+export fn bufferDrawImage(
+    buffer_handle: NativeHandle,
+    image_handle: NativeHandle,
+    options: *const ExternalImageDrawOptions,
+) u8 {
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    const image_ptr = acquireImage(image_handle) orelse return 0;
+    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return 0;
+    return @intFromBool(buffer_ptr.drawImage(
+        image_ptr,
+        image_handle,
+        options.x,
+        options.y,
+        options.width,
+        options.height,
+        options.pixel_width,
+        options.pixel_height,
+        options.source_x,
+        options.source_y,
+        options.source_width,
+        options.source_height,
+        protocol,
+    ) catch false);
 }
 
 export fn linkAlloc(urlPtr: ?[*]const u8, urlLen: u32) u32 {
@@ -2764,6 +2811,211 @@ export fn syntaxStyleResolveByName(style_handle: NativeHandle, namePtr: ?[*]cons
 export fn syntaxStyleGetStyleCount(style_handle: NativeHandle) u32 {
     const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
     return @intCast(object_ptr.getStyleCount());
+}
+
+// Image functions
+fn insertImage(image: *native_image.Image, out_handle: *NativeHandle) native_image.Status {
+    out_handle.* = handles.insert(.image, erasePtr(image)) catch {
+        image.deinit();
+        return .out_of_memory;
+    };
+    return .ok;
+}
+
+export fn imageInfo(data_ptr: ?[*]const u8, data_len: u32, out_info: ?*native_image.Info) u32 {
+    const output = out_info orelse return @intFromEnum(native_image.Status.invalid_argument);
+    if (data_len == 0 or data_ptr == null) return @intFromEnum(native_image.Status.invalid_argument);
+    return @intFromEnum(native_image.inspect(globalAllocator, data_ptr.?[0..data_len], .{}, output));
+}
+
+export fn imageDecode(data_ptr: ?[*]const u8, data_len: u32, out_handle: ?*NativeHandle) u32 {
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (data_len == 0 or data_ptr == null) return @intFromEnum(native_image.Status.invalid_argument);
+    const image = native_image.decode(globalAllocator, data_ptr.?[0..data_len], .{}) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(image, output));
+}
+
+export fn imageCreateFromRgba(
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    width: u32,
+    height: u32,
+    stride: u32,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    }
+    const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
+    const image = native_image.createFromRgba(globalAllocator, pixels, width, height, stride) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(image, output));
+}
+
+export fn imageDestroy(image_handle: NativeHandle) void {
+    const token = handles.beginDestroy(image_handle, .image, native_image.Image) orelse return;
+    token.ptr.deinit();
+    handles.finishDestroy(token.handle);
+}
+
+export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_info orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = image.info();
+    return @intFromEnum(native_image.Status.ok);
+}
+
+export fn imageGetPixelsPtr(image_handle: NativeHandle) ?[*]u8 {
+    const image = acquireImage(image_handle) orelse return null;
+    if (image.ref_count != 1) return null;
+    image.discardEncoded();
+    // Callers receive mutable pixels, so opacity can no longer be proven.
+    image.metadata.has_alpha = 1;
+    return image.pixels.ptr;
+}
+
+export fn imageClone(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const cloned = image.clone() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(insertImage(cloned, output));
+}
+
+export fn imageCopyPixels(
+    image_handle: NativeHandle,
+    destination_ptr: ?[*]u8,
+    destination_len: u64,
+    stride: u32,
+    bgra: u8,
+) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    if (destination_len > std.math.maxInt(usize) or destination_ptr == null or bgra > 1) {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    }
+    const destination = destination_ptr.?[0..@intCast(destination_len)];
+    return @intFromEnum(native_image.copyPixels(image, destination, stride, bgra == 1));
+}
+
+test "imageGetPixelsPtr aliases the image pixel allocation" {
+    const pixels = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 2, 1, 8, &handle),
+    );
+    defer imageDestroy(handle);
+
+    const pointer = imageGetPixelsPtr(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualSlices(u8, &pixels, pointer[0..pixels.len]);
+    pointer[0] = 42;
+
+    var copied: [pixels.len]u8 = undefined;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCopyPixels(handle, &copied, copied.len, 8, 0),
+    );
+    try std.testing.expectEqual(@as(u8, 42), copied[0]);
+}
+
+test "imageGetPixelsPtr requires exclusive ownership and invalidates encoded state" {
+    const value = try native_image.createFromRgba(globalAllocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    value.encoded_png = try globalAllocator.dupe(u8, "encoded");
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(native_image.Status.ok, insertImage(value, &handle));
+    defer imageDestroy(handle);
+
+    value.retain();
+    try std.testing.expectEqual(@as(?[*]u8, null), imageGetPixelsPtr(handle));
+    value.deinit();
+
+    try std.testing.expect(imageGetPixelsPtr(handle) != null);
+    try std.testing.expectEqual(@as(?[]u8, null), value.encoded_png);
+    try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+}
+
+export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filter: u32, out_handle: ?*NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const resize_filter = std.meta.intToEnum(native_image.ResizeFilter, filter) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const resized = native_image.resize(globalAllocator, image, width, height, resize_filter) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(resized, output));
+}
+
+export fn imageExtract(
+    image_handle: NativeHandle,
+    left: u32,
+    top: u32,
+    width: u32,
+    height: u32,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const extracted = native_image.extract(globalAllocator, image, left, top, width, height) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(extracted, output));
+}
+
+export fn imageExtend(
+    image_handle: NativeHandle,
+    top: u32,
+    right: u32,
+    bottom: u32,
+    left: u32,
+    background_ptr: ?[*]const u8,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const background = background_ptr orelse return @intFromEnum(native_image.Status.invalid_argument);
+    const extended = native_image.extend(globalAllocator, image, top, right, bottom, left, .{
+        background[0], background[1], background[2], background[3],
+    }) catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(insertImage(extended, output));
+}
+
+export fn imageTransform(image_handle: NativeHandle, operation: u32, out_handle: ?*NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const transform_operation = std.meta.intToEnum(native_image.Transform, operation) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const transformed = native_image.transform(globalAllocator, image, transform_operation) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(transformed, output));
+}
+
+export fn imageComposite(
+    base_handle: NativeHandle,
+    overlay_handle: NativeHandle,
+    left: i32,
+    top: i32,
+    blend: u32,
+    opacity: u8,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const base = acquireImage(base_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const overlay = acquireImage(overlay_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    const blend_mode = std.meta.intToEnum(native_image.Blend, blend) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const composited = native_image.composite(globalAllocator, base, overlay, left, top, blend_mode, opacity) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(composited, output));
 }
 
 // Unicode encoding API

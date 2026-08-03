@@ -11,7 +11,7 @@
     },
     "packages/core": {
       "name": "@opentui/core",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "bun-ffi-structs": "0.3.1",
         "diff": "9.0.0",
@@ -28,14 +28,14 @@
         "web-tree-sitter": "0.25.10",
       },
       "optionalDependencies": {
-        "@opentui/core-darwin-arm64": "0.4.5",
-        "@opentui/core-darwin-x64": "0.4.5",
-        "@opentui/core-linux-arm64": "0.4.5",
-        "@opentui/core-linux-arm64-musl": "0.4.5",
-        "@opentui/core-linux-x64": "0.4.5",
-        "@opentui/core-linux-x64-musl": "0.4.5",
-        "@opentui/core-win32-arm64": "0.4.5",
-        "@opentui/core-win32-x64": "0.4.5",
+        "@opentui/core-darwin-arm64": "0.5.0",
+        "@opentui/core-darwin-x64": "0.5.0",
+        "@opentui/core-linux-arm64": "0.5.0",
+        "@opentui/core-linux-arm64-musl": "0.5.0",
+        "@opentui/core-linux-x64": "0.5.0",
+        "@opentui/core-linux-x64-musl": "0.5.0",
+        "@opentui/core-win32-arm64": "0.5.0",
+        "@opentui/core-win32-x64": "0.5.0",
       },
       "peerDependencies": {
         "web-tree-sitter": "0.25.10",
@@ -43,7 +43,7 @@
     },
     "packages/examples": {
       "name": "@opentui/examples",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
         "@opentui/core": "workspace:*",
@@ -65,7 +65,7 @@
     },
     "packages/keymap": {
       "name": "@opentui/keymap",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@opentui/core": "workspace:*",
       },
@@ -94,7 +94,7 @@
     },
     "packages/qrcode": {
       "name": "@opentui/qrcode",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@opentui/core": "workspace:*",
       },
@@ -116,7 +116,7 @@
     },
     "packages/react": {
       "name": "@opentui/react",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@opentui/core": "workspace:*",
         "react-reconciler": "^0.33.0",
@@ -145,7 +145,7 @@
     },
     "packages/solid": {
       "name": "@opentui/solid",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@babel/core": "7.28.0",
         "@babel/preset-typescript": "7.27.1",
@@ -178,7 +178,7 @@
     },
     "packages/ssh": {
       "name": "@opentui/ssh",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "ssh2": "^1.16.0",
       },
@@ -200,7 +200,7 @@
     },
     "packages/three": {
       "name": "@opentui/three",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@opentui/core": "workspace:*",
         "jimp": "1.6.1",
@@ -221,7 +221,7 @@
     },
     "packages/web": {
       "name": "@opentui/web",
-      "version": "0.4.5",
+      "version": "0.5.0",
       "dependencies": {
         "@astrojs/mdx": "^6.0.3",
         "@opentui/core": "workspace:*",
@@ -488,22 +488,6 @@
     "@mdx-js/mdx": ["@mdx-js/mdx@3.1.1", "", { "dependencies": { "@types/estree": "^1.0.0", "@types/estree-jsx": "^1.0.0", "@types/hast": "^3.0.0", "@types/mdx": "^2.0.0", "acorn": "^8.0.0", "collapse-white-space": "^2.0.0", "devlop": "^1.0.0", "estree-util-is-identifier-name": "^3.0.0", "estree-util-scope": "^1.0.0", "estree-walker": "^3.0.0", "hast-util-to-jsx-runtime": "^2.0.0", "markdown-extensions": "^2.0.0", "recma-build-jsx": "^1.0.0", "recma-jsx": "^1.0.0", "recma-stringify": "^1.0.0", "rehype-recma": "^1.0.0", "remark-mdx": "^3.0.0", "remark-parse": "^11.0.0", "remark-rehype": "^11.0.0", "source-map": "^0.7.0", "unified": "^11.0.0", "unist-util-position-from-estree": "^2.0.0", "unist-util-stringify-position": "^4.0.0", "unist-util-visit": "^5.0.0", "vfile": "^6.0.0" } }, "sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ=="],
 
     "@opentui/core": ["@opentui/core@workspace:packages/core"],
-
-    "@opentui/core-darwin-arm64": ["@opentui/core-darwin-arm64@0.4.5", "", { "os": "darwin", "cpu": "arm64" }, "sha512-8KUG0oRidnR+oW1RSZJ72/PhZLl+qRRMk5U/mieF4c0SJ5V3tYACpBZAKzQfHNd1f7QzD8FHZct1lPpQgtmkWg=="],
-
-    "@opentui/core-darwin-x64": ["@opentui/core-darwin-x64@0.4.5", "", { "os": "darwin", "cpu": "x64" }, "sha512-R2bocsg55gwjOqCp/MWFgFYzRmsduKegB6nzgFAPCvAD/L5Jf30xpWJWFlSg3x8vxe1L9WJ84dfqa4M7mZZ3wA=="],
-
-    "@opentui/core-linux-arm64": ["@opentui/core-linux-arm64@0.4.5", "", { "os": "linux", "cpu": "arm64" }, "sha512-R4MZ25a4CzOAGVjW9aj1hUfzQGVfCJwrwBDbNs2SXaIvzcZqkxCVtU4FoQ5LsaD0j/BdNQVg2CIfFkFsm1fDuQ=="],
-
-    "@opentui/core-linux-arm64-musl": ["@opentui/core-linux-arm64-musl@0.4.5", "", { "os": "linux", "cpu": "arm64" }, "sha512-ieqdyKI6EIYPalYAETB2wsdP83hr5Ifi+dFnBFUmdEEFHsoKwBmn2S7bsTOYlX7Bg03F4/YPIg+IvRpeC+cUJw=="],
-
-    "@opentui/core-linux-x64": ["@opentui/core-linux-x64@0.4.5", "", { "os": "linux", "cpu": "x64" }, "sha512-SNyuQoxMKI1vuJhgxSSW96adWM6LqFl2SoS3GM4tGeneGOanVVG2Y06PvlytXvF4cKik97t0rqkVMRetmOs93w=="],
-
-    "@opentui/core-linux-x64-musl": ["@opentui/core-linux-x64-musl@0.4.5", "", { "os": "linux", "cpu": "x64" }, "sha512-mKVKcIcPiSVVZZsdPSBoWwoa2/TCeQAaMDeHF7PFw2kt5bTXZPP7xxWfRQLCNIcA1eaGl59UuwUWHDR2Ve548Q=="],
-
-    "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.4.5", "", { "os": "win32", "cpu": "arm64" }, "sha512-GHTTsqeR45q2Iek9Rb7ty+x/hAKn2jZ1ujlCgPR8LBKyF7h0E1dNFryoZ7ehMc3kJndP1sKn836IemKFqxuDdQ=="],
-
-    "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.4.5", "", { "os": "win32", "cpu": "x64" }, "sha512-Y8T/yXCDGagRGiQrtmuB6AhRcPucKFs/Dre3v8kJwNYqDccI4FzUPKclZ7djfmRZNjl7JUqPhZZP/PwDpQocMg=="],
 
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
 

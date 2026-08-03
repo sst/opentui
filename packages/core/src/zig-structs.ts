@@ -91,6 +91,7 @@ export const VisualCursorStruct = defineStruct([
 const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
 const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
 const Osc52SupportEnum = defineEnum({ unknown: 0, supported: 1, unsupported: 2 }, "u8")
+const ImageProtocolEnum = defineEnum({ auto: 0, kitty: 1, sixel: 2, blocks: 3 }, "u8")
 
 export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
@@ -112,6 +113,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["explicit_cursor_positioning", "bool_u8"],
   ["remote", "bool_u8"],
   ["multiplexer", TerminalMultiplexerEnum],
+  ["image_protocol", ImageProtocolEnum],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],
@@ -123,6 +125,42 @@ export const TerminalCapabilitiesStruct = defineStruct([
 export const EncodedCharStruct = defineStruct([
   ["width", "u8"],
   ["char", "u32"],
+])
+
+export interface NativeImageInfo {
+  width: number
+  height: number
+  sourceWidth: number
+  sourceHeight: number
+  format: number
+  colorStatus: number
+  orientation: number
+  hasAlpha: number
+}
+
+export const NativeImageInfoStruct = defineStruct([
+  ["width", "u32"],
+  ["height", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+  ["format", "u32"],
+  ["colorStatus", "u32"],
+  ["orientation", "u32"],
+  ["hasAlpha", "u32"],
+])
+
+export const ImageDrawOptionsStruct = defineStruct([
+  ["x", "i32"],
+  ["y", "i32"],
+  ["width", "u32"],
+  ["height", "u32"],
+  ["pixelWidth", "u32"],
+  ["pixelHeight", "u32"],
+  ["sourceX", "u32"],
+  ["sourceY", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+  ["protocol", "u32"],
 ])
 
 export const LineInfoStruct = defineStruct([

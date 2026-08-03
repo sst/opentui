@@ -17,6 +17,7 @@ const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
+const imageTestDataPath = resolve(tmpdir(), "opentui-image-node-test")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -32,10 +33,12 @@ const treeSitterTestDataPaths = [
   textBufferTestDataPath,
   runtimeAssetTestDataPath,
   audioRecorderTestDataPath,
+  imageTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const audioFixturesDir = "src/tests/fixtures/audio"
+const imageFixturesDir = "src/tests/fixtures/images"
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -127,6 +130,8 @@ const emittedAllowlist = [
   ".node-test/src/tests/allocator-stats.test.js",
   ".node-test/src/tests/audio-stream.test.js",
   ".node-test/src/tests/audio.test.js",
+  ".node-test/src/tests/image-renderable.test.js",
+  ".node-test/src/tests/image.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
   ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
@@ -195,6 +200,7 @@ try {
   if (exitCode === 0) {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
     cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
+    cpSync(resolve(packageRoot, imageFixturesDir), resolve(outDir, imageFixturesDir), { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
@@ -208,6 +214,7 @@ try {
         `--allow-fs-read=${workspaceRoot}`,
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-read=${path}`),
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-write=${path}`),
+        `--allow-fs-write=${resolve(packageRoot, "buffer_dump")}`,
         "--allow-net=127.0.0.1",
         "--allow-child-process",
         "--allow-worker",
@@ -226,6 +233,7 @@ try {
           OTUI_TEXT_BUFFER_TEST_TMPDIR: textBufferTestDataPath,
           OTUI_RUNTIME_ASSET_TEST_TMPDIR: runtimeAssetTestDataPath,
           OTUI_AUDIO_RECORDER_TEST_TMPDIR: audioRecorderTestDataPath,
+          OTUI_IMAGE_TEST_TMPDIR: imageTestDataPath,
           XDG_DATA_HOME: treeSitterDefaultDataPath,
         },
         timeout: nodeProcessTimeoutMs,
