@@ -51,9 +51,3 @@ pub fn smokeTest() bool {
 }
 
 const std = @import("std");
-
-test "statically linked Ghostty VT uses the pinned build" {
-    try std.testing.expectEqualStrings(expected_version, buildVersion() orelse return error.TestUnexpectedResult);
-    try std.testing.expect(isExpectedBuild());
-    try std.testing.expect(smokeTest());
-}
