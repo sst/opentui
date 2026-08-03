@@ -43,14 +43,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
       }
     </header>
 
-    {
-      entry.data.cover && (
-        <div class="blog-post-cover">
-          <img src={entry.data.cover} alt="" />
-        </div>
-      )
-    }
-
     <div class="content blog-content">
       <Content />
     </div>

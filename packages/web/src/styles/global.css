@@ -1125,33 +1125,6 @@ pre {
   color: var(--color-text-strong);
 }
 
-/* Media (images, gifs, video) — shared by docs and blog content */
-.content img,
-.content video {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: var(--space-lg) 0;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-}
-
-.content figure {
-  margin: var(--space-lg) 0;
-}
-
-.content figure img,
-.content figure video {
-  margin: 0;
-}
-
-.content figure figcaption {
-  margin-top: var(--space-sm);
-  font-size: 13px;
-  color: var(--color-text-weak);
-  text-align: center;
-}
-
 /* Blog */
 .blog-layout {
   max-width: var(--content-width);
@@ -1299,18 +1272,6 @@ pre {
   font-size: 18px;
   color: var(--color-text-weak);
   margin: 0;
-}
-
-.blog-post-cover {
-  margin-bottom: var(--space-xl);
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-}
-
-.blog-post-cover img {
-  width: 100%;
-  display: block;
 }
 
 .nav a.active {
