@@ -5,6 +5,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
 import path from "path"
+import { resolveGhosttyVtRootOverride } from "./ghostty-vt-sdk"
 
 interface Variant {
   platform: string
@@ -195,6 +196,9 @@ const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
+  const externalGhosttyVtRoot = resolveGhosttyVtRootOverride(process.env.OPENTUI_GHOSTTY_VT_ROOT, rootDir)
+  if (externalGhosttyVtRoot) process.env.OPENTUI_GHOSTTY_VT_ROOT = externalGhosttyVtRoot
+
   runCommand(
     "bun",
     ["scripts/build-ghostty-vt.ts", ...(buildAll ? ["--all"] : [])],
@@ -203,9 +207,7 @@ if (buildNative) {
   )
 
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
-  if (process.env.OPENTUI_GHOSTTY_VT_ROOT) {
-    zigArgs.push(`-Dghostty-vt-root=${resolve(process.env.OPENTUI_GHOSTTY_VT_ROOT)}`)
-  }
+  if (externalGhosttyVtRoot) zigArgs.push(`-Dghostty-vt-root=${externalGhosttyVtRoot}`)
   if (buildAll) {
     zigArgs.push("-Dall")
   }

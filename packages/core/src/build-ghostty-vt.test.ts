@@ -44,6 +44,15 @@ describe("Ghostty VT SDK cache", () => {
     expect(resolveGhosttyVtRootOverride("", "/tmp/build")).toBeUndefined()
   })
 
+  test("resolves a relative external SDK root from the core package", () => {
+    const packageRoot = join(import.meta.dirname, "..")
+    const repoRoot = join(packageRoot, "../..")
+    const resolved = resolveGhosttyVtRootOverride("relative-sdk", packageRoot)
+
+    expect(resolved).toBe(join(packageRoot, "relative-sdk"))
+    expect(resolved).not.toBe(join(repoRoot, "relative-sdk"))
+  })
+
   test("does not trust or re-record an archive whose checksum changed", () => {
     testRoot = mkdtempSync(join(tmpdir(), "opentui-ghostty-vt-sdk-"))
     mkdirSync(join(testRoot, "include", "ghostty"), { recursive: true })
