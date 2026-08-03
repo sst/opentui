@@ -92,6 +92,7 @@ describe("Ghostty VT SDK cache", () => {
     }
 
     run("git", ["init"], sourceRoot)
+    run("git", ["config", "core.autocrlf", "false"], sourceRoot)
     writeFileSync(join(sourceRoot, ".gitignore"), ".zig-cache\n")
     writeFileSync(join(sourceRoot, "source.zig"), "original\n")
     run("git", ["add", ".gitignore", "source.zig"], sourceRoot)
