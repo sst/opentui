@@ -366,11 +366,12 @@ fn addGhosttyVtDependencies(
     const archive_path = b.pathJoin(&.{ root, "lib", output_name, archive_name });
 
     if (!pathExists(b.pathJoin(&.{ include_path, "ghostty", "vt.h" })) or !pathExists(archive_path)) {
-        std.debug.print(
-            "Pinned libghostty-vt SDK is incomplete for {s}. Run `bun run build:ghostty-vt` from packages/core.\n",
+        const fail = b.addFail(b.fmt(
+            "Pinned libghostty-vt SDK is incomplete for {s}. Run `bun run build:ghostty-vt` from packages/core.",
             .{output_name},
-        );
-        std.process.exit(1);
+        ));
+        artifact.step.dependOn(&fail.step);
+        return;
     }
 
     artifact.addIncludePath(.{ .cwd_relative = include_path });

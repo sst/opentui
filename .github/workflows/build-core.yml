@@ -60,7 +60,7 @@ jobs:
 
       - name: Build custom target without Ghostty VT
         working-directory: packages/core/src/zig
-        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast
+        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast -Dghostty-vt-root=${{ runner.temp }}/missing-ghostty-vt-sdk
 
       - name: Upload native artifacts
         uses: actions/upload-artifact@v7
