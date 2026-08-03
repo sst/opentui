@@ -344,8 +344,10 @@ fn ghosttyVtOutputName(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const
     return switch (target.result.os.tag) {
         .linux => if (target.result.abi.isMusl())
             b.fmt("{s}-linux-musl", .{arch})
+        else if (target.result.abi == .gnu)
+            b.fmt("{s}-linux", .{arch})
         else
-            b.fmt("{s}-linux", .{arch}),
+            null,
         .macos => b.fmt("{s}-macos", .{arch}),
         .windows => if (target.result.abi == .gnu) b.fmt("{s}-windows", .{arch}) else null,
         else => null,
@@ -358,13 +360,7 @@ fn addGhosttyVtDependencies(
     target: std.Build.ResolvedTarget,
     root: []const u8,
 ) void {
-    const output_name = ghosttyVtOutputName(b, target) orelse {
-        std.debug.print("No libghostty-vt archive is available for {s}-{s}\n", .{
-            @tagName(target.result.cpu.arch),
-            @tagName(target.result.os.tag),
-        });
-        std.process.exit(1);
-    };
+    const output_name = ghosttyVtOutputName(b, target) orelse return;
     const archive_name = if (target.result.os.tag == .windows) "ghostty-vt-static.lib" else "libghostty-vt.a";
     const include_path = b.pathJoin(&.{ root, "include" });
     const archive_path = b.pathJoin(&.{ root, "lib", output_name, archive_name });
@@ -395,6 +391,9 @@ fn applyDependencies(
     build_options: *std.Build.Step.Options,
 ) void {
     module.addOptions("build_options", build_options);
+    const ghostty_vt_options = b.addOptions();
+    ghostty_vt_options.addOption(bool, "available", ghosttyVtOutputName(b, target) != null);
+    module.addOptions("ghostty_vt_options", ghostty_vt_options);
 
     // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
