@@ -9,7 +9,7 @@ skill:
 
 # Environment variables
 
-OpenTUI reads environment variables from `process.env`. Bun loads `.env` automatically; with Node.js, use the shell or Node's configured environment-file support.
+OpenTUI reads environment variables from `process.env`. Bun loads `.env` automatically; with Node.js, use the shell or Node's configured environment-file support. Remote sessions do not apply local terminal overrides unless they are named in `forwardEnvKeys`.
 
 ## Variables
 
@@ -26,7 +26,8 @@ OpenTUI reads environment variables from `process.env`. Bun loads `.env` automat
 | `OTUI_TRACE_FFI`                | `boolean` | `false` | Enable tracing for the FFI bindings                             |
 | `OPENTUI_FORCE_WCWIDTH`         | presence  | unset   | Use wcwidth for character width calculations                    |
 | `OPENTUI_FORCE_UNICODE`         | presence  | unset   | Force Mode 2026 Unicode support in terminal capabilities        |
-| `OPENTUI_GRAPHICS`              | `string`  | auto    | Override Kitty graphics protocol detection                      |
+| `OPENTUI_GRAPHICS`              | `string`  | auto    | Control Kitty and Sixel graphics detection                      |
+| `OPENTUI_IMAGE_PROTOCOL`        | `string`  | `auto`  | Default image protocol (`auto`, `kitty`, `sixel`, `blocks`)     |
 | `OPENTUI_FORCE_NOZWJ`           | presence  | unset   | Use no_zwj width method (Unicode without ZWJ joining)           |
 | `OPENTUI_LIBC`                  | `string`  | unset   | Select Linux native libc package (`glibc`, `musl`)              |
 | `OPENTUI_FORCE_EXPLICIT_WIDTH`  | `string`  | -       | Force explicit width detection (`true`/`1` or `false`/`0`)      |
@@ -45,7 +46,7 @@ OpenTUI reads environment variables from `process.env`. Bun loads `.env` automat
 
 - `OTUI_TS_STYLE_WARN` is a presence-like string setting: any explicit nonempty value, including `false`, enables warnings.
 - `OPENTUI_FORCE_WCWIDTH`, `OPENTUI_FORCE_UNICODE`, and `OPENTUI_FORCE_NOZWJ` are native presence flags. Any value, including `0` or `false`, enables the corresponding override. Leave them unset to disable them.
-- `OPENTUI_GRAPHICS` recognizes the exact lowercase values `false`/`0` and `true`/`1`; other values leave automatic behavior unchanged.
+- `OPENTUI_GRAPHICS` recognizes only lowercase `false`/`0` (disable graphics detection) and `true`/`1` (automatic detection); other values leave automatic behavior unchanged. `OPENTUI_IMAGE_PROTOCOL` is case-insensitive; invalid values leave `auto` unchanged. Forcing an unsupported protocol can produce incorrect output.
 - `OPENTUI_FORCE_EXPLICIT_WIDTH=false` skips OSC 66 queries on older terminals.
 - Linux uses the glibc native package by default. Set `OPENTUI_LIBC=musl` before importing OpenTUI, or define `process.env.OPENTUI_LIBC` as `"musl"` at standalone build time, to use the musl native package. See [Standalone Executables](/docs/reference/standalone-executables).
 - `OPENTUI_NOTIFICATION_PROTOCOL=none` disables notifications. Protocol overrides should only be used when terminal detection cannot identify a supported notification protocol.

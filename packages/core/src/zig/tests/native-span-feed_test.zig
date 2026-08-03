@@ -42,6 +42,40 @@ test "Stream - create and destroy with testing allocator" {
     try testing.expectEqual(@as(u64, 0), stats.spans_committed);
 }
 
+test "Stream - atomic write spans chunks without changing bytes" {
+    const stream = try raw.Stream.create(testing.allocator, testOptions(64, 1, true));
+    defer stream.destroy();
+    const input = [_]u8{'x'} ** 150;
+
+    try stream.writeAtomic(&input);
+
+    var spans: [4]raw.SpanInfo = undefined;
+    const count = stream.drainSpans(&spans);
+    try testing.expectEqual(@as(u32, 3), count);
+    var output: [input.len]u8 = undefined;
+    var offset: usize = 0;
+    for (spans[0..count]) |span| {
+        @memcpy(output[offset .. offset + span.len], span.slice());
+        offset += span.len;
+        stream.markSpanConsumed(span);
+    }
+    try testing.expectEqualSlices(u8, &input, &output);
+}
+
+test "Stream - failed atomic write publishes nothing" {
+    var options = testOptionsFull(32, 1, 32, true);
+    options.growth_policy = @intFromEnum(raw.GrowthPolicy.block);
+    const stream = try raw.Stream.create(testing.allocator, options);
+    defer stream.destroy();
+    const input = [_]u8{'x'} ** 33;
+
+    try testing.expectError(error.NoSpace, stream.writeAtomic(&input));
+
+    var spans: [2]raw.SpanInfo = undefined;
+    try testing.expectEqual(@as(u32, 0), stream.drainSpans(&spans));
+    try testing.expectEqual(@as(u64, 0), stream.getStats().bytes_written);
+}
+
 test "Stream - create with default options" {
     const stream = try raw.Stream.create(testing.allocator, null);
     defer stream.destroy();

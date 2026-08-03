@@ -22,6 +22,7 @@ import {
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
+  type ImageRenderProtocol,
 } from "./types.js"
 export type {
   LineInfo,
@@ -65,6 +66,8 @@ import {
   BuildOptionsStruct,
   AllocatorStatsStruct,
   NativeRenderStatsStruct,
+  NativeImageInfoStruct,
+  ImageDrawOptionsStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -83,6 +86,7 @@ import type {
   BuildOptions,
   AllocatorStats,
   NativeRenderStats,
+  NativeImageInfo,
 } from "./zig-structs.js"
 export const NativeAudioStreamState = NativeAudioStreamStateValue
 export type NativeAudioStreamState = NativeAudioStreamStateType
@@ -112,6 +116,7 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
+export type ImageHandle = NativeHandle<"image">
 let targetLibPath: string | undefined
 let targetLibError: Error | undefined
 
@@ -156,9 +161,15 @@ registerEnvVar({
 })
 registerEnvVar({
   name: "OPENTUI_GRAPHICS",
-  description: "Override Kitty graphics detection with the exact value true, 1, false, or 0",
+  description: "Control Kitty and Sixel graphics detection with the exact value true, 1, false, or 0",
   type: "string",
   required: false,
+})
+registerEnvVar({
+  name: "OPENTUI_IMAGE_PROTOCOL",
+  description: "Override image rendering protocol: auto, kitty, sixel, or blocks",
+  type: "string",
+  default: "auto",
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_NOZWJ",
@@ -520,6 +531,10 @@ function getOpenTUILib(libPath?: string) {
     bufferDrawSuperSampleBuffer: {
       args: ["u32", "u32", "u32", "ptr", "u32", "u8", "u32"],
       returns: "void",
+    },
+    bufferDrawImage: {
+      args: ["u32", "u32", "ptr"],
+      returns: "u8",
     },
     bufferDrawPackedBuffer: {
       args: ["u32", "ptr", "u32", "u32", "u32", "u32", "u32"],
@@ -1239,6 +1254,20 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
+
+    imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageDestroy: { args: ["u32"], returns: "void" },
+    imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
+    imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
+    imageClone: { args: ["u32", "ptr"], returns: "u32" },
+    imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
+    imageResize: { args: ["u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
+    imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
+    imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
 
     // Terminal capability functions
     getTerminalCapabilities: {
@@ -2194,6 +2223,21 @@ export interface RenderLib extends AudioEngineLib {
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
   ) => void
+  bufferDrawImage: (
+    buffer: OptimizedBufferHandle,
+    image: ImageHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    sourceX: number,
+    sourceY: number,
+    sourceWidth: number,
+    sourceHeight: number,
+    protocol: ImageRenderProtocol,
+  ) => boolean
   bufferDrawPackedBuffer: (
     buffer: OptimizedBufferHandle,
     dataPtr: Pointer,
@@ -2619,6 +2663,50 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleResolveByName: (style: SyntaxStyleHandle, name: string) => number | null
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
 
+  imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
+  imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
+  imageCreateFromRgba: (
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageDestroy: (image: ImageHandle) => void
+  imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
+  imageGetPixelsPtr: (image: ImageHandle) => Pointer | null
+  imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
+  imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
+  imageResize: (
+    image: ImageHandle,
+    width: number,
+    height: number,
+    filter: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageExtract: (
+    image: ImageHandle,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageExtend: (
+    image: ImageHandle,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    background: Uint8Array,
+  ) => { status: number; handle: ImageHandle | null }
+  imageTransform: (image: ImageHandle, operation: number) => { status: number; handle: ImageHandle | null }
+  imageComposite: (
+    base: ImageHandle,
+    overlay: ImageHandle,
+    left: number,
+    top: number,
+    blend: number,
+    opacity: number,
+  ) => { status: number; handle: ImageHandle | null }
+
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
 
@@ -2705,6 +2793,7 @@ class FFIRenderLib implements RenderLib {
         readyGeneration: 0,
       } as NativeAudioStreamStats,
     },
+    imageDrawOptions: allocStruct(ImageDrawOptionsStruct),
     gridDrawOptions: allocStruct(GridDrawOptionsStruct),
   }
   public readonly encoder: TextEncoder = new TextEncoder()
@@ -3227,6 +3316,43 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
+  public bufferDrawImage(
+    buffer: OptimizedBufferHandle,
+    image: ImageHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    sourceX: number,
+    sourceY: number,
+    sourceWidth: number,
+    sourceHeight: number,
+    protocol: ImageRenderProtocol,
+  ): boolean {
+    const protocolId = { auto: 0, kitty: 1, sixel: 2, blocks: 3 }[protocol]
+    const storage = this.ffiStructStorage.imageDrawOptions
+    ImageDrawOptionsStruct.packInto(
+      {
+        x,
+        y,
+        width,
+        height,
+        pixelWidth,
+        pixelHeight,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        protocol: protocolId,
+      },
+      storage.view,
+      0,
+    )
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.buffer))
+  }
+
   public bufferDrawPackedBuffer(
     buffer: Pointer,
     dataPtr: Pointer,
@@ -3601,12 +3727,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public dumpBuffers(renderer: Pointer, timestamp?: number): void {
-    const ts = timestamp ?? Date.now()
+    const ts = BigInt(timestamp ?? Date.now())
     this.opentui.symbols.dumpBuffers(renderer, ts)
   }
 
   public dumpOutputBuffer(renderer: Pointer, timestamp?: number): void {
-    const ts = timestamp ?? Date.now()
+    const ts = BigInt(timestamp ?? Date.now())
     this.opentui.symbols.dumpOutputBuffer(renderer, ts)
   }
 
@@ -4969,6 +5095,7 @@ class FFIRenderLib implements RenderLib {
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       remote: caps.remote,
       multiplexer: caps.multiplexer,
+      image_protocol: caps.image_protocol,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",
@@ -5487,6 +5614,131 @@ class FFIRenderLib implements RenderLib {
 
   public syntaxStyleGetStyleCount(style: SyntaxStyleHandle): number {
     return this.opentui.symbols.syntaxStyleGetStyleCount(style)
+  }
+
+  private imageHandleResult(status: number, output: Uint32Array): { status: number; handle: ImageHandle | null } {
+    return { status, handle: status === 0 && output[0] !== 0 ? (output[0] as ImageHandle) : null }
+  }
+
+  public imageInfo(data: Uint8Array): { status: number; info: NativeImageInfo } {
+    const length = toSafeFFIU32Length(data.byteLength, "image data")
+    const output = new ArrayBuffer(NativeImageInfoStruct.size)
+    const status = this.opentui.symbols.imageInfo(data.byteLength === 0 ? null : data, length, output)
+    return { status, info: NativeImageInfoStruct.unpack(output) }
+  }
+
+  public imageDecode(data: Uint8Array): { status: number; handle: ImageHandle | null } {
+    const length = toSafeFFIU32Length(data.byteLength, "image data")
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageDecode(data.byteLength === 0 ? null : data, length, output),
+      output,
+    )
+  }
+
+  public imageCreateFromRgba(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageCreateFromRgba(
+      pixels.byteLength === 0 ? null : pixels,
+      BigInt(pixels.byteLength),
+      width,
+      height,
+      stride,
+      output,
+    )
+    return this.imageHandleResult(status, output)
+  }
+
+  public imageDestroy(image: ImageHandle): void {
+    this.opentui.symbols.imageDestroy(image)
+  }
+
+  public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {
+    const output = new ArrayBuffer(NativeImageInfoStruct.size)
+    const status = this.opentui.symbols.imageGetInfo(image, output)
+    return { status, info: NativeImageInfoStruct.unpack(output) }
+  }
+
+  public imageGetPixelsPtr(image: ImageHandle): Pointer | null {
+    const pointer = this.opentui.symbols.imageGetPixelsPtr(image)
+    return pointer === null || pointer === 0 || pointer === 0n ? null : pointer
+  }
+
+  public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageClone(image, output), output)
+  }
+
+  public imageCopyPixels(image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean): number {
+    return this.opentui.symbols.imageCopyPixels(
+      image,
+      destination.byteLength === 0 ? null : destination,
+      BigInt(destination.byteLength),
+      stride,
+      bgra ? 1 : 0,
+    )
+  }
+
+  public imageResize(
+    image: ImageHandle,
+    width: number,
+    height: number,
+    filter: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageResize(image, width, height, filter, output), output)
+  }
+
+  public imageExtract(
+    image: ImageHandle,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageExtract(image, left, top, width, height, output), output)
+  }
+
+  public imageExtend(
+    image: ImageHandle,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    background: Uint8Array,
+  ): { status: number; handle: ImageHandle | null } {
+    if (!(background instanceof Uint8Array) || background.byteLength !== 4) return { status: 7, handle: null }
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageExtend(image, top, right, bottom, left, background, output),
+      output,
+    )
+  }
+
+  public imageTransform(image: ImageHandle, operation: number): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageTransform(image, operation, output), output)
+  }
+
+  public imageComposite(
+    base: ImageHandle,
+    overlay: ImageHandle,
+    left: number,
+    top: number,
+    blend: number,
+    opacity: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageComposite(base, overlay, left, top, blend, opacity, output),
+      output,
+    )
   }
 
   public editorViewSetPlaceholderStyledText(

@@ -39,6 +39,7 @@ import * as textSelectionExample from "./text-selection-demo.js"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
+import * as splitFooterImageDemo from "./split-footer-image-demo.js"
 import * as consoleExample from "./console-demo.js"
 import * as notificationDemo from "./notification-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
@@ -73,6 +74,7 @@ import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as audioCaptureDemo from "./audio-capture-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as nativeImageDemo from "./native-image-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -316,6 +318,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       destroy: relativePositioningDemo.destroy,
     },
     {
+      name: "Split Footer Image Demo",
+      description: "Live Kitty, Sixel, and block images alongside split-footer scrollback commits",
+      run: splitFooterImageDemo.run,
+      destroy: splitFooterImageDemo.destroy,
+    },
+    {
       name: "Split Footer Streaming Demo",
       description: "Focused split-footer surface demo for progressive text, code, and markdown scrollback",
       run: splitFooterStreamingDemo.run,
@@ -528,6 +536,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
       run: grayscaleBufferDemo.run,
       destroy: grayscaleBufferDemo.destroy,
+    },
+    {
+      name: "Native Image Lab",
+      description: "PNG, JPEG, WebP, and GIF loading from paths, URLs, bytes, and HTTP",
+      run: nativeImageDemo.run,
+      destroy: nativeImageDemo.destroy,
     },
     {
       name: "Opacity Demo",

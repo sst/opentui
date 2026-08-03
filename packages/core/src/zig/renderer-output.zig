@@ -6,9 +6,9 @@
 //!   - `BufferedBackend`: writes into per-renderer A/B frame buffers, then
 //!     flushes committed bytes to an injected `BufferedOutput`.
 //!
-//!   - `FeedBackend`: writes into a `NativeSpanFeed.Stream` whose chunks are
-//!     consumed from TypeScript and piped to a user-supplied Writable
-//!     (typically an SSH channel).
+//!   - `FeedBackend`: stages each complete frame, then atomically publishes it
+//!     to a `NativeSpanFeed.Stream` whose chunks are consumed from TypeScript
+//!     and piped to a user-supplied Writable (typically an SSH channel).
 //!
 //! The backend is a tagged union. `CliRenderer.render` performs exactly one
 //! `switch` on the backend using `inline else` to pick the right variant's
@@ -566,6 +566,10 @@ pub const BufferedBackend = struct {
         }
     }
 
+    pub fn failFrame(self: *BufferedBackend) void {
+        self.frameWriteFailed = true;
+    }
+
     /// Give spike memory back once frames have been consistently small again.
     /// Runs at frame start when the active buffer is exclusively owned by the
     /// producer: in threaded mode the render thread only ever reads the buffer
@@ -733,10 +737,9 @@ pub const BufferedBackend = struct {
     }
 };
 
-/// Backend that writes to a `NativeSpanFeed.Stream`. The feed owns its own
-/// chunk memory; we hold only a non-owning pointer. The TypeScript side is
-/// responsible for allocating and destroying the feed; this backend simply
-/// writes into it and commits on frame boundaries.
+/// Backend that atomically publishes complete frames to a
+/// `NativeSpanFeed.Stream`. The feed owns its chunk memory; the staging buffer
+/// exists only to keep failed frames from exposing partial ANSI sequences.
 ///
 /// Feed writes are in-memory ring-buffer ops with no I/O, so threading adds
 /// synchronization cost without latency-hiding benefit. Backpressure is
@@ -747,10 +750,10 @@ pub const BufferedBackend = struct {
 /// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
+    frameBytes: std.ArrayListUnmanaged(u8) = .{},
 
-    /// Set when a frame's write to the feed fails. The backend never discards
-    /// feed bytes; failures are reported so the renderer can force a later full
-    /// repaint after the durable queue drains or accepts pending bytes.
+    /// Set when staging a frame fails. No bytes from a failed frame are
+    /// published; the renderer forces a later full repaint.
     frameWriteFailed: bool = false,
 
     lastWriteTimeUs: ?f64 = null,
@@ -759,8 +762,9 @@ pub const FeedBackend = struct {
         return FeedBackend{ .feed = feed };
     }
 
-    pub fn deinit(_: *FeedBackend) void {
-        // Feed memory is owned by the TypeScript side. Nothing to free here.
+    pub fn deinit(self: *FeedBackend) void {
+        // Feed memory is owned by the TypeScript side.
+        self.frameBytes.deinit(self.feed.allocator);
     }
 
     pub fn shouldSkipFrame(self: *FeedBackend) bool {
@@ -803,7 +807,7 @@ pub const FeedBackend = struct {
 
     fn frameWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
         const self = ctx.backend;
-        self.feed.write(data) catch {
+        self.frameBytes.appendSlice(self.feed.allocator, data) catch {
             self.frameWriteFailed = true;
             return error.BufferFull;
         };
@@ -816,6 +820,11 @@ pub const FeedBackend = struct {
 
     pub fn beginFrame(self: *FeedBackend) void {
         self.frameWriteFailed = false;
+        self.frameBytes.clearRetainingCapacity();
+    }
+
+    pub fn failFrame(self: *FeedBackend) void {
+        self.frameWriteFailed = true;
     }
 
     pub fn endFrame(self: *FeedBackend) WriteStatus {
@@ -823,12 +832,9 @@ pub const FeedBackend = struct {
         var status: WriteStatus = .ok;
 
         if (self.frameWriteFailed) {
-            if (self.feed.hasPendingBytes()) {
-                self.feed.commit() catch {};
-            }
             status = .failed;
         } else {
-            self.feed.commit() catch {
+            self.feed.writeAtomic(self.frameBytes.items) catch {
                 status = .failed;
             };
         }
@@ -839,21 +845,24 @@ pub const FeedBackend = struct {
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
-        self.feed.write(data) catch return;
-        self.feed.commit() catch {};
+        // High-level renderers use a growable, uncapped feed. Manually bounded
+        // low-level feeds intentionally get atomic best-effort control writes.
+        self.feed.writeAtomic(data) catch {};
     }
 
     pub fn writeOutMultiple(self: *FeedBackend, data_slices: []const []const u8) void {
         var totalLen: usize = 0;
-        for (data_slices) |slice| totalLen += slice.len;
+        for (data_slices) |slice| totalLen = std.math.add(usize, totalLen, slice.len) catch return;
         if (totalLen == 0) return;
 
-        var wrote_any = false;
+        const data = self.feed.allocator.alloc(u8, totalLen) catch return;
+        defer self.feed.allocator.free(data);
+        var offset: usize = 0;
         for (data_slices) |slice| {
-            self.feed.write(slice) catch return;
-            wrote_any = true;
+            @memcpy(data[offset .. offset + slice.len], slice);
+            offset += slice.len;
         }
-        if (wrote_any) self.feed.commit() catch {};
+        self.feed.writeAtomic(data) catch {};
     }
 
     /// Write a debug dump placeholder. FeedBackend has no flat previous-frame

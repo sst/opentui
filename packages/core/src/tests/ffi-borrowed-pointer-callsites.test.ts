@@ -6,6 +6,7 @@ import {
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
+  ImageDrawOptionsStruct,
   LogicalCursorStruct,
   MeasureResultStruct,
   NativeAudioStreamCloseReason,
@@ -650,6 +651,111 @@ describe("borrowed pointer call sites", () => {
       expect(calls).toHaveLength(1)
       expect(calls[0]![1]).toBeInstanceOf(ArrayBuffer)
       expect((calls[0]![1] as ArrayBuffer).byteLength).toBe(CursorStyleOptionsStruct.size)
+    })
+  })
+
+  test("image calls pass transient buffer owners directly", () => {
+    const names = [
+      "bufferDrawImage",
+      "imageInfo",
+      "imageDecode",
+      "imageCreateFromRgba",
+      "imageGetInfo",
+      "imageClone",
+      "imageCopyPixels",
+      "imageResize",
+      "imageExtract",
+      "imageExtend",
+      "imageTransform",
+      "imageComposite",
+    ] as const
+    const originals = new Map<string, (...args: any[]) => any>()
+    const calls = new Map<string, any[]>()
+    for (const name of names) {
+      originals.set(name, symbols[name]!)
+      symbols[name] = (...args: any[]) => {
+        calls.set(name, args)
+        return 0
+      }
+    }
+
+    try {
+      const data = Uint8Array.of(1, 2, 3, 4)
+      const pixels = Uint8Array.of(5, 6, 7, 255)
+      const destination = new Uint8Array(4)
+      const background = Uint8Array.of(8, 9, 10, 255)
+      const handle = 1 as any
+
+      lib.bufferDrawImage(handle, handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, "auto")
+      const firstImageOptions = calls.get("bufferDrawImage")![2]
+      lib.bufferDrawImage(handle, handle, 2, 3, 4, 5, 6, 7, 0, 0, 1, 1, "sixel")
+      lib.imageInfo(data)
+      lib.imageDecode(data)
+      lib.imageCreateFromRgba(pixels, 1, 1, 4)
+      lib.imageGetInfo(handle)
+      lib.imageClone(handle)
+      lib.imageCopyPixels(handle, destination, 4, false)
+      lib.imageResize(handle, 1, 1, 0)
+      lib.imageExtract(handle, 0, 0, 1, 1)
+      lib.imageExtend(handle, 0, 0, 0, 0, background)
+      lib.imageTransform(handle, 0)
+      lib.imageComposite(handle, handle, 0, 0, 0, 255)
+
+      expect(calls.get("bufferDrawImage")![2]).toBe(firstImageOptions)
+      expect(firstImageOptions).toBeInstanceOf(ArrayBuffer)
+      expect((firstImageOptions as ArrayBuffer).byteLength).toBe(ImageDrawOptionsStruct.size)
+      expect(ImageDrawOptionsStruct.unpack(firstImageOptions as ArrayBuffer)).toMatchObject({
+        x: 2,
+        y: 3,
+        width: 4,
+        height: 5,
+        pixelWidth: 6,
+        pixelHeight: 7,
+        protocol: 2,
+      })
+      expect(calls.get("imageInfo")![0]).toBe(data)
+      expect(calls.get("imageInfo")![2]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageDecode")![0]).toBe(data)
+      expect(calls.get("imageDecode")![2]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageCreateFromRgba")![0]).toBe(pixels)
+      expect(calls.get("imageCreateFromRgba")![5]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageCopyPixels")![1]).toBe(destination)
+      expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageExtract")![5]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageExtend")![5]).toBe(background)
+      expect(calls.get("imageExtend")![6]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageTransform")![2]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageComposite")![6]).toBeInstanceOf(Uint32Array)
+    } finally {
+      for (const [name, original] of originals) symbols[name] = original
+    }
+  })
+
+  test("imageGetPixelsPtr preserves portable pointer returns", () => {
+    const original = symbols.imageGetPixelsPtr
+    const pointer = 1234n as Pointer
+    symbols.imageGetPixelsPtr = (handle) => {
+      expect(handle).toBe(1)
+      return pointer
+    }
+    try {
+      expect(lib.imageGetPixelsPtr(1 as any)).toBe(pointer)
+      symbols.imageGetPixelsPtr = () => 0n
+      expect(lib.imageGetPixelsPtr(1 as any)).toBeNull()
+    } finally {
+      symbols.imageGetPixelsPtr = original
+    }
+  })
+
+  test("imageExtend rejects a short background before native access", () => {
+    withStubbedSymbol("imageExtend", (calls) => {
+      expect(lib.imageExtend(1 as any, 0, 0, 0, 0, Uint8Array.of(1, 2, 3))).toEqual({
+        status: 7,
+        handle: null,
+      })
+      expect(calls).toHaveLength(0)
     })
   })
 })
