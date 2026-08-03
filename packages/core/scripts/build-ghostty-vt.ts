@@ -8,6 +8,7 @@ import {
   ghosttyVtManifestTargets,
   type GhosttyVtConfig,
   type GhosttyVtTarget,
+  readGhosttyVtSourceRevision,
   restoreGhosttyVtSource,
   resolveGhosttyVtRootOverride,
   validGhosttyVtTargets,
@@ -85,7 +86,7 @@ if (zigVersion !== config.zigVersion) {
   throw new Error(`libghostty-vt ${config.revision} requires Zig ${config.zigVersion}; found ${zigVersion}`)
 }
 
-if (!existsSync(join(sourceRoot, ".git")) || run("git", ["rev-parse", "HEAD"], sourceRoot, true) !== config.revision) {
+if (readGhosttyVtSourceRevision(sourceRoot, run) !== config.revision) {
   rmSync(sourceRoot, { recursive: true, force: true })
   mkdirSync(sourceRoot, { recursive: true })
   run("git", ["init"], sourceRoot)

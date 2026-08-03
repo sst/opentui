@@ -116,3 +116,12 @@ export function restoreGhosttyVtSource(sourceRoot: string, revision: string, run
   run("git", ["reset", "--hard", revision], sourceRoot)
   run("git", ["clean", "-fd"], sourceRoot)
 }
+
+export function readGhosttyVtSourceRevision(sourceRoot: string, run: RunCommand): string | null {
+  if (!existsSync(join(sourceRoot, ".git"))) return null
+  try {
+    return run("git", ["rev-parse", "HEAD"], sourceRoot, true)
+  } catch {
+    return null
+  }
+}

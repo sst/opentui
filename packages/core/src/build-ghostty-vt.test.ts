@@ -9,6 +9,7 @@ import {
   ghosttyVtManifestTargets,
   type GhosttyVtConfig,
   type GhosttyVtTarget,
+  readGhosttyVtSourceRevision,
   restoreGhosttyVtSource,
   resolveGhosttyVtRootOverride,
   sha256,
@@ -108,6 +109,7 @@ describe("Ghostty VT SDK cache", () => {
 
     run("git", ["init"], sourceRoot)
     run("git", ["config", "core.autocrlf", "false"], sourceRoot)
+    expect(readGhosttyVtSourceRevision(sourceRoot, run)).toBeNull()
     writeFileSync(join(sourceRoot, ".gitignore"), ".zig-cache\n")
     writeFileSync(join(sourceRoot, "source.zig"), "original\n")
     run("git", ["add", ".gitignore", "source.zig"], sourceRoot)
@@ -117,6 +119,7 @@ describe("Ghostty VT SDK cache", () => {
       sourceRoot,
     )
     const revision = run("git", ["rev-parse", "HEAD"], sourceRoot, true)
+    expect(readGhosttyVtSourceRevision(sourceRoot, run)).toBe(revision)
 
     writeFileSync(join(sourceRoot, "source.zig"), "modified\n")
     writeFileSync(join(sourceRoot, "untracked.zig"), "untracked\n")
