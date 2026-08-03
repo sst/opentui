@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import {
@@ -8,6 +9,7 @@ import {
   ghosttyVtManifestTargets,
   type GhosttyVtConfig,
   type GhosttyVtTarget,
+  restoreGhosttyVtSource,
   sha256,
   validGhosttyVtTargets,
 } from "../scripts/ghostty-vt-sdk"
@@ -76,5 +78,39 @@ describe("Ghostty VT SDK cache", () => {
         zig: targets[1].zig,
       },
     })
+  })
+
+  test("restores the pinned source before rebuilding", () => {
+    testRoot = mkdtempSync(join(tmpdir(), "opentui-ghostty-vt-source-"))
+    const sourceRoot = join(testRoot, "source")
+    mkdirSync(sourceRoot)
+
+    const run = (command: string, args: string[], cwd: string, capture = false): string => {
+      const result = spawnSync(command, args, { cwd, encoding: "utf8" })
+      if (result.status !== 0) throw new Error(result.stderr)
+      return capture ? result.stdout.trim() : ""
+    }
+
+    run("git", ["init"], sourceRoot)
+    writeFileSync(join(sourceRoot, ".gitignore"), ".zig-cache\n")
+    writeFileSync(join(sourceRoot, "source.zig"), "original\n")
+    run("git", ["add", ".gitignore", "source.zig"], sourceRoot)
+    run(
+      "git",
+      ["-c", "user.name=OpenTUI Test", "-c", "user.email=test@opentui.dev", "commit", "-m", "fixture"],
+      sourceRoot,
+    )
+    const revision = run("git", ["rev-parse", "HEAD"], sourceRoot, true)
+
+    writeFileSync(join(sourceRoot, "source.zig"), "modified\n")
+    writeFileSync(join(sourceRoot, "untracked.zig"), "untracked\n")
+    mkdirSync(join(sourceRoot, ".zig-cache"))
+    writeFileSync(join(sourceRoot, ".zig-cache", "cache"), "cache\n")
+
+    restoreGhosttyVtSource(sourceRoot, revision, run)
+
+    expect(readFileSync(join(sourceRoot, "source.zig"), "utf8")).toBe("original\n")
+    expect(existsSync(join(sourceRoot, "untracked.zig"))).toBe(false)
+    expect(existsSync(join(sourceRoot, ".zig-cache", "cache"))).toBe(true)
   })
 })

@@ -19,6 +19,8 @@ export type GhosttyVtTarget = {
   archive: string
 }
 
+type RunCommand = (command: string, args: string[], cwd: string, capture?: boolean) => string
+
 type SdkManifest = GhosttyVtConfig & {
   headersSha256: string
   targets: Record<string, { archive: string; sha256: string; zig: string }>
@@ -104,4 +106,9 @@ export function ghosttyVtManifestTargets(
         { archive: target.archive, sha256: sha256(ghosttyVtArchivePath(sdkRoot, target)), zig: target.zig },
       ]),
   )
+}
+
+export function restoreGhosttyVtSource(sourceRoot: string, revision: string, run: RunCommand): void {
+  run("git", ["reset", "--hard", revision], sourceRoot)
+  run("git", ["clean", "-fd"], sourceRoot)
 }

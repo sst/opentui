@@ -8,6 +8,7 @@ import {
   ghosttyVtManifestTargets,
   type GhosttyVtConfig,
   type GhosttyVtTarget,
+  restoreGhosttyVtSource,
   validGhosttyVtTargets,
   validateGhosttyVtSdk,
 } from "./ghostty-vt-sdk"
@@ -90,6 +91,7 @@ if (!existsSync(join(sourceRoot, ".git")) || run("git", ["rev-parse", "HEAD"], s
   run("git", ["fetch", "--depth=1", "origin", config.revision], sourceRoot)
   run("git", ["checkout", "--detach", "FETCH_HEAD"], sourceRoot)
 }
+restoreGhosttyVtSource(sourceRoot, config.revision, run)
 
 const ghosttyRootSource = join(sourceRoot, "src", "lib_vt.zig")
 const ghosttyRootGitPath = relative(sourceRoot, ghosttyRootSource).replaceAll("\\", "/")
