@@ -1753,7 +1753,7 @@ test("CliRenderer split-footer resize cleanup uses the visible footer surface wh
   result.resize(20, 10)
 
   expect(writeOutSpy).toHaveBeenCalledTimes(1)
-  expect(writeOutSpy.mock.calls[0]?.[0]).toBe(ANSI.moveCursorAndClear(2, 1))
+  expect(writeOutSpy.mock.calls[0]?.[0]).toBe(ANSI.moveCursorAndClear(1, 1))
   expect((renderer as any).pendingSplitFooterTransition).toBeNull()
 
   writeOutSpy.mockRestore()
@@ -1788,10 +1788,42 @@ test("CliRenderer split-footer resize cleanup uses the visible source top line a
   result.resize(20, 12)
 
   expect(writeOutSpy).toHaveBeenCalledTimes(1)
-  expect(writeOutSpy.mock.calls[0]?.[0]).toBe(ANSI.moveCursorAndClear(2, 1))
+  expect(writeOutSpy.mock.calls[0]?.[0]).toBe(ANSI.moveCursorAndClear(1, 1))
 
   writeOutSpy.mockRestore()
 })
+
+test.each([
+  { geometry: "cursor-seeded", prevWidth: 100, width: 70, height: 24, renderOffset: 7, clearStart: 5 },
+  { geometry: "cursor-seeded", prevWidth: 140, width: 70, height: 24, renderOffset: 7, clearStart: 5 },
+  { geometry: "cursor-seeded", prevWidth: 140, width: 50, height: 24, renderOffset: 7, clearStart: 2 },
+  { geometry: "bottom-pinned", prevWidth: 100, width: 70, height: 40, renderOffset: 37, clearStart: 35 },
+])(
+  "CliRenderer split-footer resize cleanup starts at the reflowed $geometry surface for $prevWidth -> $width",
+  async (testCase) => {
+    const result = await createTestRenderer({
+      width: testCase.prevWidth,
+      height: testCase.height,
+      screenMode: "split-footer",
+      footerHeight: 3,
+      externalOutputMode: testCase.geometry === "cursor-seeded" ? "capture-stdout" : "passthrough",
+      consoleMode: "disabled",
+    })
+
+    renderer = result.renderer
+    ;(renderer as any)._terminalIsSetup = true
+    ;(renderer as any).renderOffset = testCase.renderOffset
+
+    const writeOutSpy = spyOn(renderer as any, "writeOut")
+
+    result.resize(testCase.width, testCase.height)
+
+    expect(writeOutSpy).toHaveBeenCalledTimes(1)
+    expect(writeOutSpy.mock.calls[0]?.[0]).toBe(ANSI.moveCursorAndClear(testCase.clearStart, 1))
+
+    writeOutSpy.mockRestore()
+  },
+)
 
 test("CliRenderer split-footer resize cleanup still clears the visible source surface when only height changes while a deferred footer transition is pending", async () => {
   const result = await createTestRenderer({

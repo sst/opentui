@@ -345,6 +345,16 @@ function normalizeFooterHeight(footerHeight: number | undefined): number {
   return normalizedFooterHeight
 }
 
+function calculateSplitFooterResizeClearStart(
+  previousSurfaceTop: number,
+  visiblePreviousSplitHeight: number,
+  prevWidth: number,
+  width: number,
+): number {
+  const reflowRows = visiblePreviousSplitHeight * (Math.ceil(prevWidth / width) - 1)
+  return Math.max(previousSurfaceTop - reflowRows, 1)
+}
+
 function resolveModes(config: CliRendererConfig): {
   screenMode: ScreenMode
   footerHeight: number
@@ -3845,7 +3855,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._footerHeight,
     )
     const prevWidth = this._terminalWidth
-    const previousTerminalHeight = this._terminalHeight
     const visiblePreviousSplitHeight =
       pendingSplitFooterTransition?.sourceHeight ?? previousGeometry.effectiveFooterHeight
 
@@ -3866,12 +3875,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const splitFooterActive = this._screenMode === "split-footer"
 
     if (splitFooterActive) {
-      // Width shrink historically needs a broader scrub band, but if resize interrupts
-      // a deferred footer transition we also need to clear from that visible source surface.
+      // Width shrink reflows old footer rows upward from the visible surface top. If resize
+      // interrupts a deferred footer transition, that transition owns the visible surface.
       let clearStart: number | null = null
 
       if (width < prevWidth && visiblePreviousSplitHeight > 0) {
-        clearStart = Math.max(previousTerminalHeight - visiblePreviousSplitHeight * 2, 1)
+        const previousSurfaceTop = pendingSplitFooterTransition?.sourceTopLine ?? this.renderOffset + 1
+        clearStart = calculateSplitFooterResizeClearStart(
+          previousSurfaceTop,
+          visiblePreviousSplitHeight,
+          prevWidth,
+          width,
+        )
       }
 
       if (pendingSplitFooterTransition !== null) {
