@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 var icc_cache_mutex: std.Thread.Mutex = .{};
+var icc_cache_clients: u32 = 0;
 
 extern fn ot_image_png_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
 extern fn ot_image_png_decode(
@@ -345,6 +346,21 @@ pub fn clearIccCache() void {
     icc_cache_mutex.lock();
     defer icc_cache_mutex.unlock();
     ot_image_icc_cache_clear();
+}
+
+pub fn retainIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    std.debug.assert(icc_cache_clients < std.math.maxInt(u32));
+    icc_cache_clients += 1;
+}
+
+pub fn releaseIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    std.debug.assert(icc_cache_clients > 0);
+    icc_cache_clients -= 1;
+    if (icc_cache_clients == 0) ot_image_icc_cache_clear();
 }
 
 pub fn getIccCacheStats() IccCacheStats {

@@ -1256,7 +1256,8 @@ function getOpenTUILib(libPath?: string) {
     },
 
     imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
-    imageClearIccCache: { args: [], returns: "void" },
+    imageRetainIccCache: { args: [], returns: "void" },
+    imageReleaseIccCache: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
@@ -2666,7 +2667,8 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
 
   imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
-  imageClearIccCache: () => void
+  imageRetainIccCache: () => void
+  imageReleaseIccCache: () => void
   imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
   imageCreateFromRgba: (
     pixels: Uint8Array,
@@ -2758,6 +2760,7 @@ export interface RenderLib extends AudioEngineLib {
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
+  private iccCacheClient = false
   // Layout reads are synchronous and non-reentrant. Retain one backing buffer so
   // Node does not allocate and resolve a new output pointer for every node.
   private readonly yogaLayout = new Float32Array(6)
@@ -2835,6 +2838,8 @@ class FFIRenderLib implements RenderLib {
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
+    this.imageRetainIccCache()
+    this.iccCacheClient = true
     try {
       this.setupLogging()
       this.setupEventBus()
@@ -2911,7 +2916,10 @@ class FFIRenderLib implements RenderLib {
       this.setLogCallback(null)
     } finally {
       try {
-        this.imageClearIccCache()
+        if (this.iccCacheClient) {
+          this.iccCacheClient = false
+          this.imageReleaseIccCache()
+        }
       } finally {
         try {
           this.opentui.close()
@@ -5666,8 +5674,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.imageDestroy(image)
   }
 
-  public imageClearIccCache(): void {
-    this.opentui.symbols.imageClearIccCache()
+  public imageRetainIccCache(): void {
+    this.opentui.symbols.imageRetainIccCache()
+  }
+
+  public imageReleaseIccCache(): void {
+    this.opentui.symbols.imageReleaseIccCache()
   }
 
   public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {
