@@ -10,6 +10,7 @@ import {
   type GhosttyVtConfig,
   type GhosttyVtTarget,
   restoreGhosttyVtSource,
+  resolveGhosttyVtRootOverride,
   sha256,
   validGhosttyVtTargets,
 } from "../scripts/ghostty-vt-sdk"
@@ -38,6 +39,11 @@ afterEach(() => {
 })
 
 describe("Ghostty VT SDK cache", () => {
+  test("treats an empty external SDK root as unset", () => {
+    expect(resolveGhosttyVtRootOverride(undefined, "/tmp/build")).toBeUndefined()
+    expect(resolveGhosttyVtRootOverride("", "/tmp/build")).toBeUndefined()
+  })
+
   test("does not trust or re-record an archive whose checksum changed", () => {
     testRoot = mkdtempSync(join(tmpdir(), "opentui-ghostty-vt-sdk-"))
     mkdirSync(join(testRoot, "include", "ghostty"), { recursive: true })

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative } from "node:path"
+import { join, relative, resolve } from "node:path"
 
 export type GhosttyVtConfig = {
   repository: string
@@ -28,6 +28,10 @@ type SdkManifest = GhosttyVtConfig & {
 
 export function ghosttyVtArchivePath(sdkRoot: string, target: GhosttyVtTarget): string {
   return join(sdkRoot, "lib", target.output, target.archive)
+}
+
+export function resolveGhosttyVtRootOverride(value: string | undefined, baseDir: string): string | undefined {
+  return value ? resolve(baseDir, value) : undefined
 }
 
 export function sha256(path: string): string {

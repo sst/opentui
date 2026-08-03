@@ -9,6 +9,7 @@ import {
   type GhosttyVtConfig,
   type GhosttyVtTarget,
   restoreGhosttyVtSource,
+  resolveGhosttyVtRootOverride,
   validGhosttyVtTargets,
   validateGhosttyVtSdk,
 } from "./ghostty-vt-sdk"
@@ -19,7 +20,8 @@ const config = JSON.parse(readFileSync(join(root, "ghostty-vt.json"), "utf8")) a
 const ghosttyCacheRoot = join(repoRoot, ".cache", "ghostty-vt")
 const cacheRoot = join(ghosttyCacheRoot, config.revision)
 const sourceRoot = join(cacheRoot, "source")
-const sdkRoot = resolve(process.env.OPENTUI_GHOSTTY_VT_ROOT ?? join(ghosttyCacheRoot, "sdk"))
+const externalSdkRoot = resolveGhosttyVtRootOverride(process.env.OPENTUI_GHOSTTY_VT_ROOT, process.cwd())
+const sdkRoot = externalSdkRoot ?? join(ghosttyCacheRoot, "sdk")
 const force = process.argv.includes("--force")
 
 const targets: GhosttyVtTarget[] = [
@@ -69,7 +71,7 @@ if (!force && requested.every((target) => validTargets.has(target.output))) {
   process.exit(0)
 }
 
-if (process.env.OPENTUI_GHOSTTY_VT_ROOT) {
+if (externalSdkRoot) {
   throw new Error(`OPENTUI_GHOSTTY_VT_ROOT is incomplete for: ${requested.map((target) => target.output).join(", ")}`)
 }
 
