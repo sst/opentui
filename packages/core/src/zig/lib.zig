@@ -2874,10 +2874,18 @@ export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info
 export fn imageGetPixelsPtr(image_handle: NativeHandle) ?[*]u8 {
     const image = acquireImage(image_handle) orelse return null;
     if (image.ref_count != 1) return null;
+    const pixels = image.ensurePixels() catch return null;
     image.discardEncoded();
     // Callers receive mutable pixels, so opacity can no longer be proven.
     image.metadata.has_alpha = 1;
-    return image.pixels.ptr;
+    return pixels.ptr;
+}
+
+export fn imageMaterialize(image_handle: NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    if (image.ref_count != 1) return @intFromEnum(native_image.Status.invalid_argument);
+    _ = image.ensurePixels() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(native_image.Status.ok);
 }
 
 export fn imageClone(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {

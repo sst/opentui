@@ -108,7 +108,7 @@ fn runEncodedScenarios(
                 var timer = try std.time.Timer.start();
                 const decoded = try image.decode(work_allocator, encoded, .{});
                 stats.record(timer.read());
-                checksum +%= decoded.width() + decoded.height() + decoded.pixels[0];
+                checksum +%= decoded.width() + decoded.height() + decoded.pixels.len;
                 decoded.deinit();
             }
             if (checksum == 0) return error.InvalidImageBenchmark;

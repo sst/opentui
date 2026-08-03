@@ -14,6 +14,33 @@ import type { RenderContext, TerminalCapabilities } from "../types.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
+async function readBase64Fixture(name: string): Promise<Uint8Array> {
+  return Uint8Array.from(
+    Buffer.from((await readFile(new URL(`../zig/tests/fixtures/${name}`, import.meta.url), "utf8")).trim(), "base64"),
+  )
+}
+
+function corruptFirstPngIdat(png: Uint8Array): Uint8Array {
+  const result = png.slice()
+  let offset = 8
+  while (offset + 12 <= result.length) {
+    const length = new DataView(result.buffer, result.byteOffset + offset, 4).getUint32(0)
+    const type = new TextDecoder().decode(result.subarray(offset + 4, offset + 8))
+    if (type === "IDAT") {
+      result[offset + 8] ^= 0xff
+      let crc = 0xffffffff
+      for (const byte of result.subarray(offset + 4, offset + 8 + length)) {
+        crc ^= byte
+        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+      }
+      new DataView(result.buffer).setUint32(offset + 8 + length, (crc ^ 0xffffffff) >>> 0)
+      return result
+    }
+    offset += length + 12
+  }
+  throw new Error("fixture has no IDAT chunk")
+}
+
 class ImageOutputStream extends TestWriteStream {
   readonly writes: Buffer[] = []
 
@@ -301,6 +328,39 @@ describe("ImageRenderable image loading", () => {
       await outputRenderer.idle()
       await flushWritable(stdout)
       expect(stdout.take().toString("binary")).toContain("\x1bP0;1;0q")
+    } finally {
+      outputRenderer.destroy()
+    }
+  })
+
+  test("passes an ICC PNG with corrupt pixel data through to Kitty unchanged", async () => {
+    const stdin = createTestStdin()
+    const stdout = new ImageOutputStream(8, 4) as ImageOutputStream & NodeJS.WriteStream
+    const outputRenderer = await createCliRenderer({ stdin, stdout, consoleMode: "disabled" })
+    try {
+      await flushWritable(stdout)
+      stdout.take()
+      stdin.emit("data", Buffer.from("\x1b_Gi=31337;OK\x1b\\"))
+
+      const png = corruptFirstPngIdat(await readBase64Fixture("display-p3.png.base64"))
+      const renderable = new ImageRenderable(outputRenderer, {
+        source: png,
+        protocol: "auto",
+        position: "absolute",
+        width: 3,
+        height: 1,
+      })
+      outputRenderer.root.add(renderable)
+      await renderable.loadPromise
+      outputRenderer.requestRender()
+      await outputRenderer.idle()
+      await flushWritable(stdout)
+
+      const output = stdout.take().toString("binary")
+      expect(renderable.loadError).toBeNull()
+      expect(output).toContain("a=t,f=100")
+      expect(output).toContain(Buffer.from(png).toString("base64"))
+      renderable.destroy()
     } finally {
       outputRenderer.destroy()
     }

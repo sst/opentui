@@ -1260,6 +1260,7 @@ function getOpenTUILib(libPath?: string) {
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
+    imageMaterialize: { args: ["u32"], returns: "u32" },
     imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
     imageClone: { args: ["u32", "ptr"], returns: "u32" },
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
@@ -2673,6 +2674,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => { status: number; handle: ImageHandle | null }
   imageDestroy: (image: ImageHandle) => void
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
+  imageMaterialize: (image: ImageHandle) => number
   imageGetPixelsPtr: (image: ImageHandle) => Pointer | null
   imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
@@ -5667,6 +5669,10 @@ class FFIRenderLib implements RenderLib {
   public imageGetPixelsPtr(image: ImageHandle): Pointer | null {
     const pointer = this.opentui.symbols.imageGetPixelsPtr(image)
     return pointer === null || pointer === 0 || pointer === 0n ? null : pointer
+  }
+
+  public imageMaterialize(image: ImageHandle): number {
+    return this.opentui.symbols.imageMaterialize(image)
   }
 
   public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {

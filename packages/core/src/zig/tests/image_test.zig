@@ -92,6 +92,22 @@ test "PNG probe and decode return canonical red RGBA" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
 }
 
+test "lazy PNG materialization preserves admitted decode limits" {
+    const encoded = std.mem.trim(u8, @embedFile("fixtures/wide-opaque.png.base64"), "\r\n");
+    const png = try decodeBase64(encoded);
+    defer std.testing.allocator.free(png);
+    const decoded = try image.decode(std.testing.allocator, png, .{
+        .max_width = 20_000,
+        .max_pixels = 20_000,
+        .max_decoded_bytes = 100_000,
+    });
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(usize, 0), decoded.pixels.len);
+    const pixels = try decoded.ensurePixels();
+    try std.testing.expectEqual(@as(usize, 16_385 * 4), pixels.len);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, pixels[0..4]);
+}
+
 test "PNG accepts only ASCII whitespace after IEND and retains the effective PNG range" {
     const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
     defer std.testing.allocator.free(png);
