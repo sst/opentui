@@ -217,7 +217,7 @@ test "graphics identity - a new identity replaces only identity-derived capabili
 }
 
 test "graphics identity - malformed XTVERSION cannot reuse environment version" {
-    var env = std.process.EnvMap.init(testing.allocator);
+    var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("TERM_PROGRAM", "foot");
     try env.put("TERM_PROGRAM_VERSION", "1.20.2");
@@ -228,7 +228,7 @@ test "graphics identity - malformed XTVERSION cannot reuse environment version" 
 }
 
 test "graphics identity - environment name alone is not authoritative" {
-    var env = std.process.EnvMap.init(testing.allocator);
+    var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("TERM_PROGRAM", "kitty");
     try env.put("TERM_PROGRAM_VERSION", "0.47.2");
@@ -239,7 +239,7 @@ test "graphics identity - environment name alone is not authoritative" {
 }
 
 test "graphics identity - explicit graphics disable blocks identity and queries" {
-    var env = std.process.EnvMap.init(testing.allocator);
+    var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("OPENTUI_GRAPHICS", "0");
 
@@ -262,7 +262,7 @@ test "image protocol override - parses every forced protocol" {
         .{ .value = "blocks", .expected = .blocks },
     };
     for (cases) |case| {
-        var env = std.process.EnvMap.init(testing.allocator);
+        var env = std.process.Environ.Map.init(testing.allocator);
         defer env.deinit();
         try env.put("OPENTUI_IMAGE_PROTOCOL", case.value);
         const term = Terminal.init(.{ .env_map = &env });
@@ -271,7 +271,7 @@ test "image protocol override - parses every forced protocol" {
 }
 
 test "image protocol override - ignores invalid value" {
-    var env = std.process.EnvMap.init(testing.allocator);
+    var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("OPENTUI_IMAGE_PROTOCOL", "invalid");
     const term = Terminal.init(.{ .env_map = &env });

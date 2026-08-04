@@ -332,6 +332,7 @@ fn runTranslucentTextBuffers(
 }
 
 fn runTranslucentFillOverImageMarkers(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
@@ -351,7 +352,7 @@ fn runTranslucentFillOverImageMarkers(
         buf.clear(CLEAR_BG, null);
         _ = try buf.drawImage(source, 1, 0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, 0, 0, 0, 0, 1, 1, .auto);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.fillRect(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, overlay);
         stats.record(timer.read());
     }
@@ -390,7 +391,7 @@ pub fn run(
     const text_buffers_results = try runTranslucentTextBuffers(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, text_buffers_results);
 
-    const image_marker_results = try runTranslucentFillOverImageMarkers(allocator, pool, iterations, bench_filter);
+    const image_marker_results = try runTranslucentFillOverImageMarkers(io, allocator, pool, iterations, bench_filter);
     try all_results.appendSlice(allocator, image_marker_results);
 
     return all_results.toOwnedSlice(allocator);

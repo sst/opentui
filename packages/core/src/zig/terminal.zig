@@ -1089,10 +1089,10 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
     if (!self.graphics_enabled) return;
     var offset: usize = 0;
-    while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
-        const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
+    while (std.mem.findPos(u8, response, offset, "\x1b_G")) |start| {
+        const end = std.mem.findPos(u8, response, start + 3, "\x1b\\") orelse return;
         const frame = response[start + 3 .. end];
-        const control_end = std.mem.indexOfScalar(u8, frame, ';') orelse frame.len;
+        const control_end = std.mem.findScalar(u8, frame, ';') orelse frame.len;
         var fields = std.mem.splitScalar(u8, frame[0..control_end], ',');
         while (fields.next()) |field| {
             if (std.mem.eql(u8, field, "i=31337")) {
@@ -1108,7 +1108,7 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
 fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
     if (!self.graphics_enabled) return;
     var offset: usize = 0;
-    while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
+    while (std.mem.findPos(u8, response, offset, "\x1b[?")) |start| {
         var end = start + 3;
         while (end < response.len and (std.ascii.isDigit(response[end]) or response[end] == ';')) : (end += 1) {}
         if (end >= response.len) return;
@@ -1129,7 +1129,7 @@ fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
 }
 
 fn semanticVersionAtLeast(version: []const u8, required_major: u32, required_minor: u32) bool {
-    const suffix_start = std.mem.indexOfScalar(u8, version, '-');
+    const suffix_start = std.mem.findScalar(u8, version, '-');
     const core = if (suffix_start) |index| version[0..index] else version;
     var parts = std.mem.splitScalar(u8, core, '.');
     const major_text = parts.next() orelse return false;

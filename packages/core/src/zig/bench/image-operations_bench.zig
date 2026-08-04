@@ -37,6 +37,7 @@ fn appendResult(
 }
 
 fn runEncodedScenarios(
+    io: std.Io,
     allocator: std.mem.Allocator,
     work_allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -52,7 +53,7 @@ fn runEncodedScenarios(
         const run_decode = bench_utils.matchesBenchFilter(decode_name, bench_filter);
         if (!run_probe and !run_inspect and !run_decode) continue;
 
-        const encoded = try std.fs.cwd().readFileAlloc(work_allocator, scenario.path, 2 * 1024 * 1024);
+        const encoded = try std.Io.Dir.cwd().readFileAlloc(io, scenario.path, work_allocator, .limited(2 * 1024 * 1024));
         defer work_allocator.free(encoded);
 
         if (run_probe) {
@@ -69,7 +70,7 @@ fn runEncodedScenarios(
             var stats: bench_utils.BenchStats = .{};
             var checksum: u64 = 0;
             for (0..30) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..batch_size) |_| {
                     const status = image.probe(encoded, .{}, &info);
                     if (status != .ok) return error.ImageProbeFailed;
@@ -87,7 +88,7 @@ fn runEncodedScenarios(
             var stats: bench_utils.BenchStats = .{};
             var checksum: u64 = 0;
             for (0..20) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const status = image.inspect(work_allocator, encoded, .{}, &info);
                 stats.record(timer.read());
                 if (status != .ok) return error.ImageInspectFailed;
@@ -105,7 +106,7 @@ fn runEncodedScenarios(
             var stats: bench_utils.BenchStats = .{};
             var checksum: u64 = 0;
             for (0..20) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const decoded = try image.decode(work_allocator, encoded, .{});
                 stats.record(timer.read());
                 checksum +%= decoded.width() + decoded.height() + decoded.pixels.len;
@@ -126,6 +127,7 @@ fn runEncodedScenarios(
 }
 
 fn runIccReuseScenarios(
+    io: std.Io,
     allocator: std.mem.Allocator,
     work_allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -156,7 +158,7 @@ fn runIccReuseScenarios(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..30) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const decoded = try image.decode(work_allocator, png, .{});
             if (scenario == 1) _ = try decoded.ensurePixels();
             stats.record(timer.read());
@@ -181,6 +183,7 @@ fn makeImage(allocator: std.mem.Allocator, width: u32, height: u32, seed: u8) !*
 }
 
 fn runTransformScenarios(
+    io: std.Io,
     allocator: std.mem.Allocator,
     work_allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -210,7 +213,7 @@ fn runTransformScenarios(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..20) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const output = try image.transform(work_allocator, base, .rotate_90);
             stats.record(timer.read());
             checksum +%= output.width() + output.height() + output.pixels[0];
@@ -228,7 +231,7 @@ fn runTransformScenarios(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..20) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const output = try image.extend(work_allocator, base, 16, 16, 16, 16, .{ 8, 16, 24, 128 });
             stats.record(timer.read());
             checksum +%= output.width() + output.height() + output.pixels[3];
@@ -250,7 +253,7 @@ fn runTransformScenarios(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..50) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             for (0..batch_size) |_| {
                 const status = image.copyPixels(base, destination, base.width() * 4, scenario.bgra);
                 if (status != .ok) return error.ImageCopyFailed;
@@ -270,7 +273,7 @@ fn runTransformScenarios(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..20) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const output = try image.composite(work_allocator, base, overlay, 0, 0, .source_over, 192);
             stats.record(timer.read());
             checksum +%= output.pixels[0] + output.pixels[output.pixels.len - 1];
@@ -281,14 +284,14 @@ fn runTransformScenarios(
     }
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
 
-    try runEncodedScenarios(allocator, work_allocator, &results, show_mem, bench_filter);
-    try runIccReuseScenarios(allocator, work_allocator, &results, bench_filter);
-    try runTransformScenarios(allocator, work_allocator, &results, bench_filter);
+    try runEncodedScenarios(io, allocator, work_allocator, &results, show_mem, bench_filter);
+    try runIccReuseScenarios(io, allocator, work_allocator, &results, bench_filter);
+    try runTransformScenarios(io, allocator, work_allocator, &results, bench_filter);
     return results.toOwnedSlice(allocator);
 }

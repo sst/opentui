@@ -75,7 +75,7 @@ test "OptimizedBuffer flattens image placements into owned block cells" {
 
     const cell = target.get(0, 0).?;
     try std.testing.expect(!gp.isImageChar(cell.char));
-    try std.testing.expect(std.mem.indexOfScalar(u32, &buffer_mod.quadrantChars, cell.char) != null);
+    try std.testing.expect(std.mem.findScalar(u32, &buffer_mod.quadrantChars, cell.char) != null);
     try std.testing.expectEqual(@as(usize, 0), target.image_placements.items.len);
     try std.testing.expectEqual(@as(u32, 1), source.ref_count);
 }

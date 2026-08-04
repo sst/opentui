@@ -43,6 +43,9 @@ const std = @import("std");
 const bench_utils = @import("bench-utils.zig");
 const gp = @import("grapheme.zig");
 
+var io_threaded: std.Io.Threaded = .init_single_threaded;
+pub const io = io_threaded.io();
+
 // Import all benchmark modules
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
 const edit_buffer_bench = @import("bench/edit-buffer_bench.zig");
@@ -92,7 +95,7 @@ fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
 }
 
 pub fn main(init: std.process.Init) !void {
-    const io = init.io;
+    const process_io = init.io;
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -151,7 +154,7 @@ pub fn main(init: std.process.Init) !void {
             }
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             var stdout_buffer: [4096]u8 = undefined;
-            var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
+            var stdout_writer = std.Io.File.stdout().writerStreaming(process_io, &stdout_buffer);
             const stdout = &stdout_writer.interface;
             try stdout.print("Usage: bench [options]\n\n", .{});
             try stdout.print("Options:\n", .{});
@@ -170,7 +173,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writerStreaming(process_io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     if (!json_output and filter != null) {
@@ -189,8 +192,8 @@ pub fn main(init: std.process.Init) !void {
         var results_arena = std.heap.ArenaAllocator.init(allocator);
         defer results_arena.deinit();
 
-        const timer = bench_utils.BenchTimer.start(io);
-        const results = try bench.run(io, results_arena.allocator(), show_mem, bench_filter);
+        const timer = bench_utils.BenchTimer.start(process_io);
+        const results = try bench.run(process_io, results_arena.allocator(), show_mem, bench_filter);
         const elapsed_ns = timer.read();
 
         if (results.len == 0) continue;

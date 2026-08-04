@@ -190,9 +190,9 @@ pub const CliRenderer = struct {
     height: u32,
     currentRenderBuffer: *OptimizedBuffer,
     nextRenderBuffer: *OptimizedBuffer,
-    currentImages: std.ArrayListUnmanaged(CommittedImage) = .{},
-    pendingImages: std.ArrayListUnmanaged(CommittedImage) = .{},
-    imageDirty: std.ArrayListUnmanaged(ImageDirty) = .{},
+    currentImages: std.ArrayListUnmanaged(CommittedImage) = .empty,
+    pendingImages: std.ArrayListUnmanaged(CommittedImage) = .empty,
+    imageDirty: std.ArrayListUnmanaged(ImageDirty) = .empty,
     imageIdSalt: u32,
     kittyHistoryNextImageId: ?u32,
     imageRenderFailed: bool = false,
@@ -380,7 +380,8 @@ pub const CliRenderer = struct {
         };
         errdefer backend.deinit();
 
-        const image_id_salt = 1 + @as(u32, @truncate(@as(u128, @bitCast(std.time.nanoTimestamp())) ^ @as(u128, @intFromPtr(self)))) % (std.math.maxInt(u32) - gp.IMAGE_ID_MASK - 1);
+        const timestamp: u96 = @bitCast(std.Io.Clock.now(.real, io).nanoseconds);
+        const image_id_salt = 1 + @as(u32, @truncate(@as(u128, timestamp) ^ @as(u128, @intFromPtr(self)))) % (std.math.maxInt(u32) - gp.IMAGE_ID_MASK - 1);
         self.* = .{
             .width = width,
             .height = height,
@@ -543,15 +544,15 @@ pub const CliRenderer = struct {
             for (self.currentImages.items) |current| {
                 if (current.protocol != .kitty) continue;
                 var delete_buf: [128]u8 = undefined;
-                var delete_stream = std.io.fixedBufferStream(&delete_buf);
+                var delete_writer: std.Io.Writer = .fixed(&delete_buf);
                 terminal_image.writeKittyDelete(
-                    delete_stream.writer(),
+                    &delete_writer,
                     self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),
                 ) catch {};
-                self.backend.writeOut(delete_stream.getWritten());
+                self.backend.writeOut(delete_writer.buffered());
             }
         }
         self.currentImages.clearRetainingCapacity();
@@ -1357,17 +1358,17 @@ pub const CliRenderer = struct {
         var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
         defer quantized.deinit();
         if (quantized.palette_len == 0) return;
-        var payload: std.ArrayList(u8) = .empty;
-        defer payload.deinit(self.allocator);
+        var payload: std.Io.Writer.Allocating = .init(self.allocator);
+        defer payload.deinit();
         try terminal_image.writeSixelIndexedPayload(
             self.allocator,
-            payload.writer(self.allocator),
+            &payload.writer,
             quantized.indices,
             quantized.palette[0..quantized.palette_len],
             prepared.width(),
             prepared.height(),
         );
-        try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
+        try terminal_image.writeSixelFramedPayload(writer, payload.written(), self.terminal.isInTmux());
     }
 
     fn writeSnapshotKittyImage(
@@ -2160,19 +2161,19 @@ pub const CliRenderer = struct {
             }
             var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
             defer quantized.deinit();
-            var payload: std.ArrayList(u8) = .empty;
-            defer payload.deinit(self.allocator);
+            var payload: std.Io.Writer.Allocating = .init(self.allocator);
+            defer payload.deinit();
             if (quantized.palette_len > 0) {
                 try terminal_image.writeSixelIndexedPayload(
                     self.allocator,
-                    payload.writer(self.allocator),
+                    &payload.writer,
                     quantized.indices,
                     quantized.palette[0..quantized.palette_len],
                     prepared.width(),
                     prepared.height(),
                 );
                 try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
-                try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
+                try terminal_image.writeSixelFramedPayload(writer, payload.written(), self.terminal.isInTmux());
             }
             self.cacheSixelPayload(cache_key, &payload);
         }
@@ -2248,9 +2249,9 @@ pub const CliRenderer = struct {
         return hasher.final();
     }
 
-    fn cacheSixelPayload(self: *CliRenderer, key: SixelCacheKey, payload: *std.ArrayList(u8)) void {
-        if (payload.items.len > SIXEL_CACHE_MAX_BYTES) return;
-        const owned = payload.toOwnedSlice(self.allocator) catch return;
+    fn cacheSixelPayload(self: *CliRenderer, key: SixelCacheKey, payload: *std.Io.Writer.Allocating) void {
+        if (payload.written().len > SIXEL_CACHE_MAX_BYTES) return;
+        const owned = payload.toOwnedSlice() catch return;
         self.sixelCache.ensureUnusedCapacity(self.allocator, 1) catch {
             self.allocator.free(owned);
             return;
@@ -2758,15 +2759,15 @@ pub const CliRenderer = struct {
             for (self.currentImages.items) |current| {
                 if (current.protocol != .kitty) continue;
                 var delete_buf: [128]u8 = undefined;
-                var stream = std.io.fixedBufferStream(&delete_buf);
+                var delete_writer: std.Io.Writer = .fixed(&delete_buf);
                 terminal_image.writeKittyDelete(
-                    stream.writer(),
+                    &delete_writer,
                     self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),
                 ) catch {};
-                self.writeOut(stream.getWritten());
+                self.writeOut(delete_writer.buffered());
             }
         }
         self.writeOut(ansi.ANSI.clearAndHome);

@@ -267,7 +267,7 @@ pub const OptimizedBuffer = struct {
             .id = owned_id,
             .scissor_stack = scissor_stack,
             .opacity_stack = opacity_stack,
-            .image_placements = .{},
+            .image_placements = .empty,
         };
 
         @memset(self.buffer.char, 0);

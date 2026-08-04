@@ -22,8 +22,8 @@ const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
 fn lastSixelFrame(output: []const u8) ![]const u8 {
-    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
-    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
+    const start = std.mem.findLast(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
+    const end = std.mem.findPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
     return output[start .. end + 2];
 }
 
@@ -102,8 +102,8 @@ test "renderer emits Kitty image once and leaves unchanged frame empty" {
 
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t,f=24,s=1,v=1,i=") != null);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "c=1,r=1,x=0,y=0,w=1,h=1,C=1,z=-1499999999") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t,f=24,s=1,v=1,i=") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "c=1,r=1,x=0,y=0,w=1,h=1,C=1,z=-1499999999") != null);
 
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
@@ -128,11 +128,11 @@ test "renderer emits Sixel only with known pixel dimensions" {
 
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(u64, 1), test_renderer.renderer.sixelCacheMisses);
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(u64, 1), test_renderer.renderer.sixelCacheHits);
 
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 1, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
@@ -207,7 +207,7 @@ test "renderer does not copy identity Sixel geometry" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expect(!source_allocator.has_induced_failure);
     try std.testing.expectEqual(source_allocations_before_render, source_allocator.allocations);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 }
 
 test "renderer repaints unchanged upper Sixel after an overlapping lower image changes" {
@@ -404,12 +404,12 @@ test "renderer honors per-placement protocol overrides" {
 
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
 
     test_renderer.renderer.terminal.caps.kitty_graphics = true;
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") == null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") == null);
 }
 
 test "renderer honors global image protocol override for auto placements" {
@@ -428,7 +428,7 @@ test "renderer honors global image protocol override for auto placements" {
     test_renderer.renderer.terminal.image_protocol = .kitty;
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
 }
 
 test "renderer keeps unresolved Sixel fallback frames as no-ops" {
@@ -448,8 +448,8 @@ test "renderer keeps unresolved Sixel fallback frames as no-ops" {
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     const first = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, first, "\x1bP0;1;0q") == null);
-    try std.testing.expect(std.mem.indexOf(u8, first, "█") != null);
+    try std.testing.expect(std.mem.find(u8, first, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, first, "█") != null);
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
@@ -472,8 +472,8 @@ test "renderer repaints a final blocks placement over Sixel" {
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
     _ = test_renderer.renderer.render(true);
     const output = test_renderer.memory.lastWrite();
-    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
-    const block = std.mem.lastIndexOf(u8, output, "█") orelse return error.TestUnexpectedResult;
+    const sixel = std.mem.find(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const block = std.mem.findLast(u8, output, "█") orelse return error.TestUnexpectedResult;
     try std.testing.expect(block > sixel);
 }
 
@@ -501,20 +501,20 @@ test "renderer does not retransmit Sixel when overlay text changes" {
     try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try next.drawText("1", 1, 0, fg, bg, 0);
     _ = test_renderer.renderer.render(false);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
-    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), '1') != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.findScalar(u8, test_renderer.memory.lastWrite(), '1') != null);
 
     next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try next.drawText("2", 1, 0, fg, bg, 0);
     _ = test_renderer.renderer.render(false);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
-    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), '2') != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.findScalar(u8, test_renderer.memory.lastWrite(), '2') != null);
 
     next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
     _ = test_renderer.renderer.render(false);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 }
 
 test "renderer replays a wide grapheme that starts before a Sixel placement" {
@@ -537,8 +537,8 @@ test "renderer replays a wide grapheme that starts before a Sixel placement" {
     _ = test_renderer.renderer.render(true);
 
     const output = test_renderer.memory.lastWrite();
-    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
-    const overlay = std.mem.lastIndexOf(u8, output, "界") orelse return error.TestUnexpectedResult;
+    const sixel = std.mem.find(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const overlay = std.mem.findLast(u8, output, "界") orelse return error.TestUnexpectedResult;
     try std.testing.expect(overlay > sixel);
 }
 
@@ -569,13 +569,13 @@ test "renderer preserves terminal semantics when replaying cells over Sixel" {
     _ = test_renderer.renderer.render(true);
 
     const output = test_renderer.memory.lastWrite();
-    const sixel = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const sixel = std.mem.findLast(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
     const replay = output[sixel..];
-    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]8;id=") != null);
-    try std.testing.expect(std.mem.indexOf(u8, replay, ";https://example.com/replayed\x1b\\") != null);
-    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]8;;\x1b\\") != null);
-    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]66;w=2;界\x1b\\") != null);
-    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b[0m\x1b[1;3H") != null);
+    try std.testing.expect(std.mem.find(u8, replay, "\x1b]8;id=") != null);
+    try std.testing.expect(std.mem.find(u8, replay, ";https://example.com/replayed\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, replay, "\x1b]8;;\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, replay, "\x1b]66;w=2;界\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, replay, "\x1b[0m\x1b[1;3H") != null);
 }
 
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
@@ -606,10 +606,10 @@ fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
     _ = test_renderer.renderer.render(false);
     const covered_output = test_renderer.memory.lastWrite();
     try std.testing.expect(covered_output.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, covered_output, "\x1b_Ga=t") == null);
-    try std.testing.expect(std.mem.indexOf(u8, covered_output, "a=p") == null);
-    try std.testing.expect(std.mem.indexOf(u8, covered_output, "a=d") == null);
-    try std.testing.expect(std.mem.indexOf(u8, covered_output, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, covered_output, "\x1b_Ga=t") == null);
+    try std.testing.expect(std.mem.find(u8, covered_output, "a=p") == null);
+    try std.testing.expect(std.mem.find(u8, covered_output, "a=d") == null);
+    try std.testing.expect(std.mem.find(u8, covered_output, "\x1bP0;1;0q") == null);
 
     next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, protocol));
@@ -619,11 +619,11 @@ fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
     switch (protocol) {
         .kitty => {
             try std.testing.expect(restored_output.len > 0);
-            try std.testing.expect(std.mem.indexOf(u8, restored_output, "\x1b_Ga=t") == null);
-            try std.testing.expect(std.mem.indexOf(u8, restored_output, "a=p") == null);
+            try std.testing.expect(std.mem.find(u8, restored_output, "\x1b_Ga=t") == null);
+            try std.testing.expect(std.mem.find(u8, restored_output, "a=p") == null);
         },
-        .sixel => try std.testing.expect(std.mem.indexOf(u8, restored_output, "\x1bP0;1;0q") != null),
-        .blocks => try std.testing.expect(std.mem.indexOf(u8, restored_output, "█") != null),
+        .sixel => try std.testing.expect(std.mem.find(u8, restored_output, "\x1bP0;1;0q") != null),
+        .blocks => try std.testing.expect(std.mem.find(u8, restored_output, "█") != null),
         .auto => unreachable,
     }
 }
@@ -658,9 +658,9 @@ test "renderer splits changed background runs around clean Kitty image cells" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
 
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;1H") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[0m\x1b[1;4H") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[1;1H") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[0m\x1b[1;4H") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b_G") == null);
 }
 
 test "renderer retransmits Sixel after removing an alpha-colored plane" {
@@ -702,8 +702,8 @@ test "renderer clears old Sixel pixels when replacing an image" {
     try std.testing.expect(try next.drawImage(replacement, replacement_handle, 0, 0, 2, 1, 2, 2, 0, 0, 2, 1, .sixel));
     _ = test_renderer.renderer.render(false);
     const output = test_renderer.memory.lastWrite();
-    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
-    try std.testing.expect(std.mem.indexOfScalar(u8, output[0..sixel], ' ') != null);
+    const sixel = std.mem.find(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(std.mem.findScalar(u8, output[0..sixel], ' ') != null);
 }
 
 const PaintedSixelColor = struct { r: u8, g: u8, b: u8 };
@@ -711,8 +711,8 @@ const PaintedSixelColor = struct { r: u8, g: u8, b: u8 };
 // Parses the last Sixel DCS in an output stream and returns the palette colors
 // that actually paint at least one pixel (RGB in the 0-100 Sixel scale).
 fn paintedSixelColors(output: []const u8, colors: *[8]PaintedSixelColor) !usize {
-    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
-    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
+    const start = std.mem.findLast(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
+    const end = std.mem.findPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
     const payload = output[start + 8 .. end];
 
     var palette = [_][3]u8{.{ 0, 0, 0 }} ** 256;
@@ -863,7 +863,7 @@ test "renderer materializes lazy ICC PNGs before applying Sixel opacity" {
     try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 3, 1, 3, 1, 0, 0, 3, 1, .sixel));
     next.popOpacity();
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
 }
 
@@ -898,8 +898,8 @@ test "renderer keeps image alpha holes transparent while dimming by opacity" {
     try std.testing.expectEqual(@as(usize, 1), count);
     try std.testing.expect(colors[0].r >= 55 and colors[0].r <= 65);
 
-    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q").?;
-    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\").?;
+    const start = std.mem.findLast(u8, output, "\x1bP0;1;0q").?;
+    const end = std.mem.findPos(u8, output, start, "\x1b\\").?;
     const payload = output[start + 8 .. end];
     // Exactly one column paints in the single 2x1 band: one '@' data char.
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, payload, "@"));
@@ -2398,8 +2398,8 @@ test "renderer - pinned split scrollback repaints live native images after appen
     try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
 
     const output = test_renderer.memory.lastWrite();
-    const append_index = std.mem.indexOf(u8, output, "line") orelse return error.TestUnexpectedResult;
-    const placement_index = std.mem.indexOf(u8, output, "\x1b_Ga=p") orelse return error.TestUnexpectedResult;
+    const append_index = std.mem.find(u8, output, "line") orelse return error.TestUnexpectedResult;
+    const placement_index = std.mem.find(u8, output, "\x1b_Ga=p") orelse return error.TestUnexpectedResult;
     try std.testing.expect(placement_index > append_index);
 }
 
@@ -2424,10 +2424,10 @@ test "renderer - split scrollback materializes image fallback cells" {
     _ = test_renderer.renderer.resetSplitScrollback(2, 2);
     _ = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 2, false, true, 2, false, true, true);
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOfScalar(u8, output, 'X') != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "█") != null);
+    try std.testing.expect(std.mem.findScalar(u8, output, 'X') != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b_G") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, output, "█") != null);
 }
 
 test "renderer - split scrollback uses native Kitty when Kitty is selected" {
@@ -2455,12 +2455,12 @@ test "renderer - split scrollback uses native Kitty when Kitty is selected" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
 
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=t") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=p") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, ",U=1,") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\u{10EEEE}") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "█") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "48;2;1;2;3") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b_Ga=p") != null);
+    try std.testing.expect(std.mem.find(u8, output, ",U=1,") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\u{10EEEE}") == null);
+    try std.testing.expect(std.mem.find(u8, output, "█") == null);
+    try std.testing.expect(std.mem.find(u8, output, "48;2;1;2;3") == null);
 }
 
 test "renderer - failed Kitty scrollback preparation does not publish the batch" {
@@ -2503,7 +2503,7 @@ test "renderer - failed Kitty scrollback preparation does not publish the batch"
 
     const retry = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 1, false, true, 2, false, true, true);
     try std.testing.expectEqual(renderer.RenderStatus.rendered, retry.status);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
 }
 
 test "renderer - split scrollback emits native Sixel images when placement geometry is available" {
@@ -2530,10 +2530,10 @@ test "renderer - split scrollback emits native Sixel images when placement geome
     try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
 
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.saveCursorState) != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.restoreCursorState) != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "█") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, output, ansi.ANSI.saveCursorState) != null);
+    try std.testing.expect(std.mem.find(u8, output, ansi.ANSI.restoreCursorState) != null);
+    try std.testing.expect(std.mem.find(u8, output, "█") == null);
 
     var covered = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .link_pool = &local_link_pool });
     defer covered.deinit();
@@ -2541,8 +2541,8 @@ test "renderer - split scrollback emits native Sixel images when placement geome
     try covered.drawText("X", 0, 0, .{ 255, 255, 255, 255 }, null, 0);
     const covered_result = test_renderer.renderer.commitSplitFooterSnapshotBatched(covered, 1, false, true, 2, false, true, true);
     try std.testing.expectEqual(renderer.RenderStatus.rendered, covered_result.status);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
-    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), 'X') != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.findScalar(u8, test_renderer.memory.lastWrite(), 'X') != null);
 }
 
 test "renderer - commitSplitFooterSnapshot settling phase moves footer downward" {
@@ -3515,7 +3515,7 @@ test "FeedBackend - failed ordinary render retries split transition" {
         output_len += bytes.len;
         feed.markSpanConsumed(span);
     }
-    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b[1T") != null);
+    try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b[1T") != null);
 }
 
 test "FeedBackend - failed frame keeps the published hit grid" {
@@ -3608,9 +3608,9 @@ test "FeedBackend - failed frame retries unsent terminal controls" {
         feed.markSpanConsumed(span);
     }
 
-    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b]12;#123456\x07") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], ansi.ANSI.cursorLine) != null);
-    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b]22;pointer\x07") != null);
+    try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b]12;#123456\x07") != null);
+    try std.testing.expect(std.mem.find(u8, output[0..output_len], ansi.ANSI.cursorLine) != null);
+    try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b]22;pointer\x07") != null);
 }
 
 test "FeedBackend - failed Sixel frame does not publish an unterminated DCS" {
@@ -3954,9 +3954,9 @@ test "renderer scales kitty transmission alpha by placement opacity" {
 
     // Translucent placements transmit RGBA with the alpha channel scaled so the
     // terminal composites the fade; colors are left for kitty to blend.
-    try std.testing.expect(std.mem.indexOf(u8, output, "f=32") != null);
-    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
-    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b\\").? + 2;
+    try std.testing.expect(std.mem.find(u8, output, "f=32") != null);
+    const transmit_start = std.mem.find(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.findPos(u8, output, transmit_start, "\x1b\\").? + 2;
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqual(@as(usize, 4), transmitted.len);
@@ -3972,9 +3972,9 @@ test "renderer scales kitty transmission alpha by placement opacity" {
     next.popOpacity();
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const second = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, second, "a=d,d=I") != null);
-    const second_start = std.mem.indexOf(u8, second, "\x1b_Ga=t").?;
-    const second_end = std.mem.indexOfPos(u8, second, second_start, "\x1b\\").? + 2;
+    try std.testing.expect(std.mem.find(u8, second, "a=d,d=I") != null);
+    const second_start = std.mem.find(u8, second, "\x1b_Ga=t").?;
+    const second_end = std.mem.findPos(u8, second, second_start, "\x1b\\").? + 2;
     const retransmitted = try terminal_image_test.decodeKittyChunks(second[second_start..second_end]);
     defer std.testing.allocator.free(retransmitted);
     try std.testing.expect(@abs(@as(i16, retransmitted[3]) - 64) <= 1);
@@ -4042,7 +4042,7 @@ test "renderer treats fully transparent sixel placements as empty without failin
     var next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
     try std.testing.expect(!test_renderer.renderer.imageRenderFailed);
     try std.testing.expect(!test_renderer.renderer.force_full_repaint);
 
@@ -4051,7 +4051,7 @@ test "renderer treats fully transparent sixel placements as empty without failin
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expectEqual(@as(u64, 1), test_renderer.renderer.sixelCacheHits);
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
     try std.testing.expect(!test_renderer.renderer.imageRenderFailed);
 }
 
@@ -4073,7 +4073,7 @@ test "renderer retransmits sixel placements on a forced full repaint" {
     var next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 
     // A full repaint (failed-frame recovery, palette change) rewrites every
     // cell, so the unchanged placement's pixels must be transmitted again.
@@ -4081,7 +4081,7 @@ test "renderer retransmits sixel placements on a forced full repaint" {
     next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 }
 
 test "renderer leaves clean text alone when graphics content changes" {
@@ -4105,7 +4105,7 @@ test "renderer leaves clean text alone when graphics content changes" {
     try next.drawText("HELLO", 0, 3, .{ 255, 255, 255, 255 }, null, 0);
     try std.testing.expect(try next.drawImage(first, first_handle, 0, 0, 2, 2, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "HELLO") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "HELLO") != null);
 
     // Replace the image while preserving text and placement geometry.
     // Kitty swaps the image server side; unchanged text must not be re-emitted
@@ -4115,9 +4115,9 @@ test "renderer leaves clean text alone when graphics content changes" {
     try std.testing.expect(try next.drawImage(second, second_handle, 0, 0, 2, 2, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=t") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "HELLO") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, " ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, output, "HELLO") == null);
+    try std.testing.expect(std.mem.find(u8, output, " ") == null);
 }
 
 test "renderer clears dirty sixel cells as one batched space run" {
@@ -4145,10 +4145,10 @@ test "renderer clears dirty sixel cells as one batched space run" {
     try std.testing.expect(try next.drawImage(second, second_handle, 0, 0, 6, 1, 12, 2, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const output = test_renderer.memory.lastWrite();
-    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const sixel = std.mem.find(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
     // The six reserved cells clear with a single cursor move and six spaces;
     // the only other CUP before the payload positions the Sixel itself.
-    try std.testing.expect(std.mem.indexOf(u8, output[0..sixel], "\x1b[1;1H      ") != null);
+    try std.testing.expect(std.mem.find(u8, output[0..sixel], "\x1b[1;1H      ") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output[0..sixel], "\x1b[1;1H"));
 }
 
@@ -4183,10 +4183,10 @@ test "renderer downscales large kitty stills to their placement pixel size" {
 
     // The transmission carries the downscaled pixels and the placement crops
     // the full downscaled image.
-    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=24,s=16,v=16") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=16,h=16,C=1") != null);
-    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
-    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    try std.testing.expect(std.mem.find(u8, output, "a=t,f=24,s=16,v=16") != null);
+    try std.testing.expect(std.mem.find(u8, output, "x=0,y=0,w=16,h=16,C=1") != null);
+    const transmit_start = std.mem.find(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.findPos(u8, output, transmit_start, "\x1b[").?;
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqual(@as(usize, 16 * 16 * 3), transmitted.len);
@@ -4198,8 +4198,8 @@ test "renderer downscales large kitty stills to their placement pixel size" {
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 20, 20, 0, 0, 64, 64, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const second = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, second, "a=d,d=I") != null);
-    try std.testing.expect(std.mem.indexOf(u8, second, "a=t,f=24,s=20,v=20") != null);
+    try std.testing.expect(std.mem.find(u8, second, "a=d,d=I") != null);
+    try std.testing.expect(std.mem.find(u8, second, "a=t,f=24,s=20,v=20") != null);
 }
 
 test "renderer transmits small kitty images at native size" {
@@ -4223,8 +4223,8 @@ test "renderer transmits small kitty images at native size" {
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=24,s=8,v=8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
+    try std.testing.expect(std.mem.find(u8, output, "a=t,f=24,s=8,v=8") != null);
+    try std.testing.expect(std.mem.find(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
 }
 
 test "renderer transmits only cropped kitty source pixels" {
@@ -4255,10 +4255,10 @@ test "renderer transmits only cropped kitty source pixels" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     const output = test_renderer.memory.lastWrite();
 
-    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=24,s=8,v=8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
-    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
-    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    try std.testing.expect(std.mem.find(u8, output, "a=t,f=24,s=8,v=8") != null);
+    try std.testing.expect(std.mem.find(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
+    const transmit_start = std.mem.find(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.findPos(u8, output, transmit_start, "\x1b[").?;
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqual(@as(usize, 8 * 8 * 3), transmitted.len);
@@ -4277,10 +4277,10 @@ test "renderer transmits only cropped kitty source pixels" {
     try std.testing.expect(try changed.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 16, 12, 8, 8, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const changed_output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, changed_output, "a=d,d=I") != null);
-    try std.testing.expect(std.mem.indexOf(u8, changed_output, "a=t,f=24,s=8,v=8") != null);
-    const changed_start = std.mem.indexOf(u8, changed_output, "\x1b_Ga=t").?;
-    const changed_end = std.mem.indexOfPos(u8, changed_output, changed_start, "\x1b[").?;
+    try std.testing.expect(std.mem.find(u8, changed_output, "a=d,d=I") != null);
+    try std.testing.expect(std.mem.find(u8, changed_output, "a=t,f=24,s=8,v=8") != null);
+    const changed_start = std.mem.find(u8, changed_output, "\x1b_Ga=t").?;
+    const changed_end = std.mem.findPos(u8, changed_output, changed_start, "\x1b[").?;
     const changed_transmitted = try terminal_image_test.decodeKittyChunks(changed_output[changed_start..changed_end]);
     defer std.testing.allocator.free(changed_transmitted);
     for (0..8) |y| {
@@ -4325,7 +4325,7 @@ test "renderer does not publish a frame when image dirty preparation fails" {
     const retry = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
@@ -4362,7 +4362,7 @@ test "renderer does not publish a frame when Sixel preparation fails" {
     const retry = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
@@ -4398,7 +4398,7 @@ test "renderer does not publish Kitty output when image state staging fails" {
     const retry = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .kitty));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
     try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
@@ -4429,5 +4429,5 @@ test "renderer clears an upper sixel hole when its lower image moves away" {
     try std.testing.expect(try next.drawImage(lower, lower_handle, 1, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expect(try next.drawImage(upper, upper_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b[1;1H") != null);
+    try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b[1;1H") != null);
 }

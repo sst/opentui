@@ -310,7 +310,7 @@ test "JPEG decode rejects EOI before the first scan" {
     const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
     const jpeg = try decodeBase64(encoded);
     defer std.testing.allocator.free(jpeg);
-    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const sos = std.mem.find(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
 
     const malformed = try std.testing.allocator.alloc(u8, sos + 2);
     defer std.testing.allocator.free(malformed);
@@ -324,7 +324,7 @@ test "JPEG decode rejects a scan without entropy data" {
     const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
     const jpeg = try decodeBase64(encoded);
     defer std.testing.allocator.free(jpeg);
-    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const sos = std.mem.find(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
     const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
     const after_scan_header = sos + 2 + scan_header_length;
 
@@ -340,7 +340,7 @@ test "JPEG decode rejects an incomplete entropy-coded scan" {
     const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
     const jpeg = try decodeBase64(encoded);
     defer std.testing.allocator.free(jpeg);
-    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const sos = std.mem.find(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
     const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
     const after_scan_header = sos + 2 + scan_header_length;
 
@@ -356,7 +356,7 @@ test "JPEG probe applies dimension limits before full scan validation" {
     const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
     const jpeg = try decodeBase64(encoded);
     defer std.testing.allocator.free(jpeg);
-    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const sos = std.mem.find(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
     const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
     const after_scan_header = sos + 2 + scan_header_length;
 
@@ -377,7 +377,7 @@ test "progressive JPEG decode rejects a final scan without entropy data" {
 
     var search_start: usize = 0;
     var final_sos: ?usize = null;
-    while (std.mem.indexOfPos(u8, jpeg, search_start, &[_]u8{ 0xFF, 0xDA })) |sos| {
+    while (std.mem.findPos(u8, jpeg, search_start, &[_]u8{ 0xFF, 0xDA })) |sos| {
         final_sos = sos;
         search_start = sos + 2;
     }
@@ -659,7 +659,7 @@ fn injectJpegExifOrientation(
 }
 
 test "JPEG EXIF orientation swaps probe and decode dimensions" {
-    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const plain = try image.decode(std.testing.allocator, jpeg, .{});
     defer plain.deinit();
@@ -701,7 +701,7 @@ test "JPEG EXIF orientation swaps probe and decode dimensions" {
 }
 
 test "JPEG EXIF orientation 180 keeps dimensions" {
-    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const plain = try image.decode(std.testing.allocator, jpeg, .{});
     defer plain.deinit();
@@ -730,7 +730,7 @@ test "JPEG EXIF orientation 180 keeps dimensions" {
 }
 
 test "JPEG EXIF orientation ignores invalid values and uses the default" {
-    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     for ([_]u16{ 0, 9, 200 }) |invalid| {
         const bytes = try injectJpegExifOrientation(std.testing.allocator, jpeg, invalid, .little);

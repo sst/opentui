@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const renderer = @import("../renderer.zig");
 const renderer_output = @import("../renderer-output.zig");
 const gp = @import("../grapheme.zig");
@@ -25,8 +27,8 @@ pub const TestMemoryOutput = struct {
 
     fn write(ctx: *anyopaque, data: []const u8) void {
         const self: *TestMemoryOutput = @ptrCast(@alignCast(ctx));
-        if (self.thread_safe) self.mutex.lockUncancelable(std.testing.io);
-        defer if (self.thread_safe) self.mutex.unlock(std.testing.io);
+        if (self.thread_safe) self.mutex.lockUncancelable(io);
+        defer if (self.thread_safe) self.mutex.unlock(io);
 
         const start = self.bytes.items.len;
         self.bytes.appendSlice(self.allocator, data) catch @panic("memory output write failed");

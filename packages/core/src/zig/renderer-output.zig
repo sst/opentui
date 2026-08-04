@@ -820,7 +820,7 @@ pub const BufferedBackend = struct {
 /// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
-    frameBytes: std.ArrayListUnmanaged(u8) = .{},
+    frameBytes: std.ArrayListUnmanaged(u8) = .empty,
 
     /// Set when staging a frame fails. No bytes from a failed frame are
     /// published; the renderer forces a later full repaint.
