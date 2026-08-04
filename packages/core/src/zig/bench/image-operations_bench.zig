@@ -114,9 +114,10 @@ fn runEncodedScenarios(
             if (checksum == 0) return error.InvalidImageBenchmark;
             const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
                 const values = try allocator.alloc(bench_utils.MemStat, 1);
-                var info: image.Info = .{};
-                if (image.probe(encoded, .{}, &info) != .ok) return error.ImageProbeFailed;
-                values[0] = .{ .name = "Pixels", .bytes = @as(usize, info.width) * info.height * 4 };
+                const decoded = try image.decode(work_allocator, encoded, .{});
+                defer decoded.deinit();
+                const encoded_bytes = if (decoded.encoded_png) |png| png.len else 0;
+                values[0] = .{ .name = "Image data", .bytes = decoded.pixels.len + encoded_bytes };
                 break :blk values;
             } else null;
             try appendResult(allocator, results, decode_name, stats, mem_stats);

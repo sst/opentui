@@ -206,13 +206,13 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         .file = b.path("image-shim.c"),
         .flags = flags,
     });
-    const lcms_flags = if (target.result.os.tag == .windows) flags else appendCFlags(b, flags, &.{"-DHasTHREADS=1"});
     artifact.addIncludePath(b.path("vendor/lcms2/include"));
     artifact.addIncludePath(b.path("vendor/lcms2/src"));
     artifact.addCSourceFiles(.{
         .root = b.path("vendor/lcms2"),
         .files = &LCMS2_SOURCES,
-        .flags = lcms_flags,
+        // image.zig serializes every LittleCMS operation with icc_cache_mutex.
+        .flags = flags,
     });
 
     // One upstream SIMD sRGB idiom forms `fp32_to_srgb8_tab4 - 912`; its
