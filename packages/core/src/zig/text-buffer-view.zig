@@ -1272,16 +1272,32 @@ pub const UnifiedTextBufferView = struct {
 
                                 continue;
                             } else {
-                                commitVirtualLine(wctx);
+                                // No wrap break was recorded on the current line, so a chunk
+                                // boundary is not a wrap point: hard-fill the remaining space
+                                // on the current line from this chunk, matching the
+                                // line_position == 0 path above. Only commit when the line is
+                                // already full. This keeps multi-chunk lines (after edits)
+                                // segmented identically to single-chunk lines.
+                                if (remaining_on_line == 0) {
+                                    commitVirtualLine(wctx);
+                                }
                                 if (char_offset > 0) {
                                     const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tabWidth(), is_ascii_only, false, wctx.text_buffer.widthMethod());
                                     byte_offset = pos_result.byte_offset;
                                 }
+                                const fill_width = if (remaining_on_line == 0) wctx.lineWrapWidth() else remaining_on_line;
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.lineWrapWidth(), wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, fill_width, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                 to_add = wrap_result.columns_used;
                                 byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
+                                    if (remaining_on_line > 0) {
+                                        // The next grapheme does not fit in the remaining
+                                        // space; commit the short line and let the next loop
+                                        // iteration hard-fill a fresh line.
+                                        commitVirtualLine(wctx);
+                                        continue;
+                                    }
                                     to_add = 1;
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                     byte_offset += single_result.byte_offset;

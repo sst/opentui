@@ -496,3 +496,378 @@ test "Word wrap - incremental character edits near boundary" {
     try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
     try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
+
+/// Assert that the virtual-line segmentation of `view` (backed by an edited,
+/// potentially multi-chunk buffer) is identical to the segmentation of a fresh
+/// single-chunk buffer set to the same text content. Wrap segmentation must
+/// depend only on text content, never on how the text was edited.
+fn expectSegmentationMatchesFreshSet(
+    pool: *gp.GraphemePool,
+    link_pool: *link.LinkPool,
+    eb: *EditBuffer,
+    view: *TextBufferView,
+    wrap_width: u32,
+) !void {
+    var text_buf: [16384]u8 = undefined;
+    const text_len = eb.getText(&text_buf);
+
+    var fresh_eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer fresh_eb.deinit();
+
+    var fresh_view = try TextBufferView.init(std.testing.allocator, fresh_eb.getTextBuffer());
+    defer fresh_view.deinit();
+
+    fresh_view.setWrapMode(.word);
+    fresh_view.setWrapWidth(wrap_width);
+    try fresh_eb.setText(text_buf[0..text_len]);
+
+    const actual = view.getVirtualLines();
+    const expected = fresh_view.getVirtualLines();
+
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |exp, act| {
+        try std.testing.expectEqual(exp.source_line, act.source_line);
+        try std.testing.expectEqual(exp.source_col_offset, act.source_col_offset);
+        try std.testing.expectEqual(exp.width_cols, act.width_cols);
+    }
+}
+
+test "Word wrap - insert into soft-wrapped unbreakable line reflows (issue 1288)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(56);
+
+    try eb.setText("a" ** 100);
+
+    var vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+
+    try eb.setCursor(0, 20);
+    try eb.insertText("X");
+
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 45), vlines[1].width_cols);
+
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+}
+
+test "Word wrap - insert at various offsets matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const offsets = [_]u32{ 0, 20, 56, 80 };
+    for (offsets) |offset| {
+        var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+        defer eb.deinit();
+
+        var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+        view.setWrapWidth(56);
+
+        try eb.setText("a" ** 100);
+        try eb.setCursor(0, offset);
+        try eb.insertText("X");
+
+        try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+    }
+}
+
+test "Word wrap - delete at various offsets matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const offsets = [_]u32{ 0, 20, 56, 80 };
+    for (offsets) |offset| {
+        var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+        defer eb.deinit();
+
+        var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+        view.setWrapWidth(56);
+
+        try eb.setText("a" ** 100);
+        try eb.setCursor(0, offset);
+        try eb.deleteForward();
+
+        try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+    }
+}
+
+test "Word wrap - multi-char insert at various offsets matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const offsets = [_]u32{ 0, 20, 55, 56, 80 };
+    for (offsets) |offset| {
+        var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+        defer eb.deinit();
+
+        var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+        view.setWrapWidth(56);
+
+        try eb.setText("a" ** 100);
+        try eb.setCursor(0, offset);
+        try eb.insertText("XYZ");
+
+        try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+    }
+}
+
+test "Word wrap - word boundaries still backtrack after mid-row edit" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(12);
+
+    try eb.setText("aaaaaaaa bbbb cccc");
+
+    try eb.setCursor(0, 2);
+    try eb.insertText("X");
+
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 12);
+
+    // "aaXaaaaa bbbb cccc": the first word's wrap point must still be used
+    // (row 0 backtracks below the full wrap width instead of hard-filling it).
+    const vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 10), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 9), vlines[1].width_cols);
+}
+
+test "Word wrap - CJK unbreakable line edited mid-row matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(56);
+
+    try eb.setText("世" ** 50);
+
+    // Column 40 is the grapheme boundary after the 20th wide char.
+    try eb.setCursor(0, 40);
+    try eb.insertText("界");
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 46), vlines[1].width_cols);
+
+    // Hard fills must stay on grapheme boundaries: every row of an
+    // all-wide-char line has an even width.
+    for (vlines) |vline| {
+        try std.testing.expectEqual(@as(u32, 0), vline.width_cols % 2);
+    }
+
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+}
+
+test "Word wrap - mixed widths with combining marks matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const unit = "ab" ++ "世" ++ "e\u{301}";
+    const text = unit ** 15;
+
+    const offsets = [_]u32{ 0, 20, 38, 60 };
+    for (offsets) |offset| {
+        var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+        defer eb.deinit();
+
+        var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+        view.setWrapWidth(56);
+
+        try eb.setText(text);
+        try eb.setCursor(0, offset);
+        try eb.insertText("X");
+
+        const vlines = view.getVirtualLines();
+        for (vlines) |vline| {
+            try std.testing.expect(vline.width_cols <= 56);
+        }
+
+        try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+    }
+}
+
+test "Word wrap - sequential inserts keep matching fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(56);
+
+    try eb.setText("a" ** 100);
+    try eb.setCursor(0, 20);
+
+    for ("12345") |c| {
+        try eb.insertText(&[_]u8{c});
+
+        const vlines = view.getVirtualLines();
+        try std.testing.expectEqual(@as(usize, 2), vlines.len);
+        try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+
+        try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+    }
+}
+
+test "Word wrap - undo redo restores fresh-set segmentation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(56);
+
+    try eb.setText("a" ** 100);
+    try eb.setCursor(0, 20);
+    try eb.insertText("X");
+
+    var vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+
+    _ = try eb.undo();
+
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 44), vlines[1].width_cols);
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+
+    _ = try eb.redo();
+
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 45), vlines[1].width_cols);
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+}
+
+test "Word wrap - wrap width change after edit matches fresh set" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(56);
+
+    try eb.setText("a" ** 100);
+    try eb.setCursor(0, 20);
+    try eb.insertText("X");
+
+    view.setWrapWidth(40);
+
+    var vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 3), vlines.len);
+    try std.testing.expectEqual(@as(u32, 40), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 40), vlines[1].width_cols);
+    try std.testing.expectEqual(@as(u32, 21), vlines[2].width_cols);
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 40);
+
+    view.setWrapWidth(56);
+
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 56), vlines[0].width_cols);
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 56);
+}
+
+test "Word wrap - wide grapheme that does not fit remaining space is not split" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(55);
+
+    // Chunk boundary exactly between the ASCII run and the wide chars:
+    // ["a" * 54]["世" * 20]. The line has 1 free column when the first wide
+    // char arrives; it must wrap whole instead of being split across rows.
+    try eb.setText("a" ** 54);
+    try eb.setCursor(0, 54);
+    try eb.insertText("世" ** 20);
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 54), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 40), vlines[1].width_cols);
+
+    try expectSegmentationMatchesFreshSet(pool, link_pool, eb, view, 55);
+}
