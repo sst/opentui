@@ -835,6 +835,37 @@ test "renderer dims sixel placements by opacity instead of hiding them" {
     try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 95, 100 }, .{ 0, 2 }, .{ 0, 2 });
 }
 
+test "renderer materializes lazy ICC PNGs before applying Sixel opacity" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+
+    const encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3.png.base64"), "\r\n");
+    const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
+    const png = try std.testing.allocator.alloc(u8, png_len);
+    defer std.testing.allocator.free(png);
+    try std.base64.standard.Decoder.decode(png, encoded);
+    const value = try image.decode(std.testing.allocator, png, .{});
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.5);
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 3, 1, 3, 1, 0, 0, 3, 1, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+}
+
 test "renderer keeps image alpha holes transparent while dimming by opacity" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

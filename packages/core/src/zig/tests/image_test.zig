@@ -13,6 +13,28 @@ fn decodeBase64(encoded: []const u8) ![]u8 {
     return decoded;
 }
 
+fn appendBytes(data: []const u8, suffix: []const u8) ![]u8 {
+    const combined = try std.testing.allocator.alloc(u8, data.len + suffix.len);
+    @memcpy(combined[0..data.len], data);
+    @memcpy(combined[data.len..], suffix);
+    return combined;
+}
+
+fn pngChunk(kind: *const [4]u8, payload: []const u8) ![]u8 {
+    const chunk = try std.testing.allocator.alloc(u8, payload.len + 12);
+    std.mem.writeInt(u32, chunk[0..4], @intCast(payload.len), .big);
+    @memcpy(chunk[4..8], kind);
+    @memcpy(chunk[8 .. 8 + payload.len], payload);
+    std.mem.writeInt(u32, chunk[8 + payload.len ..][0..4], std.hash.Crc32.hash(chunk[4 .. 8 + payload.len]), .big);
+    return chunk;
+}
+
+fn expectMalformedPng(data: []const u8) !void {
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.malformed_input, image.probe(data, .{}, &info));
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, data, .{}));
+}
+
 fn decodePngWithAllocator(allocator: std.mem.Allocator, png: []const u8) !void {
     const decoded = try image.decode(allocator, png, .{});
     defer decoded.deinit();
@@ -68,6 +90,119 @@ test "PNG probe and decode return canonical red RGBA" {
     const decoded = try image.decode(std.testing.allocator, png, .{});
     defer decoded.deinit();
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
+}
+
+test "ICC transforms are cached across images and materialization" {
+    image.clearIccCache();
+    defer image.clearIccCache();
+    const rgb_encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3.png.base64"), "\r\n");
+    const rgb_png = try decodeBase64(rgb_encoded);
+    defer std.testing.allocator.free(rgb_png);
+
+    const first = try image.decode(std.testing.allocator, rgb_png, .{});
+    defer first.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 0, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    const second = try image.decode(std.testing.allocator, rgb_png, .{});
+    defer second.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 1, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+    _ = try first.ensurePixels();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 2, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    const rgba_encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3-rgba.png.base64"), "\r\n");
+    const rgba_png = try decodeBase64(rgba_encoded);
+    defer std.testing.allocator.free(rgba_png);
+    const rgba = try image.decode(std.testing.allocator, rgba_png, .{});
+    defer rgba.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 4, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+
+    image.clearIccCache();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 0, .misses = 0, .entries = 0 }, image.getIccCacheStats());
+
+    const gray_encoded = std.mem.trim(u8, @embedFile("fixtures/gray-profile.png.base64"), "\r\n");
+    const gray_png = try decodeBase64(gray_encoded);
+    defer std.testing.allocator.free(gray_png);
+    const gray = try image.decode(std.testing.allocator, gray_png, .{});
+    defer gray.deinit();
+
+    const gray_alpha_encoded = std.mem.trim(u8, @embedFile("fixtures/gray-alpha-profile.png.base64"), "\r\n");
+    const gray_alpha_png = try decodeBase64(gray_alpha_encoded);
+    defer std.testing.allocator.free(gray_alpha_png);
+    const gray_alpha = try image.decode(std.testing.allocator, gray_alpha_png, .{});
+    defer gray_alpha.deinit();
+    try std.testing.expectEqual(image.IccCacheStats{ .hits = 2, .misses = 1, .entries = 1 }, image.getIccCacheStats());
+}
+
+test "lazy PNG materialization preserves admitted decode limits" {
+    const encoded = std.mem.trim(u8, @embedFile("fixtures/wide-opaque.png.base64"), "\r\n");
+    const png = try decodeBase64(encoded);
+    defer std.testing.allocator.free(png);
+    const decoded = try image.decode(std.testing.allocator, png, .{
+        .max_width = 20_000,
+        .max_pixels = 20_000,
+        .max_decoded_bytes = 100_000,
+    });
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(usize, 0), decoded.pixels.len);
+    const pixels = try decoded.ensurePixels();
+    try std.testing.expectEqual(@as(usize, 16_385 * 4), pixels.len);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, pixels[0..4]);
+}
+
+test "PNG accepts only ASCII whitespace after IEND and retains the effective PNG range" {
+    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
+    defer std.testing.allocator.free(png);
+
+    const suffixes = [_][]const u8{ "", " ", " \t\n\r" };
+    for (suffixes) |suffix| {
+        const input = try appendBytes(png, suffix);
+        defer std.testing.allocator.free(input);
+
+        var info: image.Info = .{};
+        try std.testing.expectEqual(image.Status.ok, image.probe(input, .{}, &info));
+        const decoded = try image.decode(std.testing.allocator, input, .{});
+        defer decoded.deinit();
+        try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
+        try std.testing.expectEqualSlices(u8, png, decoded.encoded_png.?);
+    }
+}
+
+test "PNG rejects non-whitespace data and chunks after IEND" {
+    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
+    defer std.testing.allocator.free(png);
+
+    const nul_suffix = try appendBytes(png, &[_]u8{0});
+    defer std.testing.allocator.free(nul_suffix);
+    try expectMalformedPng(nul_suffix);
+
+    const binary_suffix = try appendBytes(png, &[_]u8{ 0x01, 0xFE, 0x7F });
+    defer std.testing.allocator.free(binary_suffix);
+    try expectMalformedPng(binary_suffix);
+
+    const extra_chunk = try pngChunk("tEXt", "");
+    defer std.testing.allocator.free(extra_chunk);
+    const chunk_after_iend = try appendBytes(png, extra_chunk);
+    defer std.testing.allocator.free(chunk_after_iend);
+    try expectMalformedPng(chunk_after_iend);
+}
+
+test "PNG rejects malformed IEND and chunk bounds" {
+    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
+    defer std.testing.allocator.free(png);
+    const iend_offset = png.len - 12;
+
+    const nonzero_iend = try pngChunk("IEND", &[_]u8{0});
+    defer std.testing.allocator.free(nonzero_iend);
+    const with_nonzero_iend = try appendBytes(png[0..iend_offset], nonzero_iend);
+    defer std.testing.allocator.free(with_nonzero_iend);
+    try expectMalformedPng(with_nonzero_iend);
+
+    try expectMalformedPng(png[0 .. png.len - 1]);
+
+    const overflowing_length = try std.testing.allocator.dupe(u8, png);
+    defer std.testing.allocator.free(overflowing_length);
+    std.mem.writeInt(u32, overflowing_length[iend_offset..][0..4], std.math.maxInt(u32), .big);
+    try expectMalformedPng(overflowing_length);
 }
 
 test "PNG rejects cICP after image data" {

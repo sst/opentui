@@ -111,6 +111,7 @@ jobs:
           cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/native-notices/LICENSE-LIBWEBP
           cp packages/core/src/zig/vendor/libwebp/PATENTS artifacts/native-notices/PATENTS-LIBWEBP
           cp packages/core/src/zig/vendor/libwebp/AUTHORS artifacts/native-notices/AUTHORS-LIBWEBP
+          cp packages/core/src/zig/vendor/lcms2/LICENSE artifacts/native-notices/LICENSE-LCMS2
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -298,6 +299,7 @@ jobs:
             test -f "$directory/AUTHORS-LIBWEBP" || (echo "❌ libwebp authors missing from $directory" && exit 1)
             test -f "$directory/LICENSE-STB" || (echo "❌ stb notice missing from $directory" && exit 1)
             test -f "$directory/LICENSE-WUFFS" || (echo "❌ Wuffs notice missing from $directory" && exit 1)
+            test -f "$directory/LICENSE-LCMS2" || (echo "❌ Little CMS notice missing from $directory" && exit 1)
           done
 
           echo ""
