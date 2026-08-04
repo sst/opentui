@@ -11,6 +11,23 @@ pub fn writeKittyTransmitFormat(writer: anytype, image: *native_image.Image, id:
     const raw_chunk = 3072;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
+    if (requested_format != .rgb) {
+        if (image.rawRgbaFilePath()) |path| {
+            if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
+            try writer.print("a=t,f=32,t=t,s={d},v={d},i={d},q=2;", .{ image.width(), image.height(), id });
+            var offset: usize = 0;
+            while (offset < path.len) {
+                const end = @min(offset + raw_chunk, path.len);
+                var encoded: [4096]u8 = undefined;
+                const payload = std.base64.standard.Encoder.encode(encoded[0..std.base64.standard.Encoder.calcSize(end - offset)], path[offset..end]);
+                try writer.writeAll(payload);
+                offset = end;
+            }
+            if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
+            image.markRawRgbaFileTransferred();
+            return;
+        }
+    }
     if (requested_format == .auto) {
         if (image.encoded_png) |png| {
             var offset: usize = 0;

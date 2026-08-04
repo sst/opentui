@@ -4226,6 +4226,41 @@ test "renderer transmits small kitty images at native size" {
     try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
 }
 
+test "renderer passes unchanged adopted RGBA files to kitty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &([_]u8{ 9, 8, 7, 255 } ** 64) });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 8, 8, 32);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,t=t,s=8,v=8") != null);
+    const encoded_path_len = std.base64.standard.Encoder.calcSize(path.len);
+    const encoded_path = try std.testing.allocator.alloc(u8, encoded_path_len);
+    defer std.testing.allocator.free(encoded_path);
+    _ = std.base64.standard.Encoder.encode(encoded_path, path);
+    try std.testing.expect(std.mem.indexOf(u8, output, encoded_path) != null);
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+}
+
 test "renderer transmits only cropped kitty source pixels" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

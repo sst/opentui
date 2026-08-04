@@ -150,10 +150,18 @@ pub const RenderProtocol = enum(u32) {
     blocks,
 };
 
+const RawRgbaFile = struct {
+    file: std.fs.File,
+    path: []u8,
+    stride: u32,
+    transferred: bool = false,
+};
+
 pub const Image = struct {
     allocator: Allocator,
     pixels: []u8,
     metadata: Info,
+    raw_rgba_file: ?RawRgbaFile = null,
     encoded_png: ?[]u8 = null,
     png_color_type: u8 = 0,
     iccp_compressed_offset: usize = 0,
@@ -173,6 +181,7 @@ pub const Image = struct {
         std.debug.assert(self.ref_count > 0);
         self.ref_count -= 1;
         if (self.ref_count > 0) return;
+        self.releaseRawRgbaFile(true);
         if (self.encoded_png) |bytes| self.allocator.free(bytes);
         if (self.pixels.len > 0) self.allocator.free(self.pixels);
         self.allocator.destroy(self);
@@ -192,7 +201,8 @@ pub const Image = struct {
         self.encoded_png = null;
     }
 
-    pub fn clone(self: *const Image) !*Image {
+    pub fn clone(self: *Image) !*Image {
+        const pixels = if (self.raw_rgba_file != null) try self.ensurePixels() else self.pixels;
         const cloned = try self.allocator.create(Image);
         cloned.* = .{
             .allocator = self.allocator,
@@ -204,7 +214,7 @@ pub const Image = struct {
             .lazy_pixel_len = self.lazy_pixel_len,
         };
         errdefer cloned.deinit();
-        if (self.pixels.len > 0) cloned.pixels = try self.allocator.dupe(u8, self.pixels);
+        if (pixels.len > 0) cloned.pixels = try self.allocator.dupe(u8, pixels);
         if (self.encoded_png) |bytes| cloned.encoded_png = try self.allocator.dupe(u8, bytes);
         return cloned;
     }
@@ -215,6 +225,21 @@ pub const Image = struct {
         else
             try checkedPixelBytes(self.width(), self.height(), .{});
         if (self.pixels.len == expected_len) return self.pixels;
+        if (self.raw_rgba_file) |*source| {
+            const row_bytes = try std.math.mul(u32, self.width(), 4);
+            const pixels = try self.allocator.alloc(u8, expected_len);
+            errdefer self.allocator.free(pixels);
+            for (0..self.height()) |y| {
+                const destination_offset = y * row_bytes;
+                const source_offset = std.math.mul(u64, y, source.stride) catch return error.InvalidArgument;
+                const read = try source.file.preadAll(pixels[destination_offset..][0..row_bytes], source_offset);
+                if (read != row_bytes) return error.MalformedInput;
+            }
+            self.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(pixels));
+            self.pixels = pixels;
+            self.releaseRawRgbaFile(true);
+            return pixels;
+        }
         if (self.pixels.len != 0 or self.metadata.format != @intFromEnum(Format.png) or self.metadata.orientation != 1) {
             return error.MalformedInput;
         }
@@ -240,6 +265,29 @@ pub const Image = struct {
         self.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(pixels));
         self.pixels = pixels;
         return pixels;
+    }
+
+    pub fn rawRgbaFilePath(self: *const Image) ?[]const u8 {
+        const source = self.raw_rgba_file orelse return null;
+        if (source.transferred or source.stride != self.width() * 4) return null;
+        return source.path;
+    }
+
+    pub fn markRawRgbaFileTransferred(self: *Image) void {
+        if (self.raw_rgba_file) |*source| source.transferred = true;
+    }
+
+    pub fn relinquishRawRgbaFile(self: *Image) void {
+        self.releaseRawRgbaFile(false);
+    }
+
+    fn releaseRawRgbaFile(self: *Image, delete_owned: bool) void {
+        if (self.raw_rgba_file) |source| {
+            source.file.close();
+            if (delete_owned and !source.transferred) std.fs.deleteFileAbsolute(source.path) catch {};
+            self.allocator.free(source.path);
+            self.raw_rgba_file = null;
+        }
     }
 };
 
@@ -775,6 +823,38 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
         @memcpy(image.pixels[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
         if (image.metadata.has_alpha == 0 and pixelsHaveTransparency(pixels[src_offset .. src_offset + row_bytes])) image.metadata.has_alpha = 1;
     }
+    return image;
+}
+
+pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height: u32, stride: u32) !*Image {
+    if (!std.fs.path.isAbsolute(path)) return error.InvalidArgument;
+    _ = try checkedPixelBytes(width, height, .{});
+    const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
+    if (stride < row_bytes) return error.InvalidArgument;
+    const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
+    const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
+
+    const file = try std.fs.openFileAbsolute(path, .{});
+    errdefer file.close();
+    if ((try file.stat()).size != required) return error.MalformedInput;
+    const owned_path = try allocator.dupe(u8, path);
+    errdefer allocator.free(owned_path);
+    const image = try allocator.create(Image);
+    image.* = .{
+        .allocator = allocator,
+        .pixels = &.{},
+        .raw_rgba_file = .{ .file = file, .path = owned_path, .stride = stride },
+        .metadata = .{
+            .width = width,
+            .height = height,
+            .source_width = width,
+            .source_height = height,
+            .format = @intFromEnum(Format.raw_rgba),
+            .color_status = @intFromEnum(ColorStatus.explicit_srgb),
+            .orientation = 1,
+            .has_alpha = 1,
+        },
+    };
     return image;
 }
 

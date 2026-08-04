@@ -170,6 +170,33 @@ test "kitty transmission uses RGB only when every pixel is opaque" {
     try std.testing.expect(std.mem.indexOf(u8, rgba.items, ";AQIDBA==\x1b\\") != null);
 }
 
+test "kitty transmission adopts tightly packed RGBA files with temporary-file transport" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 2, 1, 8);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 17, false);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=32,t=t,s=2,v=1,i=17,q=2;") != null);
+    const encoded_path_len = std.base64.standard.Encoder.calcSize(path.len);
+    const encoded_path = try std.testing.allocator.alloc(u8, encoded_path_len);
+    defer std.testing.allocator.free(encoded_path);
+    _ = std.base64.standard.Encoder.encode(encoded_path, path);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, encoded_path) != null);
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+
+    value.deinit();
+    // The terminal owns deletion after a successful t=t transmission. The
+    // collecting writer is not a terminal, so the fixture must remain here.
+    try tmp.dir.access("frame.rgba", .{});
+}
+
 test "kitty transmission sends retained PNG bytes as f=100" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);

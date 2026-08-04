@@ -92,6 +92,22 @@ test "PNG probe and decode return canonical red RGBA" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
 }
 
+test "adopted RGBA files materialize lazily and release their owned path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 4, 90, 91, 92, 93, 5, 6, 7, 8 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 2, 8);
+    defer value.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 }, try value.ensurePixels());
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
+}
+
 test "ICC transforms are cached across images and materialization" {
     image.clearIccCache();
     defer image.clearIccCache();

@@ -1,4 +1,5 @@
 import { open, stat } from "node:fs/promises"
+import { resolve } from "node:path"
 
 import { toArrayBuffer } from "./platform/ffi.js"
 import { resolveRenderLib, type ImageHandle, type RenderLib } from "./zig.js"
@@ -35,6 +36,13 @@ export class ImageLoadError extends Error {
 export interface ImageLoadOptions {
   signal?: AbortSignal
   fetch?: (input: URL, init?: RequestInit) => Promise<Response>
+}
+
+export interface RgbaFileSource {
+  path: string
+  width: number
+  height: number
+  stride?: number
 }
 
 export interface ImageInfo {
@@ -433,6 +441,26 @@ export class NativeImage {
     requireU32(stride, "stride")
     const lib = resolveRenderLib()
     const result = lib.imageCreateFromRgba(pixels, width, height, stride)
+    checkStatus(result.status)
+    if (!result.handle) throw imageError(10)
+    return NativeImage.fromHandle(lib, result.handle)
+  }
+
+  /**
+   * Adopts a raw RGBA8 file without copying its pixels into JavaScript. OpenTUI
+   * owns the path after this returns and deletes it after materialization or
+   * disposal; an eligible Kitty render transfers deletion to the terminal.
+   */
+  public static adoptRgbaFile(source: RgbaFileSource): NativeImage {
+    if (!source || typeof source !== "object") throw new TypeError("source must be an RGBA file descriptor")
+    if (typeof source.path !== "string" || source.path.length === 0 || source.path.includes("\0")) {
+      throw new TypeError("source.path must be a non-empty path without null bytes")
+    }
+    const width = requireU32(source.width, "width")
+    const height = requireU32(source.height, "height")
+    const stride = requireU32(source.stride ?? width * 4, "stride")
+    const lib = resolveRenderLib()
+    const result = lib.imageAdoptRgbaFile(resolve(source.path), width, height, stride)
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
     return NativeImage.fromHandle(lib, result.handle)
