@@ -333,8 +333,8 @@ static int ot_image_icc_transform_init(ot_image_icc_transform *value,
     cmsSetLogErrorHandlerTHR(value->context, ot_image_icc_error_handler);
     if (ot_image_icc_test_fail_profile_copy_allocation) {
         ot_image_icc_test_fail_profile_copy_allocation = 0;
-        ot_image_icc_error_handler(value->context, cmsERROR_READ,
-                                   "Couldn't allocate bytes for profile");
+        value->error_state.error_code = cmsERROR_READ;
+        value->error_state.out_of_memory = 1;
     } else {
         value->input = cmsOpenProfileFromMemTHR(value->context, profile, profile_len);
     }
@@ -377,18 +377,20 @@ static int ot_image_icc_cache_get(const uint8_t *compressed, uint32_t compressed
         compressed, compressed_len, max_profile_len, &profile, &profile_len);
     if (result != OT_IMAGE_SHIM_OK) return result;
 
-    for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
-        ot_image_icc_transform *entry = ot_image_icc_cache[index];
-        if (entry && entry->profile_len == profile_len &&
-            entry->grayscale == (color_type == 0 || color_type == 4) &&
-            entry->max_profile_len == max_profile_len &&
-            memcmp(entry->profile_bytes, profile, profile_len) == 0) {
-            free(profile);
-            entry->last_used = ++ot_image_icc_cache_clock;
-            entry->error_state.error_code = 0;
-            ++ot_image_icc_cache_hits;
-            *out = entry;
-            return OT_IMAGE_SHIM_OK;
+    if (!ot_image_icc_test_fail_profile_copy_allocation) {
+        for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
+            ot_image_icc_transform *entry = ot_image_icc_cache[index];
+            if (entry && entry->profile_len == profile_len &&
+                entry->grayscale == (color_type == 0 || color_type == 4) &&
+                entry->max_profile_len == max_profile_len &&
+                memcmp(entry->profile_bytes, profile, profile_len) == 0) {
+                free(profile);
+                entry->last_used = ++ot_image_icc_cache_clock;
+                entry->error_state.error_code = 0;
+                ++ot_image_icc_cache_hits;
+                *out = entry;
+                return OT_IMAGE_SHIM_OK;
+            }
         }
     }
 

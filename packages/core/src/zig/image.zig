@@ -375,7 +375,6 @@ pub fn getIccCacheStats() IccCacheStats {
 pub fn testFailIccProfileCopyAllocationOnce() void {
     icc_cache_mutex.lock();
     defer icc_cache_mutex.unlock();
-    ot_image_icc_cache_clear();
     ot_image_icc_test_fail_profile_copy_allocation_once();
 }
 
