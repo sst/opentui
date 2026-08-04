@@ -358,9 +358,15 @@ fn appendKittyRawRgbaFileBenchmarks(
             "RGBA {d}x{d} adopt + Kitty file",
             .{ scenario.width, scenario.height },
         );
+        const remote_name = try std.fmt.allocPrint(
+            allocator,
+            "RGBA {d}x{d} adopt + Kitty remote inline",
+            .{ scenario.width, scenario.height },
+        );
         const run_inline = bench_utils.matchesBenchFilter(inline_name, bench_filter);
         const run_file = bench_utils.matchesBenchFilter(file_name, bench_filter);
-        if (!run_inline and !run_file) continue;
+        const run_remote = bench_utils.matchesBenchFilter(remote_name, bench_filter);
+        if (!run_inline and !run_file and !run_remote) continue;
 
         var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
         defer _ = gpa.deinit();
@@ -445,6 +451,41 @@ fn appendKittyRawRgbaFileBenchmarks(
                 break :blk values;
             } else null;
             try appendResult(allocator, results, file_name, stats, mem_stats);
+        }
+
+        if (run_remote) {
+            var stats: bench_utils.BenchStats = .{};
+            var output_bytes: usize = 0;
+            for (0..scenario.inline_iterations) |_| {
+                // The producer write is shared by both transports and remains
+                // outside the timed consumer-side measurement.
+                {
+                    const file = try std.fs.cwd().createFile(relative_path, .{});
+                    defer file.close();
+                    try file.writeAll(pixels);
+                }
+                var counting: CountingWriter = .{};
+                var timer = try std.time.Timer.start();
+                {
+                    const value = try image.adoptRgbaFile(
+                        work_allocator,
+                        absolute_path,
+                        scenario.width,
+                        scenario.height,
+                        scenario.width * 4,
+                    );
+                    defer value.deinit();
+                    try terminal_image.writeKittyTransmitWithFileTransport(&counting, value, 7, false, false);
+                }
+                stats.record(timer.read());
+                output_bytes = counting.bytes;
+            }
+            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+                const values = try allocator.alloc(bench_utils.MemStat, 1);
+                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
+                break :blk values;
+            } else null;
+            try appendResult(allocator, results, remote_name, stats, mem_stats);
         }
     }
 }

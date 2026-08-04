@@ -4,14 +4,35 @@ const native_image = @import("image.zig");
 pub const KittyPixelFormat = enum { auto, rgb, rgba };
 
 pub fn writeKittyTransmit(writer: anytype, image: *native_image.Image, id: u32, tmux: bool) !void {
-    return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
+    return writeKittyTransmitWithFileTransport(writer, image, id, tmux, true);
+}
+
+pub fn writeKittyTransmitWithFileTransport(
+    writer: anytype,
+    image: *native_image.Image,
+    id: u32,
+    tmux: bool,
+    allow_file_transport: bool,
+) !void {
+    return writeKittyTransmitFormatWithFileTransport(writer, image, id, tmux, .auto, allow_file_transport);
 }
 
 pub fn writeKittyTransmitFormat(writer: anytype, image: *native_image.Image, id: u32, tmux: bool, requested_format: KittyPixelFormat) !void {
+    return writeKittyTransmitFormatWithFileTransport(writer, image, id, tmux, requested_format, true);
+}
+
+fn writeKittyTransmitFormatWithFileTransport(
+    writer: anytype,
+    image: *native_image.Image,
+    id: u32,
+    tmux: bool,
+    requested_format: KittyPixelFormat,
+    allow_file_transport: bool,
+) !void {
     const raw_chunk = 3072;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
-    if (requested_format != .rgb) {
+    if (allow_file_transport and requested_format != .rgb) {
         if (image.rawRgbaFilePath()) |path| {
             if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
             try writer.print("a=t,f=32,t=t,s={d},v={d},i={d},q=2;", .{ image.width(), image.height(), id });

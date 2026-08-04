@@ -1376,7 +1376,13 @@ pub const CliRenderer = struct {
     ) !void {
         const transmit = try self.kittyPlacementTransmit(placement);
         defer if (transmit.owned) transmit.image.deinit();
-        try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, self.terminal.isInTmux());
+        try terminal_image.writeKittyTransmitWithFileTransport(
+            writer,
+            transmit.image,
+            image_id,
+            self.terminal.isInTmux(),
+            !self.terminal.remote,
+        );
         try terminal_image.writeKittyPlacementAtCursor(
             writer,
             image_id,
@@ -2069,7 +2075,13 @@ pub const CliRenderer = struct {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement);
                 defer if (transmit.owned) transmit.image.deinit();
-                try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, tmux);
+                try terminal_image.writeKittyTransmitWithFileTransport(
+                    writer,
+                    transmit.image,
+                    image_id,
+                    tmux,
+                    !self.terminal.remote,
+                );
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
                 previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
                 previous.?.source_height != placement.source_height)

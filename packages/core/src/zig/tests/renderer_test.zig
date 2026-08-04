@@ -4261,6 +4261,45 @@ test "renderer passes unchanged adopted RGBA files to kitty" {
     try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
 }
 
+test "remote renderer sends adopted RGBA pixels inline instead of publishing a local path" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const pixels = [_]u8{ 9, 8, 7, 128 } ** 64;
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &pixels });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 8, 8, 32);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.remote = true;
+    test_renderer.renderer.terminal.caps.remote = true;
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "t=t") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,s=8,v=8") != null);
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, &pixels, transmitted);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
+}
+
 test "renderer transmits only cropped kitty source pixels" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

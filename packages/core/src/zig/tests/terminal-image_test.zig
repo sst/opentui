@@ -197,6 +197,37 @@ test "kitty transmission adopts tightly packed RGBA files with temporary-file tr
     try tmp.dir.access("frame.rgba", .{});
 }
 
+test "kitty transmission materializes adopted RGBA files when file transport is disabled" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const pixels = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &pixels });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 2, 1, 8);
+    defer value.deinit();
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmitWithFileTransport(
+        output.writer(std.testing.allocator),
+        value,
+        17,
+        false,
+        false,
+    );
+
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "t=t") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=32,s=2,v=1,i=17") != null);
+    const decoded = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, &pixels, decoded);
+    try std.testing.expectEqualSlices(u8, &pixels, value.pixels);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
+}
+
 test "kitty transmission sends retained PNG bytes as f=100" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
