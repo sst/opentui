@@ -1,4 +1,5 @@
 import { createServer } from "node:http"
+import { spawnSync } from "node:child_process"
 import { chmod, mkdtemp, open, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -267,10 +268,15 @@ describe("NativeImage", () => {
     }
   })
 
-  test("reports ICC profile-copy allocation failure as out of memory", async () => {
-    const png = await readBase64Fixture("display-p3.png.base64")
-    resolveRenderLib().imageTestFailIccProfileCopyAllocationOnce()
-    expectImageErrorCode(() => imageInfo(png), "out-of-memory")
+  test("reports ICC profile-copy allocation failure as out of memory", () => {
+    const extension = import.meta.url.endsWith(".ts") ? "ts" : "js"
+    const runtimeArgs = "bun" in process.versions ? [] : process.execArgv.filter((arg) => !arg.startsWith("--test"))
+    const child = spawnSync(
+      process.execPath,
+      [...runtimeArgs, fileURLToPath(new URL(`image-icc-allocation-child.${extension}`, import.meta.url))],
+      { encoding: "utf8" },
+    )
+    if (child.status !== 0) throw new Error(child.stderr || child.stdout || `child exited with status ${child.status}`)
   })
 
   test("converts ICC palette and RGBA PNGs and preserves alpha", async () => {
