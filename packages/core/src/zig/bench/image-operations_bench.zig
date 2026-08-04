@@ -108,19 +108,63 @@ fn runEncodedScenarios(
                 var timer = try std.time.Timer.start();
                 const decoded = try image.decode(work_allocator, encoded, .{});
                 stats.record(timer.read());
-                checksum +%= decoded.width() + decoded.height() + decoded.pixels[0];
+                checksum +%= decoded.width() + decoded.height() + decoded.pixels.len;
                 decoded.deinit();
             }
             if (checksum == 0) return error.InvalidImageBenchmark;
             const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
                 const values = try allocator.alloc(bench_utils.MemStat, 1);
-                var info: image.Info = .{};
-                if (image.probe(encoded, .{}, &info) != .ok) return error.ImageProbeFailed;
-                values[0] = .{ .name = "Pixels", .bytes = @as(usize, info.width) * info.height * 4 };
+                const decoded = try image.decode(work_allocator, encoded, .{});
+                defer decoded.deinit();
+                const encoded_bytes = if (decoded.encoded_png) |png| png.len else 0;
+                values[0] = .{ .name = "Image data", .bytes = decoded.pixels.len + encoded_bytes };
                 break :blk values;
             } else null;
             try appendResult(allocator, results, decode_name, stats, mem_stats);
         }
+    }
+}
+
+fn runIccReuseScenarios(
+    allocator: std.mem.Allocator,
+    work_allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    bench_filter: ?[]const u8,
+) !void {
+    const names = [_][]const u8{
+        "ICC repeated profile validation",
+        "ICC repeated profile materialization",
+    };
+    if (!bench_utils.matchesBenchFilter(names[0], bench_filter) and
+        !bench_utils.matchesBenchFilter(names[1], bench_filter)) return;
+
+    const encoded = std.mem.trim(u8, @embedFile("../tests/fixtures/display-p3.png.base64"), "\r\n");
+    const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
+    const png = try work_allocator.alloc(u8, png_len);
+    defer work_allocator.free(png);
+    try std.base64.standard.Decoder.decode(png, encoded);
+
+    defer image.clearIccCache();
+    for (names, 0..) |name, scenario| {
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) continue;
+        image.clearIccCache();
+        for (0..3) |_| {
+            const decoded = try image.decode(work_allocator, png, .{});
+            if (scenario == 1) _ = try decoded.ensurePixels();
+            decoded.deinit();
+        }
+        var stats: bench_utils.BenchStats = .{};
+        var checksum: u64 = 0;
+        for (0..30) |_| {
+            var timer = try std.time.Timer.start();
+            const decoded = try image.decode(work_allocator, png, .{});
+            if (scenario == 1) _ = try decoded.ensurePixels();
+            stats.record(timer.read());
+            checksum +%= decoded.width() + decoded.height() + decoded.pixels.len;
+            decoded.deinit();
+        }
+        if (checksum == 0) return error.InvalidImageBenchmark;
+        try appendResult(allocator, results, name, stats, null);
     }
 }
 
@@ -244,6 +288,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     const work_allocator = gpa.allocator();
 
     try runEncodedScenarios(allocator, work_allocator, &results, show_mem, bench_filter);
+    try runIccReuseScenarios(allocator, work_allocator, &results, bench_filter);
     try runTransformScenarios(allocator, work_allocator, &results, bench_filter);
     return results.toOwnedSlice(allocator);
 }

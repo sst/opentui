@@ -2598,9 +2598,10 @@ pub const OptimizedBuffer = struct {
         return true;
     }
 
-    pub fn materializeImageFallback(self: *OptimizedBuffer, placement_id: u32) void {
+    pub fn materializeImageFallback(self: *OptimizedBuffer, placement_id: u32) !void {
         if (placement_id == 0 or placement_id > self.image_placements.items.len) return;
         const placement = self.image_placements.items[placement_id - 1];
+        const image_pixels = try placement.image.ensurePixels();
         var cell_y: u32 = 0;
         while (cell_y < placement.height) : (cell_y += 1) {
             const dest_y: u32 = @intCast(placement.y + @as(i32, @intCast(cell_y)));
@@ -2620,10 +2621,10 @@ pub const OptimizedBuffer = struct {
                     const sy = placement.source_y + @min(placement.source_height - 1, @as(u32, @intCast((@as(u64, sample_y) * placement.source_height) / (@as(u64, placement.height) * 2))));
                     const offset = (@as(usize, sy) * placement.image.width() + sx) * 4;
                     pixels[quadrant] = ansi.rgbColor(
-                        placement.image.pixels[offset],
-                        placement.image.pixels[offset + 1],
-                        placement.image.pixels[offset + 2],
-                        placement.image.pixels[offset + 3],
+                        image_pixels[offset],
+                        image_pixels[offset + 1],
+                        image_pixels[offset + 2],
+                        image_pixels[offset + 3],
                     );
                 }
                 const rendered = renderQuadrantBlock(pixels);
@@ -2651,10 +2652,10 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    pub fn materializeImageFallbacks(self: *OptimizedBuffer) void {
+    pub fn materializeImageFallbacks(self: *OptimizedBuffer) !void {
         if (self.image_placements.items.len == 0) return;
         for (1..self.image_placements.items.len + 1) |placement_id| {
-            self.materializeImageFallback(@intCast(placement_id));
+            try self.materializeImageFallback(@intCast(placement_id));
         }
         for (self.buffer.char) |*char| {
             if (gp.isImageChar(char.*)) char.* = quadrantChars[gp.imageFallbackFromChar(char.*)];

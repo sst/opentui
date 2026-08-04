@@ -38,14 +38,14 @@ try {
 | `imageInfo(data)`           | Encoded `Uint8Array` or `ArrayBuffer`; returns metadata without retaining an image handle            |
 
 Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
-`imageInfo()` performs a full temporary decode, then releases its native storage. `decode()` and `fromRgba()` copy their inputs and do not retain caller buffers.
+`imageInfo()` validates encoded metadata and decodes when pixel inspection is required. `decode()` and `fromRgba()` copy their inputs and do not retain caller buffers.
 
-| Format | Behavior                                                             |
-| ------ | -------------------------------------------------------------------- |
-| PNG    | Decodes alpha and supported sRGB metadata; applies EXIF orientation  |
-| JPEG   | Decodes opaque RGBA8; applies EXIF orientation                       |
-| WebP   | Decodes lossy, lossless, and alpha images; animated WebP is rejected |
-| GIF    | Decodes the first displayed frame on the logical canvas              |
+| Format | Behavior                                                                   |
+| ------ | -------------------------------------------------------------------------- |
+| PNG    | Supports alpha, sRGB and embedded ICC color metadata, and EXIF orientation |
+| JPEG   | Decodes opaque RGBA8; applies EXIF orientation                             |
+| WebP   | Decodes lossy, lossless, and alpha images; animated WebP is rejected       |
+| GIF    | Decodes the first displayed frame on the logical canvas                    |
 
 `load()` accepts `{ signal, fetch }`. `signal` cancels source acquisition; `fetch` replaces `globalThis.fetch` for fetched URLs. Paths, blobs, and response bodies are buffered before native decoding.
 
@@ -126,6 +126,12 @@ try {
 
 `ImageError` exposes numeric `status` and `code`: `invalid-handle`, `unsupported-format`, `unsupported-color-space`, `malformed-data`, `dimension-limit`, `memory-limit`, `invalid-argument`, `out-of-memory`, `output-too-small`, `internal-error`, or `unsupported-feature`. JavaScript argument validation uses `TypeError` and `RangeError`.
 
-Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB of RGBA storage per image. Decoded PNGs may also retain encoded bytes for Kitty passthrough. Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise `iCCP` and non-sRGB `gAMA`/`cHRM` are rejected; unsupported `cICP` alone is assumed sRGB.
+Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB of RGBA storage per image. Decompressed ICC profiles are limited to 8,000,000 bytes.
+
+Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise RGB or grayscale ICC v2/v4 monitor profiles are converted to sRGB with Little CMS. `iCCP` takes precedence over `sRGB`, `gAMA`, and `cHRM`; unsupported `cICP` falls through to lower-priority metadata.
+
+OpenTUI keeps the eight most recently used validated ICC profiles and sRGB transforms. Profiles are matched by complete decompressed ICC bytes and RGB/grayscale mode, then cleared when the native library is unloaded.
+
+Opaque, orientation-free PNGs retain their encoded bytes without decoding pixels immediately. Unchanged Kitty rendering sends the original PNG, including its ICC profile, as `f=100`; the terminal performs PNG decoding and color management. Pixel decoding and ICC conversion occur once on demand for `raw()`, pixel copying, image operations, Sixel, blocks, or a Kitty crop, resize, or opacity change. Consequently, corrupt IDAT data can be accepted for direct Kitty passthrough and fail only if a decoded-pixel path is later requested.
 
 To load and display an encoded source, see [Image](/docs/components/image). To draw an existing or transformed `NativeImage`, use [`OptimizedBuffer.drawImage()`](/docs/components/frame-buffer#drawimage).

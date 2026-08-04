@@ -39,6 +39,7 @@ const treeSitterTestDataPaths = [
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const audioFixturesDir = "src/tests/fixtures/audio"
 const imageFixturesDir = "src/tests/fixtures/images"
+const iccFixturesDir = "src/zig/tests/fixtures"
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -201,6 +202,7 @@ try {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
     cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
     cpSync(resolve(packageRoot, imageFixturesDir), resolve(outDir, imageFixturesDir), { recursive: true })
+    cpSync(resolve(packageRoot, iccFixturesDir), resolve(outDir, iccFixturesDir), { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }

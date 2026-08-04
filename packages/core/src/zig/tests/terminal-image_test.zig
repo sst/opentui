@@ -138,7 +138,7 @@ test "kitty transmission chunks RGBA payloads and places without cursor movement
     const pixels = try std.testing.allocator.alloc(u8, 1025 * 4);
     defer std.testing.allocator.free(pixels);
     @memset(pixels, 42);
-    const value = image.Image{
+    var value = image.Image{
         .allocator = std.testing.allocator,
         .pixels = pixels,
         .metadata = .{ .width = 1025, .height = 1, .has_alpha = 1 },
@@ -188,6 +188,26 @@ test "kitty transmission sends retained PNG bytes as f=100" {
     try std.testing.expectEqualSlices(u8, png, decoded);
 }
 
+test "kitty transmission passes ICC PNG bytes without materializing pixels" {
+    const encoded = std.mem.trim(u8, @embedFile("fixtures/display-p3.png.base64"), "\r\n");
+    const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
+    const png = try std.testing.allocator.alloc(u8, png_len);
+    defer std.testing.allocator.free(png);
+    try std.base64.standard.Decoder.decode(png, encoded);
+    const value = try image.decode(std.testing.allocator, png, .{});
+    defer value.deinit();
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, false);
+
+    const decoded = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, png, decoded);
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+}
+
 test "kitty transmission preserves retained PNG bytes through clone" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
@@ -210,7 +230,7 @@ test "kitty transmission preserves retained PNG bytes through clone" {
 
 test "kitty transmission rejects truncated image storage before writing" {
     var pixels = [_]u8{ 1, 2, 3 };
-    const value = image.Image{
+    var value = image.Image{
         .allocator = std.testing.allocator,
         .pixels = &pixels,
         .metadata = .{ .width = 1, .height = 1 },
@@ -259,7 +279,7 @@ test "sixel encoding writes palette raster and terminator" {
 test "sixel encoding does not open a DCS when payload generation fails" {
     const pixels = try std.testing.allocator.alloc(u8, 0);
     defer std.testing.allocator.free(pixels);
-    const value = image.Image{
+    var value = image.Image{
         .allocator = std.testing.allocator,
         .pixels = pixels,
         .metadata = .{ .width = 1, .height = 1 },

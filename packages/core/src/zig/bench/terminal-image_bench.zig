@@ -28,7 +28,7 @@ const scenarios = [_]Scenario{
     .{ .name = "Sixel 320x480 photo-like", .width = 320, .height = 480, .pattern = .photo },
 };
 
-fn writeScenario(allocator: std.mem.Allocator, writer: anytype, value: *const image.Image, colors: usize) !void {
+fn writeScenario(allocator: std.mem.Allocator, writer: anytype, value: *image.Image, colors: usize) !void {
     if (colors == 255) return terminal_image.writeSixelPayload(allocator, writer, value);
     var quantized = try terminal_image.quantizeSixel(allocator, value, colors);
     defer quantized.deinit();
@@ -205,7 +205,7 @@ fn appendKittyBenchmarks(
     const cover = try image.resize(work_allocator, cropped, 576, 1015, .area);
     defer cover.deinit();
 
-    for ([_]struct { name: []const u8, source: *const image.Image }{
+    for ([_]struct { name: []const u8, source: *image.Image }{
         .{ .name = names[0], .source = decoded },
         .{ .name = names[1], .source = cover },
     }) |scenario| {
@@ -450,7 +450,7 @@ fn appendImageSwitchBenchmarks(
         try appendResult(allocator, results, scenario.name, stats, null);
     }
 
-    for ([_]struct { name: []const u8, source: *const image.Image, geometry: Geometry }{
+    for ([_]struct { name: []const u8, source: *image.Image, geometry: Geometry }{
         .{ .name = names[2], .source = fit_crop, .geometry = fit },
         .{ .name = names[3], .source = cover_crop, .geometry = cover },
     }) |scenario| {
@@ -482,7 +482,7 @@ fn appendImageSwitchBenchmarks(
         try appendResult(allocator, results, scenario.name, stats, null);
     }
 
-    for ([_]struct { name: []const u8, source: *const image.Image, payload_bytes: usize }{
+    for ([_]struct { name: []const u8, source: *image.Image, payload_bytes: usize }{
         .{ .name = names[6], .source = fit_resized, .payload_bytes = fit_payload.items.len },
         .{ .name = names[7], .source = cover_resized, .payload_bytes = cover_payload.items.len },
     }) |scenario| {
