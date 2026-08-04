@@ -256,18 +256,18 @@ fn bestBoxCut(moments: []const SixelMoment, box: SixelBox) ?SixelCut {
 pub fn quantizeSixel(allocator: std.mem.Allocator, image: *native_image.Image, max_colors: usize) !QuantizedSixel {
     if (max_colors == 0 or max_colors > 255) return error.InvalidArgument;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
-    const pixels = image.ensurePixels() catch return error.InvalidImageData;
-    if (pixels.len < std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData) return error.InvalidImageData;
+    _ = image.ensurePixels() catch return error.InvalidImageData;
+    if (image.pixels.len < std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData) return error.InvalidImageData;
     const moments = try allocator.alloc(SixelMoment, SIXEL_HISTOGRAM_LEN);
     defer allocator.free(moments);
     @memset(moments, .{});
     var active_bins: usize = 0;
     for (0..pixel_count) |pixel| {
         const offset = pixel * 4;
-        if (pixels[offset + 3] < 128) continue;
-        const r = pixels[offset];
-        const g = pixels[offset + 1];
-        const b = pixels[offset + 2];
+        if (image.pixels[offset + 3] < 128) continue;
+        const r = image.pixels[offset];
+        const g = image.pixels[offset + 1];
+        const b = image.pixels[offset + 2];
         const bin = &moments[momentIndex(@as(usize, r >> 3) + 1, @as(usize, g >> 3) + 1, @as(usize, b >> 3) + 1)];
         if (bin.count == 0) active_bins += 1;
         bin.count += 1;
@@ -365,10 +365,10 @@ pub fn quantizeSixel(allocator: std.mem.Allocator, image: *native_image.Image, m
         for (0..image.width()) |x| {
             const pixel = y * image.width() + x;
             const offset = pixel * 4;
-            result.indices[pixel] = if (pixels[offset + 3] < 128) 255 else tags[
-                (@as(usize, pixels[offset] >> 3) << 10) |
-                    (@as(usize, pixels[offset + 1] >> 3) << 5) |
-                    (pixels[offset + 2] >> 3)
+            result.indices[pixel] = if (image.pixels[offset + 3] < 128) 255 else tags[
+                (@as(usize, image.pixels[offset] >> 3) << 10) |
+                    (@as(usize, image.pixels[offset + 1] >> 3) << 5) |
+                    (image.pixels[offset + 2] >> 3)
             ];
         }
     }
