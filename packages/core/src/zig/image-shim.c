@@ -150,6 +150,7 @@ int ot_image_png_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
 
 typedef struct {
     int error_code;
+    int out_of_memory;
 } ot_image_icc_error_state;
 
 typedef struct {
@@ -170,12 +171,20 @@ static ot_image_icc_transform *ot_image_icc_cache[OT_IMAGE_ICC_CACHE_CAPACITY];
 static uint64_t ot_image_icc_cache_clock = 0;
 static uint64_t ot_image_icc_cache_hits = 0;
 static uint64_t ot_image_icc_cache_misses = 0;
+static _Thread_local int ot_image_icc_test_fail_profile_copy_allocation = 0;
+
+void ot_image_icc_test_fail_profile_copy_allocation_once(void) {
+    ot_image_icc_test_fail_profile_copy_allocation = 1;
+}
 
 static void ot_image_icc_error_handler(cmsContext context, cmsUInt32Number error_code,
                                        const char *text) {
-    (void)text;
     ot_image_icc_error_state *state = cmsGetContextUserData(context);
-    if (state) state->error_code = (int)error_code;
+    if (state) {
+        state->error_code = (int)error_code;
+        state->out_of_memory = error_code == cmsERROR_READ && text &&
+            strncmp(text, "Couldn't allocate ", 18) == 0;
+    }
 }
 
 static int ot_image_icc_error_result(int error_code) {
@@ -315,13 +324,21 @@ static int ot_image_icc_transform_init(ot_image_icc_transform *value,
                                        uint32_t color_type) {
     memset(value, 0, sizeof(*value));
     value->error_state.error_code = 0;
+    value->error_state.out_of_memory = 0;
     int result = ot_image_icc_check_structure(profile, profile_len, color_type);
     if (result != OT_IMAGE_SHIM_OK) return result;
     value->grayscale = color_type == 0 || color_type == 4;
     value->context = cmsCreateContext(NULL, &value->error_state);
     if (!value->context) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
     cmsSetLogErrorHandlerTHR(value->context, ot_image_icc_error_handler);
-    value->input = cmsOpenProfileFromMemTHR(value->context, profile, profile_len);
+    if (ot_image_icc_test_fail_profile_copy_allocation) {
+        ot_image_icc_test_fail_profile_copy_allocation = 0;
+        ot_image_icc_error_handler(value->context, cmsERROR_READ,
+                                   "Couldn't allocate bytes for profile");
+    } else {
+        value->input = cmsOpenProfileFromMemTHR(value->context, profile, profile_len);
+    }
+    if (!value->input && value->error_state.out_of_memory) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
     if (!value->input) return value->error_state.error_code
         ? ot_image_icc_error_result(value->error_state.error_code)
         : OT_IMAGE_SHIM_OUT_OF_MEMORY;
@@ -436,9 +453,11 @@ int ot_image_icc_transform_rgba(const uint8_t *compressed, uint32_t compressed_l
         cmsDoTransformLineStride(entry->transform, pixels, pixels, width, height,
                                  stride, stride, 0, 0);
     } else {
+#if SIZE_MAX < UINT32_MAX
         if (width > SIZE_MAX / 2u) {
             return OT_IMAGE_SHIM_OUT_OF_MEMORY;
         }
+#endif
         uint8_t *gray_alpha = malloc((size_t)width * 2u);
         if (!gray_alpha) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
         for (uint32_t y = 0; y < height; ++y) {

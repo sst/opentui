@@ -267,6 +267,12 @@ describe("NativeImage", () => {
     }
   })
 
+  test("reports ICC profile-copy allocation failure as out of memory", async () => {
+    const png = await readBase64Fixture("display-p3.png.base64")
+    resolveRenderLib().imageTestFailIccProfileCopyAllocationOnce()
+    expectImageErrorCode(() => imageInfo(png), "out-of-memory")
+  })
+
   test("converts ICC palette and RGBA PNGs and preserves alpha", async () => {
     const cases = [
       ["display-p3-palette.png.base64", Uint8Array.of(220, 0, 19, 255, 0, 205, 0, 255, 95, 122, 143, 255)],

@@ -1258,6 +1258,7 @@ function getOpenTUILib(libPath?: string) {
     imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageRetainIccCache: { args: [], returns: "void" },
     imageReleaseIccCache: { args: [], returns: "void" },
+    imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
@@ -2669,6 +2670,7 @@ export interface RenderLib extends AudioEngineLib {
   imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
   imageRetainIccCache: () => void
   imageReleaseIccCache: () => void
+  imageTestFailIccProfileCopyAllocationOnce: () => void
   imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
   imageCreateFromRgba: (
     pixels: Uint8Array,
@@ -5680,6 +5682,10 @@ class FFIRenderLib implements RenderLib {
 
   public imageReleaseIccCache(): void {
     this.opentui.symbols.imageReleaseIccCache()
+  }
+
+  public imageTestFailIccProfileCopyAllocationOnce(): void {
+    this.opentui.symbols.imageTestFailIccProfileCopyAllocationOnce()
   }
 
   public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {

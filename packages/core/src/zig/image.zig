@@ -30,6 +30,7 @@ extern fn ot_image_icc_transform_rgba(
 ) c_int;
 extern fn ot_image_icc_cache_clear() void;
 extern fn ot_image_icc_cache_stats(hits: *u64, misses: *u64, entries: *u32) void;
+extern fn ot_image_icc_test_fail_profile_copy_allocation_once() void;
 extern fn ot_image_gif_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32, has_alpha: *u32) c_int;
 extern fn ot_image_gif_decode_first_frame(
     data: [*]const u8,
@@ -369,6 +370,13 @@ pub fn getIccCacheStats() IccCacheStats {
     var stats: IccCacheStats = undefined;
     ot_image_icc_cache_stats(&stats.hits, &stats.misses, &stats.entries);
     return stats;
+}
+
+pub fn testFailIccProfileCopyAllocationOnce() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    ot_image_icc_cache_clear();
+    ot_image_icc_test_fail_profile_copy_allocation_once();
 }
 
 fn parseExifOrientation(data: []const u8) u8 {

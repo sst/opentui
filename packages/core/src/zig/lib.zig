@@ -2836,6 +2836,10 @@ export fn imageReleaseIccCache() void {
     native_image.releaseIccCache();
 }
 
+export fn imageTestFailIccProfileCopyAllocationOnce() void {
+    native_image.testFailIccProfileCopyAllocationOnce();
+}
+
 export fn imageDecode(data_ptr: ?[*]const u8, data_len: u32, out_handle: ?*NativeHandle) u32 {
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
