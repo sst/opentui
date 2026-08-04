@@ -328,6 +328,127 @@ fn appendKittyBenchmarks(
     }
 }
 
+// Compare OpenTUI host work for a producer that has already published an RGBA
+// frame file. File creation and terminal-side file reads are outside the timed
+// region; placement is also excluded because both renderer paths share it.
+fn appendKittyRawRgbaFileBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const frame_scenarios = [_]struct {
+        width: u32,
+        height: u32,
+        inline_iterations: usize,
+    }{
+        .{ .width = 640, .height = 360, .inline_iterations = 30 },
+        .{ .width = 1280, .height = 720, .inline_iterations = 10 },
+        .{ .width = 1920, .height = 1080, .inline_iterations = 5 },
+    };
+
+    for (frame_scenarios) |scenario| {
+        const inline_name = try std.fmt.allocPrint(
+            allocator,
+            "RGBA {d}x{d} copy + Kitty inline",
+            .{ scenario.width, scenario.height },
+        );
+        const file_name = try std.fmt.allocPrint(
+            allocator,
+            "RGBA {d}x{d} adopt + Kitty file",
+            .{ scenario.width, scenario.height },
+        );
+        const run_inline = bench_utils.matchesBenchFilter(inline_name, bench_filter);
+        const run_file = bench_utils.matchesBenchFilter(file_name, bench_filter);
+        if (!run_inline and !run_file) continue;
+
+        var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+        defer _ = gpa.deinit();
+        const work_allocator = gpa.allocator();
+        const pixels = try work_allocator.alloc(u8, @as(usize, scenario.width) * scenario.height * 4);
+        defer work_allocator.free(pixels);
+        fillPixels(pixels, .{
+            .name = "",
+            .width = scenario.width,
+            .height = scenario.height,
+            .pattern = .photo,
+        });
+
+        const relative_path = try std.fmt.allocPrint(
+            work_allocator,
+            ".zig-cache/raw-rgba-benchmark-{d}.rgba",
+            .{std.time.nanoTimestamp()},
+        );
+        defer work_allocator.free(relative_path);
+        defer std.fs.cwd().deleteFile(relative_path) catch {};
+        {
+            const file = try std.fs.cwd().createFile(relative_path, .{});
+            defer file.close();
+            try file.writeAll(pixels);
+        }
+        const absolute_path = try std.fs.cwd().realpathAlloc(work_allocator, relative_path);
+        defer work_allocator.free(absolute_path);
+
+        if (run_inline) {
+            var stats: bench_utils.BenchStats = .{};
+            var output_bytes: usize = 0;
+            for (0..scenario.inline_iterations) |_| {
+                var counting: CountingWriter = .{};
+                var timer = try std.time.Timer.start();
+                {
+                    const value = try image.createFromRgba(
+                        work_allocator,
+                        pixels,
+                        scenario.width,
+                        scenario.height,
+                        scenario.width * 4,
+                    );
+                    defer value.deinit();
+                    try terminal_image.writeKittyTransmitFormat(&counting, value, 7, false, .rgba);
+                }
+                stats.record(timer.read());
+                output_bytes = counting.bytes;
+            }
+            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+                const values = try allocator.alloc(bench_utils.MemStat, 1);
+                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
+                break :blk values;
+            } else null;
+            try appendResult(allocator, results, inline_name, stats, mem_stats);
+        }
+
+        if (run_file) {
+            var stats: bench_utils.BenchStats = .{};
+            var output_bytes: usize = 0;
+            // File adoption is cheap enough that a larger sample is needed to
+            // keep filesystem scheduling noise from dominating the result.
+            for (0..500) |_| {
+                var counting: CountingWriter = .{};
+                var timer = try std.time.Timer.start();
+                {
+                    const value = try image.adoptRgbaFile(
+                        work_allocator,
+                        absolute_path,
+                        scenario.width,
+                        scenario.height,
+                        scenario.width * 4,
+                    );
+                    defer value.deinit();
+                    try terminal_image.writeKittyTransmit(&counting, value, 7, false);
+                }
+                stats.record(timer.read());
+                output_bytes = counting.bytes;
+            }
+            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+                const values = try allocator.alloc(bench_utils.MemStat, 1);
+                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
+                break :blk values;
+            } else null;
+            try appendResult(allocator, results, file_name, stats, mem_stats);
+        }
+    }
+}
+
 fn appendKittyPngBenchmarks(
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -715,6 +836,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         }
     }
     try appendKittyBenchmarks(allocator, &results, show_mem, bench_filter);
+    try appendKittyRawRgbaFileBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendKittyPngBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);
