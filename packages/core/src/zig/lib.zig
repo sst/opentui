@@ -2828,6 +2828,18 @@ export fn imageInfo(data_ptr: ?[*]const u8, data_len: u32, out_info: ?*native_im
     return @intFromEnum(native_image.inspect(globalAllocator, data_ptr.?[0..data_len], .{}, output));
 }
 
+export fn imageRetainIccCache() void {
+    native_image.retainIccCache();
+}
+
+export fn imageReleaseIccCache() void {
+    native_image.releaseIccCache();
+}
+
+export fn imageTestFailIccProfileCopyAllocationOnce() void {
+    native_image.testFailIccProfileCopyAllocationOnce();
+}
+
 export fn imageDecode(data_ptr: ?[*]const u8, data_len: u32, out_handle: ?*NativeHandle) u32 {
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
@@ -2874,10 +2886,18 @@ export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info
 export fn imageGetPixelsPtr(image_handle: NativeHandle) ?[*]u8 {
     const image = acquireImage(image_handle) orelse return null;
     if (image.ref_count != 1) return null;
+    const pixels = image.ensurePixels() catch return null;
     image.discardEncoded();
     // Callers receive mutable pixels, so opacity can no longer be proven.
     image.metadata.has_alpha = 1;
-    return image.pixels.ptr;
+    return pixels.ptr;
+}
+
+export fn imageMaterialize(image_handle: NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    if (image.ref_count != 1) return @intFromEnum(native_image.Status.invalid_argument);
+    _ = image.ensurePixels() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(native_image.Status.ok);
 }
 
 export fn imageClone(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {

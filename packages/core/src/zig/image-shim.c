@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "lcms2.h"
+
 #define WUFFS_IMPLEMENTATION
 #define WUFFS_CONFIG__STATIC_FUNCTIONS
 #define WUFFS_CONFIG__MODULES
@@ -48,6 +50,9 @@ enum {
     OT_IMAGE_SHIM_OUT_OF_MEMORY = 2,
     OT_IMAGE_SHIM_OUTPUT_TOO_SMALL = 3,
     OT_IMAGE_SHIM_UNSUPPORTED = 4,
+    OT_IMAGE_SHIM_UNSUPPORTED_COLOR = 5,
+    OT_IMAGE_SHIM_UNSUPPORTED_FEATURE = 6,
+    OT_IMAGE_SHIM_INTERNAL = 7,
 };
 
 static int ot_image_init_png_decoder(wuffs_png__decoder *decoder) {
@@ -141,6 +146,360 @@ int ot_image_png_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
     free(workbuf);
     free(decoder);
     return wuffs_base__status__is_ok(&status) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+}
+
+typedef struct {
+    int error_code;
+    int out_of_memory;
+} ot_image_icc_error_state;
+
+typedef struct {
+    cmsContext context;
+    cmsHPROFILE input;
+    cmsHPROFILE output;
+    cmsHTRANSFORM transform;
+    ot_image_icc_error_state error_state;
+    uint8_t *profile_bytes;
+    uint32_t profile_len;
+    uint32_t max_profile_len;
+    uint64_t last_used;
+    int grayscale;
+} ot_image_icc_transform;
+
+#define OT_IMAGE_ICC_CACHE_CAPACITY 8
+static ot_image_icc_transform *ot_image_icc_cache[OT_IMAGE_ICC_CACHE_CAPACITY];
+static uint64_t ot_image_icc_cache_clock = 0;
+static uint64_t ot_image_icc_cache_hits = 0;
+static uint64_t ot_image_icc_cache_misses = 0;
+static _Thread_local int ot_image_icc_test_fail_profile_copy_allocation = 0;
+
+void ot_image_icc_test_fail_profile_copy_allocation_once(void) {
+    ot_image_icc_test_fail_profile_copy_allocation = 1;
+}
+
+static void ot_image_icc_error_handler(cmsContext context, cmsUInt32Number error_code,
+                                       const char *text) {
+    ot_image_icc_error_state *state = cmsGetContextUserData(context);
+    if (state) {
+        state->error_code = (int)error_code;
+        state->out_of_memory = error_code == cmsERROR_READ && text &&
+            strncmp(text, "Couldn't allocate ", 18) == 0;
+    }
+}
+
+static int ot_image_icc_error_result(int error_code) {
+    switch (error_code) {
+        case cmsERROR_COLORSPACE_CHECK:
+            return OT_IMAGE_SHIM_UNSUPPORTED_COLOR;
+        case cmsERROR_UNKNOWN_EXTENSION:
+            return OT_IMAGE_SHIM_UNSUPPORTED_FEATURE;
+        case cmsERROR_INTERNAL:
+            return OT_IMAGE_SHIM_INTERNAL;
+        default:
+            return OT_IMAGE_SHIM_INVALID;
+    }
+}
+
+static uint32_t ot_image_read_u32_be(const uint8_t *bytes) {
+    return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
+           ((uint32_t)bytes[2] << 8) | bytes[3];
+}
+
+static int ot_image_icc_check_structure(const uint8_t *profile, uint32_t profile_len,
+                                        uint32_t color_type) {
+    if (!profile || profile_len < 132 || (profile_len & 3u) != 0 ||
+        ot_image_read_u32_be(profile) != profile_len ||
+        memcmp(profile + 36, "acsp", 4) != 0) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    if ((profile[9] >> 4) > 9 || (profile[9] & 0x0F) > 9 ||
+        profile[10] != 0 || profile[11] != 0) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    if (profile[8] != 2 && profile[8] != 4) return OT_IMAGE_SHIM_UNSUPPORTED_FEATURE;
+    if (memcmp(profile + 12, "mntr", 4) != 0) return OT_IMAGE_SHIM_UNSUPPORTED_COLOR;
+    const char *expected_space = (color_type == 0 || color_type == 4) ? "GRAY" : "RGB ";
+    if (memcmp(profile + 16, expected_space, 4) != 0) return OT_IMAGE_SHIM_UNSUPPORTED_COLOR;
+    if (memcmp(profile + 20, "XYZ ", 4) != 0 && memcmp(profile + 20, "Lab ", 4) != 0) {
+        return OT_IMAGE_SHIM_UNSUPPORTED_COLOR;
+    }
+    for (uint32_t index = 100; index < 128; ++index) {
+        if (profile[index] != 0) return OT_IMAGE_SHIM_INVALID;
+    }
+
+    uint32_t tag_count = ot_image_read_u32_be(profile + 128);
+    if (tag_count > 100) return OT_IMAGE_SHIM_UNSUPPORTED_FEATURE;
+    uint64_t directory_end = 132u + ((uint64_t)tag_count * 12u);
+    if (directory_end > profile_len) return OT_IMAGE_SHIM_INVALID;
+    for (uint32_t index = 0; index < tag_count; ++index) {
+        const uint8_t *entry = profile + 132u + (index * 12u);
+        uint32_t offset = ot_image_read_u32_be(entry + 4);
+        uint32_t size = ot_image_read_u32_be(entry + 8);
+        if (size == 0 || (offset & 3u) != 0 || offset < directory_end ||
+            (uint64_t)offset + size > profile_len) {
+            return OT_IMAGE_SHIM_INVALID;
+        }
+        for (uint32_t previous = 0; previous < index; ++previous) {
+            const uint8_t *other = profile + 132u + (previous * 12u);
+            if (memcmp(entry, other, 4) == 0) return OT_IMAGE_SHIM_INVALID;
+            uint32_t other_offset = ot_image_read_u32_be(other + 4);
+            uint32_t other_size = ot_image_read_u32_be(other + 8);
+            if (offset == other_offset && size == other_size) continue;
+            if ((uint64_t)offset < (uint64_t)other_offset + other_size &&
+                (uint64_t)other_offset < (uint64_t)offset + size) {
+                return OT_IMAGE_SHIM_INVALID;
+            }
+        }
+    }
+    return OT_IMAGE_SHIM_OK;
+}
+
+static int ot_image_icc_decompress(const uint8_t *compressed, uint32_t compressed_len,
+                                   uint32_t max_profile_len, uint8_t **profile,
+                                   uint32_t *profile_len) {
+    if (!compressed || compressed_len == 0 || max_profile_len == 0 ||
+        max_profile_len == UINT32_MAX || !profile || !profile_len) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    size_t capacity = ((size_t)max_profile_len + 1u) < 4096u
+        ? (size_t)max_profile_len + 1u
+        : 4096u;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        uint8_t *output = malloc(capacity);
+        if (!output) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+        wuffs_zlib__decoder *decoder = wuffs_zlib__decoder__alloc();
+        if (!decoder) {
+            free(output);
+            return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+        }
+
+        wuffs_base__io_buffer src = wuffs_base__ptr_u8__reader((uint8_t *)compressed, compressed_len, true);
+        wuffs_base__io_buffer dst = wuffs_base__ptr_u8__writer(output, capacity);
+        uint8_t workbuf[WUFFS_ZLIB__DECODER_WORKBUF_LEN_MAX_INCL_WORST_CASE];
+        wuffs_base__status status = wuffs_zlib__decoder__transform_io(
+            decoder, &dst, &src, wuffs_base__make_slice_u8(workbuf, sizeof(workbuf)));
+        free(decoder);
+
+        if (status.repr == wuffs_base__suspension__short_write) {
+            if (attempt != 0) {
+                free(output);
+                return OT_IMAGE_SHIM_INVALID;
+            }
+            if (dst.meta.wi < 4) {
+                free(output);
+                return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
+            }
+            uint32_t declared_len = ot_image_read_u32_be(output);
+            free(output);
+            if (declared_len > max_profile_len) return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
+            if (declared_len < 132 || (size_t)declared_len + 1u <= capacity) {
+                return OT_IMAGE_SHIM_INVALID;
+            }
+            capacity = (size_t)declared_len + 1u;
+            continue;
+        }
+        if (!wuffs_base__status__is_ok(&status) || src.meta.ri != compressed_len ||
+            dst.meta.wi > max_profile_len) {
+            free(output);
+            return OT_IMAGE_SHIM_INVALID;
+        }
+        *profile = output;
+        *profile_len = (uint32_t)dst.meta.wi;
+        return OT_IMAGE_SHIM_OK;
+    }
+    return OT_IMAGE_SHIM_INTERNAL;
+}
+
+static void ot_image_icc_transform_deinit(ot_image_icc_transform *value) {
+    if (value->transform) cmsDeleteTransform(value->transform);
+    if (value->output) cmsCloseProfile(value->output);
+    if (value->input) cmsCloseProfile(value->input);
+    if (value->context) cmsDeleteContext(value->context);
+    free(value->profile_bytes);
+    memset(value, 0, sizeof(*value));
+}
+
+static int ot_image_icc_transform_init(ot_image_icc_transform *value,
+                                       const uint8_t *profile, uint32_t profile_len,
+                                       uint32_t color_type) {
+    memset(value, 0, sizeof(*value));
+    value->error_state.error_code = 0;
+    value->error_state.out_of_memory = 0;
+    int result = ot_image_icc_check_structure(profile, profile_len, color_type);
+    if (result != OT_IMAGE_SHIM_OK) return result;
+    value->grayscale = color_type == 0 || color_type == 4;
+    value->context = cmsCreateContext(NULL, &value->error_state);
+    if (!value->context) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    cmsSetLogErrorHandlerTHR(value->context, ot_image_icc_error_handler);
+    if (ot_image_icc_test_fail_profile_copy_allocation) {
+        ot_image_icc_test_fail_profile_copy_allocation = 0;
+        value->error_state.error_code = cmsERROR_READ;
+        value->error_state.out_of_memory = 1;
+    } else {
+        value->input = cmsOpenProfileFromMemTHR(value->context, profile, profile_len);
+    }
+    if (!value->input && value->error_state.out_of_memory) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    if (!value->input) return value->error_state.error_code
+        ? ot_image_icc_error_result(value->error_state.error_code)
+        : OT_IMAGE_SHIM_OUT_OF_MEMORY;
+
+    cmsColorSpaceSignature expected_space = value->grayscale ? cmsSigGrayData : cmsSigRgbData;
+    cmsColorSpaceSignature pcs = cmsGetPCS(value->input);
+    if (cmsGetDeviceClass(value->input) != cmsSigDisplayClass ||
+        cmsGetColorSpace(value->input) != expected_space ||
+        (pcs != cmsSigXYZData && pcs != cmsSigLabData)) {
+        return OT_IMAGE_SHIM_UNSUPPORTED_COLOR;
+    }
+    cmsUInt32Number intent = cmsGetHeaderRenderingIntent(value->input);
+    if (intent > INTENT_ABSOLUTE_COLORIMETRIC ||
+        !cmsIsIntentSupported(value->input, intent, LCMS_USED_AS_INPUT)) {
+        return OT_IMAGE_SHIM_UNSUPPORTED_FEATURE;
+    }
+
+    value->output = cmsCreate_sRGBProfileTHR(value->context);
+    if (!value->output) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    value->transform = cmsCreateTransformTHR(
+        value->context, value->input, value->grayscale ? TYPE_GRAYA_8 : TYPE_RGBA_8,
+        value->output, TYPE_RGBA_8, intent, cmsFLAGS_COPY_ALPHA);
+    if (!value->transform) return value->error_state.error_code
+        ? ot_image_icc_error_result(value->error_state.error_code)
+        : OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    return OT_IMAGE_SHIM_OK;
+}
+
+static int ot_image_icc_cache_get(const uint8_t *compressed, uint32_t compressed_len,
+                                  uint32_t color_type, uint32_t max_profile_len,
+                                  ot_image_icc_transform **out) {
+    if (!compressed || compressed_len == 0 || !out) return OT_IMAGE_SHIM_INVALID;
+    uint8_t *profile = NULL;
+    uint32_t profile_len = 0;
+    int result = ot_image_icc_decompress(
+        compressed, compressed_len, max_profile_len, &profile, &profile_len);
+    if (result != OT_IMAGE_SHIM_OK) return result;
+
+    if (!ot_image_icc_test_fail_profile_copy_allocation) {
+        for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
+            ot_image_icc_transform *entry = ot_image_icc_cache[index];
+            if (entry && entry->profile_len == profile_len &&
+                entry->grayscale == (color_type == 0 || color_type == 4) &&
+                entry->max_profile_len == max_profile_len &&
+                memcmp(entry->profile_bytes, profile, profile_len) == 0) {
+                free(profile);
+                entry->last_used = ++ot_image_icc_cache_clock;
+                entry->error_state.error_code = 0;
+                ++ot_image_icc_cache_hits;
+                *out = entry;
+                return OT_IMAGE_SHIM_OK;
+            }
+        }
+    }
+
+    ++ot_image_icc_cache_misses;
+    ot_image_icc_transform *entry = calloc(1, sizeof(*entry));
+    if (!entry) {
+        free(profile);
+        return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    }
+    result = ot_image_icc_transform_init(entry, profile, profile_len, color_type);
+    if (result != OT_IMAGE_SHIM_OK) {
+        free(profile);
+        ot_image_icc_transform_deinit(entry);
+        free(entry);
+        return result;
+    }
+    entry->profile_bytes = profile;
+    entry->profile_len = profile_len;
+    entry->max_profile_len = max_profile_len;
+    entry->last_used = ++ot_image_icc_cache_clock;
+
+    size_t slot = 0;
+    for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
+        ot_image_icc_transform *candidate = ot_image_icc_cache[index];
+        if (!candidate) {
+            slot = index;
+            break;
+        }
+        if (candidate->last_used < ot_image_icc_cache[slot]->last_used) slot = index;
+    }
+    ot_image_icc_transform *evicted = ot_image_icc_cache[slot];
+    ot_image_icc_cache[slot] = entry;
+    if (evicted) {
+        ot_image_icc_transform_deinit(evicted);
+        free(evicted);
+    }
+    *out = entry;
+    return OT_IMAGE_SHIM_OK;
+}
+
+int ot_image_icc_validate(const uint8_t *compressed, uint32_t compressed_len,
+                          uint32_t color_type, uint32_t max_profile_len) {
+    ot_image_icc_transform *entry = NULL;
+    return ot_image_icc_cache_get(
+        compressed, compressed_len, color_type, max_profile_len, &entry);
+}
+
+int ot_image_icc_transform_rgba(const uint8_t *compressed, uint32_t compressed_len,
+                                uint32_t color_type, uint32_t max_profile_len,
+                                uint8_t *pixels, uint32_t width, uint32_t height) {
+    if (!pixels || width == 0 || height == 0 || width > UINT32_MAX / 4u) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    ot_image_icc_transform *entry = NULL;
+    int result = ot_image_icc_cache_get(
+        compressed, compressed_len, color_type, max_profile_len, &entry);
+    if (result != OT_IMAGE_SHIM_OK) return result;
+
+    if (!entry->grayscale) {
+        uint32_t stride = width * 4u;
+        entry->error_state.error_code = 0;
+        cmsDoTransformLineStride(entry->transform, pixels, pixels, width, height,
+                                 stride, stride, 0, 0);
+    } else {
+#if SIZE_MAX < UINT32_MAX
+        if (width > SIZE_MAX / 2u) {
+            return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+        }
+#endif
+        uint8_t *gray_alpha = malloc((size_t)width * 2u);
+        if (!gray_alpha) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+        for (uint32_t y = 0; y < height; ++y) {
+            uint8_t *row = pixels + ((size_t)y * width * 4u);
+            for (uint32_t x = 0; x < width; ++x) {
+                gray_alpha[x * 2u] = row[x * 4u];
+                gray_alpha[x * 2u + 1u] = row[x * 4u + 3u];
+            }
+            cmsDoTransformLineStride(entry->transform, gray_alpha, row, width, 1,
+                                     width * 2u, width * 4u, 0, 0);
+        }
+        free(gray_alpha);
+    }
+    return entry->error_state.error_code ? OT_IMAGE_SHIM_INTERNAL : OT_IMAGE_SHIM_OK;
+}
+
+void ot_image_icc_cache_clear(void) {
+    for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
+        ot_image_icc_transform *entry = ot_image_icc_cache[index];
+        if (entry) {
+            ot_image_icc_transform_deinit(entry);
+            free(entry);
+            ot_image_icc_cache[index] = NULL;
+        }
+    }
+    ot_image_icc_cache_clock = 0;
+    ot_image_icc_cache_hits = 0;
+    ot_image_icc_cache_misses = 0;
+}
+
+void ot_image_icc_cache_stats(uint64_t *hits, uint64_t *misses, uint32_t *entries) {
+    if (hits) *hits = ot_image_icc_cache_hits;
+    if (misses) *misses = ot_image_icc_cache_misses;
+    if (entries) {
+        uint32_t count = 0;
+        for (size_t index = 0; index < OT_IMAGE_ICC_CACHE_CAPACITY; ++index) {
+            if (ot_image_icc_cache[index]) ++count;
+        }
+        *entries = count;
+    }
 }
 
 static int ot_image_init_gif_decoder(wuffs_gif__decoder *decoder) {

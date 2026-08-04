@@ -1264,12 +1264,12 @@ pub const CliRenderer = struct {
         const protocol = self.nextPlacementProtocol(placements[0]);
         for (placements, 0..) |placement, index| {
             if (self.nextPlacementProtocol(placement) != protocol) {
-                snapshot.materializeImageFallbacks();
+                try snapshot.materializeImageFallbacks();
                 return .{};
             }
             for (placements[0..index]) |previous| {
                 if (placementsOverlap(previous, placement)) {
-                    snapshot.materializeImageFallbacks();
+                    try snapshot.materializeImageFallbacks();
                     return .{};
                 }
             }
@@ -1283,19 +1283,19 @@ pub const CliRenderer = struct {
                 previous_output_offset,
                 pinned_render_offset,
             )) {
-                snapshot.materializeImageFallbacks();
+                try snapshot.materializeImageFallbacks();
                 return .{};
             }
             for (placements) |placement| {
                 if (!snapshotPlacementUncovered(snapshot, placement)) {
-                    snapshot.materializeImageFallbacks();
+                    try snapshot.materializeImageFallbacks();
                     return .{};
                 }
             }
             return .{ .protocol = .sixel };
         }
         if (protocol != .kitty) {
-            snapshot.materializeImageFallbacks();
+            try snapshot.materializeImageFallbacks();
             return .{};
         }
         if (!snapshotDirectImagesAddressable(
@@ -1306,11 +1306,11 @@ pub const CliRenderer = struct {
             previous_output_offset,
             pinned_render_offset,
         )) {
-            snapshot.materializeImageFallbacks();
+            try snapshot.materializeImageFallbacks();
             return .{};
         }
         const base = self.reserveKittyHistoryImageIds(placements.len) orelse {
-            snapshot.materializeImageFallbacks();
+            try snapshot.materializeImageFallbacks();
             return .{};
         };
         return .{ .protocol = .kitty, .kitty_base = base };
@@ -1350,7 +1350,7 @@ pub const CliRenderer = struct {
                 prepared = try source.clone();
                 prepared_owned = true;
             }
-            dimSixelPixels(snapshot, placement, prepared);
+            try dimSixelPixels(snapshot, placement, prepared);
         }
         var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
         defer quantized.deinit();
@@ -1902,10 +1902,10 @@ pub const CliRenderer = struct {
         return state.clear and state.protocol != .fallback;
     }
 
-    fn materializeFallbackImages(self: *CliRenderer) void {
+    fn materializeFallbackImages(self: *CliRenderer) !void {
         for (self.nextRenderBuffer.image_placements.items) |placement| {
             if (self.nextPlacementProtocol(placement) == .fallback) {
-                self.nextRenderBuffer.materializeImageFallback(placement.placement_id);
+                try self.nextRenderBuffer.materializeImageFallback(placement.placement_id);
             }
         }
     }
@@ -1960,19 +1960,21 @@ pub const CliRenderer = struct {
         return false;
     }
 
-    fn applyAlphaOpacity(target: *native_image.Image, opacity: u8) void {
+    fn applyAlphaOpacity(target: *native_image.Image, opacity: u8) !void {
+        const pixels = try target.ensurePixels();
         target.discardEncoded();
         var index: usize = 3;
-        while (index < target.pixels.len) : (index += 4) {
-            target.pixels[index] = @intCast((@as(u16, target.pixels[index]) * opacity + 127) / 255);
+        while (index < pixels.len) : (index += 4) {
+            pixels[index] = @intCast((@as(u16, pixels[index]) * opacity + 127) / 255);
         }
         target.metadata.has_alpha = 1;
     }
 
-    fn imageWithOpacity(source: *const native_image.Image, opacity: u8) !?*native_image.Image {
+    fn imageWithOpacity(source: *native_image.Image, opacity: u8) !?*native_image.Image {
         if (opacity == 255) return null;
         const copy = try source.clone();
-        applyAlphaOpacity(copy, opacity);
+        errdefer copy.deinit();
+        try applyAlphaOpacity(copy, opacity);
         return copy;
     }
 
@@ -2015,10 +2017,10 @@ pub const CliRenderer = struct {
             if (downscaled) {
                 defer cropped.deinit();
                 const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
-                if (placement.opacity < 255) applyAlphaOpacity(resized, placement.opacity);
+                if (placement.opacity < 255) try applyAlphaOpacity(resized, placement.opacity);
                 return .{ .image = resized, .owned = true };
             }
-            if (placement.opacity < 255) applyAlphaOpacity(cropped, placement.opacity);
+            if (placement.opacity < 255) try applyAlphaOpacity(cropped, placement.opacity);
             return .{ .image = cropped, .owned = true };
         }
         const opacity_image = try imageWithOpacity(source, placement.opacity);
@@ -2152,7 +2154,7 @@ pub const CliRenderer = struct {
                     prepared = try source.clone();
                     prepared_owned = true;
                 }
-                dimSixelPixels(self.nextRenderBuffer, placement, prepared);
+                try dimSixelPixels(self.nextRenderBuffer, placement, prepared);
             }
             var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
             defer quantized.deinit();
@@ -2182,7 +2184,8 @@ pub const CliRenderer = struct {
         source_buffer: *OptimizedBuffer,
         placement: OptimizedBuffer.ImagePlacement,
         resized: *native_image.Image,
-    ) void {
+    ) !void {
+        const pixels = try resized.ensurePixels();
         const opacity: u32 = placement.opacity;
         const inverse: u32 = 255 - opacity;
         var py: u32 = 0;
@@ -2202,8 +2205,8 @@ pub const CliRenderer = struct {
                 const offset = (@as(usize, py) * resized.width() + px) * 4;
                 inline for (0..3) |channel| {
                     const bg_effective = (bg_channels[channel] * bg_alpha + 127) / 255;
-                    const value: u32 = resized.pixels[offset + channel];
-                    resized.pixels[offset + channel] = @intCast((value * opacity + bg_effective * inverse + 127) / 255);
+                    const value: u32 = pixels[offset + channel];
+                    pixels[offset + channel] = @intCast((value * opacity + bg_effective * inverse + 127) / 255);
                 }
             }
         }
@@ -2289,7 +2292,12 @@ pub const CliRenderer = struct {
         const should_force = force or self.force_full_repaint or palette_force;
         const has_image_state = self.nextRenderBuffer.image_placements.items.len != 0 or self.currentImages.items.len != 0;
         if (self.nextRenderBuffer.image_placements.items.len != 0) {
-            self.materializeFallbackImages();
+            self.materializeFallbackImages() catch {
+                self.imageRenderFailed = true;
+                self.force_full_repaint = true;
+                self.clearSkippedFrameState();
+                return;
+            };
             self.computeImageDirtyFlags(should_force);
         } else {
             self.imageDirty.clearRetainingCapacity();

@@ -1,6 +1,8 @@
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
+var icc_cache_mutex: std.Thread.Mutex = .{};
+var icc_cache_clients: u32 = 0;
 
 extern fn ot_image_png_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
 extern fn ot_image_png_decode(
@@ -11,6 +13,24 @@ extern fn ot_image_png_decode(
     expected_width: u32,
     expected_height: u32,
 ) c_int;
+extern fn ot_image_icc_validate(
+    compressed: [*]const u8,
+    compressed_len: u32,
+    color_type: u32,
+    max_profile_len: u32,
+) c_int;
+extern fn ot_image_icc_transform_rgba(
+    compressed: [*]const u8,
+    compressed_len: u32,
+    color_type: u32,
+    max_profile_len: u32,
+    pixels: [*]u8,
+    width: u32,
+    height: u32,
+) c_int;
+extern fn ot_image_icc_cache_clear() void;
+extern fn ot_image_icc_cache_stats(hits: *u64, misses: *u64, entries: *u32) void;
+extern fn ot_image_icc_test_fail_profile_copy_allocation_once() void;
 extern fn ot_image_gif_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32, has_alpha: *u32) c_int;
 extern fn ot_image_gif_decode_first_frame(
     data: [*]const u8,
@@ -135,6 +155,10 @@ pub const Image = struct {
     pixels: []u8,
     metadata: Info,
     encoded_png: ?[]u8 = null,
+    png_color_type: u8 = 0,
+    iccp_compressed_offset: usize = 0,
+    iccp_compressed_len: usize = 0,
+    lazy_pixel_len: usize = 0,
     ref_count: u32 = 1,
 
     pub fn width(self: *const Image) u32 {
@@ -150,7 +174,7 @@ pub const Image = struct {
         self.ref_count -= 1;
         if (self.ref_count > 0) return;
         if (self.encoded_png) |bytes| self.allocator.free(bytes);
-        self.allocator.free(self.pixels);
+        if (self.pixels.len > 0) self.allocator.free(self.pixels);
         self.allocator.destroy(self);
     }
 
@@ -169,15 +193,59 @@ pub const Image = struct {
     }
 
     pub fn clone(self: *const Image) !*Image {
-        const cloned = try copyImage(self.allocator, self.pixels, self.metadata);
+        const cloned = try self.allocator.create(Image);
+        cloned.* = .{
+            .allocator = self.allocator,
+            .pixels = &.{},
+            .metadata = self.metadata,
+            .png_color_type = self.png_color_type,
+            .iccp_compressed_offset = self.iccp_compressed_offset,
+            .iccp_compressed_len = self.iccp_compressed_len,
+            .lazy_pixel_len = self.lazy_pixel_len,
+        };
         errdefer cloned.deinit();
+        if (self.pixels.len > 0) cloned.pixels = try self.allocator.dupe(u8, self.pixels);
         if (self.encoded_png) |bytes| cloned.encoded_png = try self.allocator.dupe(u8, bytes);
         return cloned;
+    }
+
+    pub fn ensurePixels(self: *Image) ![]u8 {
+        const expected_len = if (self.lazy_pixel_len > 0)
+            self.lazy_pixel_len
+        else
+            try checkedPixelBytes(self.width(), self.height(), .{});
+        if (self.pixels.len == expected_len) return self.pixels;
+        if (self.pixels.len != 0 or self.metadata.format != @intFromEnum(Format.png) or self.metadata.orientation != 1) {
+            return error.MalformedInput;
+        }
+        const png = self.encoded_png orelse return error.MalformedInput;
+        const pixels = try self.allocator.alloc(u8, expected_len);
+        errdefer self.allocator.free(pixels);
+        const decode_status = ot_image_png_decode(
+            png.ptr,
+            @intCast(png.len),
+            pixels.ptr,
+            pixels.len,
+            self.width(),
+            self.height(),
+        );
+        if (decode_status != 0) return switch (decode_status) {
+            2 => error.OutOfMemory,
+            else => error.MalformedInput,
+        };
+        if (self.iccp_compressed_len > 0) {
+            const compressed = png[self.iccp_compressed_offset..][0..self.iccp_compressed_len];
+            try transformPngIcc(compressed, self.png_color_type, pixels, self.width(), self.height());
+        }
+        self.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(pixels));
+        self.pixels = pixels;
+        return pixels;
     }
 };
 
 const png_signature = [_]u8{ 137, 80, 78, 71, 13, 10, 26, 10 };
 const srgb_chromaticities = [_]u32{ 31_270, 32_900, 64_000, 33_000, 30_000, 60_000, 15_000, 6_000 };
+const max_icc_profile_bytes: u32 = 8_000_000;
 
 fn readU32Be(bytes: []const u8) u32 {
     return std.mem.readInt(u32, bytes[0..4], .big);
@@ -215,6 +283,7 @@ pub fn statusFromError(err: anyerror) Status {
         error.MemoryLimit => .memory_limit,
         error.OutOfMemory => .out_of_memory,
         error.UnsupportedColorSpace => .unsupported_color_space,
+        error.InternalError => .internal_error,
         error.InvalidArgument => .invalid_argument,
         else => .malformed_input,
     };
@@ -223,7 +292,10 @@ pub fn statusFromError(err: anyerror) Status {
 const PngMetadata = struct {
     width: u32,
     height: u32,
+    color_type: u8,
     encoded_len: usize = 0,
+    iccp_compressed_offset: usize = 0,
+    iccp_compressed_len: usize = 0,
     orientation: u8 = 1,
     has_alpha: bool,
     color_status: ColorStatus = .assumed_srgb,
@@ -231,6 +303,79 @@ const PngMetadata = struct {
 
 fn isPngTrailingWhitespace(byte: u8) bool {
     return byte == 0x20 or byte == 0x09 or byte == 0x0A or byte == 0x0D;
+}
+
+fn pngKeywordByteAllowed(byte: u8) bool {
+    return (byte >= 0x20 and byte <= 0x7E) or byte >= 0xA1;
+}
+
+fn parsePngIccp(payload: []const u8, payload_offset: usize) !struct { offset: usize, len: usize } {
+    const name_end = std.mem.indexOfScalar(u8, payload, 0) orelse return error.MalformedInput;
+    if (name_end == 0 or name_end > 79 or name_end + 2 > payload.len) return error.MalformedInput;
+    var previous_space = false;
+    for (payload[0..name_end], 0..) |byte, index| {
+        if (!pngKeywordByteAllowed(byte)) return error.MalformedInput;
+        const space = byte == 0x20;
+        if ((index == 0 and space) or (space and previous_space)) return error.MalformedInput;
+        previous_space = space;
+    }
+    if (previous_space or payload[name_end + 1] != 0) return error.MalformedInput;
+    const compressed_offset = name_end + 2;
+    if (compressed_offset == payload.len) return error.MalformedInput;
+    return .{ .offset = payload_offset + compressed_offset, .len = payload.len - compressed_offset };
+}
+
+fn statusFromIccResult(result: c_int) Status {
+    return switch (result) {
+        0 => .ok,
+        2 => .out_of_memory,
+        3 => .memory_limit,
+        5 => .unsupported_color_space,
+        6 => .unsupported_feature,
+        7 => .internal_error,
+        else => .malformed_input,
+    };
+}
+
+pub const IccCacheStats = struct {
+    hits: u64,
+    misses: u64,
+    entries: u32,
+};
+
+pub fn clearIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    ot_image_icc_cache_clear();
+}
+
+pub fn retainIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    std.debug.assert(icc_cache_clients < std.math.maxInt(u32));
+    icc_cache_clients += 1;
+}
+
+pub fn releaseIccCache() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    std.debug.assert(icc_cache_clients > 0);
+    icc_cache_clients -= 1;
+    if (icc_cache_clients == 0) ot_image_icc_cache_clear();
+}
+
+pub fn getIccCacheStats() IccCacheStats {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    var stats: IccCacheStats = undefined;
+    ot_image_icc_cache_stats(&stats.hits, &stats.misses, &stats.entries);
+    return stats;
+}
+
+pub fn testFailIccProfileCopyAllocationOnce() void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    ot_image_icc_test_fail_profile_copy_allocation_once();
 }
 
 fn parseExifOrientation(data: []const u8) u8 {
@@ -309,6 +454,9 @@ fn scanPng(data: []const u8) !PngMetadata {
     var saw_cicp = false;
     var cicp_supported = false;
     var saw_iccp = false;
+    var iccp_payload_offset: usize = 0;
+    var iccp_payload_len: usize = 0;
+    var iccp_order_valid = false;
     var saw_gamma = false;
     var gamma_supported = false;
     var saw_chrm = false;
@@ -335,11 +483,15 @@ fn scanPng(data: []const u8) !PngMetadata {
             metadata = .{
                 .width = readU32Be(payload[0..4]),
                 .height = readU32Be(payload[4..8]),
+                .color_type = color_type,
                 .has_alpha = color_type == 4 or color_type == 6,
             };
         } else if (std.mem.eql(u8, kind, "iCCP")) {
             if (saw_iccp) return error.MalformedInput;
             saw_iccp = true;
+            iccp_payload_offset = offset + 8;
+            iccp_payload_len = payload.len;
+            iccp_order_valid = !saw_plte and !saw_idat;
         } else if (std.mem.eql(u8, kind, "cICP")) {
             if (saw_cicp or saw_plte or saw_idat or length != 4) return error.MalformedInput;
             saw_cicp = true;
@@ -384,7 +536,14 @@ fn scanPng(data: []const u8) !PngMetadata {
     if (saw_cicp and cicp_supported) {
         result.color_status = .explicit_srgb;
     } else if (saw_iccp) {
-        return error.UnsupportedColorSpace;
+        if (!iccp_order_valid) return error.MalformedInput;
+        const iccp = try parsePngIccp(
+            data[iccp_payload_offset .. iccp_payload_offset + iccp_payload_len],
+            iccp_payload_offset,
+        );
+        result.iccp_compressed_offset = iccp.offset;
+        result.iccp_compressed_len = iccp.len;
+        result.color_status = .explicit_srgb;
     } else if (saw_srgb) {
         result.color_status = .explicit_srgb;
     } else if ((saw_gamma and !gamma_supported) or (saw_chrm and !chrm_supported)) {
@@ -395,7 +554,37 @@ fn scanPng(data: []const u8) !PngMetadata {
     return result;
 }
 
-fn probeInternal(data: []const u8, limits: Limits, out: *Info, effective_len: ?*usize, validate_jpeg: bool) Status {
+fn transformPngIcc(compressed: []const u8, color_type: u8, pixels: []u8, width: u32, height: u32) !void {
+    icc_cache_mutex.lock();
+    defer icc_cache_mutex.unlock();
+    const result = ot_image_icc_transform_rgba(
+        compressed.ptr,
+        @intCast(compressed.len),
+        color_type,
+        max_icc_profile_bytes,
+        pixels.ptr,
+        width,
+        height,
+    );
+    return switch (statusFromIccResult(result)) {
+        .ok => {},
+        .out_of_memory => error.OutOfMemory,
+        .memory_limit => error.MemoryLimit,
+        .unsupported_color_space => error.UnsupportedColorSpace,
+        .unsupported_feature => error.UnsupportedFeature,
+        .internal_error => error.InternalError,
+        else => error.MalformedInput,
+    };
+}
+
+fn probeInternal(
+    data: []const u8,
+    limits: Limits,
+    out: *Info,
+    effective_len: ?*usize,
+    png_out: ?*PngMetadata,
+    validate_jpeg: bool,
+) Status {
     if (data.len == 0 or data.len > std.math.maxInt(u32)) return .invalid_argument;
     if (data.len > limits.max_encoded_bytes) return .memory_limit;
     if (effective_len) |value| value.* = data.len;
@@ -476,8 +665,23 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, effective_len: ?*
         return .ok;
     }
     const metadata = scanPng(data) catch |err| return statusFromError(err);
+    if (png_out) |value| value.* = metadata;
     if (effective_len) |value| value.* = metadata.encoded_len;
     _ = checkedPixelBytes(metadata.width, metadata.height, limits) catch |err| return statusFromError(err);
+
+    if (metadata.iccp_compressed_len > 0) {
+        const compressed = data[metadata.iccp_compressed_offset..][0..metadata.iccp_compressed_len];
+        icc_cache_mutex.lock();
+        const icc_result = ot_image_icc_validate(
+            compressed.ptr,
+            @intCast(compressed.len),
+            metadata.color_type,
+            max_icc_profile_bytes,
+        );
+        icc_cache_mutex.unlock();
+        const icc_status = statusFromIccResult(icc_result);
+        if (icc_status != .ok) return icc_status;
+    }
 
     var decoder_width: u32 = 0;
     var decoder_height: u32 = 0;
@@ -501,13 +705,17 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, effective_len: ?*
 }
 
 pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
-    return probeInternal(data, limits, out, null, true);
+    return probeInternal(data, limits, out, null, null, true);
 }
 
 pub fn inspect(allocator: Allocator, data: []const u8, limits: Limits, out: *Info) Status {
     var encoded_info: Info = .{};
-    const probe_status = probeInternal(data, limits, &encoded_info, null, false);
+    const probe_status = probeInternal(data, limits, &encoded_info, null, null, false);
     if (probe_status != .ok) return probe_status;
+    if (encoded_info.format == @intFromEnum(Format.png) and encoded_info.has_alpha == 0 and encoded_info.orientation == 1) {
+        out.* = encoded_info;
+        return .ok;
+    }
 
     const decoded = decodeInternal(allocator, data, limits, false) catch |err| return statusFromError(err);
     defer decoded.deinit();
@@ -573,7 +781,8 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
 fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain_encoded_png: bool) !*Image {
     var image_info: Info = .{};
     var effective_len = data.len;
-    const probe_status = probeInternal(data, limits, &image_info, &effective_len, false);
+    var png_metadata: PngMetadata = undefined;
+    const probe_status = probeInternal(data, limits, &image_info, &effective_len, &png_metadata, false);
     if (probe_status != .ok) return switch (probe_status) {
         .unsupported_format => error.UnsupportedFormat,
         .unsupported_feature => error.UnsupportedFeature,
@@ -581,15 +790,32 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
         .dimension_limit => error.DimensionLimit,
         .memory_limit => error.MemoryLimit,
         .out_of_memory => error.OutOfMemory,
+        .internal_error => error.InternalError,
         else => error.MalformedInput,
     };
 
+    const format: Format = @enumFromInt(image_info.format);
+    const decode_data = if (format == .png) data[0..effective_len] else data;
     const source_len = try checkedPixelBytes(image_info.source_width, image_info.source_height, limits);
+    if (format == .png and retain_encoded_png and image_info.orientation == 1 and image_info.has_alpha == 0) {
+        const lazy = try allocator.create(Image);
+        errdefer allocator.destroy(lazy);
+        lazy.* = .{
+            .allocator = allocator,
+            .pixels = &.{},
+            .encoded_png = try allocator.dupe(u8, decode_data),
+            .metadata = image_info,
+            .png_color_type = png_metadata.color_type,
+            .iccp_compressed_offset = png_metadata.iccp_compressed_offset,
+            .iccp_compressed_len = png_metadata.iccp_compressed_len,
+            .lazy_pixel_len = source_len,
+        };
+        return lazy;
+    }
+
     const source = try allocator.alloc(u8, source_len);
     var source_owned = true;
     defer if (source_owned) allocator.free(source);
-    const format: Format = @enumFromInt(image_info.format);
-    const decode_data = if (format == .png) data[0..effective_len] else data;
     const decode_status = switch (format) {
         .png => ot_image_png_decode(
             decode_data.ptr,
@@ -630,6 +856,10 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
         4 => error.UnsupportedFeature,
         else => error.MalformedInput,
     };
+    if (format == .png and png_metadata.iccp_compressed_len > 0) {
+        const compressed = decode_data[png_metadata.iccp_compressed_offset..][0..png_metadata.iccp_compressed_len];
+        try transformPngIcc(compressed, png_metadata.color_type, source, image_info.source_width, image_info.source_height);
+    }
     image_info.has_alpha = @intFromBool(pixelsHaveTransparency(source));
 
     const color_status: ColorStatus = @enumFromInt(image_info.color_status);
@@ -642,6 +872,9 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
             .allocator = allocator,
             .pixels = source,
             .encoded_png = encoded_png,
+            .png_color_type = if (format == .png) png_metadata.color_type else 0,
+            .iccp_compressed_offset = if (format == .png) png_metadata.iccp_compressed_offset else 0,
+            .iccp_compressed_len = if (format == .png) png_metadata.iccp_compressed_len else 0,
             .metadata = .{
                 .width = image_info.width,
                 .height = image_info.height,
@@ -657,7 +890,7 @@ fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain
         return image;
     }
 
-    const unoriented = Image{
+    var unoriented = Image{
         .allocator = allocator,
         .pixels = source,
         .metadata = .{
@@ -688,8 +921,9 @@ fn copyPixel(dst: []u8, dst_width: u32, dx: u32, dy: u32, src: []const u8, src_w
     @memcpy(dst[dst_offset .. dst_offset + 4], src[src_offset .. src_offset + 4]);
 }
 
-fn orient(allocator: Allocator, source: *const Image, orientation: u8) !*Image {
+fn orient(allocator: Allocator, source: *Image, orientation: u8) !*Image {
     if (orientation == 1) return source.clone();
+    const source_pixels = try source.ensurePixels();
     const swap = orientation >= 5 and orientation <= 8;
     var metadata = source.metadata;
     metadata.width = if (swap) source.height() else source.width();
@@ -712,13 +946,13 @@ fn orient(allocator: Allocator, source: *const Image, orientation: u8) !*Image {
                 8 => .{ source.width() - 1 - dy, dx },
                 else => return error.InvalidArgument,
             };
-            copyPixel(output.pixels, output.width(), dx, dy, source.pixels, source.width(), coords[0], coords[1]);
+            copyPixel(output.pixels, output.width(), dx, dy, source_pixels, source.width(), coords[0], coords[1]);
         }
     }
     return output;
 }
 
-pub fn transform(allocator: Allocator, source: *const Image, operation: Transform) !*Image {
+pub fn transform(allocator: Allocator, source: *Image, operation: Transform) !*Image {
     return orient(allocator, source, switch (operation) {
         .rotate_90 => 6,
         .rotate_180 => 3,
@@ -728,13 +962,14 @@ pub fn transform(allocator: Allocator, source: *const Image, operation: Transfor
     });
 }
 
-pub fn extract(allocator: Allocator, source: *const Image, left: u32, top: u32, width: u32, height: u32) !*Image {
+pub fn extract(allocator: Allocator, source: *Image, left: u32, top: u32, width: u32, height: u32) !*Image {
     if (width == 0 or height == 0 or left > source.width() or top > source.height() or
         width > source.width() - left or height > source.height() - top)
     {
         return error.InvalidArgument;
     }
     if (left == 0 and top == 0 and width == source.width() and height == source.height()) return source.clone();
+    const source_pixels = try source.ensurePixels();
 
     var metadata = source.metadata;
     metadata.width = width;
@@ -746,7 +981,7 @@ pub fn extract(allocator: Allocator, source: *const Image, left: u32, top: u32, 
     for (0..height) |y| {
         const src_offset = @as(usize, top + @as(u32, @intCast(y))) * src_stride + @as(usize, left) * 4;
         const dst_offset = y * dst_stride;
-        @memcpy(output.pixels[dst_offset .. dst_offset + dst_stride], source.pixels[src_offset .. src_offset + dst_stride]);
+        @memcpy(output.pixels[dst_offset .. dst_offset + dst_stride], source_pixels[src_offset .. src_offset + dst_stride]);
     }
     output.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(output.pixels));
     return output;
@@ -754,7 +989,7 @@ pub fn extract(allocator: Allocator, source: *const Image, left: u32, top: u32, 
 
 pub fn extend(
     allocator: Allocator,
-    source: *const Image,
+    source: *Image,
     top: u32,
     right: u32,
     bottom: u32,
@@ -762,6 +997,7 @@ pub fn extend(
     background: [4]u8,
 ) !*Image {
     if (top == 0 and right == 0 and bottom == 0 and left == 0) return source.clone();
+    const source_pixels = try source.ensurePixels();
     const width = std.math.add(u32, source.width(), left) catch return error.InvalidArgument;
     const final_width = std.math.add(u32, width, right) catch return error.InvalidArgument;
     const height = std.math.add(u32, source.height(), top) catch return error.InvalidArgument;
@@ -780,21 +1016,22 @@ pub fn extend(
     for (0..source.height()) |y| {
         const src_offset = y * src_stride;
         const dst_offset = @as(usize, top + @as(u32, @intCast(y))) * dst_stride + @as(usize, left) * 4;
-        @memcpy(output.pixels[dst_offset .. dst_offset + src_stride], source.pixels[src_offset .. src_offset + src_stride]);
+        @memcpy(output.pixels[dst_offset .. dst_offset + src_stride], source_pixels[src_offset .. src_offset + src_stride]);
     }
     return output;
 }
 
-pub fn resize(allocator: Allocator, source: *const Image, width: u32, height: u32, filter: ResizeFilter) !*Image {
+pub fn resize(allocator: Allocator, source: *Image, width: u32, height: u32, filter: ResizeFilter) !*Image {
     if (width == 0 or height == 0) return error.InvalidArgument;
     if (width == source.width() and height == source.height()) return source.clone();
+    const source_pixels = try source.ensurePixels();
     var metadata = source.metadata;
     metadata.width = width;
     metadata.height = height;
     const output = try allocateImage(allocator, metadata);
     errdefer output.deinit();
     if (ot_image_resize_rgba(
-        source.pixels.ptr,
+        source_pixels.ptr,
         source.width(),
         source.height(),
         source.width() * 4,
@@ -856,14 +1093,16 @@ fn blendPixel(dst: *[4]u8, src: *const [4]u8, mode: Blend, opacity: u8) void {
 
 pub fn composite(
     allocator: Allocator,
-    base: *const Image,
-    overlay: *const Image,
+    base: *Image,
+    overlay: *Image,
     left: i32,
     top: i32,
     mode: Blend,
     opacity: u8,
 ) !*Image {
-    const output = try copyImage(allocator, base.pixels, base.metadata);
+    const base_pixels = try base.ensurePixels();
+    const overlay_pixels = try overlay.ensurePixels();
+    const output = try copyImage(allocator, base_pixels, base.metadata);
     errdefer output.deinit();
 
     const start_x: u32 = if (left < 0) @intCast(-@as(i64, left)) else 0;
@@ -879,7 +1118,7 @@ pub fn composite(
             const dst_offset = pixelOffset(base.width(), dest_x + @as(u32, @intCast(x)), dest_y + @as(u32, @intCast(y)));
             const src_offset = pixelOffset(overlay.width(), start_x + @as(u32, @intCast(x)), start_y + @as(u32, @intCast(y)));
             const dst: *[4]u8 = @ptrCast(output.pixels[dst_offset .. dst_offset + 4].ptr);
-            const src: *const [4]u8 = @ptrCast(overlay.pixels[src_offset .. src_offset + 4].ptr);
+            const src: *const [4]u8 = @ptrCast(overlay_pixels[src_offset .. src_offset + 4].ptr);
             blendPixel(dst, src, mode, opacity);
         }
     }
@@ -887,23 +1126,24 @@ pub fn composite(
     return output;
 }
 
-pub fn copyPixels(image: *const Image, destination: []u8, stride: u32, bgra: bool) Status {
+pub fn copyPixels(image: *Image, destination: []u8, stride: u32, bgra: bool) Status {
     const row_bytes = image.width() * 4;
     if (stride < row_bytes) return .invalid_argument;
     const preceding_rows = std.math.mul(u64, stride, image.height() - 1) catch return .invalid_argument;
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return .invalid_argument;
     if (required > destination.len) return .output_too_small;
+    const pixels = image.ensurePixels() catch |err| return statusFromError(err);
     for (0..image.height()) |y| {
         const src_offset = y * row_bytes;
         const dst_offset = y * stride;
         if (!bgra) {
-            @memcpy(destination[dst_offset .. dst_offset + row_bytes], image.pixels[src_offset .. src_offset + row_bytes]);
+            @memcpy(destination[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
             continue;
         }
         for (0..image.width()) |x| {
             const src = src_offset + x * 4;
             const dst = dst_offset + x * 4;
-            const rgba = std.mem.readInt(u32, image.pixels[src..][0..4], .little);
+            const rgba = std.mem.readInt(u32, pixels[src..][0..4], .little);
             const swapped = (rgba & 0xff00_ff00) | ((rgba & 0x0000_00ff) << 16) | ((rgba & 0x00ff_0000) >> 16);
             std.mem.writeInt(u32, destination[dst..][0..4], swapped, .little);
         }

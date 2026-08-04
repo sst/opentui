@@ -1,11 +1,13 @@
 import { createServer } from "node:http"
+import { spawnSync } from "node:child_process"
 import { chmod, mkdtemp, open, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { deflateSync, inflateSync } from "node:zlib"
 
 import { describe, expect, test } from "bun:test"
-import { ImageError, ImageLoadError, NativeImage, imageInfo } from "../image.js"
+import { ImageError, ImageLoadError, NativeImage, imageInfo, type ImageErrorCode } from "../image.js"
 import { toArrayBuffer } from "../platform/ffi.js"
 import { resolveRenderLib } from "../zig.js"
 
@@ -24,6 +26,12 @@ const ANIMATED_WEBP = Uint8Array.from(
 )
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
+
+async function readBase64Fixture(name: string): Promise<Uint8Array> {
+  return Uint8Array.from(
+    Buffer.from((await readFile(new URL(`../zig/tests/fixtures/${name}`, import.meta.url), "utf8")).trim(), "base64"),
+  )
+}
 
 function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8Array {
   // Little-endian TIFF with a single IFD0 entry: tag 0x0112 (Orientation),
@@ -102,6 +110,61 @@ function injectPngChunk(png: Uint8Array, type: string, payload: Uint8Array): Uin
   return result
 }
 
+function pngChunkPayload(png: Uint8Array, wantedType: string): Uint8Array {
+  let offset = 8
+  while (offset + 12 <= png.length) {
+    const length = new DataView(png.buffer, png.byteOffset + offset, 4).getUint32(0)
+    const type = new TextDecoder().decode(png.subarray(offset + 4, offset + 8))
+    if (type === wantedType) return png.subarray(offset + 8, offset + 8 + length)
+    offset += length + 12
+  }
+  throw new Error(`fixture has no ${wantedType} chunk`)
+}
+
+function withoutPngChunk(png: Uint8Array, removedType: string): Uint8Array {
+  const parts: Uint8Array[] = [png.subarray(0, 8)]
+  let total = 8
+  let offset = 8
+  while (offset + 12 <= png.length) {
+    const length = new DataView(png.buffer, png.byteOffset + offset, 4).getUint32(0)
+    const end = offset + length + 12
+    const type = new TextDecoder().decode(png.subarray(offset + 4, offset + 8))
+    if (type !== removedType) {
+      parts.push(png.subarray(offset, end))
+      total += end - offset
+    }
+    offset = end
+    if (type === "IEND") break
+  }
+  const result = new Uint8Array(total)
+  let destination = 0
+  for (const part of parts) {
+    result.set(part, destination)
+    destination += part.length
+  }
+  return result
+}
+
+function withIccProfile(png: Uint8Array, profile: Uint8Array): Uint8Array {
+  const name = new TextEncoder().encode("OpenTUI test")
+  const compressed = deflateSync(profile)
+  const payload = new Uint8Array(name.length + compressed.length + 2)
+  payload.set(name)
+  payload[name.length + 1] = 0
+  payload.set(compressed, name.length + 2)
+  return injectPngChunk(withoutPngChunk(png, "iCCP"), "iCCP", payload)
+}
+
+function expectImageErrorCode(operation: () => unknown, code: ImageErrorCode): void {
+  try {
+    operation()
+    throw new Error("expected image operation to fail")
+  } catch (error) {
+    expect(error).toBeInstanceOf(ImageError)
+    expect((error as ImageError).code).toBe(code)
+  }
+}
+
 function withPngDimensions(png: Uint8Array, width: number, height: number): Uint8Array {
   const result = png.slice()
   const view = new DataView(result.buffer, result.byteOffset)
@@ -109,6 +172,25 @@ function withPngDimensions(png: Uint8Array, width: number, height: number): Uint
   view.setUint32(20, height)
   view.setUint32(29, pngCrc(result.subarray(12, 29)))
   return result
+}
+
+function corruptFirstPngIdat(png: Uint8Array): Uint8Array {
+  const result = png.slice()
+  let offset = 8
+  while (offset + 12 <= result.length) {
+    const length = new DataView(result.buffer, result.byteOffset + offset, 4).getUint32(0)
+    const type = new TextDecoder().decode(result.subarray(offset + 4, offset + 8))
+    if (type === "IDAT") {
+      result[offset + 8] ^= 0xff
+      new DataView(result.buffer).setUint32(
+        offset + 8 + length,
+        pngCrc(result.subarray(offset + 4, offset + 8 + length)),
+      )
+      return result
+    }
+    offset += length + 12
+  }
+  throw new Error("fixture has no IDAT chunk")
 }
 
 const FORMATS = [
@@ -157,7 +239,7 @@ describe("NativeImage", () => {
     expect(imageInfo(explicitSrgb).colorStatus).toBe("explicit-srgb")
 
     const iccp = injectPngChunk(PNG_1X1, "iCCP", Uint8Array.of(0))
-    expect(() => imageInfo(iccp)).toThrow("unsupported image color space")
+    expectImageErrorCode(() => imageInfo(iccp), "malformed-data")
 
     const badGamma = injectPngChunk(PNG_1X1, "gAMA", Uint8Array.of(0, 0, 0, 1))
     expect(() => imageInfo(badGamma)).toThrow("unsupported image color space")
@@ -170,6 +252,162 @@ describe("NativeImage", () => {
 
     const supportedCicp = injectPngChunk(iccp, "cICP", Uint8Array.of(1, 13, 0, 1))
     expect(imageInfo(supportedCicp).colorStatus).toBe("explicit-srgb")
+  })
+
+  test("converts an embedded RGB monitor profile to straight-alpha sRGB", async () => {
+    const png = await readBase64Fixture("display-p3.png.base64")
+    expect(imageInfo(png)).toMatchObject({ format: "png", colorStatus: "explicit-srgb", hasAlpha: false })
+
+    const image = NativeImage.decode(png)
+    try {
+      // Generated from a synthetic Display-P3 matrix/TRC profile. Golden values
+      // were produced by ImageMagick 7.1.2 with LittleCMS and relative intent.
+      expect(image.raw().data).toEqual(Uint8Array.of(220, 0, 19, 255, 0, 205, 0, 255, 95, 122, 143, 255))
+    } finally {
+      image.dispose()
+    }
+  })
+
+  test("reports ICC profile-copy allocation failure as out of memory", () => {
+    const extension = import.meta.url.endsWith(".ts") ? "ts" : "js"
+    const runtimeArgs = "bun" in process.versions ? [] : process.execArgv.filter((arg) => !arg.startsWith("--test"))
+    const child = spawnSync(
+      process.execPath,
+      [...runtimeArgs, fileURLToPath(new URL(`image-icc-allocation-child.${extension}`, import.meta.url))],
+      { encoding: "utf8" },
+    )
+    if (child.status !== 0) throw new Error(child.stderr || child.stdout || `child exited with status ${child.status}`)
+  })
+
+  test("converts ICC palette and RGBA PNGs and preserves alpha", async () => {
+    const cases = [
+      ["display-p3-palette.png.base64", Uint8Array.of(220, 0, 19, 255, 0, 205, 0, 255, 95, 122, 143, 255)],
+      ["display-p3-palette-alpha.png.base64", Uint8Array.of(220, 0, 19, 1, 0, 205, 0, 127, 95, 122, 143, 255)],
+      ["display-p3-rgba.png.base64", Uint8Array.of(220, 0, 19, 1, 0, 205, 0, 127, 95, 122, 143, 255)],
+    ] as const
+    for (const [fixture, expected] of cases) {
+      const image = NativeImage.decode(await readBase64Fixture(fixture))
+      try {
+        expect(image.info().colorStatus).toBe("explicit-srgb")
+        expect(image.raw().data).toEqual(expected)
+      } finally {
+        image.dispose()
+      }
+    }
+  })
+
+  test("accepts an ICC profile equivalent to sRGB without changing pixels", async () => {
+    const image = NativeImage.decode(await readBase64Fixture("srgb-profile.png.base64"))
+    try {
+      expect(image.raw().data).toEqual(Uint8Array.of(10, 20, 30, 255))
+    } finally {
+      image.dispose()
+    }
+  })
+
+  test("converts an embedded grayscale monitor profile to sRGB", async () => {
+    const cases = [
+      ["gray-profile.png.base64", Uint8Array.of(99, 99, 99, 255, 193, 193, 193, 255)],
+      ["gray-alpha-profile.png.base64", Uint8Array.of(99, 99, 99, 1, 193, 193, 193, 127)],
+    ] as const
+    for (const [fixture, expected] of cases) {
+      const image = NativeImage.decode(await readBase64Fixture(fixture))
+      try {
+        expect(image.raw().data).toEqual(expected)
+      } finally {
+        image.dispose()
+      }
+    }
+  })
+
+  test("classifies malformed, unsupported, duplicate, and oversized ICC profiles", async () => {
+    const png = await readBase64Fixture("display-p3.png.base64")
+    const iccp = pngChunkPayload(png, "iCCP")
+    const separator = iccp.indexOf(0)
+    const profile = Uint8Array.from(inflateSync(iccp.subarray(separator + 2)))
+
+    const invalidHeader = profile.slice()
+    invalidHeader[36] = 0
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, invalidHeader)), "malformed-data")
+
+    const unsupportedSpace = profile.slice()
+    unsupportedSpace.set(new TextEncoder().encode("CMYK"), 16)
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, unsupportedSpace)), "unsupported-color-space")
+
+    const unsupportedVersion = profile.slice()
+    unsupportedVersion[8] = 5
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, unsupportedVersion)), "unsupported-feature")
+
+    const unsupportedIntent = profile.slice()
+    new DataView(unsupportedIntent.buffer).setUint32(64, 4)
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, unsupportedIntent)), "unsupported-feature")
+
+    const tooManyTags = profile.slice()
+    new DataView(tooManyTags.buffer).setUint32(128, 101)
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, tooManyTags)), "unsupported-feature")
+
+    const overlappingTags = profile.slice()
+    const overlappingView = new DataView(overlappingTags.buffer)
+    overlappingView.setUint32(148, overlappingView.getUint32(136) + 4)
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, overlappingTags)), "malformed-data")
+
+    const invalidName = iccp.slice()
+    invalidName[0] = 0x20
+    expectImageErrorCode(
+      () => imageInfo(injectPngChunk(withoutPngChunk(png, "iCCP"), "iCCP", invalidName)),
+      "malformed-data",
+    )
+
+    const invalidMethod = iccp.slice()
+    invalidMethod[separator + 1] = 1
+    expectImageErrorCode(
+      () => imageInfo(injectPngChunk(withoutPngChunk(png, "iCCP"), "iCCP", invalidMethod)),
+      "malformed-data",
+    )
+
+    const invalidCompressedProfile = iccp.slice()
+    invalidCompressedProfile[invalidCompressedProfile.length - 1] ^= 0xff
+    expectImageErrorCode(
+      () => imageInfo(injectPngChunk(withoutPngChunk(png, "iCCP"), "iCCP", invalidCompressedProfile)),
+      "malformed-data",
+    )
+
+    expectImageErrorCode(() => imageInfo(injectPngChunk(png, "iCCP", iccp)), "malformed-data")
+    const palette = await readBase64Fixture("display-p3-palette.png.base64")
+    expectImageErrorCode(
+      () => imageInfo(injectPngChunk(withoutPngChunk(palette, "iCCP"), "iCCP", iccp)),
+      "malformed-data",
+    )
+    const oversized = new Uint8Array(8_000_004)
+    new DataView(oversized.buffer).setUint32(0, oversized.length)
+    expectImageErrorCode(() => imageInfo(withIccProfile(png, oversized)), "memory-limit")
+  })
+
+  test("gives ICC precedence over lower-priority PNG color metadata", async () => {
+    const png = await readBase64Fixture("display-p3.png.base64")
+    const withSrgb = injectPngChunk(png, "sRGB", Uint8Array.of(0))
+    const image = NativeImage.decode(withSrgb)
+    try {
+      expect(image.raw().data.subarray(0, 4)).toEqual(Uint8Array.of(220, 0, 19, 255))
+    } finally {
+      image.dispose()
+    }
+  })
+
+  test("uses supported cICP before ICC and falls through unsupported cICP", async () => {
+    const png = await readBase64Fixture("display-p3.png.base64")
+    const cases = [
+      [Uint8Array.of(1, 13, 0, 1), Uint8Array.of(200, 30, 40, 255)],
+      [Uint8Array.of(9, 9, 9, 9), Uint8Array.of(220, 0, 19, 255)],
+    ] as const
+    for (const [cicp, expected] of cases) {
+      const image = NativeImage.decode(injectPngChunk(png, "cICP", cicp))
+      try {
+        expect(image.raw().data.subarray(0, 4)).toEqual(expected)
+      } finally {
+        image.dispose()
+      }
+    }
   })
 
   test("enforces the documented decoded image dimensions", () => {
@@ -327,6 +565,15 @@ describe("NativeImage", () => {
       raw.dispose()
     }
     expect(resolveRenderLib().imageGetPixelsPtr(handle)).toBeNull()
+  })
+
+  test("takeRaw reports deferred PNG decode errors", async () => {
+    const image = NativeImage.decode(corruptFirstPngIdat(await readBase64Fixture("display-p3.png.base64")))
+    try {
+      expectImageErrorCode(() => image.takeRaw(), "malformed-data")
+    } finally {
+      image.dispose()
+    }
   })
 
   test("supports exact transforms, extraction, and extension", () => {

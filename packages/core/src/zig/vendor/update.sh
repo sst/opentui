@@ -5,6 +5,7 @@ VENDOR_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 WUFFS_DIR="$VENDOR_DIR/wuffs"
 STB_DIR="$VENDOR_DIR/stb"
 LIBWEBP_DIR="$VENDOR_DIR/libwebp"
+LCMS2_DIR="$VENDOR_DIR/lcms2"
 
 WUFFS_COMMIT=ec71f9c6d829ca763fbbc1f7adecc30a89a8ed0a
 WUFFS_SHA256=a3db4bd979663423de00309d1ba07d7fa8576845223d3e02764181bd6da23f90
@@ -18,6 +19,9 @@ STB_RESIZE_PATCHED_SHA256=3cfc10a3aa7287fa1f1360df360b22e63b2e3426965d7696f8b5c2
 
 LIBWEBP_VERSION=1.6.0
 LIBWEBP_ARCHIVE_SHA256=e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
+
+LCMS2_VERSION=2.19.1
+LCMS2_ARCHIVE_SHA256=bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
 
 for command_name in curl git tar; do
   command -v "$command_name" >/dev/null 2>&1 || {
@@ -97,5 +101,19 @@ done < "$LIBWEBP_DIR/FILES"
 cp "$LIBWEBP_SOURCE/COPYING" "$LIBWEBP_DIR/COPYING"
 cp "$LIBWEBP_SOURCE/PATENTS" "$LIBWEBP_DIR/PATENTS"
 cp "$LIBWEBP_SOURCE/AUTHORS" "$LIBWEBP_DIR/AUTHORS"
+
+echo "Updating Little CMS"
+LCMS2_ARCHIVE="$TMP_DIR/lcms2-$LCMS2_VERSION.tar.gz"
+download "https://github.com/mm2/Little-CMS/releases/download/lcms$LCMS2_VERSION/lcms2-$LCMS2_VERSION.tar.gz" "$LCMS2_ARCHIVE"
+verify_sha256 "$LCMS2_ARCHIVE" "$LCMS2_ARCHIVE_SHA256"
+tar -xzf "$LCMS2_ARCHIVE" -C "$TMP_DIR"
+LCMS2_SOURCE="$TMP_DIR/lcms2-$LCMS2_VERSION"
+rm -rf "$LCMS2_DIR/include" "$LCMS2_DIR/src"
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  mkdir -p "$LCMS2_DIR/${path%/*}"
+  cp "$LCMS2_SOURCE/$path" "$LCMS2_DIR/$path"
+done < "$LCMS2_DIR/FILES"
+cp "$LCMS2_SOURCE/LICENSE" "$LCMS2_DIR/LICENSE"
 
 echo "Image vendors updated successfully. Review the git diff, then run bun run test:native."

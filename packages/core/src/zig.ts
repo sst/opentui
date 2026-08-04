@@ -1256,10 +1256,14 @@ function getOpenTUILib(libPath?: string) {
     },
 
     imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageRetainIccCache: { args: [], returns: "void" },
+    imageReleaseIccCache: { args: [], returns: "void" },
+    imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
+    imageMaterialize: { args: ["u32"], returns: "u32" },
     imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
     imageClone: { args: ["u32", "ptr"], returns: "u32" },
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
@@ -2664,6 +2668,9 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
 
   imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
+  imageRetainIccCache: () => void
+  imageReleaseIccCache: () => void
+  imageTestFailIccProfileCopyAllocationOnce: () => void
   imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
   imageCreateFromRgba: (
     pixels: Uint8Array,
@@ -2673,6 +2680,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => { status: number; handle: ImageHandle | null }
   imageDestroy: (image: ImageHandle) => void
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
+  imageMaterialize: (image: ImageHandle) => number
   imageGetPixelsPtr: (image: ImageHandle) => Pointer | null
   imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
@@ -2754,6 +2762,7 @@ export interface RenderLib extends AudioEngineLib {
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
+  private iccCacheClient = false
   // Layout reads are synchronous and non-reentrant. Retain one backing buffer so
   // Node does not allocate and resolve a new output pointer for every node.
   private readonly yogaLayout = new Float32Array(6)
@@ -2831,6 +2840,8 @@ class FFIRenderLib implements RenderLib {
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
+    this.imageRetainIccCache()
+    this.iccCacheClient = true
     try {
       this.setupLogging()
       this.setupEventBus()
@@ -2907,12 +2918,19 @@ class FFIRenderLib implements RenderLib {
       this.setLogCallback(null)
     } finally {
       try {
-        this.opentui.close()
+        if (this.iccCacheClient) {
+          this.iccCacheClient = false
+          this.imageReleaseIccCache()
+        }
       } finally {
-        this.eventCallbackWrapper = null
-        this.logCallbackWrapper = null
-        this.nativeSpanFeedCallbackWrapper = null
-        this.nativeSpanFeedHandlers.clear()
+        try {
+          this.opentui.close()
+        } finally {
+          this.eventCallbackWrapper = null
+          this.logCallbackWrapper = null
+          this.nativeSpanFeedCallbackWrapper = null
+          this.nativeSpanFeedHandlers.clear()
+        }
       }
     }
   }
@@ -5658,6 +5676,18 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.imageDestroy(image)
   }
 
+  public imageRetainIccCache(): void {
+    this.opentui.symbols.imageRetainIccCache()
+  }
+
+  public imageReleaseIccCache(): void {
+    this.opentui.symbols.imageReleaseIccCache()
+  }
+
+  public imageTestFailIccProfileCopyAllocationOnce(): void {
+    this.opentui.symbols.imageTestFailIccProfileCopyAllocationOnce()
+  }
+
   public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {
     const output = new ArrayBuffer(NativeImageInfoStruct.size)
     const status = this.opentui.symbols.imageGetInfo(image, output)
@@ -5667,6 +5697,10 @@ class FFIRenderLib implements RenderLib {
   public imageGetPixelsPtr(image: ImageHandle): Pointer | null {
     const pointer = this.opentui.symbols.imageGetPixelsPtr(image)
     return pointer === null || pointer === 0 || pointer === 0n ? null : pointer
+  }
+
+  public imageMaterialize(image: ImageHandle): number {
+    return this.opentui.symbols.imageMaterialize(image)
   }
 
   public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {

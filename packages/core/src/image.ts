@@ -157,6 +157,7 @@ const STATUS_CODES: readonly ImageErrorCode[] = [
   "internal-error",
   "unsupported-feature",
 ]
+const INVALID_ARGUMENT_STATUS = 7
 
 export class ImageError extends Error {
   public readonly code: ImageErrorCode
@@ -570,6 +571,11 @@ export class NativeImage {
 
   public takeRaw(): OwnedRawImage {
     const handle = this.guard()
+    const materializeStatus = this.lib.imageMaterialize(handle)
+    if (materializeStatus === INVALID_ARGUMENT_STATUS) {
+      throw new Error("Cannot transfer image pixels while native buffers retain the image")
+    }
+    checkStatus(materializeStatus)
     const pointer = this.lib.imageGetPixelsPtr(handle)
     if (!pointer) throw new Error("Cannot transfer image pixels while native buffers retain the image")
     const width = this.imageInfo.width

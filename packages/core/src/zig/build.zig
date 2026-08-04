@@ -62,6 +62,35 @@ const YOGA_CXX_SOURCES = [_][]const u8{
     "yoga/node/Node.cpp",
 };
 
+const LCMS2_SOURCES = [_][]const u8{
+    "src/cmsalpha.c",
+    "src/cmscam02.c",
+    "src/cmscgats.c",
+    "src/cmscnvrt.c",
+    "src/cmserr.c",
+    "src/cmsgamma.c",
+    "src/cmsgmt.c",
+    "src/cmshalf.c",
+    "src/cmsintrp.c",
+    "src/cmsio0.c",
+    "src/cmsio1.c",
+    "src/cmslut.c",
+    "src/cmsmd5.c",
+    "src/cmsmtrx.c",
+    "src/cmsnamed.c",
+    "src/cmsopt.c",
+    "src/cmspack.c",
+    "src/cmspcs.c",
+    "src/cmsplugin.c",
+    "src/cmsps2.c",
+    "src/cmssamp.c",
+    "src/cmssm.c",
+    "src/cmstypes.c",
+    "src/cmsvirt.c",
+    "src/cmswtpnt.c",
+    "src/cmsxform.c",
+};
+
 fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
     if (builtin.os.tag != .linux) {
         return b.resolveTargetQuery(.{});
@@ -175,6 +204,14 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
 
     artifact.addCSourceFile(.{
         .file = b.path("image-shim.c"),
+        .flags = flags,
+    });
+    artifact.addIncludePath(b.path("vendor/lcms2/include"));
+    artifact.addIncludePath(b.path("vendor/lcms2/src"));
+    artifact.addCSourceFiles(.{
+        .root = b.path("vendor/lcms2"),
+        .files = &LCMS2_SOURCES,
+        // image.zig serializes every LittleCMS operation with icc_cache_mutex.
         .flags = flags,
     });
 

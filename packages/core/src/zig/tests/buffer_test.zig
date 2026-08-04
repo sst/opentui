@@ -49,7 +49,7 @@ test "OptimizedBuffer materializes block fallback on demand" {
     defer source.deinit();
 
     try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .auto));
-    target.materializeImageFallback(1);
+    try target.materializeImageFallback(1);
     const cell = target.get(0, 0).?;
     try std.testing.expect(gp.isImageChar(cell.char));
     try std.testing.expect(gp.imageFallbackFromChar(cell.char) != 0);
@@ -71,7 +71,7 @@ test "OptimizedBuffer flattens image placements into owned block cells" {
     try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .kitty));
     try std.testing.expectEqual(@as(u32, 2), source.ref_count);
 
-    target.materializeImageFallbacks();
+    try target.materializeImageFallbacks();
 
     const cell = target.get(0, 0).?;
     try std.testing.expect(!gp.isImageChar(cell.char));
@@ -126,8 +126,8 @@ test "OptimizedBuffer blocks fallback composites transparent images over lower p
     try std.testing.expect(try target.drawImage(lower, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
     try std.testing.expect(try target.drawImage(upper, 2, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
 
-    target.materializeImageFallback(1);
-    target.materializeImageFallback(2);
+    try target.materializeImageFallback(1);
+    try target.materializeImageFallback(2);
 
     const cell = target.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 2), gp.imageIdFromChar(cell.char));
@@ -169,7 +169,7 @@ test "OptimizedBuffer flattening a framebuffer copy preserves source image owner
     target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
     try std.testing.expectEqual(@as(u32, 3), value.ref_count);
 
-    target.materializeImageFallbacks();
+    try target.materializeImageFallbacks();
 
     try std.testing.expect(!gp.isImageChar(target.get(0, 0).?.char));
     try std.testing.expectEqual(@as(usize, 0), target.image_placements.items.len);

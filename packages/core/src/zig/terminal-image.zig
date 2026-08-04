@@ -3,15 +3,14 @@ const native_image = @import("image.zig");
 
 pub const KittyPixelFormat = enum { auto, rgb, rgba };
 
-pub fn writeKittyTransmit(writer: anytype, image: *const native_image.Image, id: u32, tmux: bool) !void {
+pub fn writeKittyTransmit(writer: anytype, image: *native_image.Image, id: u32, tmux: bool) !void {
     return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
 }
 
-pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Image, id: u32, tmux: bool, requested_format: KittyPixelFormat) !void {
+pub fn writeKittyTransmitFormat(writer: anytype, image: *native_image.Image, id: u32, tmux: bool, requested_format: KittyPixelFormat) !void {
     const raw_chunk = 3072;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
-    if (image.pixels.len < rgba_len) return error.InvalidImageData;
     if (requested_format == .auto) {
         if (image.encoded_png) |png| {
             var offset: usize = 0;
@@ -35,6 +34,8 @@ pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Imag
             return;
         }
     }
+    const pixels = image.ensurePixels() catch return error.InvalidImageData;
+    if (pixels.len < rgba_len) return error.InvalidImageData;
     const format: KittyPixelFormat = if (requested_format == .auto)
         (if (image.metadata.has_alpha == 0) .rgb else .rgba)
     else
@@ -50,7 +51,7 @@ pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Imag
             const chunk_pixels = chunk_len / 3;
             for (0..chunk_pixels) |index| {
                 const source = (first_pixel + index) * 4;
-                @memcpy(raw[index * 3 ..][0..3], image.pixels[source..][0..3]);
+                @memcpy(raw[index * 3 ..][0..3], pixels[source..][0..3]);
             }
             const more = rgb_offset + chunk_len < rgb_len;
             if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
@@ -81,7 +82,7 @@ pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Imag
             try writer.print("m={d},q=2;", .{@intFromBool(more)});
         }
         var encoded: [4096]u8 = undefined;
-        const payload = std.base64.standard.Encoder.encode(encoded[0..std.base64.standard.Encoder.calcSize(end - offset)], image.pixels[offset..end]);
+        const payload = std.base64.standard.Encoder.encode(encoded[0..std.base64.standard.Encoder.calcSize(end - offset)], pixels[offset..end]);
         try writer.writeAll(payload);
         if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
         offset = end;
@@ -252,9 +253,10 @@ fn bestBoxCut(moments: []const SixelMoment, box: SixelBox) ?SixelCut {
     return best;
 }
 
-pub fn quantizeSixel(allocator: std.mem.Allocator, image: *const native_image.Image, max_colors: usize) !QuantizedSixel {
+pub fn quantizeSixel(allocator: std.mem.Allocator, image: *native_image.Image, max_colors: usize) !QuantizedSixel {
     if (max_colors == 0 or max_colors > 255) return error.InvalidArgument;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
+    _ = image.ensurePixels() catch return error.InvalidImageData;
     if (image.pixels.len < std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData) return error.InvalidImageData;
     const moments = try allocator.alloc(SixelMoment, SIXEL_HISTOGRAM_LEN);
     defer allocator.free(moments);
@@ -418,7 +420,7 @@ fn BufferedWriter(comptime Writer: type) type {
     };
 }
 
-pub fn writeSixelPayload(allocator: std.mem.Allocator, writer: anytype, image: *const native_image.Image) !void {
+pub fn writeSixelPayload(allocator: std.mem.Allocator, writer: anytype, image: *native_image.Image) !void {
     var quantized = try quantizeSixel(allocator, image, 255);
     defer quantized.deinit();
     try writeSixelIndexedPayload(
@@ -517,7 +519,7 @@ pub fn writeSixelFramedPayload(writer: anytype, payload: []const u8, tmux: bool)
     if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
 }
 
-pub fn writeSixel(allocator: std.mem.Allocator, writer: anytype, image: *const native_image.Image, tmux: bool) !void {
+pub fn writeSixel(allocator: std.mem.Allocator, writer: anytype, image: *native_image.Image, tmux: bool) !void {
     var payload: std.ArrayList(u8) = .empty;
     defer payload.deinit(allocator);
     try writeSixelPayload(allocator, payload.writer(allocator), image);
