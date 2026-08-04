@@ -1219,6 +1219,46 @@ describe("StdinParser", () => {
   })
 
   describe("protocol context", () => {
+    test("updating Kitty context synchronizes complete key decoding", () => {
+      const parser = createParser({
+        useKittyKeyboard: false,
+        protocolContext: { kittyKeyboardEnabled: false },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[97u"))
+        expect(snap(parser)).toEqual([k("", { raw: "\x1b[97u" })])
+
+        parser.updateProtocolContext({ kittyKeyboardEnabled: true })
+        parser.push(Buffer.from("\x1b[97u"))
+        expect(snap(parser)).toEqual([k("a", { raw: "\x1b[97u" })])
+
+        parser.updateProtocolContext({ kittyKeyboardEnabled: false })
+        parser.push(Buffer.from("\x1b[97u"))
+        expect(snap(parser)).toEqual([k("", { raw: "\x1b[97u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("disabling Kitty context flushes a timed-out partial key", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { kittyKeyboardEnabled: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[97;2"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(TEST_TIMEOUT_MS)
+        expect(snap(parser)).toEqual([])
+
+        parser.updateProtocolContext({ kittyKeyboardEnabled: false })
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[97;2")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("partial explicit-width CPR stays pending after timeout when probe is active", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },

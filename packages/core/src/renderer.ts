@@ -849,6 +849,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private _useKittyKeyboard: boolean = true
   private autoFocus: boolean = true
   private _screenMode: ScreenMode = "alternate-screen"
   private _footerHeight: number = DEFAULT_FOOTER_HEIGHT
@@ -1095,7 +1096,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (process.platform === "linux") config.useThread = false
     lib.setUseThread(rendererPtr, config.useThread)
 
-    const kittyConfig = config.useKittyKeyboard ?? {}
+    // Only undefined falls back to the defaults: null explicitly disables the protocol
+    const kittyConfig = config.useKittyKeyboard === undefined ? {} : config.useKittyKeyboard
     const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
     lib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
@@ -1213,6 +1215,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("beforeExit", this.exitHandler)
 
     const useKittyForParsing = kittyConfig !== null
+    this._useKittyKeyboard = useKittyForParsing
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
       // Use the shared matcher here too. Kitty can report a non-Latin
@@ -1883,12 +1886,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get useKittyKeyboard(): boolean {
-    return this.lib.getKittyKeyboardFlags(this.rendererPtr) > 0
+    return this._useKittyKeyboard
   }
 
   public set useKittyKeyboard(use: boolean) {
-    const flags = use ? KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS : 0
-    this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
+    if (use) {
+      this.enableKittyKeyboard(KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS)
+    } else {
+      this.disableKittyKeyboard()
+    }
   }
 
   public createScrollbackSurface(options: ScrollbackSurfaceOptions = {}): ScrollbackSurface {
@@ -3157,11 +3163,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public enableKittyKeyboard(flags: number = 0b00011): void {
     this.lib.enableKittyKeyboard(this.rendererPtr, flags)
+    this._useKittyKeyboard = true
     this.updateStdinParserProtocolContext({ kittyKeyboardEnabled: true })
   }
 
   public disableKittyKeyboard(): void {
     this.lib.disableKittyKeyboard(this.rendererPtr)
+    this._useKittyKeyboard = false
     this.updateStdinParserProtocolContext({ kittyKeyboardEnabled: false }, true)
   }
 

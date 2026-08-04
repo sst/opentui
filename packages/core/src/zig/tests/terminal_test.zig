@@ -922,6 +922,44 @@ test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
     try testing.expect(std.mem.indexOf(u8, output, "Gi=31337") == null);
 }
 
+test "applyDetectedFeatures - sends pending queries before enabling modes" {
+    var term = Terminal.init(.{ .kitty_keyboard_flags = 0, .remote_mode = .remote });
+    term.graphics_query_pending = true;
+    term.processCapabilityResponse("\x1b[?1u");
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.applyDetectedFeatures(&writer, true);
+
+    const output = writer.getWritten();
+    const graphics_query = std.mem.indexOf(u8, output, ansi.ANSI.kittyGraphicsQuery).?;
+    const kitty_mode = std.mem.indexOf(u8, output, "\x1b[>0u").?;
+
+    try testing.expect(graphics_query < kitty_mode);
+    try testing.expect(!term.graphics_query_pending);
+    try testing.expect(!term.capability_response_pending);
+    try testing.expect(term.state.modify_other_keys);
+    try testing.expect(term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 0), term.state.kitty_keyboard_flags);
+}
+
+test "applyDetectedFeatures - preserves pending queries until a response is processed" {
+    var term = Terminal.init(.{ .kitty_keyboard_flags = 0, .remote_mode = .remote });
+    term.graphics_query_pending = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.applyDetectedFeatures(&writer, true);
+
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), ansi.ANSI.kittyGraphicsQuery) == null);
+    try testing.expect(term.graphics_query_pending);
+    try testing.expect(term.state.modify_other_keys);
+    try testing.expect(term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 0), term.state.kitty_keyboard_flags);
+}
+
 test "isXtversionTmux - detects tmux from xtversion" {
     var term = Terminal.init(.{});
 
@@ -1631,6 +1669,67 @@ test "enableDetectedFeatures - sends initial theme queries" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b]11;?\x07") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
     try testing.expect(term.state.theme_queries_sent);
+}
+
+test "enableDetectedFeatures - zero Kitty flags own one stack entry before detection" {
+    var term = Terminal.init(.{ .kitty_keyboard_flags = 0, .remote_mode = .remote });
+    try testing.expect(!term.caps.kitty_keyboard);
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.enableDetectedFeatures(&writer, true);
+
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, writer.getWritten(), ansi.ANSI.modifyOtherKeysSet));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, writer.getWritten(), "\x1b[>0u"));
+    try testing.expect(term.state.modify_other_keys);
+    try testing.expect(term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 0), term.state.kitty_keyboard_flags);
+
+    writer.reset();
+    try term.enableDetectedFeatures(&writer, true);
+
+    try testing.expectEqual(@as(usize, 0), std.mem.count(u8, writer.getWritten(), "\x1b[>0u"));
+    try testing.expectEqual(@as(usize, 0), std.mem.count(u8, writer.getWritten(), ansi.ANSI.csiUPop));
+}
+
+test "setKittyKeyboard - replaces changed flags without growing the stack" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setKittyKeyboard(&writer, true, 7);
+    try testing.expectEqualStrings("\x1b[>7u", writer.getWritten());
+
+    writer.reset();
+    try term.setKittyKeyboard(&writer, true, 5);
+    try testing.expectEqualStrings("\x1b[<u\x1b[>5u", writer.getWritten());
+    try testing.expect(term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 5), term.state.kitty_keyboard_flags);
+
+    writer.reset();
+    try term.setKittyKeyboard(&writer, true, 5);
+    try testing.expectEqual(@as(usize, 0), writer.getWritten().len);
+
+    try term.setKittyKeyboard(&writer, false, 0);
+    try testing.expectEqualStrings(ansi.ANSI.csiUPop, writer.getWritten());
+    try testing.expect(!term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 0), term.state.kitty_keyboard_flags);
+}
+
+test "restoreTerminalModes - replaces a zero-flag Kitty entry" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setKittyKeyboard(&writer, true, 0);
+    writer.reset();
+
+    try term.restoreTerminalModes(&writer);
+
+    try testing.expectEqualStrings("\x1b[<u\x1b[>0u", writer.getWritten());
+    try testing.expect(term.state.kitty_keyboard);
+    try testing.expectEqual(@as(u8, 0), term.state.kitty_keyboard_flags);
 }
 
 test "setMouseMode - enable without movement keeps click/drag only" {
