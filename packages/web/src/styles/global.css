@@ -165,9 +165,9 @@ pre {
   text-decoration: none;
 }
 
-.landing-logo svg {
-  width: 24px;
-  height: 24px;
+.landing-logo .landing-logo-mark {
+  width: 135px;
+  height: 30px;
 }
 
 .landing-nav {
@@ -1411,8 +1411,7 @@ pre {
   }
 
   /* Dark mode logo adjustment inner rect */
-  .logo-icon rect:last-child,
-  .landing-logo svg rect:last-child {
+  .logo-icon rect:last-child {
     fill: hsl(0, 5%, 9%);
   }
 }

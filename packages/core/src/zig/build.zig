@@ -23,8 +23,8 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "aarch64-linux-gnu.2.17", .output_name = "aarch64-linux", .description = "Linux aarch64" },
     .{ .zig_target = "x86_64-linux-musl", .output_name = "x86_64-linux-musl", .description = "Linux x86_64 (musl)" },
     .{ .zig_target = "aarch64-linux-musl", .output_name = "aarch64-linux-musl", .description = "Linux aarch64 (musl)" },
-    .{ .zig_target = "x86_64-macos", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
-    .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
+    .{ .zig_target = "x86_64-macos.13.0", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
+    .{ .zig_target = "aarch64-macos.13.0", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
 };
@@ -33,6 +33,7 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
+const GHOSTTY_VT_VERSION = "0.1.0-dev+74d0c72f";
 
 const YOGA_CXX_FLAGS = [_][]const u8{
     "-std=c++20",
@@ -371,6 +372,19 @@ fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
     });
 }
 
+fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
+    switch (target.result.cpu.arch) {
+        .x86_64, .aarch64 => {},
+        else => return false,
+    }
+    return switch (target.result.os.tag) {
+        .linux => target.result.abi.isMusl() or target.result.abi == .gnu,
+        .macos => true,
+        .windows => target.result.abi == .gnu,
+        else => false,
+    };
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -380,6 +394,26 @@ fn applyDependencies(
     build_options: *std.Build.Step.Options,
 ) void {
     module.addOptions("build_options", build_options);
+    const ghostty_vt_available = ghosttyVtAvailable(target);
+    const ghostty_vt_options = b.addOptions();
+    ghostty_vt_options.addOption(bool, "available", ghostty_vt_available);
+    module.addOptions("ghostty_vt_options", ghostty_vt_options);
+    if (ghostty_vt_available) {
+        if (b.lazyDependency("ghostty", .{
+            .target = target,
+            .optimize = .ReleaseFast,
+            // Enable once OpenTUI uses Ghostty VT at runtime. Until then,
+            // Highway and simdutf only add binary size and exported symbols.
+            .simd = false,
+            .@"emit-lib-vt" = true,
+            .@"emit-xcframework" = false,
+            .@"emit-themes" = false,
+            .i18n = false,
+            .@"lib-version-string" = GHOSTTY_VT_VERSION,
+        })) |ghostty| {
+            module.addImport("ghostty_vt", ghostty.module("ghostty-vt"));
+        }
+    }
 
     // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
