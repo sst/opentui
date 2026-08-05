@@ -1,0 +1,76 @@
+---
+import TerminalStoryPlayer from "../../components/TerminalStoryPlayer.astro"
+import Base from "../../layouts/Base.astro"
+---
+
+<Base
+  title="Terminal Story Player Lab - OpenTUI"
+  description="A dependency-free recording player experiment with adaptable terminal colors and backgrounds."
+>
+  <main class="terminal-story-lab">
+    <header class="terminal-story-lab__header">
+      <a href="/">OpenTUI</a>
+      <p>Player experiment / adaptable recordings</p>
+      <h1>One recording, four contexts</h1>
+      <p class="terminal-story-lab__intro">
+        Each instance plays independently. Transparent modes omit recorded cell backgrounds, while inherited-tone modes
+        also omit recorded foreground colors so the host surface controls the result.
+      </p>
+    </header>
+
+    <section class="terminal-story-lab__examples" aria-label="Terminal recording variants">
+      <article class="terminal-story-example terminal-story-example--recorded">
+        <div class="terminal-story-example__heading">
+          <h2>Recorded palette</h2>
+          <code>recorded / recorded</code>
+        </div>
+        <TerminalStoryPlayer label="Recorded-color terminal story" loop />
+      </article>
+
+      <article class="terminal-story-example terminal-story-example--transparent">
+        <div class="terminal-story-example__heading">
+          <h2>Host surface</h2>
+          <code>transparent / inherit</code>
+        </div>
+        <TerminalStoryPlayer
+          label="Transparent monochrome terminal story"
+          background="transparent"
+          tone="inherit"
+          loop
+        />
+      </article>
+
+      <article class="terminal-story-example terminal-story-example--light">
+        <div class="terminal-story-example__heading">
+          <h2>Explicit light</h2>
+          <code>transparent / inherit</code>
+        </div>
+        <TerminalStoryPlayer
+          label="Light-context terminal story"
+          background="transparent"
+          tone="inherit"
+          loop
+        />
+      </article>
+
+      <article class="terminal-story-example terminal-story-example--dark">
+        <div class="terminal-story-example__heading">
+          <h2>Explicit dark</h2>
+          <code>transparent / inherit</code>
+        </div>
+        <TerminalStoryPlayer
+          label="Dark-context terminal story"
+          background="transparent"
+          tone="inherit"
+          loop
+        />
+      </article>
+    </section>
+  </main>
+</Base>
+
+<style is:global>
+  @import "../../styles/terminal-story-lab.css";
+</style>
+
+<script src="../../scripts/terminal-story-player.js"></script>
