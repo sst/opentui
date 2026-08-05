@@ -95,6 +95,23 @@ describe("EmbeddedTerminalRenderable", () => {
     }
   })
 
+  test("encodes Meta as Super rather than Alt", () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>3u")
+
+    const encoded = terminal.encodeKey(
+      keyEvent({
+        name: "a",
+        sequence: "a",
+        code: "KeyA",
+        baseCode: "a".codePointAt(0),
+        meta: true,
+      }),
+    )
+    expect(new TextDecoder().decode(encoded)).toBe("\x1b[97;9u")
+  })
+
   test("drains the preserved response prefix after overflow", () => {
     const lib = resolveRenderLib()
     const handle = lib.createEmbeddedTerminal({ cols: 20, rows: 4 })
