@@ -52,6 +52,10 @@ jobs:
           cd packages/core
           bun run build:native --all
 
+      - name: Build custom target without Ghostty VT
+        working-directory: packages/core/src/zig
+        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast
+
       - name: Upload native artifacts
         uses: actions/upload-artifact@v7
         with:

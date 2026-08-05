@@ -106,6 +106,7 @@ jobs:
           set -e
           mkdir -p artifacts/native-notices
           cp LICENSE artifacts/native-notices/LICENSE
+          cp packages/core/THIRD_PARTY_LICENSES/GHOSTTY artifacts/native-notices/LICENSE-GHOSTTY
           cp packages/core/src/zig/vendor/wuffs/LICENSE artifacts/native-notices/LICENSE-WUFFS
           cp packages/core/src/zig/vendor/stb/LICENSE artifacts/native-notices/LICENSE-STB
           cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/native-notices/LICENSE-LIBWEBP
@@ -294,6 +295,8 @@ jobs:
           test -f artifacts/native-windows-arm64.zip || (echo "❌ native-windows-arm64.zip missing!" && exit 1)
           test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
           for directory in artifacts/native-{darwin-x64,darwin-arm64,linux-x64,linux-arm64,linux-x64-musl,linux-arm64-musl,windows-x64,windows-arm64}; do
+            test -f "$directory/LICENSE" || (echo "❌ OpenTUI license missing from $directory" && exit 1)
+            test -f "$directory/LICENSE-GHOSTTY" || (echo "❌ Ghostty notices missing from $directory" && exit 1)
             test -f "$directory/LICENSE-LIBWEBP" || (echo "❌ libwebp notice missing from $directory" && exit 1)
             test -f "$directory/PATENTS-LIBWEBP" || (echo "❌ libwebp patents missing from $directory" && exit 1)
             test -f "$directory/AUTHORS-LIBWEBP" || (echo "❌ libwebp authors missing from $directory" && exit 1)
