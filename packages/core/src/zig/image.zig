@@ -176,12 +176,22 @@ fn pathIsInside(path: []const u8, root: []const u8) bool {
         path[root_len] == std.fs.path.sep;
 }
 
+fn canonicalPathIsInside(allocator: Allocator, canonical_path: []const u8, root: []const u8) bool {
+    if (!std.fs.path.isAbsolute(root)) return false;
+    const canonical_root = std.fs.realpathAlloc(allocator, root) catch return false;
+    defer allocator.free(canonical_root);
+    return pathIsInside(canonical_path, canonical_root);
+}
+
 fn isKittyTemporaryPath(allocator: Allocator, path: []const u8) bool {
     if (builtin.os.tag == .windows or std.mem.indexOf(u8, path, kitty_temp_marker) == null) return false;
-    if (pathIsInside(path, "/tmp") or pathIsInside(path, "/dev/shm")) return true;
+    const canonical_path = std.fs.realpathAlloc(allocator, path) catch return false;
+    defer allocator.free(canonical_path);
+    if (canonicalPathIsInside(allocator, canonical_path, "/tmp") or
+        canonicalPathIsInside(allocator, canonical_path, "/dev/shm")) return true;
     const temporary_directory = std.process.getEnvVarOwned(allocator, "TMPDIR") catch return false;
     defer allocator.free(temporary_directory);
-    return pathIsInside(path, temporary_directory);
+    return canonicalPathIsInside(allocator, canonical_path, temporary_directory);
 }
 
 const OpenedRegularFile = struct {

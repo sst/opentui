@@ -23,7 +23,7 @@ pub const TestMemoryOutput = struct {
         return .{ .ctx = self, .write_fn = write, .thread_safe = self.thread_safe };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) void {
+    fn write(ctx: *anyopaque, data: []const u8) bool {
         const self: *TestMemoryOutput = @ptrCast(@alignCast(ctx));
         if (self.thread_safe) self.mutex.lock();
         defer if (self.thread_safe) self.mutex.unlock();
@@ -32,6 +32,7 @@ pub const TestMemoryOutput = struct {
         self.bytes.appendSlice(self.allocator, data) catch @panic("memory output write failed");
         self.last_write_start = start;
         self.last_write_len = data.len;
+        return true;
     }
 
     pub fn lastWrite(self: *const TestMemoryOutput) []const u8 {

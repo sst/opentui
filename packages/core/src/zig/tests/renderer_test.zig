@@ -68,10 +68,11 @@ const CountingOutput = struct {
         return .{ .ctx = self, .write_fn = write, .thread_safe = true };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) void {
+    fn write(ctx: *anyopaque, data: []const u8) bool {
         const self: *CountingOutput = @ptrCast(@alignCast(ctx));
         _ = data;
         self.writes += 1;
+        return true;
     }
 };
 
@@ -85,7 +86,7 @@ const SlowThreadSafeOutput = struct {
         return .{ .ctx = self, .write_fn = write, .thread_safe = true };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) void {
+    fn write(ctx: *anyopaque, data: []const u8) bool {
         const self: *SlowThreadSafeOutput = @ptrCast(@alignCast(ctx));
         const index = self.writes.fetchAdd(1, .monotonic);
         if (index < self.payloads.len) {
@@ -93,6 +94,21 @@ const SlowThreadSafeOutput = struct {
             @memcpy(self.payloads[index][0..self.lengths[index]], data[0..self.lengths[index]]);
         }
         std.Thread.sleep(self.delay_ns);
+        return true;
+    }
+};
+
+const FailedThreadSafeOutput = struct {
+    writes: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+
+    fn bufferedOutput(self: *FailedThreadSafeOutput) @import("../renderer-output.zig").BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
+    }
+
+    fn write(ctx: *anyopaque, _: []const u8) bool {
+        const self: *FailedThreadSafeOutput = @ptrCast(@alignCast(ctx));
+        _ = self.writes.fetchAdd(1, .monotonic);
+        return false;
     }
 };
 test "renderer emits Kitty image once and leaves unchanged frame empty" {
@@ -4361,6 +4377,51 @@ test "failed terminal frame rolls back adopted-file transfer before a successful
     handle_live = false;
     // The collecting writer stands in for a terminal, so committed deletion ownership leaves the fixture in place.
     try std.fs.accessAbsolute(path, .{});
+}
+
+test "failed stdout sink write rolls back adopted-file ownership" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    for ([_]bool{ false, true }) |use_thread| {
+        var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
+        defer test_renderer.deinit();
+        var failed_output: FailedThreadSafeOutput = .{};
+        test_renderer.renderer.backend.buffered.output = failed_output.bufferedOutput();
+        test_renderer.renderer.backend.buffered.kittyFileTransport = true;
+        test_renderer.renderer.terminal.caps.kitty_graphics = true;
+        test_renderer.renderer.setUseThread(use_thread);
+
+        const directory = try createKittyTemporaryDirectory(std.testing.allocator);
+        defer {
+            std.fs.deleteTreeAbsolute(directory) catch {};
+            std.testing.allocator.free(directory);
+        }
+        const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+        defer std.testing.allocator.free(path);
+        const file = try std.fs.createFileAbsolute(path, .{});
+        try file.writeAll(&[_]u8{ 9, 8, 7, 128 });
+        file.close();
+        const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 1, 4);
+        const value_handle = try handles.insert(.image, @ptrCast(value));
+        var handle_live = true;
+        defer if (handle_live) {
+            const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+            token.ptr.deinit();
+            handles.finishDestroy(token.handle);
+        };
+
+        try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+        try std.testing.expectEqual(renderer.RenderStatus.failed, test_renderer.renderer.render(true));
+        try std.testing.expectEqual(@as(u32, 1), failed_output.writes.load(.monotonic));
+        try std.fs.accessAbsolute(path, .{});
+
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+        handle_live = false;
+        try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(path, .{}));
+    }
 }
 
 test "remote renderer sends adopted RGBA pixels inline instead of publishing a local path" {

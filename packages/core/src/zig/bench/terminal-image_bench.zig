@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const bench_utils = @import("../bench-utils.zig");
 const ansi = @import("../ansi.zig");
 const buffer = @import("../buffer.zig");
@@ -51,6 +52,26 @@ const CountingWriter = struct {
         self.bytes += std.fmt.count(format, args);
     }
 };
+
+fn benchmarkTemporaryRoot(allocator: std.mem.Allocator) ![]u8 {
+    const environment_variables = if (builtin.os.tag == .windows)
+        [_][]const u8{ "TEMP", "TMP" }
+    else
+        [_][]const u8{"TMPDIR"};
+
+    for (environment_variables) |name| {
+        const value = std.process.getEnvVarOwned(allocator, name) catch continue;
+        if (value.len == 0) {
+            allocator.free(value);
+            continue;
+        }
+        if (std.fs.path.isAbsolute(value)) return value;
+        allocator.free(value);
+    }
+
+    if (builtin.os.tag == .windows) return error.TemporaryDirectoryUnavailable;
+    return allocator.dupe(u8, "/tmp");
+}
 
 fn fillPixels(pixels: []u8, scenario: Scenario) void {
     var random = std.Random.DefaultPrng.init(0x1234_5678_9abc_def0);
@@ -364,7 +385,7 @@ fn appendKittyRawRgbaFileBenchmarks(
             .{ scenario.width, scenario.height },
         );
         const run_inline = bench_utils.matchesBenchFilter(inline_name, bench_filter);
-        const run_file = bench_utils.matchesBenchFilter(file_name, bench_filter);
+        const run_file = builtin.os.tag != .windows and bench_utils.matchesBenchFilter(file_name, bench_filter);
         const run_remote = bench_utils.matchesBenchFilter(remote_name, bench_filter);
         if (!run_inline and !run_file and !run_remote) continue;
 
@@ -379,23 +400,6 @@ fn appendKittyRawRgbaFileBenchmarks(
             .height = scenario.height,
             .pattern = .photo,
         });
-
-        const temporary_root = std.process.getEnvVarOwned(work_allocator, "TMPDIR") catch try work_allocator.dupe(u8, "/tmp");
-        defer work_allocator.free(temporary_root);
-        const temporary_name = try std.fmt.allocPrint(
-            work_allocator,
-            "opentui-tty-graphics-protocol-benchmark-{d}.rgba",
-            .{std.time.nanoTimestamp()},
-        );
-        defer work_allocator.free(temporary_name);
-        const absolute_path = try std.fs.path.join(work_allocator, &.{ temporary_root, temporary_name });
-        defer work_allocator.free(absolute_path);
-        defer std.fs.deleteFileAbsolute(absolute_path) catch {};
-        {
-            const file = try std.fs.createFileAbsolute(absolute_path, .{});
-            defer file.close();
-            try file.writeAll(pixels);
-        }
 
         if (run_inline) {
             var stats: bench_utils.BenchStats = .{};
@@ -423,6 +427,25 @@ fn appendKittyRawRgbaFileBenchmarks(
                 break :blk values;
             } else null;
             try appendResult(allocator, results, inline_name, stats, mem_stats);
+        }
+
+        if (!run_file and !run_remote) continue;
+
+        const temporary_root = try benchmarkTemporaryRoot(work_allocator);
+        defer work_allocator.free(temporary_root);
+        const temporary_name = try std.fmt.allocPrint(
+            work_allocator,
+            "opentui-tty-graphics-protocol-benchmark-{d}.rgba",
+            .{std.time.nanoTimestamp()},
+        );
+        defer work_allocator.free(temporary_name);
+        const absolute_path = try std.fs.path.join(work_allocator, &.{ temporary_root, temporary_name });
+        defer work_allocator.free(absolute_path);
+        defer std.fs.deleteFileAbsolute(absolute_path) catch {};
+        {
+            const file = try std.fs.createFileAbsolute(absolute_path, .{});
+            defer file.close();
+            try file.writeAll(pixels);
         }
 
         if (run_file) {
