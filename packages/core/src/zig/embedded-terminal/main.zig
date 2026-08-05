@@ -143,6 +143,7 @@ pub const EmbeddedTerminal = struct {
         };
         self.cols = cols;
         self.rows = rows;
+        self.mouse_last_cell = null;
     }
 
     pub fn scroll(self: *EmbeddedTerminal, delta: i32) void {

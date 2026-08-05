@@ -115,6 +115,26 @@ test "embedded terminal reports semantic failures per write" {
     try std.testing.expect(!terminal.stream.handler.semantic_failure);
 }
 
+test "embedded terminal resets mouse motion deduplication after resize" {
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    defer terminal.deinit();
+    try terminal.write("\x1b[?1003h\x1b[?1006h");
+
+    const mouse: ghostty.Mouse = .{ .action = .motion, .x = 0, .y = 0 };
+    const first = try terminal.encodeMouse(mouse);
+    defer terminal.freeEncoded(first);
+    try std.testing.expect(first.len > 0);
+
+    const duplicate = try terminal.encodeMouse(mouse);
+    defer terminal.freeEncoded(duplicate);
+    try std.testing.expectEqual(@as(usize, 0), duplicate.len);
+
+    try terminal.resize(10, 4);
+    const after_resize = try terminal.encodeMouse(mouse);
+    defer terminal.freeEncoded(after_resize);
+    try std.testing.expect(after_resize.len > 0);
+}
+
 comptime {
     _ = ghostty;
 }
