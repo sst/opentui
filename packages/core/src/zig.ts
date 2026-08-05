@@ -50,6 +50,7 @@ import {
   CursorStateStruct,
   EmbeddedTerminalComposeResultStruct,
   EmbeddedTerminalCursorStruct,
+  EmbeddedTerminalKeyOptionsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
@@ -387,7 +388,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     embeddedTerminalEncodeKey: {
-      args: ["u32", "u8", "ptr", "u32", "u16", "u16", "u8", "ptr", "u32", "u32", "ptr", "u32", "ptr"],
+      args: ["u32", "ptr", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     embeddedTerminalEncodeMouse: {
@@ -2944,6 +2945,7 @@ class FFIRenderLib implements RenderLib {
     },
     embeddedTerminalCompose: allocStruct(EmbeddedTerminalComposeResultStruct),
     embeddedTerminalCursor: allocStruct(EmbeddedTerminalCursorStruct),
+    embeddedTerminalKeyOptions: allocStruct(EmbeddedTerminalKeyOptionsStruct),
     audioStreamStats: {
       ...allocStruct(AudioStreamStatsStruct),
       result: {
@@ -3087,6 +3089,19 @@ class FFIRenderLib implements RenderLib {
   }
 
   public embeddedTerminalEncodeKey(handle: EmbeddedTerminalHandle, key: EmbeddedTerminalKey): Uint8Array {
+    const options = this.ffiStructStorage.embeddedTerminalKeyOptions
+    EmbeddedTerminalKeyOptionsStruct.packInto(
+      {
+        action: { release: 0, press: 1, repeat: 2 }[key.action ?? "press"],
+        composing: key.composing ? 1 : 0,
+        mods: key.mods ?? 0,
+        consumedMods: key.consumedMods ?? 0,
+        padding: 0,
+        unshiftedCodepoint: key.unshiftedCodepoint ?? 0,
+      },
+      options.view,
+      0,
+    )
     const keyCode = key.key ? this.encoder.encode(key.key) : new Uint8Array()
     const keyCodeLength = toSafeFFIU32Length(keyCode.byteLength, "Embedded terminal physical key length")
     const text = key.text ? this.encoder.encode(key.text) : new Uint8Array()
@@ -3095,15 +3110,11 @@ class FFIRenderLib implements RenderLib {
     const encode = (output: Uint8Array) =>
       this.opentui.symbols.embeddedTerminalEncodeKey(
         handle,
-        { release: 0, press: 1, repeat: 2 }[key.action ?? "press"],
+        options.buffer,
         keyCodeLength === 0 ? null : keyCode,
         keyCodeLength,
-        key.mods ?? 0,
-        key.consumedMods ?? 0,
-        key.composing ? 1 : 0,
         textLength === 0 ? null : text,
         textLength,
-        key.unshiftedCodepoint ?? 0,
         output,
         output.byteLength,
         required,
