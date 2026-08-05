@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import { defaultBenchmarkCases } from "./js-benchmark-cases.js"
+import { defaultBenchmarkCases, proportionalColumnWidthsCase } from "./js-benchmark-cases.js"
 import { runBenchmarkCli } from "./js-benchmark.js"
+import { OptimizedBuffer } from "../buffer.js"
+import { TextBufferView } from "../index.js"
 import { MouseParser } from "../lib/parse.mouse.js"
+import { allocateProportionalColumnWidths } from "../renderables/text-table-width.js"
 import { Node } from "../yoga.js"
 import {
   calculateInnerRsdPpm,
@@ -432,6 +435,164 @@ test("stdin SGR workload rejects wrong decoded dispatch during setup and post-ba
     expect(() => runtime.validateBatch(1)).toThrow("stdin-sgr-bubble-depth-8: fixed SGR bytes decoded incorrectly")
   } finally {
     MouseParser.prototype.parseMouseEvent = parseMouseEvent
+    await runtime.teardown()
+  }
+})
+
+test("proportional column widths validate exact output across consecutive batches", async () => {
+  const benchmark = defaultBenchmarkCases[4]!
+  expect(benchmark).toMatchObject({
+    category: "JS Text Table",
+    name: "proportional-column-widths",
+    workload_version: 1,
+    parameters: {
+      allocations_per_operation: 1,
+      mix: "alternating",
+      min_width: 1,
+      ordinary_widths: "4,49,4,54,38",
+      ordinary_target_width: 104,
+      remainder_columns: 64,
+      remainder_width: 17,
+      remainder_target_width: 584,
+    },
+  })
+  const runtime = await benchmark.setup()
+  let iteration = 0
+  try {
+    for (const batch of [1, 2, 5, 100_000, 3]) {
+      for (let index = 0; index < batch; index++) runtime.run(iteration++)
+      runtime.validateBatch(batch)
+    }
+  } finally {
+    await runtime.teardown()
+  }
+})
+
+test("proportional column widths reject stale final and incorrect earlier output", async () => {
+  const remainder = [...new Array(8).fill(10), ...new Array(56).fill(9)]
+  remainder[0]++
+  remainder[1]++
+  remainder[2]--
+  const staleRuntime = await proportionalColumnWidthsCase((_widths, targetWidth) =>
+    targetWidth === 584 ? remainder : [4, 33, 4, 34, 29],
+  ).setup()
+  try {
+    staleRuntime.run(0)
+    staleRuntime.run(1)
+    expect(() => staleRuntime.validateBatch(2)).toThrow("proportional-column-widths: an operation returned incorrect")
+  } finally {
+    await staleRuntime.teardown()
+  }
+
+  let calls = 0
+  const incorrectRuntime = await proportionalColumnWidthsCase((widths, targetWidth, minWidth) => {
+    const result = allocateProportionalColumnWidths(widths, targetWidth, minWidth)
+    if (calls++ === 0) result[0]++
+    return result
+  }).setup()
+  try {
+    incorrectRuntime.run(0)
+    incorrectRuntime.run(1)
+    expect(() => incorrectRuntime.validateBatch(2)).toThrow("proportional-column-widths: batch checksum")
+  } finally {
+    await incorrectRuntime.teardown()
+  }
+})
+
+test("text buffer word-wrap measurement validates alternating cache misses", async () => {
+  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "text-buffer-word-wrap-measure")!
+  expect(benchmark).toMatchObject({
+    category: "JS Text",
+    workload_version: 1,
+    parameters: {
+      width_method: "unicode",
+      wrap_mode: "word",
+      logical_lines: 64,
+      tokens_per_line: 128,
+      line_columns: 767,
+      text_bytes: 49_151,
+      width_a: 72,
+      width_b: 78,
+      measure_height: 2_048,
+    },
+  })
+  const runtime = await benchmark.setup()
+  try {
+    runtime.run(0)
+    runtime.validateBatch(1)
+    runtime.run(1)
+    runtime.run(2)
+    runtime.validateBatch(2)
+    runtime.run(3)
+    runtime.validateBatch(1)
+  } finally {
+    await runtime.teardown()
+  }
+})
+
+test("text buffer word-wrap measurement rejects corrupt output", async () => {
+  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "text-buffer-word-wrap-measure")!
+  const runtime = await benchmark.setup()
+  const measureForDimensions = TextBufferView.prototype.measureForDimensions
+  let calls = 0
+  TextBufferView.prototype.measureForDimensions = () =>
+    calls++ === 0 ? { lineCount: 701, widthColsMax: 72 } : { lineCount: 641, widthColsMax: 78 }
+  try {
+    runtime.run(0)
+    runtime.run(1)
+    expect(() => runtime.validateBatch(2)).toThrow("text-buffer-word-wrap-measure: an operation returned incorrect")
+  } finally {
+    TextBufferView.prototype.measureForDimensions = measureForDimensions
+    await runtime.teardown()
+  }
+})
+
+test("direct box drawing validates the final variant across consecutive batches", async () => {
+  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "draw-box-titled-scissored")!
+  expect(benchmark).toMatchObject({
+    category: "JS Buffer",
+    workload_version: 1,
+    parameters: {
+      buffer_width: 80,
+      buffer_height: 24,
+      width_method: "unicode",
+      box_x: 2,
+      box_y: 2,
+      box_width: 76,
+      box_height: 20,
+      scissor_x: 0,
+      scissor_y: 0,
+      scissor_width: 72,
+      scissor_height: 24,
+      border_style: "rounded",
+      should_fill: true,
+      titles_per_box: 2,
+      title_variants: 2,
+      visible_cells: 1_400,
+    },
+  })
+  const runtime = await benchmark.setup()
+  try {
+    runtime.run(0)
+    runtime.run(1)
+    runtime.validateBatch(2)
+    runtime.run(2)
+    runtime.validateBatch(1)
+  } finally {
+    await runtime.teardown()
+  }
+})
+
+test("direct box drawing rejects a no-op draw", async () => {
+  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "draw-box-titled-scissored")!
+  const runtime = await benchmark.setup()
+  const drawBox = OptimizedBuffer.prototype.drawBox
+  OptimizedBuffer.prototype.drawBox = () => {}
+  try {
+    runtime.run(0)
+    expect(() => runtime.validateBatch(1)).toThrow("draw-box-titled-scissored: observation")
+  } finally {
+    OptimizedBuffer.prototype.drawBox = drawBox
     await runtime.teardown()
   }
 })
