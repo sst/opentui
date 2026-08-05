@@ -53,6 +53,23 @@ export interface HarnessOptions {
   maxProcessNs: number
 }
 
+interface MonotonicClockRuntime {
+  bunNanoseconds?: () => number
+  nodeNanoseconds(): bigint
+}
+
+export function createMonotonicClock(
+  runtime: MonotonicClockRuntime = {
+    bunNanoseconds: typeof process.versions.bun === "string" ? Bun.nanoseconds : undefined,
+    nodeNanoseconds: process.hrtime.bigint,
+  },
+): () => number {
+  if (runtime.bunNanoseconds) return runtime.bunNanoseconds
+
+  const origin = runtime.nodeNanoseconds()
+  return () => Number(runtime.nodeNanoseconds() - origin)
+}
+
 export function calculateInnerRsdPpm(values: readonly number[]): number {
   if (values.length < 2) throw new Error("RSD requires at least two measured batches")
   for (const value of values) assertPositiveFinite(value, "batch ns/op")
@@ -120,7 +137,7 @@ export async function runBenchmarks(
   cases: readonly BenchmarkCase[],
   options: HarnessOptions,
 ): Promise<{ manifest: BenchmarkManifest; results: BenchmarkResult[] }> {
-  const clock = options.clock ?? Bun.nanoseconds
+  const clock = options.clock ?? createMonotonicClock()
   const processStartedAt = clock()
   const manifest = createManifest(cases, options)
   const results: BenchmarkResult[] = []
