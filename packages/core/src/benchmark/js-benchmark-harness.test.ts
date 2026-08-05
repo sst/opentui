@@ -5,6 +5,7 @@ import { defaultBenchmarkCases } from "./js-benchmark-cases.js"
 import {
   calculateInnerRsdPpm,
   canonicalJson,
+  createMonotonicClock,
   createManifest,
   manifestHash,
   runBenchmarks,
@@ -86,6 +87,15 @@ describe("statistics and manifest", () => {
 })
 
 describe("runner", () => {
+  test("uses Bun nanoseconds unchanged and an origin-relative Node clock", () => {
+    const bunClock = () => 123
+    expect(createMonotonicClock({ bunNanoseconds: bunClock, nodeNanoseconds: () => 999n })).toBe(bunClock)
+
+    const readings = [9_000_000_000_000_000n, 9_000_000_000_000_007n]
+    const nodeClock = createMonotonicClock({ nodeNanoseconds: () => readings.shift()! })
+    expect(nodeClock()).toBe(7)
+  })
+
   test("times run synchronously while awaiting setup and teardown", async () => {
     let now = 0
     let thenCalls = 0
@@ -354,7 +364,8 @@ describe("CLI", () => {
         ),
       ],
       options: { ...options, clock: () => now++, maxBatchIterations: 1 },
-      bunVersion: "test-bun",
+      jsRuntime: "bun",
+      runtimeVersion: "test-bun",
       zigVersion: "test-zig",
     })
 
@@ -371,7 +382,8 @@ describe("CLI", () => {
       stderr,
       cases: [fakeCase({}, { name: "first" }), fakeCase({}, { name: "second" })],
       options: { ...options, clock: () => now++, maxBatchIterations: 1 },
-      bunVersion: "test-bun",
+      jsRuntime: "node",
+      runtimeVersion: "test-node",
       zigVersion: "test-zig",
     })
 
@@ -380,12 +392,14 @@ describe("CLI", () => {
     expect(stdout.text.trim().split("\n")).toHaveLength(1)
     const document = JSON.parse(stdout.text)
     expect(document).toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       benchmark_suite: "core-default",
       protocol_version: 1,
-      bun_version: "test-bun",
+      js_runtime: "node",
+      runtime_version: "test-node",
       zig_version: "test-zig",
     })
+    expect(document).not.toHaveProperty("bun_version")
     expect(document.manifest.cases.map(({ name }: BenchmarkCase) => name)).toEqual(["first", "second"])
     expect(document.results.map(({ name }: BenchmarkCase) => name)).toEqual(["first", "second"])
   })

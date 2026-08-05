@@ -1,5 +1,7 @@
-#!/usr/bin/env bun
-
+import { spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
+import { resolve } from "node:path"
+import type { Writable } from "node:stream"
 import { fileURLToPath } from "node:url"
 
 import { defaultBenchmarkCases } from "./js-benchmark-cases.js"
@@ -29,7 +31,8 @@ interface CliDependencies {
   options?: HarnessOptions
   stdout: OutputWriter
   stderr: OutputWriter
-  bunVersion?: string
+  jsRuntime?: "bun" | "node"
+  runtimeVersion?: string
   zigVersion?: string
 }
 
@@ -47,11 +50,13 @@ export async function runBenchmarkCli(args: readonly string[], dependencies: Cli
   try {
     const options = dependencies.options ?? PROTOCOL
     const { manifest, results } = await runBenchmarks(dependencies.cases ?? defaultBenchmarkCases, options)
+    const runtime = dependencies.jsRuntime ?? detectRuntime()
     const document = {
-      schema_version: 1,
+      schema_version: 2,
       benchmark_suite: "core-default",
       protocol_version: options.protocolVersion,
-      bun_version: dependencies.bunVersion ?? Bun.version,
+      js_runtime: runtime,
+      runtime_version: dependencies.runtimeVersion ?? readRuntimeVersion(runtime),
       zig_version: dependencies.zigVersion ?? readZigVersion(),
       manifest: { hash: manifestHash(manifest), ...manifest },
       results,
@@ -66,20 +71,44 @@ export async function runBenchmarkCli(args: readonly string[], dependencies: Cli
 }
 
 function readZigVersion(): string {
-  const process = Bun.spawnSync(["zig", "version"], {
-    cwd: fileURLToPath(new URL("../zig", import.meta.url)),
-    stdout: "pipe",
-    stderr: "pipe",
+  const sourceZigDirectory = fileURLToPath(new URL("../zig", import.meta.url))
+  const zigDirectory = existsSync(sourceZigDirectory) ? sourceZigDirectory : resolve("src/zig")
+  const child = spawnSync("zig", ["version"], {
+    cwd: zigDirectory,
+    encoding: "utf8",
   })
-  if (process.exitCode !== 0) throw new Error(`zig version failed: ${process.stderr.toString().trim()}`)
-  const version = process.stdout.toString().trim()
+  if (child.error) throw new Error(`zig version failed: ${child.error.message}`, { cause: child.error })
+  if (child.status !== 0) throw new Error(`zig version failed: ${child.stderr.trim()}`)
+  const version = child.stdout.trim()
   if (!version) throw new Error("zig version returned an empty version")
   return version
 }
 
-if (import.meta.main) {
-  // Capture protocol writers before any benchmark initializes a renderer.
-  const stdout = Bun.stdout.writer()
-  const stderr = Bun.stderr.writer()
+function detectRuntime(): "bun" | "node" {
+  return typeof process.versions.bun === "string" ? "bun" : "node"
+}
+
+function readRuntimeVersion(runtime: "bun" | "node"): string {
+  if (runtime === "bun") return process.versions.bun!
+  return process.version.startsWith("v") ? process.version.slice(1) : process.version
+}
+
+function createOutputWriter(stream: Writable): OutputWriter {
+  let pendingDrain: Promise<void> = Promise.resolve()
+  return {
+    write(data) {
+      if (!stream.write(data)) pendingDrain = new Promise((resolve) => stream.once("drain", resolve))
+    },
+    flush() {
+      return pendingDrain
+    },
+  }
+}
+
+const isMain = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isMain) {
+  // Capture protocol streams before any benchmark initializes a renderer.
+  const stdout = createOutputWriter(process.stdout)
+  const stderr = createOutputWriter(process.stderr)
   process.exitCode = await runBenchmarkCli(process.argv.slice(2), { stdout, stderr })
 }
