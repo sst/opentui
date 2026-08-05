@@ -578,6 +578,22 @@ describe("NativeImage", () => {
     }
   })
 
+  test("refreshes alpha metadata after materializing an opaque adopted RGBA file", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 4, 5, 6, 255))
+
+    const image = NativeImage.adoptRgbaFile({ path, width: 2, height: 1 })
+    try {
+      expect(image.info().hasAlpha).toBe(true)
+      expect([...image.raw().data]).toEqual([1, 2, 3, 255, 4, 5, 6, 255])
+      expect(image.info().hasAlpha).toBe(false)
+    } finally {
+      image.dispose()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test("transfers native RGBA pixels without copying", () => {
     const pixels = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
     const image = NativeImage.fromRgba(pixels, 2, 1)

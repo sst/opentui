@@ -449,7 +449,8 @@ export class NativeImage {
   /**
    * Adopts a raw RGBA8 file without copying its pixels into JavaScript. OpenTUI
    * owns the path after this returns and deletes it after materialization or
-   * disposal; an eligible Kitty render transfers deletion to the terminal.
+   * disposal; a direct local-terminal Kitty render transfers deletion only for protocol-qualified paths in the OS
+   * temporary directory.
    */
   public static adoptRgbaFile(source: RgbaFileSource): NativeImage {
     if (!source || typeof source !== "object") throw new TypeError("source must be an RGBA file descriptor")
@@ -491,7 +492,9 @@ export class NativeImage {
   }
 
   public info(): ImageInfo {
-    this.guard()
+    const result = this.lib.imageGetInfo(this.guard())
+    checkStatus(result.status)
+    this.imageInfo = unpackInfo(result.info)
     return { ...this.imageInfo }
   }
 

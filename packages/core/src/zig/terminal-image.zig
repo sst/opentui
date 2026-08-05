@@ -2,8 +2,9 @@ const std = @import("std");
 const native_image = @import("image.zig");
 
 pub const KittyPixelFormat = enum { auto, rgb, rgba };
+pub const KittyTransmitResult = enum { data, file };
 
-pub fn writeKittyTransmit(writer: anytype, image: *native_image.Image, id: u32, tmux: bool) !void {
+pub fn writeKittyTransmit(writer: anytype, image: *native_image.Image, id: u32, tmux: bool) !KittyTransmitResult {
     return writeKittyTransmitWithFileTransport(writer, image, id, tmux, true);
 }
 
@@ -13,11 +14,17 @@ pub fn writeKittyTransmitWithFileTransport(
     id: u32,
     tmux: bool,
     allow_file_transport: bool,
-) !void {
+) !KittyTransmitResult {
     return writeKittyTransmitFormatWithFileTransport(writer, image, id, tmux, .auto, allow_file_transport);
 }
 
-pub fn writeKittyTransmitFormat(writer: anytype, image: *native_image.Image, id: u32, tmux: bool, requested_format: KittyPixelFormat) !void {
+pub fn writeKittyTransmitFormat(
+    writer: anytype,
+    image: *native_image.Image,
+    id: u32,
+    tmux: bool,
+    requested_format: KittyPixelFormat,
+) !KittyTransmitResult {
     return writeKittyTransmitFormatWithFileTransport(writer, image, id, tmux, requested_format, true);
 }
 
@@ -28,7 +35,7 @@ fn writeKittyTransmitFormatWithFileTransport(
     tmux: bool,
     requested_format: KittyPixelFormat,
     allow_file_transport: bool,
-) !void {
+) !KittyTransmitResult {
     const raw_chunk = 3072;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
@@ -45,8 +52,8 @@ fn writeKittyTransmitFormatWithFileTransport(
                 offset = end;
             }
             if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
-            image.markRawRgbaFileTransferred();
-            return;
+            if (!image.stageRawRgbaFileTransfer()) return error.InvalidImageData;
+            return .file;
         }
     }
     if (requested_format == .auto) {
@@ -69,7 +76,7 @@ fn writeKittyTransmitFormatWithFileTransport(
                 offset = end;
                 first = false;
             }
-            return;
+            return .data;
         }
     }
     const pixels = image.ensurePixels() catch return error.InvalidImageData;
@@ -106,7 +113,7 @@ fn writeKittyTransmitFormatWithFileTransport(
             rgb_offset += chunk_len;
             first = false;
         }
-        return;
+        return .data;
     }
     var offset: usize = 0;
     var first = true;
@@ -126,6 +133,7 @@ fn writeKittyTransmitFormatWithFileTransport(
         offset = end;
         first = false;
     }
+    return .data;
 }
 
 pub fn writeKittyPlacement(

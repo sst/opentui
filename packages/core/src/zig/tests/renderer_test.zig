@@ -20,6 +20,18 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+fn createKittyTemporaryDirectory(allocator: std.mem.Allocator) ![]u8 {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+    const root = std.process.getEnvVarOwned(allocator, "TMPDIR") catch try allocator.dupe(u8, "/tmp");
+    defer allocator.free(root);
+    const name = try std.fmt.allocPrint(allocator, "opentui-tty-graphics-protocol-test-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(name);
+    const directory = try std.fs.path.join(allocator, &.{ root, name });
+    errdefer allocator.free(directory);
+    try std.fs.makeDirAbsolute(directory);
+    return directory;
+}
+
 fn lastSixelFrame(output: []const u8) ![]const u8 {
     const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
     const end = std.mem.indexOfPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
@@ -918,6 +930,25 @@ test "buffered backend grows and commits a complete large frame" {
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
     try std.testing.expectEqual(oversized.len, memory.bytes.items.len);
     try std.testing.expectEqualSlices(u8, oversized, memory.bytes.items);
+}
+
+test "Kitty file transport is limited to renderer-owned stdout" {
+    var custom_output = TestMemoryOutput.init(std.testing.allocator);
+    defer custom_output.deinit();
+    var custom = renderer.OutputBackend{ .buffered = try renderer.BufferedBackend.create(
+        std.testing.allocator,
+        custom_output.bufferedOutput(),
+    ) };
+    defer custom.deinit();
+    try std.testing.expect(!custom.allowsKittyFileTransport());
+
+    var memory = renderer.OutputBackend{ .buffered = try renderer.BufferedBackend.createMemory(std.testing.allocator) };
+    defer memory.deinit();
+    try std.testing.expect(!memory.allowsKittyFileTransport());
+
+    var stdout = renderer.OutputBackend{ .buffered = try renderer.BufferedBackend.createStdout(std.testing.allocator) };
+    defer stdout.deinit();
+    try std.testing.expectEqual(std.fs.File.stdout().isTty(), stdout.allowsKittyFileTransport());
 }
 
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
@@ -4226,55 +4257,23 @@ test "renderer transmits small kitty images at native size" {
     try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
 }
 
-test "renderer passes unchanged adopted RGBA files to kitty" {
+test "local custom output materializes adopted RGBA files instead of transferring ownership" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
     var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
     defer test_renderer.deinit();
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &([_]u8{ 9, 8, 7, 255 } ** 64) });
-    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(directory);
-    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
-    defer std.testing.allocator.free(path);
-    const value = try image.adoptRgbaFile(std.testing.allocator, path, 8, 8, 32);
-    const value_handle = try handles.insert(.image, @ptrCast(value));
+    const directory = try createKittyTemporaryDirectory(std.testing.allocator);
     defer {
-        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
-        token.ptr.deinit();
-        handles.finishDestroy(token.handle);
+        std.fs.deleteTreeAbsolute(directory) catch {};
+        std.testing.allocator.free(directory);
     }
-    test_renderer.renderer.terminal.caps.kitty_graphics = true;
-
-    const next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
-    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,t=t,s=8,v=8") != null);
-    const encoded_path_len = std.base64.standard.Encoder.calcSize(path.len);
-    const encoded_path = try std.testing.allocator.alloc(u8, encoded_path_len);
-    defer std.testing.allocator.free(encoded_path);
-    _ = std.base64.standard.Encoder.encode(encoded_path, path);
-    try std.testing.expect(std.mem.indexOf(u8, output, encoded_path) != null);
-    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
-}
-
-test "remote renderer sends adopted RGBA pixels inline instead of publishing a local path" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    defer link.deinitGlobalLinkPool();
-    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
-    defer test_renderer.deinit();
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
     const pixels = [_]u8{ 9, 8, 7, 128 } ** 64;
-    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &pixels });
-    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(directory);
     const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
     defer std.testing.allocator.free(path);
+    const file = try std.fs.createFileAbsolute(path, .{});
+    try file.writeAll(&pixels);
+    file.close();
     const value = try image.adoptRgbaFile(std.testing.allocator, path, 8, 8, 32);
     const value_handle = try handles.insert(.image, @ptrCast(value));
     defer {
@@ -4282,8 +4281,6 @@ test "remote renderer sends adopted RGBA pixels inline instead of publishing a l
         token.ptr.deinit();
         handles.finishDestroy(token.handle);
     }
-    test_renderer.renderer.terminal.remote = true;
-    test_renderer.renderer.terminal.caps.remote = true;
     test_renderer.renderer.terminal.caps.kitty_graphics = true;
 
     const next = test_renderer.renderer.getNextBuffer();
@@ -4297,7 +4294,116 @@ test "remote renderer sends adopted RGBA pixels inline instead of publishing a l
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqualSlices(u8, &pixels, transmitted);
-    try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
+    try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(path, .{}));
+}
+
+test "failed terminal frame rolls back adopted-file transfer before a successful retry" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    const width: u32 = 4096;
+    var test_renderer = try TestRenderer.create(std.testing.allocator, width, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+    test_renderer.renderer.backend.buffered.kittyFileTransport = true;
+
+    const directory = try createKittyTemporaryDirectory(std.testing.allocator);
+    defer {
+        std.fs.deleteTreeAbsolute(directory) catch {};
+        std.testing.allocator.free(directory);
+    }
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const file = try std.fs.createFileAbsolute(path, .{});
+    try file.writeAll(&[_]u8{ 9, 8, 7, 128 });
+    file.close();
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    var handle_live = true;
+    defer if (handle_live) {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    for (1..width) |x| {
+        next.set(@intCast(x), 0, .{
+            .char = 'X',
+            .fg = ansi.rgbColor(255, 255, 255, 255),
+            .bg = ansi.rgbColor(0, 0, 0, 255),
+            .attributes = 0,
+        });
+    }
+
+    const backend = &test_renderer.renderer.backend.buffered;
+    std.testing.allocator.free(backend.outputA);
+    backend.outputA = try std.testing.allocator.alloc(u8, 1024);
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0, .resize_fail_index = 0 });
+    backend.allocator = failing.allocator();
+    const failed_status = test_renderer.renderer.render(true);
+    backend.allocator = std.testing.allocator;
+
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, failed_status);
+    try std.fs.accessAbsolute(path, .{});
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "t=t") != null);
+
+    const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+    token.ptr.deinit();
+    handles.finishDestroy(token.handle);
+    handle_live = false;
+    // The collecting writer stands in for a terminal, so committed deletion ownership leaves the fixture in place.
+    try std.fs.accessAbsolute(path, .{});
+}
+
+test "remote renderer sends adopted RGBA pixels inline instead of publishing a local path" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    const directory = try createKittyTemporaryDirectory(std.testing.allocator);
+    defer {
+        std.fs.deleteTreeAbsolute(directory) catch {};
+        std.testing.allocator.free(directory);
+    }
+    const pixels = [_]u8{ 9, 8, 7, 128 } ** 64;
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const file = try std.fs.createFileAbsolute(path, .{});
+    try file.writeAll(&pixels);
+    file.close();
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 8, 8, 32);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.remote = true;
+    test_renderer.renderer.terminal.caps.remote = true;
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+    test_renderer.renderer.backend.buffered.kittyFileTransport = true;
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "t=t") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,s=8,v=8") != null);
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, &pixels, transmitted);
+    try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(path, .{}));
 }
 
 test "renderer transmits only cropped kitty source pixels" {

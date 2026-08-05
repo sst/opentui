@@ -190,6 +190,7 @@ pub const CliRenderer = struct {
     nextRenderBuffer: *OptimizedBuffer,
     currentImages: std.ArrayListUnmanaged(CommittedImage) = .{},
     pendingImages: std.ArrayListUnmanaged(CommittedImage) = .{},
+    pendingRawFileTransfers: std.ArrayListUnmanaged(*native_image.Image) = .{},
     imageDirty: std.ArrayListUnmanaged(ImageDirty) = .{},
     imageIdSalt: u32,
     kittyHistoryNextImageId: ?u32,
@@ -448,6 +449,7 @@ pub const CliRenderer = struct {
         // terminate-only signal (no renderRequested) so the thread exits
         // without replaying the stale last-frame buffer on top of the
         // freshly-restored terminal.
+        self.rollbackPendingRawFileTransfers();
         self.performShutdownSequence();
         self.backend.deinit();
         self.terminal.deinit();
@@ -456,6 +458,7 @@ pub const CliRenderer = struct {
         self.nextRenderBuffer.deinit();
         self.currentImages.deinit(self.allocator);
         self.pendingImages.deinit(self.allocator);
+        self.pendingRawFileTransfers.deinit(self.allocator);
         self.imageDirty.deinit(self.allocator);
 
         // Free stat sample arrays
@@ -847,12 +850,14 @@ pub const CliRenderer = struct {
     }
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
+        self.rollbackPendingRawFileTransfers();
         self.pendingImages.clearRetainingCapacity();
         self.clearSkippedFrameState();
         return .skipped;
     }
 
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
+        self.rollbackPendingRawFileTransfers();
         self.pendingImages.clearRetainingCapacity();
         @memset(self.nextHitGrid, 0);
         self.force_full_repaint = true;
@@ -864,6 +869,34 @@ pub const CliRenderer = struct {
         self.lastCursorVisible = null;
         self.mousePointerStateValid = false;
         return .failed;
+    }
+
+    fn beginRawFileTransferFrame(self: *CliRenderer) void {
+        // Defensive rollback also covers abandonment of an unfinished split
+        // batch before a new frame starts.
+        self.rollbackPendingRawFileTransfers();
+    }
+
+    fn trackRawFileTransfer(
+        self: *CliRenderer,
+        value: *native_image.Image,
+        result: terminal_image.KittyTransmitResult,
+    ) !void {
+        if (result != .file) return;
+        self.pendingRawFileTransfers.append(self.allocator, value) catch |err| {
+            value.rollbackRawRgbaFileTransfer();
+            return err;
+        };
+    }
+
+    fn commitPendingRawFileTransfers(self: *CliRenderer) void {
+        for (self.pendingRawFileTransfers.items) |value| value.commitRawRgbaFileTransfer();
+        self.pendingRawFileTransfers.clearRetainingCapacity();
+    }
+
+    fn rollbackPendingRawFileTransfers(self: *CliRenderer) void {
+        for (self.pendingRawFileTransfers.items) |value| value.rollbackRawRgbaFileTransfer();
+        self.pendingRawFileTransfers.clearRetainingCapacity();
     }
 
     fn commitPendingHitGrid(self: *CliRenderer) void {
@@ -917,6 +950,7 @@ pub const CliRenderer = struct {
         self.renderDebugOverlay();
         const start_split_state = self.splitFrameState();
         self.imageRenderFailed = false;
+        self.beginRawFileTransferFrame();
 
         // `inline else` monomorphizes the writer type per variant — one
         // dispatch site, zero vtable cost.
@@ -937,6 +971,7 @@ pub const CliRenderer = struct {
             self.restoreSplitFrameState(start_split_state);
             return result;
         }
+        self.commitPendingRawFileTransfers();
         self.commitPendingHitGrid();
         self.commitPendingImageState();
 
@@ -1094,6 +1129,7 @@ pub const CliRenderer = struct {
             self.lastRenderTime = now;
             self.renderDebugOverlay();
             self.imageRenderFailed = false;
+            self.beginRawFileTransferFrame();
 
             var write_status: output.WriteStatus = .ok;
             var result_status: RenderStatus = .rendered;
@@ -1133,6 +1169,7 @@ pub const CliRenderer = struct {
                         if (status == .failed or self.imageRenderFailed) {
                             result_status = self.finishFailedFrame();
                         } else {
+                            self.commitPendingRawFileTransfers();
                             self.commitPendingHitGrid();
                             self.commitPendingImageState();
                             result_status = status;
@@ -1193,6 +1230,7 @@ pub const CliRenderer = struct {
                     if (status == .failed or self.imageRenderFailed) {
                         result_status = self.finishFailedFrame();
                     } else {
+                        self.commitPendingRawFileTransfers();
                         self.commitPendingHitGrid();
                         self.commitPendingImageState();
                         result_status = status;
@@ -1376,13 +1414,14 @@ pub const CliRenderer = struct {
     ) !void {
         const transmit = try self.kittyPlacementTransmit(placement);
         defer if (transmit.owned) transmit.image.deinit();
-        try terminal_image.writeKittyTransmitWithFileTransport(
+        const result = try terminal_image.writeKittyTransmitWithFileTransport(
             writer,
             transmit.image,
             image_id,
             self.terminal.isInTmux(),
-            !self.terminal.remote,
+            self.backend.allowsKittyFileTransport() and !self.terminal.remote,
         );
+        try self.trackRawFileTransfer(transmit.image, result);
         try terminal_image.writeKittyPlacementAtCursor(
             writer,
             image_id,
@@ -1704,6 +1743,7 @@ pub const CliRenderer = struct {
 
         self.renderOffset = next_render_offset;
         self.imageRenderFailed = false;
+        self.beginRawFileTransferFrame();
         // Do not pre-start sync frame here. prepareRenderFrameWithWriter now lazily starts
         // frame output only when something actually changes; this prevents no-op
         // repaint ticks from emitting hide/show cursor and sync envelopes.
@@ -1719,6 +1759,7 @@ pub const CliRenderer = struct {
         }
         const status = renderStatusFromWrite(write_status);
         if (status == .failed or self.imageRenderFailed) return self.finishFailedFrame();
+        self.commitPendingRawFileTransfers();
         self.commitPendingHitGrid();
         self.commitPendingImageState();
         return status;
@@ -2075,13 +2116,14 @@ pub const CliRenderer = struct {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement);
                 defer if (transmit.owned) transmit.image.deinit();
-                try terminal_image.writeKittyTransmitWithFileTransport(
+                const result = try terminal_image.writeKittyTransmitWithFileTransport(
                     writer,
                     transmit.image,
                     image_id,
                     tmux,
-                    !self.terminal.remote,
+                    self.backend.allowsKittyFileTransport() and !self.terminal.remote,
                 );
+                try self.trackRawFileTransfer(transmit.image, result);
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
                 previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
                 previous.?.source_height != placement.source_height)

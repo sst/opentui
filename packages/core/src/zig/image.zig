@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Allocator = std.mem.Allocator;
 var icc_cache_mutex: std.Thread.Mutex = .{};
@@ -150,12 +151,59 @@ pub const RenderProtocol = enum(u32) {
     blocks,
 };
 
+const kitty_temp_marker = "tty-graphics-protocol";
+
+const RawRgbaFileTransferState = enum {
+    owned,
+    staged,
+    transferred,
+};
+
 const RawRgbaFile = struct {
     file: std.fs.File,
     path: []u8,
     stride: u32,
-    transferred: bool = false,
+    kitty_temporary: bool,
+    transfer_state: RawRgbaFileTransferState = .owned,
 };
+
+fn pathIsInside(path: []const u8, root: []const u8) bool {
+    if (root.len == 0 or !std.fs.path.isAbsolute(root)) return false;
+    var root_len = root.len;
+    while (root_len > 1 and root[root_len - 1] == std.fs.path.sep) root_len -= 1;
+    return path.len > root_len and
+        std.mem.eql(u8, path[0..root_len], root[0..root_len]) and
+        path[root_len] == std.fs.path.sep;
+}
+
+fn isKittyTemporaryPath(allocator: Allocator, path: []const u8) bool {
+    if (builtin.os.tag == .windows or std.mem.indexOf(u8, path, kitty_temp_marker) == null) return false;
+    if (pathIsInside(path, "/tmp") or pathIsInside(path, "/dev/shm")) return true;
+    const temporary_directory = std.process.getEnvVarOwned(allocator, "TMPDIR") catch return false;
+    defer allocator.free(temporary_directory);
+    return pathIsInside(path, temporary_directory);
+}
+
+const OpenedRegularFile = struct {
+    file: std.fs.File,
+    size: u64,
+};
+
+fn openRegularFileAbsolute(path: []const u8) !OpenedRegularFile {
+    const file = if (builtin.os.tag == .windows)
+        try std.fs.openFileAbsolute(path, .{})
+    else blk: {
+        var flags: std.posix.O = .{ .ACCMODE = .RDONLY };
+        if (@hasField(std.posix.O, "NONBLOCK")) flags.NONBLOCK = true;
+        if (@hasField(std.posix.O, "CLOEXEC")) flags.CLOEXEC = true;
+        const fd = try std.posix.open(path, flags, 0);
+        break :blk std.fs.File{ .handle = fd };
+    };
+    errdefer file.close();
+    const stat = try file.stat();
+    if (stat.kind != .file) return error.MalformedInput;
+    return .{ .file = file, .size = stat.size };
+}
 
 pub const Image = struct {
     allocator: Allocator,
@@ -235,9 +283,12 @@ pub const Image = struct {
                 const read = try source.file.preadAll(pixels[destination_offset..][0..row_bytes], source_offset);
                 if (read != row_bytes) return error.MalformedInput;
             }
+            const release_source = source.transfer_state != .staged;
             self.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(pixels));
             self.pixels = pixels;
-            self.releaseRawRgbaFile(true);
+            // Keep a staged path and its descriptor alive until the renderer
+            // either commits terminal deletion or rolls ownership back.
+            if (release_source) self.releaseRawRgbaFile(true);
             return pixels;
         }
         if (self.pixels.len != 0 or self.metadata.format != @intFromEnum(Format.png) or self.metadata.orientation != 1) {
@@ -269,12 +320,29 @@ pub const Image = struct {
 
     pub fn rawRgbaFilePath(self: *const Image) ?[]const u8 {
         const source = self.raw_rgba_file orelse return null;
-        if (source.transferred or source.stride != self.width() * 4) return null;
+        if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return null;
         return source.path;
     }
 
-    pub fn markRawRgbaFileTransferred(self: *Image) void {
-        if (self.raw_rgba_file) |*source| source.transferred = true;
+    pub fn stageRawRgbaFileTransfer(self: *Image) bool {
+        if (self.raw_rgba_file) |*source| {
+            if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return false;
+            source.transfer_state = .staged;
+            return true;
+        }
+        return false;
+    }
+
+    pub fn commitRawRgbaFileTransfer(self: *Image) void {
+        if (self.raw_rgba_file) |*source| {
+            if (source.transfer_state == .staged) source.transfer_state = .transferred;
+        }
+    }
+
+    pub fn rollbackRawRgbaFileTransfer(self: *Image) void {
+        if (self.raw_rgba_file) |*source| {
+            if (source.transfer_state == .staged) source.transfer_state = .owned;
+        }
     }
 
     pub fn relinquishRawRgbaFile(self: *Image) void {
@@ -284,7 +352,7 @@ pub const Image = struct {
     fn releaseRawRgbaFile(self: *Image, delete_owned: bool) void {
         if (self.raw_rgba_file) |source| {
             source.file.close();
-            if (delete_owned and !source.transferred) std.fs.deleteFileAbsolute(source.path) catch {};
+            if (delete_owned and source.transfer_state != .transferred) std.fs.deleteFileAbsolute(source.path) catch {};
             self.allocator.free(source.path);
             self.raw_rgba_file = null;
         }
@@ -834,16 +902,22 @@ pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height:
     const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
 
-    const file = try std.fs.openFileAbsolute(path, .{});
+    const opened = try openRegularFileAbsolute(path);
+    const file = opened.file;
     errdefer file.close();
-    if ((try file.stat()).size != required) return error.MalformedInput;
+    if (opened.size != required) return error.MalformedInput;
     const owned_path = try allocator.dupe(u8, path);
     errdefer allocator.free(owned_path);
     const image = try allocator.create(Image);
     image.* = .{
         .allocator = allocator,
         .pixels = &.{},
-        .raw_rgba_file = .{ .file = file, .path = owned_path, .stride = stride },
+        .raw_rgba_file = .{
+            .file = file,
+            .path = owned_path,
+            .stride = stride,
+            .kitty_temporary = isKittyTemporaryPath(allocator, path),
+        },
         .metadata = .{
             .width = width,
             .height = height,

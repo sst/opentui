@@ -217,7 +217,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
+            _ = try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -233,7 +233,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             var counting: CountingWriter = .{};
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
+            _ = try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
             stats.record(timer.read());
         }
         try appendResult(allocator, results, names[2], stats, null);
@@ -269,7 +269,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), cover, 7, false, scenario.format);
+            _ = try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), cover, 7, false, scenario.format);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -296,7 +296,7 @@ fn appendKittyBenchmarks(
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
             const value = try image.createFromRgba(work_allocator, photo_pixels, 576, 1015, 576 * 4);
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), value, 7, false, scenario.format);
+            _ = try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), value, 7, false, scenario.format);
             value.deinit();
             stats.record(timer.read());
         }
@@ -380,20 +380,22 @@ fn appendKittyRawRgbaFileBenchmarks(
             .pattern = .photo,
         });
 
-        const relative_path = try std.fmt.allocPrint(
+        const temporary_root = std.process.getEnvVarOwned(work_allocator, "TMPDIR") catch try work_allocator.dupe(u8, "/tmp");
+        defer work_allocator.free(temporary_root);
+        const temporary_name = try std.fmt.allocPrint(
             work_allocator,
-            ".zig-cache/raw-rgba-benchmark-{d}.rgba",
+            "opentui-tty-graphics-protocol-benchmark-{d}.rgba",
             .{std.time.nanoTimestamp()},
         );
-        defer work_allocator.free(relative_path);
-        defer std.fs.cwd().deleteFile(relative_path) catch {};
+        defer work_allocator.free(temporary_name);
+        const absolute_path = try std.fs.path.join(work_allocator, &.{ temporary_root, temporary_name });
+        defer work_allocator.free(absolute_path);
+        defer std.fs.deleteFileAbsolute(absolute_path) catch {};
         {
-            const file = try std.fs.cwd().createFile(relative_path, .{});
+            const file = try std.fs.createFileAbsolute(absolute_path, .{});
             defer file.close();
             try file.writeAll(pixels);
         }
-        const absolute_path = try std.fs.cwd().realpathAlloc(work_allocator, relative_path);
-        defer work_allocator.free(absolute_path);
 
         if (run_inline) {
             var stats: bench_utils.BenchStats = .{};
@@ -410,7 +412,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                         scenario.width * 4,
                     );
                     defer value.deinit();
-                    try terminal_image.writeKittyTransmitFormat(&counting, value, 7, false, .rgba);
+                    _ = try terminal_image.writeKittyTransmitFormat(&counting, value, 7, false, .rgba);
                 }
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
@@ -440,7 +442,9 @@ fn appendKittyRawRgbaFileBenchmarks(
                         scenario.width * 4,
                     );
                     defer value.deinit();
-                    try terminal_image.writeKittyTransmit(&counting, value, 7, false);
+                    const result = try terminal_image.writeKittyTransmit(&counting, value, 7, false);
+                    if (result != .file) return error.KittyFileTransportUnavailable;
+                    value.commitRawRgbaFileTransfer();
                 }
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
@@ -460,7 +464,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                 // The producer write is shared by both transports and remains
                 // outside the timed consumer-side measurement.
                 {
-                    const file = try std.fs.cwd().createFile(relative_path, .{});
+                    const file = try std.fs.createFileAbsolute(absolute_path, .{});
                     defer file.close();
                     try file.writeAll(pixels);
                 }
@@ -475,7 +479,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                         scenario.width * 4,
                     );
                     defer value.deinit();
-                    try terminal_image.writeKittyTransmitWithFileTransport(&counting, value, 7, false, false);
+                    _ = try terminal_image.writeKittyTransmitWithFileTransport(&counting, value, 7, false, false);
                 }
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
@@ -517,13 +521,13 @@ fn appendKittyPngBenchmarks(
         var output: std.ArrayList(u8) = .empty;
         defer output.deinit(work_allocator);
         try output.ensureTotalCapacity(work_allocator, @max(encoded.len, decoded.pixels.len) * 4 / 3 + 8192);
-        try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+        _ = try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
         var stats: bench_utils.BenchStats = .{};
         var checksum: usize = 0;
         for (0..50) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+            _ = try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
             stats.record(timer.read());
             checksum +%= output.items.len + output.items[output.items.len / 2];
         }
