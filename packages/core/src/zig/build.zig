@@ -33,7 +33,7 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
-const GHOSTTY_VT_VERSION = "0.1.0-dev+74d0c72f";
+const GHOSTTY_VT_VERSION = "0.1.0-dev+b988efcf";
 
 const YOGA_CXX_FLAGS = [_][]const u8{
     "-std=c++20",

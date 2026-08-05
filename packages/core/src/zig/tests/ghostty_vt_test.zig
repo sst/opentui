@@ -3,7 +3,7 @@ const ghostty_vt = @import("../ghostty-vt.zig");
 
 test "Ghostty VT dependency parses and formats terminal output" {
     const alloc = std.testing.allocator;
-    var terminal: ghostty_vt.vt.Terminal = try .init(alloc, .{
+    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, alloc, .{
         .cols = 16,
         .rows = 4,
     });
