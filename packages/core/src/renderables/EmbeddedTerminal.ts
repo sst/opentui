@@ -150,7 +150,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    if (!this.handle || !this.visible || this.isDestroyed) return
+    if (!this.handle || !this.frameBuffer || !this.visible || this.isDestroyed) return
     this.lib.embeddedTerminalCompose(this.handle, buffer.ptr, 0, 0)
     if (!this.focused) return
     const cursor = this.lib.embeddedTerminalCursor(this.handle)
