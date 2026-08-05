@@ -365,6 +365,8 @@ fn applyDependencies(
         if (b.lazyDependency("ghostty", .{
             .target = target,
             .optimize = .ReleaseFast,
+            // Enable once OpenTUI uses Ghostty VT at runtime. Until then,
+            // Highway and simdutf only add binary size and exported symbols.
             .simd = false,
             .@"emit-lib-vt" = true,
             .@"emit-xcframework" = false,
