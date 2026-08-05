@@ -1,0 +1,183 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { createTestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
+import { KeyEvent } from "../lib/KeyHandler.js"
+import { resolveRenderLib } from "../zig.js"
+import { EmbeddedTerminalRenderable } from "./EmbeddedTerminal.js"
+
+describe("EmbeddedTerminalRenderable", () => {
+  let setup: TestRendererSetup
+
+  beforeEach(async () => {
+    setup = await createTestRenderer({ width: 30, height: 8 })
+  })
+
+  afterEach(() => setup.renderer.destroy())
+
+  test("creates native state from the statically linked runtime", () => {
+    const lib = resolveRenderLib()
+    const handle = lib.createEmbeddedTerminal({ cols: 10, rows: 2 })
+    expect(handle).toBeTruthy()
+    lib.destroyEmbeddedTerminal(handle)
+  })
+
+  test("renders VT output and preserves it across clean frames", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("hello \x1b[1;32mworld\x1b[0m\r\nwide: 界")
+
+    await setup.renderOnce()
+    const first = setup.captureCharFrame()
+    expect(first).toContain("hello world")
+    expect(first).toContain("wide: 界")
+
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toBe(first)
+  })
+
+  test("encodes keys and bracketed paste", () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[?2004h")
+
+    expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "enter", sequence: "\r" })))).toBe("\r")
+    expect(new TextDecoder().decode(terminal.encodePaste(new TextEncoder().encode("one\ntwo")))).toBe(
+      "\x1b[200~one\ntwo\x1b[201~",
+    )
+    expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "😀", sequence: "😀" })))).toBe("😀")
+    expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "space", sequence: " " })))).toBe(" ")
+    expect(
+      new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "a", sequence: "A", shift: true, raw: "A" }))),
+    ).toBe("A")
+
+    terminal.write("\x1b[>19u")
+    const longText = "x".repeat(2048)
+    expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: longText, sequence: longText })))).toBe(
+      longText,
+    )
+  })
+
+  test("encodes no-button motion and suppresses unavailable pixel coordinates", () => {
+    const lib = resolveRenderLib()
+    const handle = lib.createEmbeddedTerminal({ cols: 20, rows: 4 })
+    try {
+      lib.embeddedTerminalWrite(handle, "\x1b[?1003h\x1b[?1006h")
+      const motion = lib.embeddedTerminalEncodeMouse(handle, {
+        action: "motion",
+        x: 1,
+        y: 1,
+      })
+      expect(new TextDecoder().decode(motion)).toBe("\x1b[<35;2;2M")
+
+      lib.embeddedTerminalWrite(handle, "\x1b[?1016h")
+      expect(
+        lib.embeddedTerminalEncodeMouse(handle, {
+          action: "motion",
+          x: 1,
+          y: 1,
+        }),
+      ).toHaveLength(0)
+    } finally {
+      lib.destroyEmbeddedTerminal(handle)
+    }
+  })
+
+  test("resizes and destroys native state idempotently", async () => {
+    const sizes: Array<[number, number]> = []
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 10,
+      height: 2,
+      onTerminalResize: (cols, rows) => sizes.push([cols, rows]),
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("abcdefghij")
+    await setup.renderOnce()
+
+    terminal.width = 5
+    terminal.height = 3
+    await setup.renderOnce()
+    expect(terminal.width).toBe(5)
+    expect(terminal.height).toBe(3)
+    expect(sizes.some(([cols, rows]) => cols === 5 && rows === 3)).toBe(true)
+
+    terminal.destroy()
+    terminal.destroy()
+    expect(terminal.isDestroyed).toBe(true)
+  })
+
+  test("rejects dimensions that cannot cross the native ABI", () => {
+    expect(() => new EmbeddedTerminalRenderable(setup.renderer, { cols: 0, rows: 24 })).toThrow(
+      "columns must be an integer between 1 and 65535",
+    )
+    expect(
+      () => new EmbeddedTerminalRenderable(setup.renderer, { cols: 80, rows: 24, maxScrollback: 0x1_0000_0000 }),
+    ).toThrow("maxScrollback must be an integer between 0 and 4294967295")
+  })
+
+  test("cleans up focus and native state when the data callback throws", () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onData: () => {
+        throw new Error("write failed")
+      },
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[?1004h")
+
+    expect(() => terminal.focus()).toThrow("write failed")
+    expect(terminal.focused).toBe(false)
+
+    terminal.onData = undefined
+    terminal.focus()
+    terminal.onData = () => {
+      throw new Error("write failed")
+    }
+    terminal.destroy()
+    expect(terminal.isDestroyed).toBe(true)
+  })
+
+  test("forwards Kitty key releases while focused", () => {
+    const output: Uint8Array[] = []
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onData: (data) => output.push(data),
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>3u")
+    terminal.focus()
+
+    setup.renderer.keyInput.processParsedKey({
+      name: "a",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      sequence: "",
+      raw: "",
+      number: false,
+      eventType: "release",
+      source: "kitty",
+      code: "KeyA",
+    })
+
+    expect(new TextDecoder().decode(output.at(-1))).toBe("\x1b[97;1:3u")
+  })
+})
+
+function keyEvent(
+  options: Pick<ConstructorParameters<typeof KeyEvent>[0], "name" | "sequence"> &
+    Partial<ConstructorParameters<typeof KeyEvent>[0]>,
+): KeyEvent {
+  return new KeyEvent({
+    ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    raw: options.sequence,
+    number: false,
+    eventType: "press",
+    source: "raw",
+    ...options,
+  })
+}

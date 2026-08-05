@@ -1,11 +1,26 @@
 const std = @import("std");
+const buffer = @import("../buffer.zig");
+const compositor = @import("compositor.zig");
 const ghostty = @import("ghostty.zig");
 
 pub const Error = error{
     InvalidValue,
     ProcessingFailed,
     ResponseOverflow,
-} || std.mem.Allocator.Error;
+} || std.mem.Allocator.Error || buffer.BufferError;
+
+pub const ComposeResult = compositor.Result;
+
+pub const Cursor = struct {
+    x: u16 = 0,
+    y: u16 = 0,
+    has_value: bool = false,
+    visible: bool = false,
+    blinking: bool = false,
+    wide_tail: bool = false,
+    style: u8 = 1,
+    color: ?struct { r: u8, g: u8, b: u8 } = null,
+};
 
 pub const Options = struct {
     cols: u16,
@@ -19,11 +34,13 @@ pub const EmbeddedTerminal = struct {
     allocator: std.mem.Allocator,
     terminal: ghostty.Terminal,
     stream: ghostty.TerminalStream,
+    render_state: ghostty.RenderState = .empty,
     cols: u16,
     rows: u16,
     responses: std.ArrayListUnmanaged(u8) = .empty,
     response_error: ?Error = null,
     mouse_last_cell: ?ghostty.Coordinate = null,
+    force_redraw: bool = true,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: Options) Error!*EmbeddedTerminal {
         if (options.cols == 0 or options.rows == 0) return error.InvalidValue;
@@ -53,6 +70,7 @@ pub const EmbeddedTerminal = struct {
     pub fn deinit(self: *EmbeddedTerminal) void {
         const allocator = self.allocator;
         self.stream.deinit();
+        self.render_state.deinit(allocator);
         self.terminal.deinit(allocator);
         self.responses.deinit(allocator);
         allocator.destroy(self);
@@ -77,6 +95,45 @@ pub const EmbeddedTerminal = struct {
 
     pub fn scroll(self: *EmbeddedTerminal, delta: i32) void {
         self.terminal.scrollViewport(.{ .delta = delta });
+    }
+
+    pub fn invalidate(self: *EmbeddedTerminal) void {
+        self.force_redraw = true;
+    }
+
+    pub fn compose(self: *EmbeddedTerminal, target: *buffer.OptimizedBuffer, x: i32, y: i32) Error!ComposeResult {
+        self.render_state.update(self.allocator, &self.terminal) catch |err| {
+            self.render_state.deinit(self.allocator);
+            self.render_state = .empty;
+            self.force_redraw = true;
+            return err;
+        };
+        if (self.force_redraw) {
+            self.render_state.dirty = .full;
+            self.force_redraw = false;
+        }
+        return compositor.compose(self.allocator, &self.render_state, target, x, y);
+    }
+
+    pub fn cursor(self: *EmbeddedTerminal) Cursor {
+        const state = self.render_state.cursor;
+        const viewport = state.viewport orelse return .{ .visible = state.visible };
+        const cursor_color = self.render_state.colors.cursor orelse self.render_state.colors.foreground;
+        return .{
+            .x = viewport.x,
+            .y = viewport.y,
+            .has_value = true,
+            .visible = state.visible,
+            .blinking = state.blinking,
+            .wide_tail = viewport.wide_tail,
+            .style = switch (state.visual_style) {
+                .bar => 0,
+                .block => 1,
+                .underline => 2,
+                .block_hollow => 3,
+            },
+            .color = .{ .r = cursor_color.r, .g = cursor_color.g, .b = cursor_color.b },
+        };
     }
 
     pub fn encodeKey(self: *EmbeddedTerminal, key: ghostty.Key) Error![]u8 {

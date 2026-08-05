@@ -76,6 +76,7 @@ const emittedAllowlist = [
   ".node-test/src/renderables/Diff.regression.test.js",
   ".node-test/src/renderables/Diff.test.js",
   ".node-test/src/renderables/EditBufferRenderable.test.js",
+  ".node-test/src/renderables/EmbeddedTerminal.test.js",
   ".node-test/src/renderables/Input.test.js",
   ".node-test/src/renderables/Select.test.js",
   ".node-test/src/renderables/Slider.test.js",
