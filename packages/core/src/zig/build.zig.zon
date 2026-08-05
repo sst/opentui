@@ -8,6 +8,11 @@
             .url = "https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz",
             .hash = "uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
         },
+        .ghostty = .{
+            .url = "https://github.com/ghostty-org/ghostty/archive/74d0c72fd9318ad3ab95bfb56f6c2d995e267e2e.tar.gz",
+            .hash = "ghostty-1.3.2-dev-5UdBC48HIgU0iYKZzcmjpJ76Ulg3fI9cIH1hPM1JA6NC",
+            .lazy = true,
+        },
         .yoga = .{
             .url = "git+https://github.com/facebook/yoga#v3.2.1",
             .hash = "N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO",

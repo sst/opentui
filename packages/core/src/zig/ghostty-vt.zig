@@ -1,4 +1,1 @@
-pub const c = @cImport({
-    @cDefine("GHOSTTY_STATIC", "1");
-    @cInclude("ghostty/vt.h");
-});
+pub const vt = @import("ghostty_vt");

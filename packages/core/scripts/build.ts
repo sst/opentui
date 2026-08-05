@@ -5,7 +5,6 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
 import path from "path"
-import { normalizeGhosttyVtRootEnvironment } from "./ghostty-vt-sdk"
 
 interface Variant {
   platform: string
@@ -106,16 +105,9 @@ if (missingRequired.length > 0) {
   process.exit(1)
 }
 
-const runCommand = (
-  command: string,
-  commandArgs: string[],
-  cwd: string,
-  errorMessage: string,
-  env: NodeJS.ProcessEnv = process.env,
-): void => {
+const runCommand = (command: string, commandArgs: string[], cwd: string, errorMessage: string): void => {
   const result: SpawnSyncReturns<Buffer> = spawnSync(command, commandArgs, {
     cwd,
-    env,
     stdio: "inherit",
   })
 
@@ -203,19 +195,7 @@ const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
-  const buildEnv = { ...process.env }
-  const externalGhosttyVtRoot = normalizeGhosttyVtRootEnvironment(buildEnv, rootDir)
-
-  runCommand(
-    "bun",
-    ["scripts/build-ghostty-vt.ts", ...(buildAll ? ["--all"] : [])],
-    rootDir,
-    "Error: Ghostty VT build failed",
-    buildEnv,
-  )
-
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
-  if (externalGhosttyVtRoot) zigArgs.push(`-Dghostty-vt-root=${externalGhosttyVtRoot}`)
   if (buildAll) {
     zigArgs.push("-Dall")
   }
@@ -223,7 +203,7 @@ if (buildNative) {
     zigArgs.push("-Dgpa-safe-stats=true")
   }
 
-  runCommand("zig", zigArgs, join(rootDir, "src", "zig"), "Error: Zig build failed", buildEnv)
+  runCommand("zig", zigArgs, join(rootDir, "src", "zig"), "Error: Zig build failed")
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 

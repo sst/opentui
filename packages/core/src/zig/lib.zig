@@ -21,7 +21,7 @@ const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
 const ghostty_vt_available = @import("ghostty_vt_options").available;
 const ghostty_vt = if (ghostty_vt_available) @import("ghostty-vt.zig") else struct {
-    const c = struct {};
+    const vt = struct {};
 };
 const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
@@ -131,7 +131,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
-    _ = ghostty_vt.c;
+    _ = ghostty_vt.vt;
     _ = native_renderable;
     _ = native_yoga;
     _ = native_image;

@@ -19,7 +19,6 @@
     }
   },
   "scripts": {
-    "build:ghostty-vt": "bun scripts/build-ghostty-vt.ts",
     "build": "bun run build:native && bun run build:lib",
     "build:dev": "bun run build:native:dev && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",

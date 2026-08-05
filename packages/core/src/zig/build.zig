@@ -33,7 +33,7 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
-const DEFAULT_GHOSTTY_VT_ROOT = "../../../../.cache/ghostty-vt/sdk";
+const GHOSTTY_VT_VERSION = "0.1.0-dev+74d0c72f";
 
 const YOGA_CXX_FLAGS = [_][]const u8{
     "-std=c++20",
@@ -335,52 +335,17 @@ fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
     });
 }
 
-fn ghosttyVtOutputName(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
-    const arch = switch (target.result.cpu.arch) {
-        .x86_64 => "x86_64",
-        .aarch64 => "aarch64",
-        else => return null,
-    };
+fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
+    switch (target.result.cpu.arch) {
+        .x86_64, .aarch64 => {},
+        else => return false,
+    }
     return switch (target.result.os.tag) {
-        .linux => if (target.result.abi.isMusl())
-            b.fmt("{s}-linux-musl", .{arch})
-        else if (target.result.abi == .gnu)
-            b.fmt("{s}-linux", .{arch})
-        else
-            null,
-        .macos => b.fmt("{s}-macos", .{arch}),
-        .windows => if (target.result.abi == .gnu) b.fmt("{s}-windows", .{arch}) else null,
-        else => null,
+        .linux => target.result.abi.isMusl() or target.result.abi == .gnu,
+        .macos => true,
+        .windows => target.result.abi == .gnu,
+        else => false,
     };
-}
-
-fn addGhosttyVtDependencies(
-    b: *std.Build,
-    artifact: *std.Build.Step.Compile,
-    target: std.Build.ResolvedTarget,
-    root: []const u8,
-) void {
-    const output_name = ghosttyVtOutputName(b, target) orelse return;
-    const archive_name = if (target.result.os.tag == .windows) "ghostty-vt-static.lib" else "libghostty-vt.a";
-    const include_path = b.pathJoin(&.{ root, "include" });
-    const archive_path = b.pathJoin(&.{ root, "lib", output_name, archive_name });
-
-    if (!pathExists(b.pathJoin(&.{ include_path, "ghostty", "vt.h" })) or !pathExists(archive_path)) {
-        const fail = b.addFail(b.fmt(
-            "Pinned libghostty-vt SDK is incomplete for {s}. Run `bun run build:ghostty-vt` from packages/core.",
-            .{output_name},
-        ));
-        artifact.step.dependOn(&fail.step);
-        return;
-    }
-
-    artifact.addIncludePath(.{ .cwd_relative = include_path });
-    artifact.addObjectFile(.{ .cwd_relative = archive_path });
-    artifact.linkLibC();
-    if (target.result.os.tag == .windows) {
-        artifact.linkSystemLibrary("ntdll");
-        artifact.linkSystemLibrary("kernel32");
-    }
 }
 
 /// Apply dependencies to a module
@@ -392,9 +357,24 @@ fn applyDependencies(
     build_options: *std.Build.Step.Options,
 ) void {
     module.addOptions("build_options", build_options);
+    const ghostty_vt_available = ghosttyVtAvailable(target);
     const ghostty_vt_options = b.addOptions();
-    ghostty_vt_options.addOption(bool, "available", ghosttyVtOutputName(b, target) != null);
+    ghostty_vt_options.addOption(bool, "available", ghostty_vt_available);
     module.addOptions("ghostty_vt_options", ghostty_vt_options);
+    if (ghostty_vt_available) {
+        if (b.lazyDependency("ghostty", .{
+            .target = target,
+            .optimize = .ReleaseFast,
+            .simd = false,
+            .@"emit-lib-vt" = true,
+            .@"emit-xcframework" = false,
+            .@"emit-themes" = false,
+            .i18n = false,
+            .@"lib-version-string" = GHOSTTY_VT_VERSION,
+        })) |ghostty| {
+            module.addImport("ghostty_vt", ghostty.module("ghostty-vt"));
+        }
+    }
 
     // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
@@ -453,27 +433,25 @@ pub fn build(b: *std.Build) void {
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu.2.17').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
-    const ghostty_vt_root = b.option([]const u8, "ghostty-vt-root", "Path to the pinned static libghostty-vt SDK") orelse
-        b.graph.env_map.get("OPENTUI_GHOSTTY_VT_ROOT") orelse DEFAULT_GHOSTTY_VT_ROOT;
     const macos_sdk_path = resolveMacOSSDKPath(b);
     const build_options = b.addOptions();
     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
 
     if (target_option) |target_str| {
         // Build single target
-        buildSingleTarget(b, target_str, optimize, build_options, macos_sdk_path, ghostty_vt_root) catch |err| {
+        buildSingleTarget(b, target_str, optimize, build_options, macos_sdk_path) catch |err| {
             std.debug.print("Error building target '{s}': {}\n", .{ target_str, err });
             std.process.exit(1);
         };
     } else if (build_all) {
         // Build all supported targets
-        buildAllTargets(b, optimize, build_options, macos_sdk_path, ghostty_vt_root) catch |err| {
+        buildAllTargets(b, optimize, build_options, macos_sdk_path) catch |err| {
             std.debug.print("Error building all targets: {}\n", .{err});
             std.process.exit(1);
         };
     } else {
         // Build for native target only (default)
-        buildNativeTarget(b, optimize, build_options, macos_sdk_path, ghostty_vt_root) catch |err| {
+        buildNativeTarget(b, optimize, build_options, macos_sdk_path) catch |err| {
             std.debug.print("Error building native target: {}\n", .{err});
             std.process.exit(1);
         };
@@ -500,7 +478,6 @@ pub fn build(b: *std.Build) void {
     }
     addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
     addYogaDependencies(b, test_artifact);
-    addGhosttyVtDependencies(b, test_artifact, native_target, ghostty_vt_root);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -544,7 +521,6 @@ pub fn build(b: *std.Build) void {
     }
     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
     addYogaDependencies(b, bench_ffi_lib);
-    addGhosttyVtDependencies(b, bench_ffi_lib, native_target, ghostty_vt_root);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
@@ -571,7 +547,6 @@ fn buildAllTargets(
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     macos_sdk_path: ?[]const u8,
-    ghostty_vt_root: []const u8,
 ) !void {
     for (SUPPORTED_TARGETS) |supported_target| {
         try buildTarget(
@@ -582,7 +557,6 @@ fn buildAllTargets(
             optimize,
             build_options,
             macos_sdk_path,
-            ghostty_vt_root,
         );
     }
 }
@@ -592,7 +566,6 @@ fn buildNativeTarget(
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     macos_sdk_path: ?[]const u8,
-    ghostty_vt_root: []const u8,
 ) !void {
     // Find the matching supported target for the native platform
     const native_arch = @tagName(builtin.cpu.arch);
@@ -611,7 +584,6 @@ fn buildNativeTarget(
                 optimize,
                 build_options,
                 macos_sdk_path,
-                ghostty_vt_root,
             );
             return;
         }
@@ -627,7 +599,6 @@ fn buildSingleTarget(
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     macos_sdk_path: ?[]const u8,
-    ghostty_vt_root: []const u8,
 ) !void {
     // Check if it matches a known target, use its output_name
     for (SUPPORTED_TARGETS) |supported_target| {
@@ -640,14 +611,13 @@ fn buildSingleTarget(
                 optimize,
                 build_options,
                 macos_sdk_path,
-                ghostty_vt_root,
             );
             return;
         }
     }
     // Custom target - use target string as output name
     const description = try std.fmt.allocPrint(b.allocator, "Custom target: {s}", .{target_str});
-    try buildTarget(b, target_str, target_str, description, optimize, build_options, macos_sdk_path, ghostty_vt_root);
+    try buildTarget(b, target_str, target_str, description, optimize, build_options, macos_sdk_path);
 }
 
 fn buildTarget(
@@ -658,7 +628,6 @@ fn buildTarget(
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     macos_sdk_path: ?[]const u8,
-    ghostty_vt_root: []const u8,
 ) !void {
     const target_query = try std.Target.Query.parse(.{ .arch_os_abi = zig_target });
     const target = b.resolveTargetQuery(target_query);
@@ -684,7 +653,6 @@ fn buildTarget(
 
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
     addYogaDependencies(b, lib);
-    addGhosttyVtDependencies(b, lib, target, ghostty_vt_root);
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

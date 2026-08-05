@@ -47,10 +47,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build pinned Ghostty VT SDK
-        working-directory: packages/core
-        run: bun run build:ghostty-vt
-
       - name: Run native benchmark smoke tests
         working-directory: packages/core
         run: |

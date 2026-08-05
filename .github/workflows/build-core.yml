@@ -44,12 +44,6 @@ jobs:
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
-      - name: Restore Ghostty VT SDK cache
-        uses: actions/cache@v5
-        with:
-          path: .cache/ghostty-vt
-          key: ghostty-vt-v1-${{ runner.os }}-74d0c72fd9318ad3ab95bfb56f6c2d995e267e2e
-
       - name: Install dependencies
         run: bun install
 
@@ -60,7 +54,7 @@ jobs:
 
       - name: Build custom target without Ghostty VT
         working-directory: packages/core/src/zig
-        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast -Dghostty-vt-root=${{ runner.temp }}/missing-ghostty-vt-sdk
+        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast
 
       - name: Upload native artifacts
         uses: actions/upload-artifact@v7
@@ -114,12 +108,6 @@ jobs:
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
-      - name: Restore Ghostty VT SDK cache
-        uses: actions/cache@v5
-        with:
-          path: .cache/ghostty-vt
-          key: ghostty-vt-v1-${{ runner.os }}-74d0c72fd9318ad3ab95bfb56f6c2d995e267e2e
-
       - name: Install dependencies
         run: bun install
 
@@ -134,10 +122,6 @@ jobs:
           echo "Checking for ${{ matrix.platform }} native library..."
           ls -la packages/core/node_modules/@opentui/
           ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
-
-      - name: Build pinned Ghostty VT SDK
-        working-directory: packages/core
-        run: bun run build:ghostty-vt
 
       - name: Run native tests
         run: |
