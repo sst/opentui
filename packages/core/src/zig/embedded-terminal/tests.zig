@@ -84,7 +84,7 @@ test "embedded terminal bounds parser allocations" {
     @memset(input, 'x');
     @memcpy(input[0..7], "\x1b]52;c;");
     try std.testing.expectError(error.ProcessingFailed, terminal.write(input));
-    try std.testing.expect(terminal.parser_fixed_allocator.end_index <= @import("main.zig").parser_allocation_limit);
+    try std.testing.expect(terminal.parser_allocator.used <= @import("main.zig").parser_allocation_limit);
 }
 
 test "embedded terminal preserves queued responses when the bound is reached" {

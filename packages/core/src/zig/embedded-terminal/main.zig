@@ -16,11 +16,13 @@ pub const Options = struct {
 pub const parser_allocation_limit = 1024 * 1024;
 pub const response_limit = 1024 * 1024;
 
-const TrackingAllocator = struct {
+const BoundedAllocator = struct {
     child: std.mem.Allocator,
+    limit: usize,
+    used: usize = 0,
     failed: bool = false,
 
-    fn allocator(self: *TrackingAllocator) std.mem.Allocator {
+    fn allocator(self: *BoundedAllocator) std.mem.Allocator {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
@@ -32,9 +34,17 @@ const TrackingAllocator = struct {
     };
 
     fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
-        const self: *TrackingAllocator = @ptrCast(@alignCast(ctx));
+        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
+        if (len > self.limit -| self.used) {
+            self.failed = true;
+            return null;
+        }
         const result = self.child.rawAlloc(len, alignment, ret_addr);
-        if (result == null) self.failed = true;
+        if (result) |_| {
+            self.used += len;
+        } else {
+            self.failed = true;
+        }
         return result;
     }
 
@@ -45,8 +55,11 @@ const TrackingAllocator = struct {
         new_len: usize,
         ret_addr: usize,
     ) bool {
-        const self: *TrackingAllocator = @ptrCast(@alignCast(ctx));
-        return self.child.rawResize(memory, alignment, new_len, ret_addr);
+        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
+        if (new_len > memory.len and new_len - memory.len > self.limit -| self.used) return false;
+        if (!self.child.rawResize(memory, alignment, new_len, ret_addr)) return false;
+        self.used = self.used - memory.len + new_len;
+        return true;
     }
 
     fn remap(
@@ -56,13 +69,17 @@ const TrackingAllocator = struct {
         new_len: usize,
         ret_addr: usize,
     ) ?[*]u8 {
-        const self: *TrackingAllocator = @ptrCast(@alignCast(ctx));
-        return self.child.rawRemap(memory, alignment, new_len, ret_addr);
+        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
+        if (new_len > memory.len and new_len - memory.len > self.limit -| self.used) return null;
+        const result = self.child.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
+        self.used = self.used - memory.len + new_len;
+        return result;
     }
 
     fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
-        const self: *TrackingAllocator = @ptrCast(@alignCast(ctx));
+        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
         self.child.rawFree(memory, alignment, ret_addr);
+        self.used -= memory.len;
     }
 };
 
@@ -75,9 +92,7 @@ pub const EmbeddedTerminal = struct {
     responses: std.ArrayListUnmanaged(u8) = .empty,
     response_error: ?Error = null,
     mouse_last_cell: ?ghostty.Coordinate = null,
-    parser_buffer: [parser_allocation_limit]u8 = undefined,
-    parser_fixed_allocator: std.heap.FixedBufferAllocator = undefined,
-    parser_allocator: TrackingAllocator = undefined,
+    parser_allocator: BoundedAllocator = undefined,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) Error!*EmbeddedTerminal {
         if (options.cols == 0 or options.rows == 0) return error.InvalidValue;
@@ -98,8 +113,7 @@ pub const EmbeddedTerminal = struct {
         };
         errdefer self.terminal.deinit(allocator);
 
-        self.parser_fixed_allocator = .init(&self.parser_buffer);
-        self.parser_allocator = .{ .child = self.parser_fixed_allocator.allocator() };
+        self.parser_allocator = .{ .child = allocator, .limit = parser_allocation_limit };
         var handler = self.terminal.vtHandler();
         handler.effects.write_pty = &writePty;
         self.stream = .initAlloc(self.parser_allocator.allocator(), handler);
