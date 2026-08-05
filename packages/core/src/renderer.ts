@@ -3785,6 +3785,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
     this.emit(CliRenderEvents.RESIZE, this.width, this.height)
+    if (this._screenMode === "alternate-screen") this.forceFullRepaintRequested = true
     this.requestRender()
   }
 

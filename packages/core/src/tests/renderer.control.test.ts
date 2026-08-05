@@ -144,6 +144,25 @@ test("resume() forces the next alternate-screen render to fully repaint", async 
   await expectStartedResumeForcesNextRender("alternate-screen")
 })
 
+test("resize() forces the next alternate-screen render to fully repaint", async () => {
+  renderer.destroy()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "alternate-screen",
+  }))
+
+  const renderSpy = spyOn((renderer as any).lib, "render")
+  renderer.resize(80, 20)
+  await renderOnce()
+
+  const lastCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1]
+  expect(lastCall?.[1]).toBe(true)
+  expect((renderer as any).forceFullRepaintRequested).toBe(false)
+
+  renderSpy.mockRestore()
+})
+
 test("stop() transitions to EXPLICIT_STOPPED and stops rendering", () => {
   renderer.start()
   expect(renderer.isRunning).toBe(true)
