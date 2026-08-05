@@ -3,6 +3,7 @@ const vt = @import("../ghostty-vt.zig").vt;
 pub const Terminal = vt.Terminal;
 pub const TerminalStream = vt.TerminalStream;
 pub const Coordinate = vt.Coordinate;
+pub const RenderState = vt.RenderState;
 
 pub const Key = struct {
     action: vt.input.KeyAction = .press,

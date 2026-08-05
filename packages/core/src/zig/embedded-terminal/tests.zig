@@ -1,6 +1,83 @@
 const std = @import("std");
+const ansi = @import("../ansi.zig");
+const buffer = @import("../buffer.zig");
+const gp = @import("../grapheme.zig");
 const EmbeddedTerminal = @import("main.zig").EmbeddedTerminal;
 const ghostty = @import("ghostty.zig");
+
+test "embedded terminal composes dirty rows into an OptimizedBuffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 12, 4, .{ .pool = pool });
+    defer target.deinit();
+    target.clear(ansi.rgbColor(0, 0, 0, 255), null);
+
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 8, .rows = 2 });
+    defer terminal.deinit();
+    try terminal.write("A\x1b[1;32mB\x1b[0m\r\nwide: \xe7\x95\x8c");
+
+    const first = try terminal.compose(target, 2, 1);
+    try std.testing.expectEqual(ghostty.RenderState.Dirty.full, first.dirty);
+    try std.testing.expectEqual(@as(u32, 2), first.rows);
+    try std.testing.expectEqual(@as(u32, 'A'), target.get(2, 1).?.char);
+    try std.testing.expectEqual(@as(u32, 'B'), target.get(3, 1).?.char);
+    try std.testing.expect(target.get(3, 1).?.attributes & ansi.TextAttributes.BOLD != 0);
+    try std.testing.expect(ansi.green(target.get(3, 1).?.fg) > ansi.red(target.get(3, 1).?.fg));
+    try std.testing.expect(gp.isGraphemeChar(target.get(8, 2).?.char));
+    try std.testing.expect(gp.isContinuationChar(target.get(9, 2).?.char));
+
+    const clean = try terminal.compose(target, 2, 1);
+    try std.testing.expectEqual(ghostty.RenderState.Dirty.false, clean.dirty);
+    try std.testing.expectEqual(@as(u32, 0), clean.rows);
+
+    terminal.invalidate();
+    const invalidated = try terminal.compose(target, 1, 0);
+    try std.testing.expectEqual(ghostty.RenderState.Dirty.full, invalidated.dirty);
+    try std.testing.expectEqual(@as(u32, 2), invalidated.rows);
+}
+
+test "embedded terminal redraws changed rows and clips composition" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 5, 2, .{ .pool = pool });
+    defer target.deinit();
+
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 4, .rows = 2 });
+    defer terminal.deinit();
+    try terminal.write("abcd");
+    _ = try terminal.compose(target, -1, 0);
+    try std.testing.expectEqual(@as(u32, 'b'), target.get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'd'), target.get(2, 0).?.char);
+
+    try terminal.write("\x1b[1;2HZ");
+    const partial = try terminal.compose(target, -1, 0);
+    try std.testing.expectEqual(ghostty.RenderState.Dirty.partial, partial.dirty);
+    try std.testing.expectEqual(@as(u32, 1), partial.rows);
+    try std.testing.expectEqual(@as(u32, 'Z'), target.get(0, 0).?.char);
+
+    try terminal.resize(5, 2);
+    const resized = try terminal.compose(target, 0, 0);
+    try std.testing.expectEqual(ghostty.RenderState.Dirty.full, resized.dirty);
+}
+
+test "embedded terminal exposes cursor state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 20, 4, .{ .pool = pool });
+    defer target.deinit();
+
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    defer terminal.deinit();
+    try terminal.write("\x1b[2;3H\x1b[5 q");
+    _ = try terminal.compose(target, 0, 0);
+
+    const cursor = terminal.cursor();
+    try std.testing.expect(cursor.has_value);
+    try std.testing.expect(cursor.visible);
+    try std.testing.expectEqual(@as(u16, 2), cursor.x);
+    try std.testing.expectEqual(@as(u16, 1), cursor.y);
+    try std.testing.expectEqual(@as(u8, 0), cursor.style);
+}
 
 test "embedded terminal supports lifecycle, resize, and viewport scroll" {
     const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 80, .rows = 24 });
@@ -52,11 +129,23 @@ test "embedded terminal encodes long Kitty associated text" {
     const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
     try terminal.write("\x1b[>19u");
+    try std.testing.expectEqual(@as(u5, 19), terminal.terminal.screens.active.kitty_keyboard.current().int());
 
     const text = "x" ** 2048;
     const encoded = try terminal.encodeKey(.{ .key = .unidentified, .utf8 = text });
     defer terminal.freeEncoded(encoded);
     try std.testing.expectEqualStrings(text, encoded);
+}
+
+test "embedded terminal encodes Kitty key releases" {
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    defer terminal.deinit();
+    try terminal.write("\x1b[>3u");
+    try std.testing.expectEqual(@as(u5, 3), terminal.terminal.screens.active.kitty_keyboard.current().int());
+
+    const encoded = try terminal.encodeKey(.{ .action = .release, .key = .key_a, .unshifted_codepoint = 'a' });
+    defer terminal.freeEncoded(encoded);
+    try std.testing.expectEqualStrings("\x1b[97;1:3u", encoded);
 }
 
 test "embedded terminal drains generated PTY responses incrementally" {

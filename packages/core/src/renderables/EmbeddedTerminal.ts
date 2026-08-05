@@ -1,0 +1,317 @@
+import { type RenderableOptions, Renderable } from "../Renderable.js"
+import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
+import { RGBA } from "../lib/RGBA.js"
+import type { RenderContext } from "../types.js"
+import type { MouseEvent } from "../renderer.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import { resolveRenderLib, type EmbeddedTerminalHandle, type EmbeddedTerminalMouse, type RenderLib } from "../zig.js"
+
+export interface EmbeddedTerminalOptions extends RenderableOptions<EmbeddedTerminalRenderable> {
+  cols?: number
+  rows?: number
+  maxScrollback?: number
+  onData?: (data: Uint8Array) => void
+  onTerminalResize?: (cols: number, rows: number) => void
+}
+
+const MOD_SHIFT = 1 << 0
+const MOD_CTRL = 1 << 1
+const MOD_ALT = 1 << 2
+const MOD_SUPER = 1 << 3
+const MOD_CAPS_LOCK = 1 << 4
+const MOD_NUM_LOCK = 1 << 5
+
+export class EmbeddedTerminalRenderable extends Renderable {
+  private readonly lib: RenderLib
+  private handle: EmbeddedTerminalHandle | null = null
+  private _onData?: (data: Uint8Array) => void
+  private _onTerminalResize?: (cols: number, rows: number) => void
+  private keyreleaseHandler: ((key: KeyEvent) => void) | null = null
+
+  constructor(ctx: RenderContext, options: EmbeddedTerminalOptions) {
+    const cols = options.cols ?? (typeof options.width === "number" ? options.width : 80)
+    const rows = options.rows ?? (typeof options.height === "number" ? options.height : 24)
+    super(ctx, {
+      ...options,
+      width: options.width ?? cols,
+      height: options.height ?? rows,
+      buffered: true,
+    })
+    this._focusable = true
+    this._onData = options.onData
+    this._onTerminalResize = options.onTerminalResize
+    this.lib = resolveRenderLib()
+
+    try {
+      this.handle = this.lib.createEmbeddedTerminal({ cols, rows, maxScrollback: options.maxScrollback })
+      this.setupMouse()
+    } catch (error) {
+      this.destroy()
+      throw error
+    }
+  }
+
+  public get onData(): ((data: Uint8Array) => void) | undefined {
+    return this._onData
+  }
+
+  public set onData(value: ((data: Uint8Array) => void) | undefined) {
+    this._onData = value
+  }
+
+  public get onTerminalResize(): ((cols: number, rows: number) => void) | undefined {
+    return this._onTerminalResize
+  }
+
+  public set onTerminalResize(value: ((cols: number, rows: number) => void) | undefined) {
+    this._onTerminalResize = value
+  }
+
+  public write(data: string | Uint8Array): void {
+    if (!this.handle) return
+    this.lib.embeddedTerminalWrite(this.handle, data)
+    try {
+      this.flushResponses()
+    } finally {
+      this.requestRender()
+    }
+  }
+
+  public invalidate(): void {
+    if (!this.handle) return
+    this.lib.embeddedTerminalInvalidate(this.handle)
+    this.requestRender()
+  }
+
+  public encodeKey(key: KeyEvent): Uint8Array {
+    if (!this.handle) return new Uint8Array()
+    const text = textualKey(key)
+    return this.lib.embeddedTerminalEncodeKey(this.handle, {
+      action: key.eventType === "release" ? "release" : key.repeated ? "repeat" : "press",
+      key: physicalKey(key),
+      mods: modifiers(key),
+      text,
+      unshiftedCodepoint: key.baseCode ?? physicalUnshiftedCodepoint(key.code),
+    })
+  }
+
+  public encodePaste(bytes: Uint8Array): Uint8Array {
+    if (!this.handle) return new Uint8Array()
+    return this.lib.embeddedTerminalEncodePaste(this.handle, bytes)
+  }
+
+  public focus(): void {
+    if (this.focused) return
+    super.focus()
+    if (!this.focused) return
+    this.keyreleaseHandler = (key) => this.handleKeyPress(key)
+    this.ctx._internalKeyInput.onInternal("keyrelease", this.keyreleaseHandler)
+    try {
+      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, true) : new Uint8Array())
+    } catch (error) {
+      this.removeKeyreleaseHandler()
+      super.blur()
+      throw error
+    }
+  }
+
+  public blur(): void {
+    if (!this.focused) return
+    try {
+      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, false) : new Uint8Array())
+    } catch {
+      // User callbacks must not prevent focus or native resource cleanup.
+    } finally {
+      this.removeKeyreleaseHandler()
+      super.blur()
+      this._ctx.setCursorPosition(0, 0, false)
+    }
+  }
+
+  public handleKeyPress(key: KeyEvent): boolean {
+    const output = this.encodeKey(key)
+    this.send(output)
+    return output.byteLength > 0
+  }
+
+  public handlePaste(event: PasteEvent): void {
+    this.send(this.encodePaste(event.bytes))
+  }
+
+  protected onResize(width: number, height: number): void {
+    super.onResize(width, height)
+    if (!this.handle || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
+    const cols = Math.min(Math.floor(width), 0xffff)
+    const rows = Math.min(Math.floor(height), 0xffff)
+    this.lib.embeddedTerminalResize(this.handle, cols, rows)
+    this.lib.embeddedTerminalInvalidate(this.handle)
+    this.flushResponses()
+    this._onTerminalResize?.(cols, rows)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    if (!this.handle || !this.visible || this.isDestroyed) return
+    this.lib.embeddedTerminalCompose(this.handle, buffer.ptr, 0, 0)
+    if (!this.focused) return
+    const cursor = this.lib.embeddedTerminalCursor(this.handle)
+    const visible = cursor.visible && cursor.hasValue
+    const cursorX = cursor.wideTail && cursor.x > 0 ? cursor.x - 1 : cursor.x
+    this._ctx.setCursorPosition(this._screenX + cursorX + 1, this._screenY + cursor.y + 1, visible)
+    if (!visible) return
+    this._ctx.setCursorStyle({
+      style: cursor.style === "bar" ? "line" : cursor.style === "underline" ? "underline" : "block",
+      blinking: cursor.blinking,
+    })
+    if (cursor.color) this._ctx.setCursorColor(RGBA.fromInts(cursor.color.r, cursor.color.g, cursor.color.b, 255))
+  }
+
+  protected destroySelf(): void {
+    if (this.handle) {
+      this.lib.destroyEmbeddedTerminal(this.handle)
+      this.handle = null
+    }
+    this._ctx.setCursorPosition(0, 0, false)
+    super.destroySelf()
+  }
+
+  protected onRemove(): void {
+    if (this.focused) this.blur()
+  }
+
+  private setupMouse(): void {
+    const onMouseDown = this.onMouseDown
+    const onMouseUp = this.onMouseUp
+    const onMouseMove = this.onMouseMove
+    const onMouseDrag = this.onMouseDrag
+    const onMouseScroll = this.onMouseScroll
+    this.onMouseDown = (event) => {
+      this.forwardMouse(event, "press")
+      onMouseDown?.(event)
+    }
+    this.onMouseUp = (event) => {
+      this.forwardMouse(event, "release")
+      onMouseUp?.(event)
+    }
+    this.onMouseMove = (event) => {
+      this.forwardMouse(event, "motion")
+      onMouseMove?.(event)
+    }
+    this.onMouseDrag = (event) => {
+      this.forwardMouse(event, "motion")
+      onMouseDrag?.(event)
+    }
+    this.onMouseScroll = (event) => {
+      this.forwardMouse(event, "press")
+      onMouseScroll?.(event)
+    }
+  }
+
+  private forwardMouse(event: MouseEvent, action: EmbeddedTerminalMouse["action"]): void {
+    if (!this.handle) return
+    if (event.type === "down" && event.button === 0) this.focus()
+    const output = this.lib.embeddedTerminalEncodeMouse(this.handle, {
+      action,
+      button: event.type === "move" && !event.isDragging ? undefined : mouseButton(event),
+      mods: modifiers(event.modifiers),
+      x: event.x - this._screenX,
+      y: event.y - this._screenY,
+      anyButtonPressed: event.isDragging === true || event.type === "down",
+    })
+    if (event.type === "scroll" && output.byteLength === 0) {
+      const direction = event.scroll?.direction
+      if (direction !== "up" && direction !== "down") return
+      this.lib.embeddedTerminalScroll(this.handle, direction === "up" ? -3 : 3)
+      this.requestRender()
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (output.byteLength === 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    this.send(output)
+  }
+
+  private flushResponses(): void {
+    if (!this.handle) return
+    this.send(this.lib.embeddedTerminalDrainResponses(this.handle))
+  }
+
+  private removeKeyreleaseHandler(): void {
+    if (!this.keyreleaseHandler) return
+    this.ctx._internalKeyInput.offInternal("keyrelease", this.keyreleaseHandler)
+    this.keyreleaseHandler = null
+  }
+
+  private send(data: Uint8Array): void {
+    if (data.byteLength > 0) this._onData?.(data)
+  }
+}
+
+function modifiers(input: {
+  shift?: boolean
+  ctrl?: boolean
+  alt?: boolean
+  meta?: boolean
+  option?: boolean
+  super?: boolean
+  capsLock?: boolean
+  numLock?: boolean
+}) {
+  let value = 0
+  if (input.shift) value |= MOD_SHIFT
+  if (input.ctrl) value |= MOD_CTRL
+  if (input.alt || input.meta || input.option) value |= MOD_ALT
+  if (input.super) value |= MOD_SUPER
+  if (input.capsLock) value |= MOD_CAPS_LOCK
+  if (input.numLock) value |= MOD_NUM_LOCK
+  return value
+}
+
+function physicalKey(key: KeyEvent) {
+  if (key.code) return key.code
+  return (
+    {
+      backspace: "Backspace",
+      enter: "Enter",
+      return: "Enter",
+      space: "Space",
+      tab: "Tab",
+      delete: "Delete",
+      end: "End",
+      home: "Home",
+      insert: "Insert",
+      pagedown: "PageDown",
+      pageup: "PageUp",
+      down: "ArrowDown",
+      left: "ArrowLeft",
+      right: "ArrowRight",
+      up: "ArrowUp",
+      escape: "Escape",
+    }[key.name.toLowerCase()] ?? ""
+  )
+}
+
+function textualKey(key: KeyEvent) {
+  if (key.sequence.length > 0 && !/[\p{Cc}]/u.test(key.sequence)) return key.sequence
+  if (key.name === "space") return " "
+  if (key.name.length === 0 || /[\p{Cc}]/u.test(key.name)) return
+  if ([...key.name].length === 1 || /[^\x00-\x7f]/.test(key.name)) return key.name
+}
+
+function physicalUnshiftedCodepoint(code: string | undefined) {
+  if (code?.startsWith("Key") && code.length === 4) return code.charCodeAt(3) + 32
+  if (code?.startsWith("Digit") && code.length === 6) return code.charCodeAt(5)
+  return 0
+}
+
+function mouseButton(event: MouseEvent): EmbeddedTerminalMouse["button"] {
+  if (event.type === "scroll") {
+    if (event.scroll?.direction === "up") return "four"
+    if (event.scroll?.direction === "down") return "five"
+    if (event.scroll?.direction === "left") return "six"
+    if (event.scroll?.direction === "right") return "seven"
+    return
+  }
+  return ({ 0: "left", 1: "middle", 2: "right", 4: "four", 5: "five" } as const)[event.button]
+}

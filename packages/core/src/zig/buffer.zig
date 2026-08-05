@@ -1233,6 +1233,32 @@ pub const OptimizedBuffer = struct {
         return self.drawVisibleText(text, x, y, fg, bg, attributes);
     }
 
+    /// Draw one already-segmented grapheme with an authoritative terminal-cell width.
+    pub fn drawGrapheme(
+        self: *OptimizedBuffer,
+        grapheme_bytes: []const u8,
+        cell_width: u8,
+        x: u32,
+        y: u32,
+        fg: RGBA,
+        bg: RGBA,
+        attributes: u32,
+    ) BufferError!void {
+        if (grapheme_bytes.len == 0 or cell_width == 0 or x >= self.width or y >= self.height) return;
+        if (x + cell_width > self.width) return;
+        for (0..cell_width) |offset| {
+            if (!self.isPointInScissor(@intCast(x + offset), @intCast(y))) return;
+        }
+
+        const encoded_char: u32 = if (grapheme_bytes.len == 1 and cell_width == 1 and grapheme_bytes[0] >= 32)
+            grapheme_bytes[0]
+        else blk: {
+            const gid = self.pool.alloc(grapheme_bytes) catch return BufferError.OutOfMemory;
+            break :blk gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
+        };
+        self.set(x, y, makeCell(encoded_char, fg, bg, attributes));
+    }
+
     fn drawVisibleText(
         self: *OptimizedBuffer,
         text: []const u8,
