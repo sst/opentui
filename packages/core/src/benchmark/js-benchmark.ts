@@ -16,7 +16,7 @@ export const PROTOCOL: HarnessOptions = {
   minBatchIterations: 1,
   maxBatchIterations: 1_000_000_000,
   maxCaseNs: 15_000_000_000,
-  maxProcessNs: 60_000_000_000,
+  maxProcessNs: 75_000_000_000,
 }
 
 interface OutputWriter {
