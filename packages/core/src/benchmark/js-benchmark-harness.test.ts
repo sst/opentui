@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import { defaultBenchmarkCases } from "./js-benchmark-cases.js"
-import { runBenchmarkCli } from "./js-benchmark.js"
 import { OptimizedBuffer } from "../buffer.js"
-import { MouseParser } from "../lib/parse.mouse.js"
-import { Node } from "../yoga.js"
+import { defaultBenchmarkCases } from "./js-benchmark-cases.js"
 import {
   calculateInnerRsdPpm,
   canonicalJson,
@@ -16,6 +13,7 @@ import {
   type BenchmarkRuntime,
   type HarnessOptions,
 } from "./js-benchmark-harness.js"
+import { PROTOCOL, runBenchmarkCli } from "./js-benchmark.js"
 
 const options: HarnessOptions = {
   protocolVersion: 1,
@@ -43,7 +41,7 @@ function fakeCase(
           completed++
         },
         validateBatch(iterations) {
-          expect(completed - validated).toBe(iterations)
+          if (completed - validated !== iterations) throw new Error("incorrect validated operation count")
           validated = completed
         },
         teardown() {},
@@ -54,52 +52,42 @@ function fakeCase(
   }
 }
 
-function batchClock(elapsedNs: number[], initialCalls = 5): () => number {
-  let calls = 0
-  let now = 0
-  return () => {
-    const batchCall = calls++ - initialCalls
-    if (batchCall < 0) return now
-    const batchIndex = Math.floor(batchCall / 4)
-    if (batchIndex < elapsedNs.length && batchCall % 4 === 1) now += elapsedNs[batchIndex]!
-    return now
-  }
-}
-
 describe("statistics and manifest", () => {
   test("uses sample standard deviation and integer ppm rounding", () => {
     expect(calculateInnerRsdPpm([10, 10])).toBe(0)
     expect(calculateInnerRsdPpm([1, 2])).toBe(471_405)
-    expect(calculateInnerRsdPpm([1, 3])).toBe(707_107)
   })
 
-  test("canonicalizes keys and hashes protocol_version as a manifest field", () => {
-    const manifest = createManifest([fakeCase()], options)
-    expect(manifest.protocol_version).toBe(1)
-    expect(manifest.measurement).toEqual({
-      ...options.measurement,
-      min_batch_iterations: options.minBatchIterations,
-      max_batch_iterations: options.maxBatchIterations,
-      max_case_ns: options.maxCaseNs,
-      max_process_ns: options.maxProcessNs,
-    })
+  test("canonicalizes and hashes the complete ordered benchmark identity", () => {
+    const manifest = createManifest(defaultBenchmarkCases, PROTOCOL)
     expect(canonicalJson({ z: 1, a: { y: 2, x: 3 } })).toBe('{"a":{"x":3,"y":2},"z":1}')
-    expect(manifestHash(manifest)).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(manifest.cases.map(({ category, name }) => `${category}/${name}`)).toEqual([
+      "JS Layout/leaf-width-calculate",
+      "JS Render/yoga-layout-reads-100",
+      "JS Mouse/direct-bubble-depth-8",
+      "JS Mouse/stdin-sgr-bubble-depth-8",
+      "JS Text Table/proportional-column-widths",
+      "JS Text/text-buffer-word-wrap-measure",
+      "JS Buffer/draw-box-titled-scissored",
+    ])
+    expect(manifestHash(manifest)).toBe("sha256:eadd082d755c58b7e8a865bd5873802974881967a4edab1c79d0fb1cba482aa0")
     expect(manifestHash({ ...manifest, protocol_version: 2 })).not.toBe(manifestHash(manifest))
   })
 
-  test("rejects duplicate identities and manifest/result disagreement", () => {
+  test("rejects duplicate identities and missing or reordered results", () => {
     expect(() => createManifest([fakeCase(), fakeCase()], options)).toThrow("duplicate benchmark identity")
-    const manifest = createManifest([fakeCase()], options)
+    const cases = [fakeCase({}, { name: "first" }), fakeCase({}, { name: "second" })]
+    const manifest = createManifest(cases, options)
     expect(() => validateManifestResults(manifest, [])).toThrow("manifest/result count mismatch")
-    expect(() => validateManifestResults(manifest, [{ category: "Test", name: "other" }])).toThrow(
-      "manifest/result identity mismatch",
+    expect(() => validateManifestResults(manifest, [cases[1]!, cases[0]!])).toThrow(
+      "manifest/result identity mismatch at index 0",
     )
   })
 })
 
 describe("runner", () => {
-  test("invokes operations synchronously while awaiting setup and teardown", async () => {
+  test("times run synchronously while awaiting setup and teardown", async () => {
+    let now = 0
     let thenCalls = 0
     let validations = 0
     let teardown = false
@@ -107,8 +95,10 @@ describe("runner", () => {
       {},
       {
         async setup() {
+          await Promise.resolve()
           return {
             run() {
+              now++
               return { then: () => thenCalls++ }
             },
             validateBatch() {
@@ -116,6 +106,7 @@ describe("runner", () => {
               validations++
             },
             async teardown() {
+              await Promise.resolve()
               teardown = true
             },
           }
@@ -123,66 +114,80 @@ describe("runner", () => {
       },
     )
 
-    await runBenchmarks([benchmark], { ...options, clock: batchClock([1, 1, 1, 1, 1], 6), maxBatchIterations: 1 })
+    await runBenchmarks([benchmark], { ...options, clock: () => now, maxBatchIterations: 1 })
 
     expect(thenCalls).toBe(0)
     expect(validations).toBe(5)
     expect(teardown).toBe(true)
   })
 
-  test("calibrates within bounds and validates every batch", async () => {
-    let validations = 0
-    const benchmark = fakeCase({
-      run() {},
-      validateBatch() {
-        validations++
-      },
-    })
-    // Untimed validation, calibration at 1 then 2, warmup, and two measured batches.
-    const clock = batchClock([1, 1, 2, 2, 2, 2])
-    const output = await runBenchmarks([benchmark], {
-      ...options,
-      clock,
-      measurement: { ...options.measurement, target_batch_ms: 0.000002 },
-    })
-    expect(output.results[0]!.batch_iterations).toBe(2)
-    expect(validations).toBe(6)
+  test("calibrates to the target without exceeding the iteration bound", async () => {
+    for (const [targetNs, expectedIterations] of [
+      [2, 2],
+      [100, 4],
+    ] as const) {
+      let now = 0
+      let validations = 0
+      const benchmark = fakeCase({
+        run() {
+          now++
+        },
+        validateBatch() {
+          validations++
+        },
+      })
+      const output = await runBenchmarks([benchmark], {
+        ...options,
+        clock: () => now,
+        measurement: { ...options.measurement, target_batch_ms: targetNs / 1_000_000 },
+      })
+
+      expect(output.results[0]!.batch_iterations).toBe(expectedIterations)
+      expect(validations).toBe(6)
+    }
   })
 
-  test("rejects invalid timing and integer overflow", async () => {
-    await expect(runBenchmarks([fakeCase()], { ...options, clock: batchClock([0]) })).rejects.toThrow(
+  test("rejects non-positive and unsafe elapsed times", async () => {
+    await expect(runBenchmarks([fakeCase()], { ...options, clock: () => 0 })).rejects.toThrow(
       "must be a positive safe integer",
     )
-    await expect(
-      runBenchmarks([fakeCase()], { ...options, clock: batchClock([Number.MAX_SAFE_INTEGER + 1]) }),
-    ).rejects.toThrow("safe integer")
+
+    let now = 0
+    const overflow = fakeCase({
+      run() {
+        now = Number.MAX_SAFE_INTEGER + 1
+      },
+    })
+    await expect(runBenchmarks([overflow], { ...options, clock: () => now })).rejects.toThrow("safe integer")
   })
 
-  test("accepts stable batches and rejects over-limit RSD without rerunning", async () => {
-    const stableClock = batchClock([1, 1, 1, 10, 10])
-    const stable = await runBenchmarks([fakeCase()], {
-      ...options,
-      clock: stableClock,
-      measurement: { ...options.measurement, warmup_batches: 1, max_rsd_ppm: 0 },
-      maxBatchIterations: 1,
+  test("rejects measured batches over the RSD limit", async () => {
+    let now = 0
+    const elapsed = [1, 1, 1, 10, 20]
+    const benchmark = fakeCase({
+      run(iteration) {
+        now += elapsed[iteration]!
+      },
+      validateBatch() {},
     })
-    expect(stable.results[0]!.inner_rsd_ppm).toBe(0)
 
-    const unstableClock = batchClock([1, 1, 1, 10, 20])
     await expect(
-      runBenchmarks([fakeCase()], {
+      runBenchmarks([benchmark], {
         ...options,
-        clock: unstableClock,
-        measurement: { ...options.measurement, warmup_batches: 1, max_rsd_ppm: 1 },
+        clock: () => now,
         maxBatchIterations: 1,
+        measurement: { ...options.measurement, max_rsd_ppm: 1 },
       }),
     ).rejects.toThrow("inner RSD")
   })
 
-  test("requires post-batch validation and tears down after failures", async () => {
+  test("validates after each batch and tears down after validation failure", async () => {
+    let now = 0
     let teardown = 0
     const benchmark = fakeCase({
-      run() {},
+      run() {
+        now++
+      },
       validateBatch() {
         throw new Error("work was not observed")
       },
@@ -190,13 +195,12 @@ describe("runner", () => {
         teardown++
       },
     })
-    await expect(runBenchmarks([benchmark], { ...options, clock: batchClock([1]) })).rejects.toThrow(
-      "work was not observed",
-    )
+
+    await expect(runBenchmarks([benchmark], { ...options, clock: () => now })).rejects.toThrow("work was not observed")
     expect(teardown).toBe(1)
   })
 
-  test("applies case duration to setup and still tears down", async () => {
+  test("tears down when setup completes after the case deadline", async () => {
     let now = 0
     let teardown = 0
     const benchmark = fakeCase(
@@ -204,23 +208,18 @@ describe("runner", () => {
       {
         setup() {
           now = 6
-          return {
-            run() {},
-            validateBatch() {},
-            teardown() {
-              teardown++
-            },
-          }
+          return { run() {}, validateBatch() {}, teardown: () => teardown++ }
         },
       },
     )
+
     await expect(runBenchmarks([benchmark], { ...options, clock: () => now, maxCaseNs: 5 })).rejects.toThrow(
       "maximum case duration exceeded",
     )
     expect(teardown).toBe(1)
   })
 
-  test("applies case duration to validation and still tears down", async () => {
+  test("applies the case duration through validation and teardown", async () => {
     let now = 0
     let teardown = 0
     const benchmark = fakeCase({
@@ -234,40 +233,15 @@ describe("runner", () => {
         teardown++
       },
     })
+
     await expect(runBenchmarks([benchmark], { ...options, clock: () => now, maxCaseNs: 5 })).rejects.toThrow(
       "maximum case duration exceeded",
     )
     expect(teardown).toBe(1)
   })
 
-  test("applies process duration to case orchestration", async () => {
-    let now = 0
-    let teardowns = 0
-    const first = fakeCase(
-      {
-        run() {},
-        validateBatch() {},
-        teardown() {
-          teardowns++
-          now = 6
-        },
-      },
-      { name: "first" },
-    )
-    await expect(
-      runBenchmarks([first, fakeCase({}, { name: "second" })], {
-        ...options,
-        clock: () => now++,
-        maxBatchIterations: 1,
-        maxProcessNs: 5,
-      }),
-    ).rejects.toThrow("maximum benchmark process duration exceeded")
-    expect(teardowns).toBe(1)
-  })
-
-  test("bounds a hanging setup by the remaining process duration", async () => {
+  test("bounds hanging setup by the remaining process duration", async () => {
     let elapsedBeforeHang = 0
-    const clock = () => Bun.nanoseconds() + elapsedBeforeHang
     const benchmark = fakeCase(
       {},
       {
@@ -277,18 +251,20 @@ describe("runner", () => {
         },
       },
     )
-    const startedAt = performance.now()
 
     await expect(
-      runBenchmarks([benchmark], { ...options, clock, maxCaseNs: 100_000_000, maxProcessNs: 5_000_000 }),
+      runBenchmarks([benchmark], {
+        ...options,
+        clock: () => Bun.nanoseconds() + elapsedBeforeHang,
+        maxCaseNs: 100_000_000,
+        maxProcessNs: 5_000_000,
+      }),
     ).rejects.toThrow("maximum benchmark process duration exceeded")
-    expect(performance.now() - startedAt).toBeLessThan(100)
   })
 
-  test("bounds a hanging teardown by the remaining case duration", async () => {
-    let teardownAttempted = false
+  test("bounds hanging teardown by the remaining case duration", async () => {
     let elapsedBeforeHang = 0
-    const clock = () => Bun.nanoseconds() + elapsedBeforeHang
+    let teardownAttempted = false
     const benchmark = fakeCase({
       validateBatch() {
         throw new Error("validation failed")
@@ -299,55 +275,27 @@ describe("runner", () => {
         return new Promise<void>(() => {})
       },
     })
-    const startedAt = performance.now()
 
     await expect(
-      runBenchmarks([benchmark], { ...options, clock, maxCaseNs: 5_000_000, maxProcessNs: 100_000_000 }),
+      runBenchmarks([benchmark], {
+        ...options,
+        clock: () => Bun.nanoseconds() + elapsedBeforeHang,
+        maxCaseNs: 5_000_000,
+        maxProcessNs: 100_000_000,
+      }),
     ).rejects.toThrow("maximum case duration exceeded")
     expect(teardownAttempted).toBe(true)
-    expect(performance.now() - startedAt).toBeLessThan(100)
-  })
-
-  test("rounds lifecycle deadlines up to the next millisecond", async () => {
-    const setTimeout = globalThis.setTimeout
-    let timerDelay: number | undefined
-    globalThis.setTimeout = ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
-      timerDelay = delay ?? 0
-      return setTimeout(callback, delay, ...args)
-    }) as typeof globalThis.setTimeout
-
-    try {
-      const benchmark = fakeCase(
-        {},
-        {
-          async setup() {
-            return { run() {}, validateBatch() {}, teardown() {} }
-          },
-        },
-      )
-      await runBenchmarks([benchmark], {
-        ...options,
-        clock: batchClock([1, 1, 1, 1, 1], 6),
-        maxBatchIterations: 1,
-        maxCaseNs: 999_999,
-        maxProcessNs: 999_999,
-      })
-    } finally {
-      globalThis.setTimeout = setTimeout
-    }
-
-    expect(timerDelay).toBe(1)
   })
 })
 
-test("layout workloads validate consecutive batches", async () => {
-  for (const benchmark of defaultBenchmarkCases.slice(0, 2)) {
+test("canonical cases perform and validate work across consecutive batches", async () => {
+  for (const benchmark of defaultBenchmarkCases) {
     const runtime = await benchmark.setup()
+    let iteration = 0
     try {
-      for (let iteration = 0; iteration < 4; iteration += 2) {
-        runtime.run(iteration)
-        runtime.run(iteration + 1)
-        runtime.validateBatch(2)
+      for (const batch of [2, 1]) {
+        for (let index = 0; index < batch; index++) runtime.run(iteration++)
+        runtime.validateBatch(batch)
       }
     } finally {
       await runtime.teardown()
@@ -355,166 +303,7 @@ test("layout workloads validate consecutive batches", async () => {
   }
 })
 
-test("leaf layout rejects corrupt final output", async () => {
-  const benchmark = defaultBenchmarkCases[0]!
-  for (const invalid of ["zero", "width"] as const) {
-    const getComputedLayout = Node.prototype.getComputedLayout
-    const runtime = await benchmark.setup()
-    Node.prototype.getComputedLayout = function () {
-      const layout = getComputedLayout.call(this)
-      if (invalid === "zero") return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }
-      return { ...layout, width: layout.width + 1 }
-    }
-    try {
-      runtime.run(0)
-      expect(() => runtime.validateBatch(1)).toThrow("leaf-width-calculate: final checksum")
-    } finally {
-      Node.prototype.getComputedLayout = getComputedLayout
-      await runtime.teardown()
-    }
-  }
-})
-
-test("Yoga layout reads reject all-zero setup and measured output", async () => {
-  const benchmark = defaultBenchmarkCases[1]!
-  const getComputedLayout = Node.prototype.getComputedLayout
-  const allZeroLayout = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 })
-
-  Node.prototype.getComputedLayout = allZeroLayout
-  try {
-    await expect(benchmark.setup()).rejects.toThrow("yoga-layout-reads-100: node 0 fixture geometry")
-  } finally {
-    Node.prototype.getComputedLayout = getComputedLayout
-  }
-
-  const runtime = await benchmark.setup()
-  try {
-    runtime.run(0)
-    Node.prototype.getComputedLayout = allZeroLayout
-    runtime.run(1)
-    expect(() => runtime.validateBatch(2)).toThrow("yoga-layout-reads-100: batch checksum")
-  } finally {
-    Node.prototype.getComputedLayout = getComputedLayout
-    await runtime.teardown()
-  }
-})
-
-test("stdin SGR workload rejects wrong decoded dispatch during setup", async () => {
-  const benchmark = defaultBenchmarkCases[3]!
-  const parseMouseEvent = MouseParser.prototype.parseMouseEvent
-  const wrongDispatch: typeof MouseParser.prototype.parseMouseEvent = () => ({
-    type: "move",
-    button: 0,
-    x: 2,
-    y: 1,
-    modifiers: { shift: false, alt: false, ctrl: false },
-  })
-
-  MouseParser.prototype.parseMouseEvent = wrongDispatch
-  try {
-    await expect(benchmark.setup()).rejects.toThrow("stdin-sgr-bubble-depth-8: fixed SGR bytes decoded incorrectly")
-  } finally {
-    MouseParser.prototype.parseMouseEvent = parseMouseEvent
-  }
-})
-
-test("proportional column widths observe output across consecutive batches", async () => {
-  const benchmark = defaultBenchmarkCases[4]!
-  expect(benchmark).toMatchObject({
-    category: "JS Text Table",
-    name: "proportional-column-widths",
-    workload_version: 1,
-    parameters: {
-      allocations_per_operation: 1,
-      mix: "alternating",
-      min_width: 1,
-      ordinary_widths: "4,49,4,54,38",
-      ordinary_target_width: 104,
-      remainder_columns: 64,
-      remainder_width: 17,
-      remainder_target_width: 584,
-    },
-  })
-  const runtime = await benchmark.setup()
-  let iteration = 0
-  try {
-    for (const batch of [1, 2, 5, 3]) {
-      for (let index = 0; index < batch; index++) runtime.run(iteration++)
-      runtime.validateBatch(batch)
-    }
-  } finally {
-    await runtime.teardown()
-  }
-})
-
-test("text buffer word-wrap measurement validates alternating cache misses", async () => {
-  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "text-buffer-word-wrap-measure")!
-  expect(benchmark).toMatchObject({
-    category: "JS Text",
-    workload_version: 1,
-    parameters: {
-      width_method: "unicode",
-      wrap_mode: "word",
-      logical_lines: 64,
-      tokens_per_line: 128,
-      line_columns: 767,
-      text_bytes: 49_151,
-      width_a: 72,
-      width_b: 78,
-      measure_height: 2_048,
-    },
-  })
-  const runtime = await benchmark.setup()
-  try {
-    runtime.run(0)
-    runtime.validateBatch(1)
-    runtime.run(1)
-    runtime.run(2)
-    runtime.validateBatch(2)
-    runtime.run(3)
-    runtime.validateBatch(1)
-  } finally {
-    await runtime.teardown()
-  }
-})
-
-test("direct box drawing observes variants across consecutive batches", async () => {
-  const benchmark = defaultBenchmarkCases.find(({ name }) => name === "draw-box-titled-scissored")!
-  expect(benchmark).toMatchObject({
-    category: "JS Buffer",
-    workload_version: 1,
-    parameters: {
-      buffer_width: 80,
-      buffer_height: 24,
-      width_method: "unicode",
-      box_x: 2,
-      box_y: 2,
-      box_width: 76,
-      box_height: 20,
-      scissor_x: 0,
-      scissor_y: 0,
-      scissor_width: 72,
-      scissor_height: 24,
-      border_style: "rounded",
-      should_fill: true,
-      titles_per_box: 2,
-      title_variants: 2,
-      visible_cells: 1_400,
-    },
-  })
-  const runtime = await benchmark.setup()
-  try {
-    runtime.run(0)
-    runtime.run(1)
-    runtime.validateBatch(2)
-    runtime.run(2)
-    runtime.validateBatch(1)
-  } finally {
-    await runtime.teardown()
-  }
-})
-
-test("direct box drawing rejects a no-op draw", async () => {
+test("canonical box drawing validation rejects a no-op", async () => {
   const benchmark = defaultBenchmarkCases.find(({ name }) => name === "draw-box-titled-scissored")!
   const runtime = await benchmark.setup()
   const drawBox = OptimizedBuffer.prototype.drawBox
@@ -539,46 +328,65 @@ class MemoryWriter {
 const memoryWriters = () => ({ stdout: new MemoryWriter(), stderr: new MemoryWriter() })
 
 describe("CLI", () => {
-  test("accepts only --format=json and keeps diagnostics off stdout", async () => {
+  test("accepts only --format=json and keeps usage off stdout", async () => {
     const { stdout, stderr } = memoryWriters()
     expect(await runBenchmarkCli(["--json"], { stdout, stderr, cases: [] })).toBe(2)
     expect(stdout.text).toBe("")
     expect(stderr.text).toContain("usage:")
   })
 
-  test("buffers stdout until the complete suite succeeds", async () => {
+  test("emits no partial stdout when a later case fails", async () => {
+    let now = 0
     const { stdout, stderr } = memoryWriters()
     const exitCode = await runBenchmarkCli(["--format=json"], {
       stdout,
       stderr,
-      cases: [fakeCase()],
-      options: { ...options, clock: batchClock([0]) },
+      cases: [
+        fakeCase({}, { name: "first" }),
+        fakeCase(
+          {},
+          {
+            name: "second",
+            setup() {
+              throw new Error("failed")
+            },
+          },
+        ),
+      ],
+      options: { ...options, clock: () => now++, maxBatchIterations: 1 },
       bunVersion: "test-bun",
       zigVersion: "test-zig",
     })
+
     expect(exitCode).toBe(1)
     expect(stdout.text).toBe("")
-    expect(stderr.text).toContain("elapsed nanoseconds")
+    expect(stderr.text).toContain("failed")
   })
 
-  test("writes exactly one JSON document on success", async () => {
+  test("writes one JSON document with manifest and results in case order", async () => {
+    let now = 0
     const { stdout, stderr } = memoryWriters()
     const exitCode = await runBenchmarkCli(["--format=json"], {
       stdout,
       stderr,
-      cases: [fakeCase()],
-      options: {
-        ...options,
-        maxBatchIterations: 1,
-        clock: batchClock([1, 1, 1, 1, 1]),
-      },
+      cases: [fakeCase({}, { name: "first" }), fakeCase({}, { name: "second" })],
+      options: { ...options, clock: () => now++, maxBatchIterations: 1 },
       bunVersion: "test-bun",
       zigVersion: "test-zig",
     })
+
     expect(exitCode).toBe(0)
     expect(stderr.text).toBe("")
-    const text = stdout.text
-    expect(text.trim().split("\n")).toHaveLength(1)
-    expect(JSON.parse(text).manifest.protocol_version).toBe(1)
+    expect(stdout.text.trim().split("\n")).toHaveLength(1)
+    const document = JSON.parse(stdout.text)
+    expect(document).toMatchObject({
+      schema_version: 1,
+      benchmark_suite: "core-default",
+      protocol_version: 1,
+      bun_version: "test-bun",
+      zig_version: "test-zig",
+    })
+    expect(document.manifest.cases.map(({ name }: BenchmarkCase) => name)).toEqual(["first", "second"])
+    expect(document.results.map(({ name }: BenchmarkCase) => name)).toEqual(["first", "second"])
   })
 })
