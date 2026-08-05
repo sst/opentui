@@ -3179,10 +3179,10 @@ class FFIRenderLib implements RenderLib {
     const chunks: Uint8Array[] = []
     while (true) {
       const output = new Uint8Array(64 * 1024)
-      const length = embeddedTerminalResult(
-        this.opentui.symbols.embeddedTerminalDrainResponses(handle, output, output.byteLength),
-        "response drain",
-      )
+      const status = this.opentui.symbols.embeddedTerminalDrainResponses(handle, output, output.byteLength)
+      // Native preserves the bounded prefix and reports dropped excess once.
+      if (status === -4) continue
+      const length = embeddedTerminalResult(status, "response drain")
       if (length > 0) chunks.push(output.slice(0, length))
       if (length < output.byteLength) break
     }

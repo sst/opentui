@@ -4,6 +4,12 @@ import { KeyEvent } from "../lib/KeyHandler.js"
 import { resolveRenderLib } from "../zig.js"
 import { EmbeddedTerminalRenderable } from "./EmbeddedTerminal.js"
 
+class MissingFramebufferTerminal extends EmbeddedTerminalRenderable {
+  protected createFrameBuffer(): void {
+    this.frameBuffer = null
+  }
+}
+
 describe("EmbeddedTerminalRenderable", () => {
   let setup: TestRendererSetup
 
@@ -18,6 +24,14 @@ describe("EmbeddedTerminalRenderable", () => {
     const handle = lib.createEmbeddedTerminal({ cols: 10, rows: 2 })
     expect(handle).toBeTruthy()
     lib.destroyEmbeddedTerminal(handle)
+  })
+
+  test("does not compose into the parent buffer when framebuffer allocation fails", async () => {
+    const terminal = new MissingFramebufferTerminal(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("must not reach the parent")
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).not.toContain("must not reach the parent")
   })
 
   test("renders VT output and preserves it across clean frames", async () => {
@@ -76,6 +90,20 @@ describe("EmbeddedTerminalRenderable", () => {
           y: 1,
         }),
       ).toHaveLength(0)
+    } finally {
+      lib.destroyEmbeddedTerminal(handle)
+    }
+  })
+
+  test("drains the preserved response prefix after overflow", () => {
+    const lib = resolveRenderLib()
+    const handle = lib.createEmbeddedTerminal({ cols: 20, rows: 4 })
+    try {
+      const query = "\x1b[5n"
+      lib.embeddedTerminalWrite(handle, query.repeat((1024 * 1024) / query.length + 1))
+      const responses = lib.embeddedTerminalDrainResponses(handle)
+      expect(responses.byteLength).toBe(1024 * 1024)
+      expect(new TextDecoder().decode(responses.subarray(0, 4))).toBe("\x1b[0n")
     } finally {
       lib.destroyEmbeddedTerminal(handle)
     }
