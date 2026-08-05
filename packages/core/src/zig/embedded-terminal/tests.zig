@@ -106,6 +106,15 @@ test "embedded terminal preserves queued responses when the bound is reached" {
     try std.testing.expect(preserved_len > 0);
 }
 
+test "embedded terminal reports semantic failures per write" {
+    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    defer terminal.deinit();
+
+    terminal.stream.handler.semantic_failure = true;
+    try terminal.write("ok");
+    try std.testing.expect(!terminal.stream.handler.semantic_failure);
+}
+
 comptime {
     _ = ghostty;
 }

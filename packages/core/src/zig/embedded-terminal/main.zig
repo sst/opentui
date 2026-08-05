@@ -130,6 +130,7 @@ pub const EmbeddedTerminal = struct {
 
     pub fn write(self: *EmbeddedTerminal, bytes: []const u8) Error!void {
         self.parser_allocator.failed = false;
+        self.stream.handler.semantic_failure = false;
         self.stream.nextSlice(bytes);
         if (self.parser_allocator.failed or self.stream.handler.semantic_failure) return error.ProcessingFailed;
     }
