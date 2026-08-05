@@ -216,6 +216,15 @@ export const EmbeddedTerminalCursorStruct = defineStruct([
   ["padding", "u8"],
 ])
 
+export const EmbeddedTerminalKeyOptionsStruct = defineStruct([
+  ["action", "u8"],
+  ["composing", "u8"],
+  ["mods", "u16"],
+  ["consumedMods", "u16"],
+  ["padding", "u16"],
+  ["unshiftedCodepoint", "u32"],
+])
+
 export const CursorStyleOptionsStruct = defineStruct([
   ["style", "u8", { default: 255 }],
   ["blinking", "u8", { default: 255 }],

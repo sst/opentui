@@ -142,6 +142,15 @@ pub const ExternalEmbeddedTerminalCursor = extern struct {
     _padding: u8 = 0,
 };
 
+pub const ExternalEmbeddedTerminalKeyOptions = extern struct {
+    action: u8 = 1,
+    composing: u8 = 0,
+    mods: u16 = 0,
+    consumed_mods: u16 = 0,
+    _padding: u16 = 0,
+    unshifted_codepoint: u32 = 0,
+};
+
 fn embeddedTerminalStatus(err: anyerror) i32 {
     return switch (err) {
         error.OutOfMemory => EmbeddedTerminalStatus.out_of_memory,
@@ -194,6 +203,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalComposeResult) == 12);
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalCursor) == 14);
+    std.debug.assert(@sizeOf(ExternalEmbeddedTerminalKeyOptions) == 12);
     _ = native_span_feed;
     _ = native_audio;
     _ = ghostty_vt.vt;
@@ -291,42 +301,39 @@ export fn embeddedTerminalCursor(handle: NativeHandle, out_cursor_ptr: ?*Externa
 
 export fn embeddedTerminalEncodeKey(
     handle: NativeHandle,
-    action: u8,
+    options_ptr: ?*const ExternalEmbeddedTerminalKeyOptions,
     key_ptr: ?[*]const u8,
     key_len: u32,
-    mods: u16,
-    consumed_mods: u16,
-    composing: u8,
     utf8_ptr: ?[*]const u8,
     utf8_len: u32,
-    unshifted_codepoint: u32,
     out_ptr: ?[*]u8,
     out_len: u32,
     out_required_ptr: ?*u32,
 ) i32 {
     if (comptime !ghostty_vt_available) return EmbeddedTerminalStatus.unsupported;
+    const options = options_ptr orelse return EmbeddedTerminalStatus.invalid;
     const out_required = out_required_ptr orelse return EmbeddedTerminalStatus.invalid;
     out_required.* = 0;
     const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
     const key_code = embeddedTerminalInput(key_ptr, key_len) orelse return EmbeddedTerminalStatus.invalid;
     const utf8_bytes = embeddedTerminalInput(utf8_ptr, utf8_len) orelse return EmbeddedTerminalStatus.invalid;
     const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
-    if (composing > 1 or mods & ~@as(u16, 0x3f) != 0 or consumed_mods & ~@as(u16, 0x3f) != 0) return EmbeddedTerminalStatus.invalid;
+    if (options.composing > 1 or options.mods & ~@as(u16, 0x3f) != 0 or options.consumed_mods & ~@as(u16, 0x3f) != 0) return EmbeddedTerminalStatus.invalid;
     const key_value = ghostty_vt.vt.input.Key.fromW3C(key_code) orelse .unidentified;
-    if (unshifted_codepoint > std.math.maxInt(u21)) return EmbeddedTerminalStatus.invalid;
+    if (options.unshifted_codepoint > std.math.maxInt(u21)) return EmbeddedTerminalStatus.invalid;
     const encoded = terminal_value.encodeKey(.{
-        .action = switch (action) {
+        .action = switch (options.action) {
             0 => .release,
             1 => .press,
             2 => .repeat,
             else => return EmbeddedTerminalStatus.invalid,
         },
         .key = key_value,
-        .mods = @bitCast(mods),
-        .consumed_mods = @bitCast(consumed_mods),
-        .composing = composing == 1,
+        .mods = @bitCast(options.mods),
+        .consumed_mods = @bitCast(options.consumed_mods),
+        .composing = options.composing == 1,
         .utf8 = utf8_bytes,
-        .unshifted_codepoint = @intCast(unshifted_codepoint),
+        .unshifted_codepoint = @intCast(options.unshifted_codepoint),
     }) catch |err| return embeddedTerminalStatus(err);
     defer terminal_value.freeEncoded(encoded);
     out_required.* = @intCast(encoded.len);
