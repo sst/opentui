@@ -8,7 +8,6 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "validate:logo": "bun scripts/validate-logo-assets.ts",
     "scaffold": "bun scripts/test-doc-examples.ts",
     "validate:docs:metadata": "bun scripts/validate-doc-metadata.ts",
     "validate:docs:links": "bun scripts/validate-doc-links.ts",
