@@ -193,6 +193,13 @@ fn appendResult(
     });
 }
 
+fn outputMemStats(allocator: std.mem.Allocator, show_mem: bool, output_bytes: usize) !?[]const bench_utils.MemStat {
+    if (!show_mem) return null;
+    const values = try allocator.alloc(bench_utils.MemStat, 1);
+    values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
+    return values;
+}
+
 fn appendKittyBenchmarks(
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -421,12 +428,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
             }
-            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
-                const values = try allocator.alloc(bench_utils.MemStat, 1);
-                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
-                break :blk values;
-            } else null;
-            try appendResult(allocator, results, inline_name, stats, mem_stats);
+            try appendResult(allocator, results, inline_name, stats, try outputMemStats(allocator, show_mem, output_bytes));
         }
 
         if (!run_file and !run_remote) continue;
@@ -472,12 +474,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
             }
-            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
-                const values = try allocator.alloc(bench_utils.MemStat, 1);
-                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
-                break :blk values;
-            } else null;
-            try appendResult(allocator, results, file_name, stats, mem_stats);
+            try appendResult(allocator, results, file_name, stats, try outputMemStats(allocator, show_mem, output_bytes));
         }
 
         if (run_remote) {
@@ -507,12 +504,7 @@ fn appendKittyRawRgbaFileBenchmarks(
                 stats.record(timer.read());
                 output_bytes = counting.bytes;
             }
-            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
-                const values = try allocator.alloc(bench_utils.MemStat, 1);
-                values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
-                break :blk values;
-            } else null;
-            try appendResult(allocator, results, remote_name, stats, mem_stats);
+            try appendResult(allocator, results, remote_name, stats, try outputMemStats(allocator, show_mem, output_bytes));
         }
     }
 }

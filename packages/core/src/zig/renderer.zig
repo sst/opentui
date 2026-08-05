@@ -899,12 +899,6 @@ pub const CliRenderer = struct {
         self.pendingRawFileTransfers.clearRetainingCapacity();
     }
 
-    fn confirmPendingRawFileTransferWrite(self: *CliRenderer, backend: anytype, status: output.WriteStatus) output.WriteStatus {
-        if (comptime @TypeOf(backend) == *output.FeedBackend) return status;
-        if (status == .ok and self.pendingRawFileTransfers.items.len > 0 and !backend.confirmFrameWrite()) return .failed;
-        return status;
-    }
-
     fn commitPendingHitGrid(self: *CliRenderer) void {
         self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
         const previous = self.currentHitGrid;
@@ -967,7 +961,7 @@ pub const CliRenderer = struct {
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, force, false);
                 if (self.imageRenderFailed) b.failFrame();
-                write_status = self.confirmPendingRawFileTransferWrite(b, b.endFrame());
+                write_status = b.endFrame(self.pendingRawFileTransfers.items.len > 0);
             },
         }
 
@@ -1170,7 +1164,7 @@ pub const CliRenderer = struct {
                     if (finalize_frame) {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
                         if (self.imageRenderFailed) b.failFrame();
-                        write_status = self.confirmPendingRawFileTransferWrite(b, b.endFrame());
+                        write_status = b.endFrame(self.pendingRawFileTransfers.items.len > 0);
                         const status = renderStatusFromWrite(write_status);
                         if (status == .failed or self.imageRenderFailed) {
                             result_status = self.finishFailedFrame();
@@ -1230,7 +1224,7 @@ pub const CliRenderer = struct {
                 if (finalize_frame) {
                     self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, true);
                     if (self.imageRenderFailed) b.failFrame();
-                    write_status = self.confirmPendingRawFileTransferWrite(b, b.endFrame());
+                    write_status = b.endFrame(self.pendingRawFileTransfers.items.len > 0);
 
                     const status = renderStatusFromWrite(write_status);
                     if (status == .failed or self.imageRenderFailed) {
@@ -1760,7 +1754,7 @@ pub const CliRenderer = struct {
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, redraw_footer, false);
                 if (self.imageRenderFailed) b.failFrame();
-                write_status = self.confirmPendingRawFileTransferWrite(b, b.endFrame());
+                write_status = b.endFrame(self.pendingRawFileTransfers.items.len > 0);
             },
         }
         const status = renderStatusFromWrite(write_status);

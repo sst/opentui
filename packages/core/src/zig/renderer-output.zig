@@ -35,6 +35,7 @@ pub const BufferedOutput = struct {
     ctx: *anyopaque,
     write_fn: BufferedWriteFn,
     thread_safe: bool = false,
+    kitty_file_transport: bool = false,
 
     pub fn write(self: BufferedOutput, data: []const u8) bool {
         return self.write_fn(self.ctx, data);
@@ -160,6 +161,7 @@ pub const StdoutOutput = struct {
             .ctx = self,
             .write_fn = write,
             .thread_safe = true,
+            .kitty_file_transport = self.stdout.isTty(),
         };
     }
 
@@ -346,7 +348,7 @@ pub const OutputBackend = union(enum) {
     /// may be consumed elsewhere or not consumed by a terminal at all.
     pub fn allowsKittyFileTransport(self: *const OutputBackend) bool {
         return switch (self.*) {
-            .buffered => |b| b.kittyFileTransport,
+            .buffered => |b| b.output.kitty_file_transport,
             .feed => false,
         };
     }
@@ -392,7 +394,6 @@ pub const BufferedBackend = struct {
     output: BufferedOutput,
     ownedStdoutOutput: ?*StdoutOutput = null,
     ownedMemoryOutput: ?*MemoryOutput = null,
-    kittyFileTransport: bool = false,
 
     outputA: []u8,
     outputB: []u8,
@@ -420,7 +421,6 @@ pub const BufferedBackend = struct {
     currentOutputLen: usize = 0,
 
     lastWriteTimeUs: ?f64 = null,
-    lastWriteSucceeded: bool = true,
 
     pub fn create(allocator: Allocator, output: BufferedOutput) !BufferedBackend {
         const a_buf = try allocator.alloc(u8, OUTPUT_BUFFER_SIZE);
@@ -443,7 +443,6 @@ pub const BufferedBackend = struct {
 
         var backend = try BufferedBackend.create(allocator, stdoutOutput.bufferedOutput());
         backend.ownedStdoutOutput = stdoutOutput;
-        backend.kittyFileTransport = stdoutOutput.stdout.isTty();
         return backend;
     }
 
@@ -587,7 +586,6 @@ pub const BufferedBackend = struct {
 
     pub fn beginFrame(self: *BufferedBackend) void {
         self.frameWriteFailed = false;
-        self.lastWriteSucceeded = true;
         self.maybeShrinkActiveBuffer();
         if (self.activeBuffer == .A) {
             self.outputLenA = 0;
@@ -619,7 +617,7 @@ pub const BufferedBackend = struct {
         }
     }
 
-    pub fn endFrame(self: *BufferedBackend) WriteStatus {
+    pub fn endFrame(self: *BufferedBackend, require_sink_success: bool) WriteStatus {
         const frame_len = if (self.activeBuffer == .A) self.outputLenA else self.outputLenB;
 
         if (self.frameWriteFailed) {
@@ -642,7 +640,10 @@ pub const BufferedBackend = struct {
         const writeStart = std.time.microTimestamp();
         const committed_buffer = self.activeBuffer;
 
-        if (self.useThread) {
+        // File-transfer frames must observe the sink result before releasing
+        // deletion ownership, so they stay on the caller even in threaded mode.
+        var sink_succeeded = true;
+        if (self.useThread and !require_sink_success) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
                 self.renderCondition.wait(&self.renderMutex);
@@ -669,25 +670,14 @@ pub const BufferedBackend = struct {
                 self.outputA[0..self.outputLenA]
             else
                 self.outputB[0..self.outputLenB];
-            self.lastWriteSucceeded = self.output.write(to_write);
+            sink_succeeded = self.output.write(to_write);
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
 
         self.lastCommittedBuffer = committed_buffer;
         self.hasCommittedFrame = true;
+        if (require_sink_success and !sink_succeeded) return .failed;
         return .ok;
-    }
-
-    /// Waits only when a threaded frame is still being written. Renderers use
-    /// this after staging path ownership so transfer is committed only once
-    /// the terminal sink has accepted the complete frame.
-    pub fn confirmFrameWrite(self: *BufferedBackend) bool {
-        if (self.useThread) {
-            self.renderMutex.lock();
-            defer self.renderMutex.unlock();
-            while (self.renderInProgress) self.renderCondition.wait(&self.renderMutex);
-        }
-        return self.lastWriteSucceeded;
     }
 
     fn renderThreadFn(self: *BufferedBackend) void {
@@ -712,7 +702,7 @@ pub const BufferedBackend = struct {
 
             const writeStart = std.time.microTimestamp();
 
-            self.lastWriteSucceeded = self.output.write(outputData[0..outputLen]);
+            _ = self.output.write(outputData[0..outputLen]);
 
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
             self.renderInProgress = false;
@@ -869,7 +859,7 @@ pub const FeedBackend = struct {
         self.frameWriteFailed = true;
     }
 
-    pub fn endFrame(self: *FeedBackend) WriteStatus {
+    pub fn endFrame(self: *FeedBackend, _: bool) WriteStatus {
         const writeStart = std.time.microTimestamp();
         var status: WriteStatus = .ok;
 

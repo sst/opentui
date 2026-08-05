@@ -154,7 +154,7 @@ test "adopted RGBA files outside temp are not Kitty-transferable through a temp 
     const value = try image.adoptRgbaFile(std.testing.allocator, link_path, 1, 1, 4);
     defer value.deinit();
 
-    try std.testing.expectEqual(@as(?[]const u8, null), value.rawRgbaFilePath());
+    try std.testing.expectEqual(@as(?[]const u8, null), value.stageRawRgbaFileTransfer());
 }
 
 test "adopting a FIFO rejects without waiting for a writer" {

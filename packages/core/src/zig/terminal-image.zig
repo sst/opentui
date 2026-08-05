@@ -40,7 +40,8 @@ fn writeKittyTransmitFormatWithFileTransport(
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
     if (allow_file_transport and requested_format != .rgb) {
-        if (image.rawRgbaFilePath()) |path| {
+        if (image.stageRawRgbaFileTransfer()) |path| {
+            errdefer image.rollbackRawRgbaFileTransfer();
             if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
             try writer.print("a=t,f=32,t=t,s={d},v={d},i={d},q=2;", .{ image.width(), image.height(), id });
             var offset: usize = 0;
@@ -52,7 +53,6 @@ fn writeKittyTransmitFormatWithFileTransport(
                 offset = end;
             }
             if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
-            if (!image.stageRawRgbaFileTransfer()) return error.InvalidImageData;
             return .file;
         }
     }

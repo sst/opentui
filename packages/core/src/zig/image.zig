@@ -328,19 +328,13 @@ pub const Image = struct {
         return pixels;
     }
 
-    pub fn rawRgbaFilePath(self: *const Image) ?[]const u8 {
-        const source = self.raw_rgba_file orelse return null;
-        if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return null;
-        return source.path;
-    }
-
-    pub fn stageRawRgbaFileTransfer(self: *Image) bool {
+    pub fn stageRawRgbaFileTransfer(self: *Image) ?[]const u8 {
         if (self.raw_rgba_file) |*source| {
-            if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return false;
+            if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return null;
             source.transfer_state = .staged;
-            return true;
+            return source.path;
         }
-        return false;
+        return null;
     }
 
     pub fn commitRawRgbaFileTransfer(self: *Image) void {
@@ -877,14 +871,8 @@ fn pixelsHaveTransparency(pixels: []const u8) bool {
     return false;
 }
 
-pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
-    const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
-    if (stride < row_bytes) return error.InvalidArgument;
-    const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
-    const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
-    if (required > pixels.len) return error.InvalidArgument;
-
-    const image = try allocateImage(allocator, .{
+fn rawRgbaInfo(width: u32, height: u32, has_alpha: bool) Info {
+    return .{
         .width = width,
         .height = height,
         .source_width = width,
@@ -892,8 +880,18 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
         .format = @intFromEnum(Format.raw_rgba),
         .color_status = @intFromEnum(ColorStatus.explicit_srgb),
         .orientation = 1,
-        .has_alpha = 0,
-    });
+        .has_alpha = @intFromBool(has_alpha),
+    };
+}
+
+pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+    const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
+    if (stride < row_bytes) return error.InvalidArgument;
+    const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
+    const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
+    if (required > pixels.len) return error.InvalidArgument;
+
+    const image = try allocateImage(allocator, rawRgbaInfo(width, height, false));
     errdefer image.deinit();
     for (0..height) |y| {
         const src_offset = y * stride;
@@ -928,16 +926,7 @@ pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height:
             .stride = stride,
             .kitty_temporary = isKittyTemporaryPath(allocator, path),
         },
-        .metadata = .{
-            .width = width,
-            .height = height,
-            .source_width = width,
-            .source_height = height,
-            .format = @intFromEnum(Format.raw_rgba),
-            .color_status = @intFromEnum(ColorStatus.explicit_srgb),
-            .orientation = 1,
-            .has_alpha = 1,
-        },
+        .metadata = rawRgbaInfo(width, height, true),
     };
     return image;
 }

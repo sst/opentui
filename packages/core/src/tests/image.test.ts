@@ -551,12 +551,13 @@ describe("NativeImage", () => {
   test("adopts raw RGBA files and deletes them after lazy materialization", async () => {
     const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
     const path = join(directory, "frame.rgba")
-    await writeFile(path, Uint8Array.of(1, 2, 3, 4, 90, 91, 92, 93, 5, 6, 7, 8))
+    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 90, 91, 92, 93, 5, 6, 7, 255))
 
     const image = NativeImage.adoptRgbaFile({ path, width: 1, height: 2, stride: 8 })
     try {
       expect(image.info()).toMatchObject({ width: 1, height: 2, format: "raw-rgba", hasAlpha: true })
-      expect([...image.raw().data]).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+      expect([...image.raw().data]).toEqual([1, 2, 3, 255, 5, 6, 7, 255])
+      expect(image.info().hasAlpha).toBe(false)
       await expectMissingPath(path)
     } finally {
       image.dispose()
@@ -574,22 +575,6 @@ describe("NativeImage", () => {
     try {
       await expectMissingPath(path)
     } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  })
-
-  test("refreshes alpha metadata after materializing an opaque adopted RGBA file", async () => {
-    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
-    const path = join(directory, "frame.rgba")
-    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 4, 5, 6, 255))
-
-    const image = NativeImage.adoptRgbaFile({ path, width: 2, height: 1 })
-    try {
-      expect(image.info().hasAlpha).toBe(true)
-      expect([...image.raw().data]).toEqual([1, 2, 3, 255, 4, 5, 6, 255])
-      expect(image.info().hasAlpha).toBe(false)
-    } finally {
-      image.dispose()
       await rm(directory, { recursive: true, force: true })
     }
   })
