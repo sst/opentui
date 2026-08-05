@@ -211,7 +211,7 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     await mockMouse.click(5, 5)
     expect(mouseEventCount).toBeGreaterThan(countBefore)
 
-    renderer.root.remove(target.id)
+    renderer.root.remove(target)
   })
 
   test("keyboard input works after focus restore cycle", async () => {

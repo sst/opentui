@@ -939,5 +939,53 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("&lt;")
       expect(frame).not.toContain("&gt;")
     })
+
+    it("only decodes terminated entities in static JSX text", async () => {
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>&register &parameters=1 &lt;&amp;&gt;</text>
+          </box>
+        ),
+        { width: 60, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      expect(testSetup.captureCharFrame()).toContain("&register &parameters=1 <&>")
+    })
+
+    it("preserves dynamic text during creation and replacement", async () => {
+      const [content, setContent] = createSignal("https://example.com/?&reg=US&para=1&times=2 &copy;")
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>{content()}</text>
+          </box>
+        ),
+        { width: 80, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+
+      setContent("&register &parameters=1 &copy;")
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+    })
+
+    it("preserves dynamic content properties", async () => {
+      const [content, setContent] = createSignal("&register &copy;")
+
+      testSetup = await testRender(() => <text content={content()} />, { width: 60, height: 5 })
+
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+
+      setContent("&parameters=1 &copy;")
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+    })
   })
 })

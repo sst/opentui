@@ -415,8 +415,10 @@ export function destroy(renderer: CliRenderer): void {
     demoState.explosionManager.disposeAll()
     demoState.engine.destroy()
 
-    renderer.root.remove("main")
-    renderer.root.remove("sprite-animation-container")
+    for (const id of ["main", "sprite-animation-container"]) {
+      const child = renderer.root.getRenderable(id)
+      if (child) renderer.root.remove(child)
+    }
     renderer.clearFrameCallbacks()
 
     demoState = null

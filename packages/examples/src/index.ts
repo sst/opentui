@@ -39,6 +39,7 @@ import * as textSelectionExample from "./text-selection-demo.js"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
+import * as splitFooterImageDemo from "./split-footer-image-demo.js"
 import * as consoleExample from "./console-demo.js"
 import * as notificationDemo from "./notification-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
@@ -70,6 +71,10 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
+import * as audioCaptureDemo from "./audio-capture-demo.js"
+import * as audioStreamingDemo from "./audio-streaming-demo.js"
+import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as nativeImageDemo from "./native-image-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -313,6 +318,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       destroy: relativePositioningDemo.destroy,
     },
     {
+      name: "Split Footer Image Demo",
+      description: "Live Kitty, Sixel, and block images alongside split-footer scrollback commits",
+      run: splitFooterImageDemo.run,
+      destroy: splitFooterImageDemo.destroy,
+    },
+    {
       name: "Split Footer Streaming Demo",
       description: "Focused split-footer surface demo for progressive text, code, and markdown scrollback",
       run: splitFooterStreamingDemo.run,
@@ -527,6 +538,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       destroy: grayscaleBufferDemo.destroy,
     },
     {
+      name: "Native Image Lab",
+      description: "PNG, JPEG, WebP, and GIF loading from paths, URLs, bytes, and HTTP",
+      run: nativeImageDemo.run,
+      destroy: nativeImageDemo.destroy,
+    },
+    {
       name: "Opacity Demo",
       description: "Box opacity and transparency effects with animated opacity transitions",
       run: opacityExample.run,
@@ -567,10 +584,29 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
   ]),
   section("Terminal & Native", [
     {
+      name: "Audio Capture Demo",
+      description: "Native microphone capture with a bounded PCM level meter and buffer telemetry",
+      run: audioCaptureDemo.run,
+      destroy: audioCaptureDemo.destroy,
+    },
+    {
+      name: "Audio Streaming Demo",
+      description: "Live MP3 URL streaming with reconnect controls, telemetry, and master-mix FFT visualization",
+      run: audioStreamingDemo.run,
+      destroy: audioStreamingDemo.destroy,
+    },
+    {
       name: "Audio Demo",
       description: "WAV-based native mixer with sound groups and live meter stats",
       run: nativeAudioDemo.run,
       destroy: nativeAudioDemo.destroy,
+    },
+    {
+      name: "Clipboard & Paste Test Bed",
+      description:
+        "OSC 52 copy, paste transport, and editor semantics diagnostics with a selectable, copyable event log",
+      run: clipboardPasteDemo.run,
+      destroy: clipboardPasteDemo.destroy,
     },
     {
       name: "Focus Restore Demo",
@@ -1344,7 +1380,7 @@ class ExampleSelector {
     }
 
     if (this.notImplementedText) {
-      this.renderer.root.remove(this.notImplementedText.id)
+      this.renderer.root.remove(this.notImplementedText)
       this.notImplementedText = null
     }
 

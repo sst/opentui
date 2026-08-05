@@ -318,27 +318,29 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (titleText) {
-    renderer.root.remove("console_demo_title")
+    renderer.root.remove(titleText)
     titleText = null
   }
 
   if (instructionsText) {
-    renderer.root.remove("console_demo_instructions")
+    renderer.root.remove(instructionsText)
     instructionsText = null
   }
 
   if (statusText) {
-    renderer.root.remove("console_demo_status")
+    renderer.root.remove(statusText)
     statusText = null
   }
 
   for (const button of consoleButtons) {
-    renderer.root.remove(button.id)
+    renderer.root.remove(button)
   }
   consoleButtons = []
 
-  renderer.root.remove("decor1")
-  renderer.root.remove("decor2")
+  for (const id of ["decor1", "decor2"]) {
+    const decor = renderer.root.getRenderable(id)
+    if (decor) renderer.root.remove(decor)
+  }
 
   buttonCounters = {
     log: 0,

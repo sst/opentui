@@ -12,6 +12,24 @@ let clock: ManualClock
 
 const simulateFrames = (ms: number, frameInterval?: number) => _simulateFrames(clock, renderOnce, ms, frameInterval)
 
+function countSelectedCells(
+  background: Uint16Array,
+  bufferWidth: number,
+  bounds: { x: number; y: number; width: number; height: number },
+): number {
+  let selectedCells = 0
+  for (let y = bounds.y; y < bounds.y + bounds.height; y++) {
+    for (let x = bounds.x; x < bounds.x + bounds.width; x++) {
+      const bufferIdx = y * bufferWidth + x
+      const bgG = (background[bufferIdx * 4 + 1] & 0xff) / 255
+      if (Math.abs(bgG - 1.0) < 0.01) {
+        selectedCells++
+      }
+    }
+  }
+  return selectedCells
+}
+
 describe("Textarea - Scroll Tests", () => {
   beforeEach(async () => {
     clock = new ManualClock()
@@ -700,22 +718,12 @@ describe("Textarea - Scroll Tests", () => {
       expect(frames.length).toBeGreaterThan(10)
 
       const bufferWidth = currentRenderer.width
+      const editorBounds = { x: editor.x, y: editor.y, width: editor.width, height: editor.height }
       const selectionCellCounts: number[] = []
 
       for (const frame of frames) {
         if (!frame.buffers?.bg) continue
-
-        let selectedCells = 0
-        for (let y = editor.y; y < editor.y + editor.height; y++) {
-          for (let x = editor.x; x < editor.x + editor.width; x++) {
-            const bufferIdx = y * bufferWidth + x
-            const bgG = (frame.buffers.bg[bufferIdx * 4 + 1] & 0xff) / 255
-            if (Math.abs(bgG - 1.0) < 0.01) {
-              selectedCells++
-            }
-          }
-        }
-        selectionCellCounts.push(selectedCells)
+        selectionCellCounts.push(countSelectedCells(frame.buffers.bg, bufferWidth, editorBounds))
       }
 
       const firstFrameSelection = selectionCellCounts[0] || 0

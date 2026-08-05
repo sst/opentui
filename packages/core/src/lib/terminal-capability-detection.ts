@@ -37,6 +37,12 @@ export function isCapabilityResponse(sequence: string): boolean {
     return true
   }
 
+  // XTGETTCAP Ms: consume replies to our query here; native parsing separately
+  // validates whether a positive value is sufficient evidence of support.
+  if (/\x1bP(?:1\+r4d73(?:=[^\x1b]*)?|0\+r(?:4d73)?)\x1b\\/i.test(sequence)) {
+    return true
+  }
+
   // Kitty graphics response: ESC _ G ... ESC \
   // Matches any graphics response including OK, errors, etc.
   // This is for filtering capability responses from user input
@@ -83,10 +89,11 @@ export function isPixelResolutionResponse(sequence: string): boolean {
 export function parsePixelResolution(sequence: string): { width: number; height: number } | null {
   const match = sequence.match(/\x1b\[4;(\d+);(\d+)t/)
   if (match) {
-    return {
-      width: parseInt(match[2]),
-      height: parseInt(match[1]),
-    }
+    const width = Number(match[2])
+    const height = Number(match[1])
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > 0x7fffffff || height > 0x7fffffff)
+      return null
+    return { width, height }
   }
   return null
 }

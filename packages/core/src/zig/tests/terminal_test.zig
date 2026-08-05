@@ -51,7 +51,7 @@ test "parseXtversion - with prefix data" {
 
 test "parseXtversion - full kitty response" {
     var term = Terminal.init(.{});
-    const response = "\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y\x1b[?1004;1$y\x1b[?2026;2$y\x1b[1;2R\x1b[1;3R\x1bP>|kitty(0.40.1)\x1b\\\x1b[?0u\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\\x1b[?62;c";
+    const response = "\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y\x1b[?1004;1$y\x1b[?2026;2$y\x1b[1;2R\x1b[1;3R\x1bP>|kitty(0.40.1)\x1b\\\x1b[?0u\x1b_Gi=31337;OK\x1b\\\x1b[?62;c";
     term.processCapabilityResponse(response);
 
     try testing.expectEqualStrings("kitty", term.getTerminalName());
@@ -60,6 +60,250 @@ test "parseXtversion - full kitty response" {
     try testing.expect(term.caps.kitty_keyboard);
     try testing.expect(term.caps.kitty_graphics);
     try testing.expect(term.caps.osc52);
+}
+
+test "graphics identity - exact direct Kitty enables Kitty graphics only" {
+    var kitty = Terminal.init(.{});
+    kitty.processCapabilityResponse("\x1bP>|kitty(0.46.2)\x1b\\");
+    try testing.expect(kitty.caps.kitty_graphics);
+    try testing.expect(!kitty.caps.sixel);
+
+    var substring = Terminal.init(.{});
+    substring.processCapabilityResponse("\x1bP>|notkitty(1.0)\x1b\\");
+    try testing.expect(!substring.caps.kitty_graphics);
+    try testing.expect(!substring.caps.sixel);
+
+    var uppercase = Terminal.init(.{});
+    uppercase.processCapabilityResponse("\x1bP>|KITTY(0.47.2)\x1b\\");
+    try testing.expect(uppercase.caps.kitty_graphics);
+}
+
+test "graphics identity - exact direct Ghostty enables Kitty graphics only" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|ghostty 1.3.1\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+    try testing.expect(!term.caps.sixel);
+
+    var substring = Terminal.init(.{});
+    substring.processCapabilityResponse("\x1bP>|ghostty-wrapper 1.3.1\x1b\\");
+    try testing.expect(!substring.caps.kitty_graphics);
+}
+
+test "graphics identity - foot enables Sixel from version 1.2" {
+    var supported = Terminal.init(.{});
+    supported.processCapabilityResponse("\x1bP>|foot(1.2.0)\x1b\\");
+    try testing.expect(!supported.caps.kitty_graphics);
+    try testing.expect(supported.caps.sixel);
+
+    var old = Terminal.init(.{});
+    old.processCapabilityResponse("\x1bP>|foot(1.1.0)\x1b\\");
+    try testing.expect(!old.caps.sixel);
+
+    var unknown_version = Terminal.init(.{});
+    unknown_version.processCapabilityResponse("\x1bP>|foot\x1b\\");
+    try testing.expect(!unknown_version.caps.sixel);
+
+    var later_minor = Terminal.init(.{});
+    later_minor.processCapabilityResponse("\x1bP>|foot(1.10.0)\x1b\\");
+    try testing.expect(later_minor.caps.sixel);
+
+    var patch_release = Terminal.init(.{});
+    patch_release.processCapabilityResponse("\x1bP>|foot(1.2.3)\x1b\\");
+    try testing.expect(patch_release.caps.sixel);
+
+    var malformed = Terminal.init(.{});
+    malformed.processCapabilityResponse("\x1bP>|foot(next)\x1b\\");
+    try testing.expect(!malformed.caps.sixel);
+
+    var incomplete = Terminal.init(.{});
+    incomplete.processCapabilityResponse("\x1bP>|foot(1.2)\x1b\\");
+    try testing.expect(!incomplete.caps.sixel);
+
+    var malformed_patch = Terminal.init(.{});
+    malformed_patch.processCapabilityResponse("\x1bP>|foot(1.2.invalid)\x1b\\");
+    try testing.expect(!malformed_patch.caps.sixel);
+
+    var prerelease = Terminal.init(.{});
+    prerelease.processCapabilityResponse("\x1bP>|foot(1.2.0-rc1)\x1b\\");
+    try testing.expect(!prerelease.caps.sixel);
+
+    var git_build = Terminal.init(.{});
+    git_build.processCapabilityResponse("\x1bP>|foot(1.2.0-36-g7db8e06f)\x1b\\");
+    try testing.expect(git_build.caps.sixel);
+}
+
+test "graphics identity - WezTerm enables Sixel from documented build" {
+    var supported = Terminal.init(.{});
+    supported.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-e00b076c\x1b\\");
+    try testing.expect(supported.caps.sixel);
+    try testing.expect(!supported.caps.kitty_graphics);
+
+    var old = Terminal.init(.{});
+    old.processCapabilityResponse("\x1bP>|WezTerm 20200619-000000-old\x1b\\");
+    try testing.expect(!old.caps.sixel);
+
+    var malformed = Terminal.init(.{});
+    malformed.processCapabilityResponse("\x1bP>|WezTerm nightly\x1b\\");
+    try testing.expect(!malformed.caps.sixel);
+
+    var missing_separator = Terminal.init(.{});
+    missing_separator.processCapabilityResponse("\x1bP>|WezTerm 20200620invalid\x1b\\");
+    try testing.expect(!missing_separator.caps.sixel);
+
+    var invalid_date = Terminal.init(.{});
+    invalid_date.processCapabilityResponse("\x1bP>|WezTerm 20201340-160318-abcdef12\x1b\\");
+    try testing.expect(!invalid_date.caps.sixel);
+
+    var invalid_time = Terminal.init(.{});
+    invalid_time.processCapabilityResponse("\x1bP>|WezTerm 20200620-256199-abcdef12\x1b\\");
+    try testing.expect(!invalid_time.caps.sixel);
+
+    var invalid_hash = Terminal.init(.{});
+    invalid_hash.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-invalid!\x1b\\");
+    try testing.expect(!invalid_hash.caps.sixel);
+
+    var extra_field = Terminal.init(.{});
+    extra_field.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-abcdef12-extra\x1b\\");
+    try testing.expect(extra_field.caps.sixel);
+
+    var empty_extra = Terminal.init(.{});
+    empty_extra.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-abcdef12-\x1b\\");
+    try testing.expect(!empty_extra.caps.sixel);
+
+    var dot_decorated = Terminal.init(.{});
+    dot_decorated.processCapabilityResponse("\x1bP>|WezTerm 20200620.160318.abcdef12.package\x1b\\");
+    try testing.expect(dot_decorated.caps.sixel);
+
+    var underscore_decorated = Terminal.init(.{});
+    underscore_decorated.processCapabilityResponse("\x1bP>|WezTerm 20200620_160318_abcdef12_package\x1b\\");
+    try testing.expect(underscore_decorated.caps.sixel);
+}
+
+test "graphics identity - multiplexers do not imply outer graphics" {
+    var tmux = Terminal.init(.{});
+    tmux.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
+    try testing.expect(!tmux.caps.kitty_graphics);
+    try testing.expect(!tmux.caps.sixel);
+
+    var zellij = Terminal.init(.{});
+    zellij.processCapabilityResponse("\x1bP>|Zellij 0.41.2\x1b\\");
+    try testing.expect(!zellij.caps.kitty_graphics);
+    try testing.expect(!zellij.caps.sixel);
+}
+
+test "graphics identity - query response upgrades an unknown terminal" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|unknown 1.0\x1b\\");
+    try testing.expect(!term.caps.kitty_graphics);
+    term.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+
+    var old_foot = Terminal.init(.{});
+    old_foot.processCapabilityResponse("\x1bP>|foot(1.1.0)\x1b\\");
+    try testing.expect(!old_foot.caps.sixel);
+    old_foot.processCapabilityResponse("\x1b[?62;1;2;4;6c");
+    try testing.expect(old_foot.caps.sixel);
+
+    term.processCapabilityResponse("\x1bP>|another-unknown 2.0\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+}
+
+test "graphics identity - a new identity replaces only identity-derived capabilities" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|kitty(0.47.2)\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+    term.processCapabilityResponse("\x1bP>|unknown 1.0\x1b\\");
+    try testing.expect(!term.caps.kitty_graphics);
+}
+
+test "graphics identity - malformed XTVERSION cannot reuse environment version" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "foot");
+    try env.put("TERM_PROGRAM_VERSION", "1.20.2");
+    var term = Terminal.init(.{ .env_map = &env });
+    term.processCapabilityResponse("\x1bP>|foot(\x1b\\");
+    try testing.expectEqualStrings("", term.getTerminalVersion());
+    try testing.expect(!term.caps.sixel);
+}
+
+test "graphics identity - environment name alone is not authoritative" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "kitty");
+    try env.put("TERM_PROGRAM_VERSION", "0.47.2");
+    const term = Terminal.init(.{ .env_map = &env });
+    try testing.expect(!term.term_info.from_xtversion);
+    try testing.expect(!term.caps.kitty_graphics);
+    try testing.expect(!term.caps.sixel);
+}
+
+test "graphics identity - explicit graphics disable blocks identity and queries" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_GRAPHICS", "0");
+
+    var kitty = Terminal.init(.{ .env_map = &env });
+    kitty.processCapabilityResponse("\x1bP>|kitty(0.47.2)\x1b\\");
+    kitty.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(!kitty.caps.kitty_graphics);
+
+    var foot = Terminal.init(.{ .env_map = &env });
+    foot.processCapabilityResponse("\x1bP>|foot(1.20.2)\x1b\\");
+    foot.processCapabilityResponse("\x1b[?62;1;2;4;6c");
+    try testing.expect(!foot.caps.sixel);
+}
+
+test "image protocol override - parses every forced protocol" {
+    const cases = [_]struct { value: []const u8, expected: Terminal.ImageProtocol }{
+        .{ .value = "auto", .expected = .auto },
+        .{ .value = "kitty", .expected = .kitty },
+        .{ .value = "sixel", .expected = .sixel },
+        .{ .value = "blocks", .expected = .blocks },
+    };
+    for (cases) |case| {
+        var env = std.process.EnvMap.init(testing.allocator);
+        defer env.deinit();
+        try env.put("OPENTUI_IMAGE_PROTOCOL", case.value);
+        const term = Terminal.init(.{ .env_map = &env });
+        try testing.expectEqual(case.expected, term.image_protocol);
+    }
+}
+
+test "image protocol override - ignores invalid value" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_IMAGE_PROTOCOL", "invalid");
+    const term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.ImageProtocol.auto, term.image_protocol);
+}
+
+test "graphics detection - kitty response matches exact id in the same APC" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+
+    var wrong = Terminal.init(.{});
+    wrong.processCapabilityResponse("\x1b_Gi=313370;OK\x1b\\");
+    try testing.expect(!wrong.caps.kitty_graphics);
+
+    var split = Terminal.init(.{});
+    split.processCapabilityResponse("\x1b_Gi=1;OK\x1b\\unrelated i=31337");
+    try testing.expect(!split.caps.kitty_graphics);
+}
+
+test "graphics detection - parses exact sixel DA1 parameter" {
+    var direct = Terminal.init(.{});
+    direct.processCapabilityResponse("\x1b[?1;2;4c");
+    try testing.expect(direct.caps.sixel);
+
+    var later = Terminal.init(.{});
+    later.processCapabilityResponse("\x1b[?62;22c\x1b[?62;1;2;4;6c");
+    try testing.expect(later.caps.sixel);
+
+    var absent = Terminal.init(.{});
+    absent.processCapabilityResponse("\x1b[?62;14;40c");
+    try testing.expect(!absent.caps.sixel);
 }
 
 test "parseXtversion - full ghostty response" {
@@ -503,12 +747,17 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?1016$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?2027$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?u") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bP+q4d73\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.kittyGraphicsQuery) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.primaryDeviceAttrs) != null);
 
     // Should NOT contain tmux DCS wrapper
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
     // Should mark capability queries as pending
     try testing.expect(term.capability_queries_pending);
+    try testing.expect(term.graphics_query_pending);
+    try testing.expect(term.sixel_query_pending);
 }
 
 test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
@@ -538,7 +787,8 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     // Should contain tmux DCS wrapper start and doubled ESC for queries
     // wrapForTmux wraps all queries together with one DCS envelope
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should NOT mark capability queries as pending (already sent wrapped)
     try testing.expect(!term.capability_queries_pending);
@@ -585,7 +835,8 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     const output = writer.getWritten();
 
     // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should send DCS wrapped graphics query
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b_G") != null);
@@ -595,7 +846,7 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     try testing.expect(!term.graphics_query_pending);
 }
 
-test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal" {
+test "sendPendingQueries - clears already-sent direct graphics probes after non-tmux xtversion" {
     var term = Terminal.init(.{});
     term.multiplexer = .none;
     term.capability_queries_pending = true;
@@ -611,24 +862,22 @@ test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal"
 
     const did_send = try term.sendPendingQueries(&writer);
 
-    try testing.expect(did_send);
+    try testing.expect(!did_send);
 
     const output = writer.getWritten();
 
     // Should NOT send DCS wrapped capability queries (not tmux)
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
-    // Should send unwrapped graphics query
-    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    // Initial startup already sent the direct graphics query.
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") == null);
 
     // Should clear pending flags
     try testing.expect(!term.capability_queries_pending);
     try testing.expect(!term.graphics_query_pending);
 }
 
-test "sendPendingQueries - sends unwrapped graphics query even without xtversion response" {
-    // This covers terminals that support kitty graphics but don't respond to xtversion.
-    // The graphics query should still be sent (unwrapped) so we can detect graphics support.
+test "sendPendingQueries - waits for xtversion before any passthrough retry" {
     var term = Terminal.init(.{});
     term.multiplexer = .none;
     term.term_info.from_xtversion = false;
@@ -640,20 +889,19 @@ test "sendPendingQueries - sends unwrapped graphics query even without xtversion
 
     const did_send = try term.sendPendingQueries(&writer);
 
-    try testing.expect(did_send);
+    try testing.expect(!did_send);
 
     const output = writer.getWritten();
 
-    // Should send unwrapped graphics query (not tmux, so no DCS wrapper)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    // Initial startup already sent the direct graphics query.
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") == null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
-    // Should clear graphics pending flag
-    try testing.expect(!term.graphics_query_pending);
+    try testing.expect(term.graphics_query_pending);
 
     // Capability queries should NOT be re-sent (no xtversion means we don't know if tmux,
     // but they were already sent unwrapped in queryTerminalSend)
-    try testing.expect(!term.capability_queries_pending);
+    try testing.expect(term.capability_queries_pending);
 }
 
 test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
@@ -769,6 +1017,37 @@ test "processCapabilityResponse - foot applies osc52 heuristic without explicit 
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
 
+test "processCapabilityResponse - XTGETTCAP Ms only establishes positive support" {
+    var supported: Terminal = .{};
+    supported.processCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.supported, supported.osc52_support);
+    try testing.expect(supported.caps.osc52);
+
+    var bare_negative: Terminal = .{};
+    bare_negative.processCapabilityResponse("\x1bP>|iTerm2 3.5.0\x1b\\");
+    bare_negative.processCapabilityResponse("\x1bP0+r\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, bare_negative.osc52_support);
+    try testing.expect(bare_negative.caps.osc52);
+
+    var named_negative: Terminal = .{};
+    named_negative.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    named_negative.processCapabilityResponse("\x1bP0+r4D73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, named_negative.osc52_support);
+    try testing.expect(named_negative.caps.osc52);
+
+    var unknown: Terminal = .{};
+    unknown.processCapabilityResponse("\x1bP1+r4d73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=abc\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=zz\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+}
+
 // ============================================================================
 // CLIPBOARD (OSC 52) TESTS
 // ============================================================================
@@ -785,11 +1064,32 @@ test "writeClipboard - generates basic OSC52 sequence" {
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
-    try term.writeClipboard(&writer, .clipboard, "aGVsbG8=");
+    try term.writeClipboard(&writer, .clipboard, "hello");
 
     const output = writer.getWritten();
     // Should be: ESC]52;c;aGVsbG8=ESC\
     try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeClipboard - maps every selection target to its OSC 52 byte" {
+    const cases = [_]struct {
+        target: Terminal.ClipboardTarget,
+        expected: []const u8,
+    }{
+        .{ .target = .clipboard, .expected = "\x1b]52;c;eA==\x1b\\" },
+        .{ .target = .primary, .expected = "\x1b]52;p;eA==\x1b\\" },
+        .{ .target = .select, .expected = "\x1b]52;s;eA==\x1b\\" },
+        .{ .target = .secondary, .expected = "\x1b]52;q;eA==\x1b\\" },
+    };
+
+    for (cases) |case| {
+        var term: Terminal = .{};
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+
+        try term.writeClipboard(&writer, case.target, "x");
+        try testing.expectEqualStrings(case.expected, writer.getWritten());
+    }
 }
 
 test "writeNotification - returns false when unsupported" {
@@ -927,11 +1227,11 @@ test "writeClipboard - supports different targets" {
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;p;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .secondary, "test");
+    try term.writeClipboard(&writer, .select, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;s;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .query, "test");
+    try term.writeClipboard(&writer, .secondary, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;q;") != null);
 }
 
@@ -939,13 +1239,205 @@ test "writeClipboard - returns error when OSC52 not supported" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var term = Terminal.init(.{});
-    term.caps.osc52 = false;
+    term.osc52_support = .unsupported;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
     const result = term.writeClipboard(&writer, .clipboard, "test");
     try testing.expectError(error.NotSupported, result);
+}
+
+test "writeClipboard - emits optimistically when XTGETTCAP state is unknown" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.Osc52Support.unknown, term.osc52_support);
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    try testing.expectEqualStrings("\x1b]52;c;dGVzdA==\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - writes large payload without a fixed buffer limit" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 9, writer.getWritten().len);
+    try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+}
+
+test "writeClipboard - writes large payload through tmux passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 20, output.len);
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\x1b\\\x1b\\"));
+}
+
+test "writeClipboard - chunks large payload through GNU Screen passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    try testing.expect(countSubstring(output, ansi.ANSI.screenDcsStart) > 1);
+    try testing.expect(std.mem.endsWith(u8, output, ansi.ANSI.screenDcsEnd));
+
+    var frame_start: usize = 0;
+    while (std.mem.indexOfPos(u8, output, frame_start, ansi.ANSI.screenDcsStart)) |start| {
+        const content_start = start + ansi.ANSI.screenDcsStart.len;
+        const next_start = std.mem.indexOfPos(u8, output, content_start, ansi.ANSI.screenDcsStart) orelse output.len;
+        try testing.expect(next_start - content_start <= Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE + ansi.ANSI.screenDcsEnd.len);
+        frame_start = next_start;
+    }
+}
+
+test "writeClipboard - base64 encodes raw UTF-8 bytes" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "世界 café 🚀");
+
+    try testing.expectEqualStrings("\x1b]52;c;5LiW55WMIGNhZsOpIPCfmoA=\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - handles base64 padding and encoding chunk boundaries" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const cases = [_]struct { raw: []const u8, encoded: []const u8 }{
+        .{ .raw = "", .encoded = "" },
+        .{ .raw = "a", .encoded = "YQ==" },
+        .{ .raw = "ab", .encoded = "YWI=" },
+        .{ .raw = "abc", .encoded = "YWJj" },
+    };
+    for (cases) |case| {
+        writer.reset();
+        try term.writeClipboard(&writer, .clipboard, case.raw);
+        try testing.expectEqualStrings("\x1b]52;c;", writer.getWritten()[0..7]);
+        try testing.expectEqualStrings(case.encoded, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+        try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+    }
+
+    const payload = [_]u8{'A'} ** (3 * 1024 + 1);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const expected = try testing.allocator.alloc(u8, encoded_len);
+    defer testing.allocator.free(expected);
+    _ = std.base64.standard.Encoder.encode(expected, &payload);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .clipboard, &payload);
+    try testing.expectEqualSlices(u8, expected, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+}
+
+test "clipboardSequenceSize - matches plain, tmux, and Screen output" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const payload = "size me 世界";
+    const environments = [_]struct { key: ?[]const u8, value: []const u8 }{
+        .{ .key = null, .value = "" },
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+        .{ .key = "STY", .value = "12345.pts-0.hostname" },
+    };
+
+    for (environments) |environment| {
+        var env = std.process.EnvMap.init(testing.allocator);
+        defer env.deinit();
+        if (environment.key) |key| try env.put(key, environment.value);
+        var term = Terminal.init(.{ .env_map = &env });
+
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+        try term.writeClipboard(&writer, .clipboard, payload);
+
+        try testing.expectEqual(try term.clipboardSequenceSize(payload.len), writer.getWritten().len);
+    }
+}
+
+test "clipboardSequenceSize - rejects payloads beyond the FFI limit" {
+    if (std.math.maxInt(usize) == std.math.maxInt(u32)) return error.SkipZigTest;
+
+    var term: Terminal = .{};
+    try testing.expectError(
+        error.ClipboardPayloadTooLarge,
+        term.clipboardSequenceSize(@as(usize, Terminal.CLIPBOARD_PAYLOAD_SIZE_MAX) + 1),
+    );
+}
+
+test "writeClipboard - Screen framing crosses the 252-byte boundary" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload_one_chunk = [_]u8{'A'} ** 180;
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, &payload_one_chunk);
+    try testing.expectEqual(@as(usize, 1), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_one_chunk.len), writer.getWritten().len);
+
+    writer.reset();
+    const payload_two_chunks = [_]u8{'A'} ** 181;
+    try term.writeClipboard(&writer, .clipboard, &payload_two_chunks);
+    try testing.expectEqual(@as(usize, 2), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_two_chunks.len), writer.getWritten().len);
 }
 
 test "writeClipboard - wraps in DCS passthrough for tmux" {

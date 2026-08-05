@@ -53,6 +53,13 @@ pub const RemoteMode = enum(u8) {
     remote,
 };
 
+pub const ImageProtocol = enum(u8) {
+    auto,
+    kitty,
+    sixel,
+    blocks,
+};
+
 pub const Multiplexer = enum(u8) {
     none,
     tmux,
@@ -61,7 +68,17 @@ pub const Multiplexer = enum(u8) {
     unknown,
 };
 
+pub const Osc52Support = enum(u8) {
+    unknown,
+    supported,
+    unsupported,
+};
+
 const NOTIFICATION_QUERY_ID = "opentui-notifications";
+pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
+pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
+const OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x1b\\".len;
+const PASSTHROUGH_ESCAPED_OSC52_SIZE = OSC52_FRAMING_SIZE + 2;
 
 pub const MouseLevel = enum {
     none,
@@ -91,18 +108,18 @@ pub const MousePointerStyle = enum(u8) {
     }
 };
 
-pub const ClipboardTarget = enum {
-    clipboard, // "c"
-    primary, // "p"
-    secondary, // "s"
-    query, // "q"
+pub const ClipboardTarget = enum(u8) {
+    clipboard = 0, // "c"
+    primary = 1, // "p"
+    select = 2, // "s"
+    secondary = 3, // "q"
 
     pub fn toChar(self: ClipboardTarget) u8 {
         return switch (self) {
             .clipboard => 'c',
             .primary => 'p',
-            .secondary => 's',
-            .query => 'q',
+            .select => 's',
+            .secondary => 'q',
         };
     }
 };
@@ -136,10 +153,16 @@ opts: Options = .{},
 host_env_map: ?std.process.EnvMap = null,
 remote: bool = false,
 multiplexer: Multiplexer = .none,
+osc52_support: Osc52Support = .unknown,
 is_foot: bool = false,
 skip_graphics_query: bool = false,
+graphics_enabled: bool = true,
+image_protocol: ImageProtocol = .auto,
+kitty_graphics_queried: bool = false,
+sixel_queried: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
+sixel_query_pending: bool = false,
 capability_queries_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
@@ -273,6 +296,7 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
+    self.sixel_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
     self.startup_cursor_query_pending = true;
     self.startup_cursor_query_captured = false;
@@ -308,6 +332,16 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         self.capability_queries_pending = true;
     }
 
+    if (!self.skip_graphics_query) {
+        if (self.isInTmux()) {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrsTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrs);
+        }
+    }
+
     if (!self.skip_explicit_width_query) {
         try tty.writeAll(ansi.ANSI.home ++
             ansi.ANSI.explicitWidthQuery ++
@@ -324,6 +358,10 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     var sent = false;
     const is_tmux = self.isInTmux();
 
+    // Initial probes were already sent using environment-derived multiplexer
+    // state. Only XTVERSION can justify a differently wrapped retry.
+    if (!self.term_info.from_xtversion) return false;
+
     // Re-send capability queries DCS wrapped if tmux detected via xtversion
     // Only needed if we got xtversion response indicating tmux
     if (self.capability_queries_pending) {
@@ -338,11 +376,17 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     if (self.graphics_query_pending and !self.skip_graphics_query) {
         if (is_tmux) {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
-        } else {
-            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+            sent = true;
         }
         self.graphics_query_pending = false;
-        sent = true;
+    }
+
+    if (self.sixel_query_pending and !self.skip_graphics_query) {
+        if (is_tmux) {
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrsTmux);
+            sent = true;
+        }
+        self.sixel_query_pending = false;
     }
 
     return sent;
@@ -617,6 +661,8 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
     self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
+    self.graphics_enabled = true;
+    self.image_protocol = .auto;
     self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
@@ -712,8 +758,25 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("OPENTUI_GRAPHICS")) |val| {
         if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.skip_graphics_query = true;
+            self.graphics_enabled = false;
+            self.kitty_graphics_queried = false;
+            self.sixel_queried = false;
+            self.caps.kitty_graphics = false;
+            self.caps.sixel = false;
         } else if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
             self.skip_graphics_query = false;
+        }
+    }
+
+    if (env_map.get("OPENTUI_IMAGE_PROTOCOL")) |value| {
+        if (std.ascii.eqlIgnoreCase(value, "auto")) {
+            self.image_protocol = .auto;
+        } else if (std.ascii.eqlIgnoreCase(value, "kitty")) {
+            self.image_protocol = .kitty;
+        } else if (std.ascii.eqlIgnoreCase(value, "sixel")) {
+            self.image_protocol = .sixel;
+        } else if (std.ascii.eqlIgnoreCase(value, "blocks")) {
+            self.image_protocol = .blocks;
         }
     }
 
@@ -1038,9 +1101,125 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 /// alacritty - '\x1B[?1016;0$y\x1B[?2027;0$y\x1B[?2031;0$y\x1B[?1004;2$y\x1B[?2004;2$y\x1B[?2026;2$y\x1B[1;1R\x1B[1;1R\x1B[?0u\x1B[?6c'
 ///
 /// Parsing these is not complete yet
+fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
+    if (!self.graphics_enabled) return;
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
+        const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
+        const frame = response[start + 3 .. end];
+        const control_end = std.mem.indexOfScalar(u8, frame, ';') orelse frame.len;
+        var fields = std.mem.splitScalar(u8, frame[0..control_end], ',');
+        while (fields.next()) |field| {
+            if (std.mem.eql(u8, field, "i=31337")) {
+                self.kitty_graphics_queried = true;
+                self.caps.kitty_graphics = true;
+                return;
+            }
+        }
+        offset = end + 2;
+    }
+}
+
+fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
+    if (!self.graphics_enabled) return;
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
+        var end = start + 3;
+        while (end < response.len and (std.ascii.isDigit(response[end]) or response[end] == ';')) : (end += 1) {}
+        if (end >= response.len) return;
+        if (response[end] != 'c') {
+            offset = end + 1;
+            continue;
+        }
+        var params = std.mem.splitScalar(u8, response[start + 3 .. end], ';');
+        while (params.next()) |param| {
+            if (std.mem.eql(u8, param, "4")) {
+                self.sixel_queried = true;
+                self.caps.sixel = true;
+                return;
+            }
+        }
+        offset = end + 1;
+    }
+}
+
+fn semanticVersionAtLeast(version: []const u8, required_major: u32, required_minor: u32) bool {
+    const suffix_start = std.mem.indexOfScalar(u8, version, '-');
+    const core = if (suffix_start) |index| version[0..index] else version;
+    var parts = std.mem.splitScalar(u8, core, '.');
+    const major_text = parts.next() orelse return false;
+    const minor_text = parts.next() orelse return false;
+    const patch_text = parts.next() orelse return false;
+    if (parts.next() != null) return false;
+    const major = std.fmt.parseInt(u32, major_text, 10) catch return false;
+    const minor = std.fmt.parseInt(u32, minor_text, 10) catch return false;
+    const patch = std.fmt.parseInt(u32, patch_text, 10) catch return false;
+    if (major > required_major or (major == required_major and minor > required_minor)) return true;
+    if (major != required_major or minor != required_minor) return false;
+    if (patch > 0) return true;
+    const suffix = if (suffix_start) |index| version[index + 1 ..] else return true;
+    var suffix_parts = std.mem.splitScalar(u8, suffix, '-');
+    const commits = suffix_parts.next() orelse return false;
+    const revision = suffix_parts.next() orelse return false;
+    if (suffix_parts.next() != null or commits.len == 0 or revision.len < 2 or revision[0] != 'g') return false;
+    _ = std.fmt.parseInt(u32, commits, 10) catch return false;
+    for (revision[1..]) |char| if (!std.ascii.isHex(char)) return false;
+    return true;
+}
+
+fn wezTermBuildAtLeast(version: []const u8, required_date: u32) bool {
+    var parts = std.mem.splitAny(u8, version, "-._");
+    const date_text = parts.next() orelse return false;
+    const time_text = parts.next() orelse return false;
+    const hash_text = parts.next() orelse return false;
+    if (date_text.len != 8 or time_text.len != 6 or hash_text.len != 8) return false;
+    while (parts.next()) |supplement| if (supplement.len == 0) return false;
+    for (date_text) |char| if (!std.ascii.isDigit(char)) return false;
+    for (time_text) |char| if (!std.ascii.isDigit(char)) return false;
+    for (hash_text) |char| if (!std.ascii.isHex(char)) return false;
+    const year = std.fmt.parseInt(u16, date_text[0..4], 10) catch return false;
+    const month = std.fmt.parseInt(u8, date_text[4..6], 10) catch return false;
+    const day = std.fmt.parseInt(u8, date_text[6..8], 10) catch return false;
+    if (month < 1 or month > 12) return false;
+    const leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0);
+    const days = [_]u8{ 31, if (leap) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (day < 1 or day > days[month - 1]) return false;
+    const hour = std.fmt.parseInt(u8, time_text[0..2], 10) catch return false;
+    const minute = std.fmt.parseInt(u8, time_text[2..4], 10) catch return false;
+    const second = std.fmt.parseInt(u8, time_text[4..6], 10) catch return false;
+    if (hour > 23 or minute > 59 or second > 59) return false;
+    const date = std.fmt.parseInt(u32, date_text, 10) catch return false;
+    return date >= required_date;
+}
+
+fn applyKnownGraphicsIdentity(self: *Terminal) void {
+    if (!self.graphics_enabled or self.multiplexer != .none or !self.term_info.from_xtversion) return;
+    const name = self.getTerminalName();
+    const version = self.getTerminalVersion();
+
+    if (std.ascii.eqlIgnoreCase(name, "kitty")) {
+        self.caps.kitty_graphics = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "ghostty")) {
+        self.caps.kitty_graphics = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "foot") and semanticVersionAtLeast(version, 1, 2)) {
+        self.caps.sixel = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "wezterm") and wezTermBuildAtLeast(version, 20200620)) {
+        self.caps.sixel = true;
+    }
+}
+
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     self.parseOsc99NotificationQuery(response);
     self.parseItermCapabilities(response);
+    self.parseXtgettcapMs(response);
+    self.parseKittyGraphicsResponse(response);
+    self.parseSixelDeviceAttributes(response);
 
     // DECRPM responses
     if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
@@ -1123,14 +1302,13 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    // Kitty detection
-    if (std.mem.indexOf(u8, response, "kitty")) |_| {
+    // Exact Kitty identity features. Graphics identity is applied after a
+    // complete XTVERSION response determines the direct endpoint.
+    if (self.term_info.from_xtversion and std.ascii.eqlIgnoreCase(self.getTerminalName(), "kitty")) {
         self.caps.kitty_keyboard = true;
-        self.caps.kitty_graphics = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
         self.caps.ansi256 = true;
-        self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
     }
@@ -1162,42 +1340,39 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.explicit_cursor_positioning = true;
     }
 
-    // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')
-    if (std.mem.indexOf(u8, response, ";c")) |pos| {
-        var start: usize = 0;
-        if (pos >= 4) {
-            start = pos;
-            while (start > 0 and response[start] != '\x1b') {
-                start -= 1;
-            }
-
-            const da_response = response[start .. pos + 2];
-
-            if (std.mem.indexOf(u8, da_response, "\x1b[?") == 0) {
-                if (std.mem.indexOf(u8, da_response, "4;") != null or std.mem.indexOf(u8, da_response, ";4;") != null or std.mem.indexOf(u8, da_response, ";4c") != null) {
-                    self.caps.sixel = true;
-                }
-            }
-        }
-    }
-
-    // Kitty graphics response: ESC_Gi=31337;OK ESC\ or ESC_Gi=31337;EERROR... ESC\
-    // We look for our specific query ID (31337) to avoid false positives
-    if (std.mem.indexOf(u8, response, "\x1b_G")) |_| {
-        if (std.mem.indexOf(u8, response, "i=31337")) |_| {
-            // Got a response to our graphics query with our ID
-            // If it contains "OK" or even an error, the protocol is supported
-            // (errors mean the query was understood, just parameters were wrong)
-            self.caps.kitty_graphics = true;
-        }
-    }
-
     if (!self.caps.osc52 and isOsc52Term(response)) {
         self.caps.osc52 = true;
     }
 
     if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
         self.caps.hyperlinks = true;
+    }
+}
+
+fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
+    const prefix = "\x1bP";
+    var scan_pos: usize = 0;
+    while (std.mem.indexOfPos(u8, response, scan_pos, prefix)) |start| {
+        const body_start = start + prefix.len;
+        const end = std.mem.indexOfPos(u8, response, body_start, "\x1b\\") orelse return;
+        const body = response[body_start..end];
+        scan_pos = end + 2;
+
+        if (body.len < 6 or body[0] != '1') continue;
+        if (!std.mem.eql(u8, body[1..3], "+r")) continue;
+
+        const result = body[3..];
+        const separator = std.mem.indexOfScalar(u8, result, '=') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(result[0..separator], "4d73")) continue;
+
+        const value = result[separator + 1 ..];
+        if (value.len == 0 or value.len % 2 != 0) continue;
+        for (value) |byte| {
+            if (!std.ascii.isHex(byte)) break;
+        } else {
+            self.osc52_support = .supported;
+            self.caps.osc52 = true;
+        }
     }
 }
 
@@ -1396,93 +1571,145 @@ pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: any
     return true;
 }
 
-/// Write OSC 52 clipboard sequence to the terminal
+/// Return the exact number of bytes emitted by writeClipboard.
+pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
+    if (payload_len > CLIPBOARD_PAYLOAD_SIZE_MAX) return error.ClipboardPayloadTooLarge;
+    const padded_len = try std.math.add(usize, payload_len, 2);
+    const encoded_len = try std.math.mul(usize, @divFloor(padded_len, 3), 4);
+    const sequence_len = try std.math.add(usize, encoded_len, OSC52_FRAMING_SIZE);
+
+    if (self.isInTmux()) {
+        const wrapped_len = try std.math.add(usize, sequence_len, 2);
+        return std.math.add(usize, wrapped_len, ansi.ANSI.tmuxDcsStart.len + ansi.ANSI.tmuxDcsEnd.len);
+    }
+
+    if (self.isInScreen()) {
+        const escaped_len = try std.math.add(usize, encoded_len, PASSTHROUGH_ESCAPED_OSC52_SIZE);
+        const chunk_count = @divFloor(escaped_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
+        const envelopes_len = try std.math.mul(usize, chunk_count, ansi.ANSI.screenDcsStart.len + ansi.ANSI.screenDcsEnd.len);
+        return std.math.add(usize, escaped_len, envelopes_len);
+    }
+
+    return sequence_len;
+}
+
+/// Write OSC 52 clipboard sequence to the terminal from raw clipboard bytes.
 /// Supports tmux/screen passthrough, including nested tmux sessions
-pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
+pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, text_utf8: []const u8) !void {
     if (!self.canWriteClipboard()) {
         return error.NotSupported;
     }
+    _ = try self.clipboardSequenceSize(text_utf8.len);
 
-    var buf: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    const writer = stream.writer();
+    if (self.isInTmux()) {
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        try writeClipboardSequence(tty, target, text_utf8, true);
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+        return;
+    }
 
-    // Build OSC 52 sequence: ESC]52;<target>;<payload>ESC\
-    try writer.writeAll("\x1b]52;");
+    if (self.isInScreen()) {
+        var screen_writer = ScreenPassthroughWriter(@TypeOf(tty)).init(tty);
+        try writeClipboardSequence(&screen_writer, target, text_utf8, false);
+        try screen_writer.finish();
+        return;
+    }
+
+    try writeClipboardSequence(tty, target, text_utf8, false);
+}
+
+fn ScreenPassthroughWriter(comptime Writer: type) type {
+    return struct {
+        writer: Writer,
+        buffer: [SCREEN_PASSTHROUGH_CHUNK_SIZE]u8 = undefined,
+        length: usize = 0,
+
+        const Self = @This();
+
+        fn init(writer: Writer) Self {
+            return .{ .writer = writer };
+        }
+
+        pub fn writeAll(self: *Self, bytes: []const u8) !void {
+            for (bytes) |byte| try self.writeByte(byte);
+        }
+
+        pub fn writeByte(self: *Self, byte: u8) !void {
+            const encoded_length: usize = if (byte == '\x1b') 2 else 1;
+            if (self.length + encoded_length > self.buffer.len) try self.flush();
+
+            if (byte == '\x1b') {
+                self.buffer[self.length] = '\x1b';
+                self.length += 1;
+            }
+            self.buffer[self.length] = byte;
+            self.length += 1;
+        }
+
+        fn finish(self: *Self) !void {
+            try self.flush();
+        }
+
+        fn flush(self: *Self) !void {
+            if (self.length == 0) return;
+            try self.writer.writeAll(ansi.ANSI.screenDcsStart);
+            try self.writer.writeAll(self.buffer[0..self.length]);
+            try self.writer.writeAll(ansi.ANSI.screenDcsEnd);
+            self.length = 0;
+        }
+    };
+}
+
+fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool) !void {
+    try writeClipboardBytes(writer, "\x1b]52;", escape);
     try writer.writeByte(target.toChar());
     try writer.writeByte(';');
-    try writer.writeAll(payload);
-    try writer.writeAll("\x1b\\");
+    try writeClipboardBase64(writer, text_utf8);
+    try writeClipboardBytes(writer, "\x1b\\", escape);
+}
 
-    const osc52 = stream.getWritten();
+fn writeClipboardBase64(writer: anytype, source: []const u8) !void {
+    const source_chunk_size = 3 * 1024;
+    var encoded_buffer: [4 * 1024]u8 = undefined;
+    var offset: usize = 0;
 
-    // Use the detected multiplexer from env vars, xtversion response, and remote option.
-    const is_tmux = self.isInTmux();
+    while (offset < source.len) {
+        const chunk_len = @min(source.len - offset, source_chunk_size);
+        const chunk = source[offset .. offset + chunk_len];
+        const encoded = std.base64.standard.Encoder.encode(&encoded_buffer, chunk);
+        try writer.writeAll(encoded);
+        offset += chunk_len;
+    }
+}
 
-    if (is_tmux) {
-        // For nested tmux, we use a fixed level of 1 as we don't have access
-        // to env vars here (by design - detection already happened in checkEnvironmentOverrides)
-        // In practice, single-level wrapping works for most cases
-        var wrapped_buf: [4096]u8 = undefined;
-        var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-        const wrap_writer = wrapped_stream.writer();
-        for (osc52) |c| {
-            if (c == '\x1b') {
-                try wrap_writer.writeByte('\x1b');
-            }
-            try wrap_writer.writeByte(c);
-        }
-        const doubled = wrapped_stream.getWritten();
+fn writeClipboardBytes(writer: anytype, bytes: []const u8, escape: bool) !void {
+    if (!escape) {
+        try writer.writeAll(bytes);
+        return;
+    }
 
-        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try tty.writeAll(doubled);
-        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
-    } else if (self.remote) {
-        try tty.writeAll(osc52);
-    } else {
-        var env_map_storage: ?std.process.EnvMap = null;
-        const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
-                logger.err("Failed to get environment map: {}", .{err});
-                return;
-            };
-            break :blk &env_map_storage.?;
-        };
-        defer if (env_map_storage) |*map| map.deinit();
-
-        if (env_map.get("STY")) |_| {
-            var wrapped_buf: [2048]u8 = undefined;
-            var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-            const wrapped_writer = wrapped_stream.writer();
-
-            for (osc52) |c| {
-                if (c == '\x1b') {
-                    try wrapped_writer.writeByte('\x1b');
-                }
-                try wrapped_writer.writeByte(c);
-            }
-            const doubled = wrapped_stream.getWritten();
-
-            try tty.writeAll(ansi.ANSI.screenDcsStart);
-            try tty.writeAll(doubled);
-            try tty.writeAll(ansi.ANSI.screenDcsEnd);
-        } else {
-            try tty.writeAll(osc52);
-        }
+    for (bytes) |byte| {
+        if (byte == '\x1b') try writer.writeByte('\x1b');
+        try writer.writeByte(byte);
     }
 }
 
 /// Check if we can write to the clipboard (TTY and OSC 52 supported)
 fn canWriteClipboard(self: *Terminal) bool {
     // In a real TTY environment, we'd check isTTY here
-    // For now, we just check if OSC 52 is supported
-    return self.caps.osc52;
+    // Missing or inconclusive capability responses must not block optimistic emission.
+    return self.osc52_support != .unsupported;
 }
 
 /// Parse xtversion response string and extract terminal name and version
 /// Examples: "kitty(0.40.1)", "ghostty 1.1.3", "tmux 3.5a"
 fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     if (term_str.len == 0) return;
+
+    self.term_info.name_len = 0;
+    self.term_info.version_len = 0;
+    self.caps.kitty_graphics = self.kitty_graphics_queried;
+    self.caps.sixel = self.sixel_queried;
 
     if (std.mem.indexOf(u8, term_str, "(")) |paren_pos| {
         const name_len = @min(paren_pos, self.term_info.name.len);
@@ -1531,6 +1758,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.enforceNotificationProtocolForMultiplexer();
+    self.applyKnownGraphicsIdentity();
 }
 
 pub fn isXtversionTmux(self: *Terminal) bool {

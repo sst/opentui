@@ -923,9 +923,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
-  renderer.root.remove("golden-star-main")
-  renderer.root.remove("overlay")
-  renderer.root.remove("gradientBand")
+  for (const id of ["golden-star-main", "overlay", "gradientBand"]) {
+    const child = renderer.root.getRenderable(id)
+    if (child) renderer.root.remove(child)
+  }
 }
 
 if (import.meta.main) {

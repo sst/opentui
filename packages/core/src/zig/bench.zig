@@ -56,6 +56,13 @@ const buffer_draw_box_bench = @import("bench/buffer-draw-box_bench.zig");
 const utf8_bench = @import("bench/utf8_bench.zig");
 const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig");
 const editor_view_bench = @import("bench/editor-view_bench.zig");
+const terminal_image_bench = @import("bench/terminal-image_bench.zig");
+const renderer_image_bench = @import("bench/renderer-image_bench.zig");
+const buffer_cell_drawing_bench = @import("bench/buffer-cell-drawing_bench.zig");
+const renderer_overhead_bench = @import("bench/renderer-overhead_bench.zig");
+const buffer_image_overlap_bench = @import("bench/buffer-image-overlap_bench.zig");
+const image_operations_bench = @import("bench/image-operations_bench.zig");
+const renderer_output_bench = @import("bench/renderer-output_bench.zig");
 
 const BenchModule = struct {
     name: []const u8,
@@ -107,6 +114,13 @@ pub fn main() !void {
         .{ .name = utf8_bench.benchName, .run = utf8_bench.run },
         .{ .name = text_chunk_graphemes_bench.benchName, .run = text_chunk_graphemes_bench.run },
         .{ .name = editor_view_bench.benchName, .run = editor_view_bench.run },
+        .{ .name = terminal_image_bench.benchName, .run = terminal_image_bench.run },
+        .{ .name = renderer_image_bench.benchName, .run = renderer_image_bench.run },
+        .{ .name = buffer_cell_drawing_bench.benchName, .run = buffer_cell_drawing_bench.run },
+        .{ .name = renderer_overhead_bench.benchName, .run = renderer_overhead_bench.run },
+        .{ .name = buffer_image_overlap_bench.benchName, .run = buffer_image_overlap_bench.run },
+        .{ .name = image_operations_bench.benchName, .run = image_operations_bench.run },
+        .{ .name = renderer_output_bench.benchName, .run = renderer_output_bench.run },
     };
 
     const args = try std.process.argsAlloc(allocator);

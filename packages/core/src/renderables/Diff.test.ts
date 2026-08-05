@@ -2954,9 +2954,8 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
 
   const correctFrame = captureFrame()
 
-  // Clean up
+  // Clean up (destroyRecursively already detaches from the parent)
   parentContainer1.destroyRecursively()
-  renderer.root.remove("parent-container-1")
   await renderOnce()
 
   // PART 2: BUGGY PATH
@@ -3038,6 +3037,7 @@ test("DiffRenderable - setLineColor applies color to line", async () => {
     view: "unified",
     syntaxStyle,
   })
+  currentRenderer.root.add(diffRenderable)
 
   diffRenderable.setLineColor(0, "#ff0000")
   diffRenderable.setLineColor(1, { gutter: "#00ff00", content: "#0000ff" })
@@ -3056,6 +3056,7 @@ test("DiffRenderable - highlightLines applies color to range", async () => {
     view: "unified",
     syntaxStyle,
   })
+  currentRenderer.root.add(diffRenderable)
 
   diffRenderable.highlightLines(0, 3, "#ff0000")
   diffRenderable.clearHighlightLines(0, 3)
@@ -3072,6 +3073,7 @@ test("DiffRenderable - setLineColors and clearAllLineColors", async () => {
     view: "unified",
     syntaxStyle,
   })
+  currentRenderer.root.add(diffRenderable)
 
   const lineColors = new Map<number, string>()
   lineColors.set(0, "#ff0000")
@@ -3093,6 +3095,7 @@ test("DiffRenderable - line highlighting works in split view", async () => {
     view: "split",
     syntaxStyle,
   })
+  currentRenderer.root.add(diffRenderable)
 
   diffRenderable.setLineColor(0, "#ff0000")
   diffRenderable.highlightLines(0, 2, "#00ff00")

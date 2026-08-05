@@ -619,7 +619,8 @@ class TimelineExample {
   }
 
   public destroy(): void {
-    this.renderer.root.remove("timeline-container")
+    const timelineContainer = this.renderer.root.getRenderable("timeline-container")
+    if (timelineContainer) this.renderer.root.remove(timelineContainer)
   }
 }
 

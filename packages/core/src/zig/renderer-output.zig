@@ -6,9 +6,9 @@
 //!   - `BufferedBackend`: writes into per-renderer A/B frame buffers, then
 //!     flushes committed bytes to an injected `BufferedOutput`.
 //!
-//!   - `FeedBackend`: writes into a `NativeSpanFeed.Stream` whose chunks are
-//!     consumed from TypeScript and piped to a user-supplied Writable
-//!     (typically an SSH channel).
+//!   - `FeedBackend`: stages each complete frame, then atomically publishes it
+//!     to a `NativeSpanFeed.Stream` whose chunks are consumed from TypeScript
+//!     and piped to a user-supplied Writable (typically an SSH channel).
 //!
 //! The backend is a tagged union. `CliRenderer.render` performs exactly one
 //! `switch` on the backend using `inline else` to pick the right variant's
@@ -16,10 +16,12 @@
 //! writer without scattering backend-specific switches across the codebase.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const NativeSpanFeed = @import("native-span-feed.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
+const UTF16_BUFFER_SIZE = 4096;
 
 pub const WriteStatus = enum(u8) {
     ok = 0,
@@ -39,8 +41,119 @@ pub const BufferedOutput = struct {
     }
 };
 
+const Utf16Chunk = struct {
+    input_len: usize,
+    output_len: usize,
+};
+
+fn utf8ToUtf16Chunk(output: []u16, input: []const u8) error{InvalidUtf8}!Utf16Chunk {
+    std.debug.assert(output.len >= 2);
+
+    var input_index: usize = 0;
+    var output_index: usize = 0;
+    while (input_index < input.len) {
+        const first_byte = input[input_index];
+        if (first_byte < 0x80) {
+            if (output_index == output.len) break;
+            output[output_index] = first_byte;
+            input_index += 1;
+            output_index += 1;
+            continue;
+        }
+
+        const sequence_len = std.unicode.utf8ByteSequenceLength(first_byte) catch return error.InvalidUtf8;
+        if (input.len - input_index < sequence_len) return error.InvalidUtf8;
+        const codepoint = std.unicode.utf8Decode(input[input_index..][0..sequence_len]) catch return error.InvalidUtf8;
+        const output_len: usize = if (codepoint < 0x10000) 1 else 2;
+        if (output.len - output_index < output_len) break;
+
+        if (output_len == 1) {
+            output[output_index] = @intCast(codepoint);
+        } else {
+            const value = codepoint - 0x10000;
+            output[output_index] = @intCast(0xD800 + (value >> 10));
+            output[output_index + 1] = @intCast(0xDC00 + (value & 0x3FF));
+        }
+        input_index += sequence_len;
+        output_index += output_len;
+    }
+
+    return .{ .input_len = input_index, .output_len = output_index };
+}
+
+test "UTF-8 output converts to UTF-16" {
+    const input = "Aé東😀";
+    const expected = [_]u16{ 'A', 0x00E9, 0x6771, 0xD83D, 0xDE00 };
+    var output: [expected.len]u16 = undefined;
+
+    const result = try utf8ToUtf16Chunk(&output, input);
+
+    try std.testing.expectEqual(input.len, result.input_len);
+    try std.testing.expectEqual(expected.len, result.output_len);
+    try std.testing.expectEqualSlices(u16, &expected, output[0..result.output_len]);
+}
+
+test "UTF-8 output chunking does not split surrogate pairs" {
+    const input = "A😀B";
+    var output: [2]u16 = undefined;
+
+    const first = try utf8ToUtf16Chunk(&output, input);
+    try std.testing.expectEqual(@as(usize, 1), first.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'A'}, output[0..first.output_len]);
+
+    const second = try utf8ToUtf16Chunk(&output, input[first.input_len..]);
+    try std.testing.expectEqual(@as(usize, 4), second.input_len);
+    try std.testing.expectEqualSlices(u16, &.{ 0xD83D, 0xDE00 }, output[0..second.output_len]);
+
+    const third_offset = first.input_len + second.input_len;
+    const third = try utf8ToUtf16Chunk(&output, input[third_offset..]);
+    try std.testing.expectEqual(@as(usize, 1), third.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'B'}, output[0..third.output_len]);
+}
+
+test "UTF-8 output conversion is bounded by the UTF-16 buffer" {
+    const input = "x" ** (UTF16_BUFFER_SIZE + 1);
+    var output: [UTF16_BUFFER_SIZE]u16 = undefined;
+
+    const first = try utf8ToUtf16Chunk(&output, input);
+    try std.testing.expectEqual(@as(usize, UTF16_BUFFER_SIZE), first.input_len);
+    try std.testing.expectEqual(@as(usize, UTF16_BUFFER_SIZE), first.output_len);
+
+    const second = try utf8ToUtf16Chunk(&output, input[first.input_len..]);
+    try std.testing.expectEqual(@as(usize, 1), second.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'x'}, output[0..second.output_len]);
+}
+
+test "UTF-8 output rejects invalid and incomplete input" {
+    var output: [8]u16 = undefined;
+
+    try std.testing.expectError(error.InvalidUtf8, utf8ToUtf16Chunk(&output, "\xFF"));
+    try std.testing.expectError(error.InvalidUtf8, utf8ToUtf16Chunk(&output, "\xF0\x9F"));
+}
+
+fn isWindowsConsole(file: std.fs.File) bool {
+    if (builtin.os.tag != .windows) return false;
+
+    var console_mode: std.os.windows.DWORD = 0;
+    return std.os.windows.kernel32.GetConsoleMode(file.handle, &console_mode) != 0;
+}
+
 pub const StdoutOutput = struct {
+    stdout: std.fs.File,
     stdoutBuffer: [4096]u8 = undefined,
+    utf16Buffer: [UTF16_BUFFER_SIZE]u16 = undefined,
+    windowsConsole: bool,
+
+    pub fn init() StdoutOutput {
+        return initForFile(std.fs.File.stdout());
+    }
+
+    fn initForFile(stdout: std.fs.File) StdoutOutput {
+        return .{
+            .stdout = stdout,
+            .windowsConsole = isWindowsConsole(stdout),
+        };
+    }
 
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
         return .{
@@ -54,12 +167,87 @@ pub const StdoutOutput = struct {
         if (data.len == 0) return;
 
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        if (builtin.os.tag == .windows) {
+            if (self.windowsConsole) {
+                self.writeWindowsConsole(data);
+                return;
+            }
+        }
+
+        self.writeBytes(data);
+    }
+
+    fn writeBytes(self: *StdoutOutput, data: []const u8) void {
+        var stdoutWriter = self.stdout.writerStreaming(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
         w.writeAll(data) catch {};
         w.flush() catch {};
     }
+
+    fn writeWindowsConsole(self: *StdoutOutput, data: []const u8) void {
+        // Frames and control writes are complete UTF-8 units. Drop malformed
+        // input rather than partially emitting an ANSI sequence to the console.
+        if (!std.unicode.utf8ValidateSlice(data)) return;
+
+        var input = data;
+        while (input.len > 0) {
+            const chunk = utf8ToUtf16Chunk(&self.utf16Buffer, input) catch unreachable;
+            std.debug.assert(chunk.input_len > 0);
+            if (!self.writeWindowsConsoleUtf16(self.utf16Buffer[0..chunk.output_len])) return;
+            input = input[chunk.input_len..];
+        }
+    }
+
+    fn writeWindowsConsoleUtf16(self: *StdoutOutput, data: []const u16) bool {
+        var remaining = data;
+        while (remaining.len > 0) {
+            var written: std.os.windows.DWORD = 0;
+            if (std.os.windows.kernel32.WriteConsoleW(
+                self.stdout.handle,
+                remaining.ptr,
+                @intCast(remaining.len),
+                &written,
+                null,
+            ) == 0 or written == 0) return false;
+            remaining = remaining[@intCast(written)..];
+        }
+        return true;
+    }
 };
+
+test "StdoutOutput leaves the Windows console output code page unchanged" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
+
+    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+    if (original_code_page == 0) return error.SkipZigTest;
+    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
+
+    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
+
+    const stdout_output = StdoutOutput.init();
+    try std.testing.expect(stdout_output.windowsConsole);
+    try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
+}
+
+test "StdoutOutput preserves bytes for redirected output" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const file = try tmp.dir.createFile("stdout", .{ .read = true });
+    defer file.close();
+    try std.testing.expect(!isWindowsConsole(file));
+
+    var stdout_output = StdoutOutput.initForFile(file);
+    const expected = "\x1b[31mAé東😀\x1b[0m";
+    const split = expected.len / 2;
+    stdout_output.bufferedOutput().write(expected[0..split]);
+    stdout_output.bufferedOutput().write(expected[split..]);
+
+    var actual: [expected.len]u8 = undefined;
+    const actual_len = try file.preadAll(&actual, 0);
+    try std.testing.expectEqual(expected.len, actual_len);
+    try std.testing.expectEqualStrings(expected, &actual);
+}
 
 pub const MemoryOutput = struct {
     allocator: Allocator,
@@ -153,9 +341,9 @@ pub const OutputBackend = union(enum) {
         }
     }
 
-    pub fn deinit(self: *OutputBackend, allocator: Allocator) void {
+    pub fn deinit(self: *OutputBackend) void {
         switch (self.*) {
-            inline else => |*b| b.deinit(allocator),
+            inline else => |*b| b.deinit(),
         }
     }
 };
@@ -168,6 +356,13 @@ pub const OutputBackend = union(enum) {
 pub const BufferedBackend = struct {
     const BufferId = enum { A, B };
 
+    /// Number of consecutive frames that fit in the default buffer before an
+    /// oversized buffer is shrunk back to OUTPUT_BUFFER_SIZE. Keeps a workload
+    /// of sustained large frames from realloc-churning while still returning
+    /// spike memory once frames are consistently small again.
+    const SHRINK_AFTER_SMALL_FRAMES = 64;
+
+    allocator: Allocator,
     output: BufferedOutput,
     ownedStdoutOutput: ?*StdoutOutput = null,
     ownedMemoryOutput: ?*MemoryOutput = null,
@@ -179,6 +374,11 @@ pub const BufferedBackend = struct {
     activeBuffer: BufferId = .A,
     lastCommittedBuffer: BufferId = .A,
     hasCommittedFrame: bool = false,
+    /// Set when frame bytes were dropped because a buffer could not grow.
+    /// endFrame consumes it and reports the frame as failed so the renderer
+    /// forces a full repaint instead of trusting the committed cell diff.
+    frameWriteFailed: bool = false,
+    smallFrameStreak: u32 = 0,
 
     useThread: bool = false,
     renderThread: ?std.Thread = null,
@@ -201,6 +401,7 @@ pub const BufferedBackend = struct {
         errdefer allocator.free(b_buf);
 
         return BufferedBackend{
+            .allocator = allocator,
             .output = output,
             .outputA = a_buf,
             .outputB = b_buf,
@@ -210,7 +411,7 @@ pub const BufferedBackend = struct {
     pub fn createStdout(allocator: Allocator) !BufferedBackend {
         const stdoutOutput = try allocator.create(StdoutOutput);
         errdefer allocator.destroy(stdoutOutput);
-        stdoutOutput.* = .{};
+        stdoutOutput.* = StdoutOutput.init();
 
         var backend = try BufferedBackend.create(allocator, stdoutOutput.bufferedOutput());
         backend.ownedStdoutOutput = stdoutOutput;
@@ -227,7 +428,10 @@ pub const BufferedBackend = struct {
         return backend;
     }
 
-    pub fn deinit(self: *BufferedBackend, allocator: Allocator) void {
+    /// Frees with the allocator captured at create time. The buffers may have
+    /// been realloc-grown by frame writes, so freeing them with any other
+    /// allocator would be undefined behavior.
+    pub fn deinit(self: *BufferedBackend) void {
         if (self.renderThread) |thread| {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -245,15 +449,15 @@ pub const BufferedBackend = struct {
             self.renderThread = null;
         }
 
-        allocator.free(self.outputA);
-        allocator.free(self.outputB);
+        self.allocator.free(self.outputA);
+        self.allocator.free(self.outputB);
         if (self.ownedStdoutOutput) |stdoutOutput| {
-            allocator.destroy(stdoutOutput);
+            self.allocator.destroy(stdoutOutput);
             self.ownedStdoutOutput = null;
         }
         if (self.ownedMemoryOutput) |memoryOutput| {
             memoryOutput.deinit();
-            allocator.destroy(memoryOutput);
+            self.allocator.destroy(memoryOutput);
             self.ownedMemoryOutput = null;
         }
     }
@@ -329,16 +533,19 @@ pub const BufferedBackend = struct {
             &self.outputLenA
         else
             &self.outputLenB;
-        const buffer = if (self.activeBuffer == .A)
-            self.outputA
-        else
-            self.outputB;
+        const required = bufferLen.* + data.len;
 
-        if (bufferLen.* + data.len > buffer.len) {
-            return error.BufferFull;
+        const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
+
+        if (required > buffer.*.len) {
+            const capacity = @max(required, buffer.*.len * 2);
+            buffer.* = self.allocator.realloc(buffer.*, capacity) catch {
+                self.frameWriteFailed = true;
+                return error.BufferFull;
+            };
         }
 
-        @memcpy(buffer[bufferLen.*..][0..data.len], data);
+        @memcpy(buffer.*[bufferLen.*..][0..data.len], data);
         bufferLen.* += data.len;
         return data.len;
     }
@@ -350,6 +557,8 @@ pub const BufferedBackend = struct {
     }
 
     pub fn beginFrame(self: *BufferedBackend) void {
+        self.frameWriteFailed = false;
+        self.maybeShrinkActiveBuffer();
         if (self.activeBuffer == .A) {
             self.outputLenA = 0;
         } else {
@@ -357,8 +566,44 @@ pub const BufferedBackend = struct {
         }
     }
 
+    pub fn failFrame(self: *BufferedBackend) void {
+        self.frameWriteFailed = true;
+    }
+
+    /// Give spike memory back once frames have been consistently small again.
+    /// Runs at frame start when the active buffer is exclusively owned by the
+    /// producer: in threaded mode the render thread only ever reads the buffer
+    /// handed off at the previous endFrame, which is the other one.
+    fn maybeShrinkActiveBuffer(self: *BufferedBackend) void {
+        if (self.smallFrameStreak < SHRINK_AFTER_SMALL_FRAMES) return;
+        const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
+        if (buffer.*.len <= OUTPUT_BUFFER_SIZE) return;
+        buffer.* = self.allocator.realloc(buffer.*, OUTPUT_BUFFER_SIZE) catch return;
+    }
+
+    fn updateSmallFrameStreak(self: *BufferedBackend, frame_len: usize) void {
+        if (frame_len <= OUTPUT_BUFFER_SIZE) {
+            self.smallFrameStreak +|= 1;
+        } else {
+            self.smallFrameStreak = 0;
+        }
+    }
+
     pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const frame_len = if (self.activeBuffer == .A) self.outputLenA else self.outputLenB;
+
+        if (self.frameWriteFailed) {
+            // Frame bytes were dropped mid-frame. Flushing the truncated ANSI
+            // stream could leave the terminal inside an escape sequence, so
+            // drop the partial frame entirely and report failure; the renderer
+            // reacts by forcing a full repaint on the next frame.
+            self.frameWriteFailed = false;
+            self.smallFrameStreak = 0;
+            return .failed;
+        }
+
+        self.updateSmallFrameStreak(frame_len);
+
         if (self.useThread and frame_len == 0) {
             self.lastCommittedBuffer = self.activeBuffer;
             self.hasCommittedFrame = true;
@@ -492,10 +737,9 @@ pub const BufferedBackend = struct {
     }
 };
 
-/// Backend that writes to a `NativeSpanFeed.Stream`. The feed owns its own
-/// chunk memory; we hold only a non-owning pointer. The TypeScript side is
-/// responsible for allocating and destroying the feed; this backend simply
-/// writes into it and commits on frame boundaries.
+/// Backend that atomically publishes complete frames to a
+/// `NativeSpanFeed.Stream`. The feed owns its chunk memory; the staging buffer
+/// exists only to keep failed frames from exposing partial ANSI sequences.
 ///
 /// Feed writes are in-memory ring-buffer ops with no I/O, so threading adds
 /// synchronization cost without latency-hiding benefit. Backpressure is
@@ -506,10 +750,10 @@ pub const BufferedBackend = struct {
 /// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
+    frameBytes: std.ArrayListUnmanaged(u8) = .{},
 
-    /// Set when a frame's write to the feed fails. The backend never discards
-    /// feed bytes; failures are reported so the renderer can force a later full
-    /// repaint after the durable queue drains or accepts pending bytes.
+    /// Set when staging a frame fails. No bytes from a failed frame are
+    /// published; the renderer forces a later full repaint.
     frameWriteFailed: bool = false,
 
     lastWriteTimeUs: ?f64 = null,
@@ -518,8 +762,9 @@ pub const FeedBackend = struct {
         return FeedBackend{ .feed = feed };
     }
 
-    pub fn deinit(_: *FeedBackend, _: Allocator) void {
-        // Feed memory is owned by the TypeScript side. Nothing to free here.
+    pub fn deinit(self: *FeedBackend) void {
+        // Feed memory is owned by the TypeScript side.
+        self.frameBytes.deinit(self.feed.allocator);
     }
 
     pub fn shouldSkipFrame(self: *FeedBackend) bool {
@@ -562,7 +807,7 @@ pub const FeedBackend = struct {
 
     fn frameWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
         const self = ctx.backend;
-        self.feed.write(data) catch {
+        self.frameBytes.appendSlice(self.feed.allocator, data) catch {
             self.frameWriteFailed = true;
             return error.BufferFull;
         };
@@ -575,6 +820,11 @@ pub const FeedBackend = struct {
 
     pub fn beginFrame(self: *FeedBackend) void {
         self.frameWriteFailed = false;
+        self.frameBytes.clearRetainingCapacity();
+    }
+
+    pub fn failFrame(self: *FeedBackend) void {
+        self.frameWriteFailed = true;
     }
 
     pub fn endFrame(self: *FeedBackend) WriteStatus {
@@ -582,12 +832,9 @@ pub const FeedBackend = struct {
         var status: WriteStatus = .ok;
 
         if (self.frameWriteFailed) {
-            if (self.feed.hasPendingBytes()) {
-                self.feed.commit() catch {};
-            }
             status = .failed;
         } else {
-            self.feed.commit() catch {
+            self.feed.writeAtomic(self.frameBytes.items) catch {
                 status = .failed;
             };
         }
@@ -598,21 +845,24 @@ pub const FeedBackend = struct {
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
-        self.feed.write(data) catch return;
-        self.feed.commit() catch {};
+        // High-level renderers use a growable, uncapped feed. Manually bounded
+        // low-level feeds intentionally get atomic best-effort control writes.
+        self.feed.writeAtomic(data) catch {};
     }
 
     pub fn writeOutMultiple(self: *FeedBackend, data_slices: []const []const u8) void {
         var totalLen: usize = 0;
-        for (data_slices) |slice| totalLen += slice.len;
+        for (data_slices) |slice| totalLen = std.math.add(usize, totalLen, slice.len) catch return;
         if (totalLen == 0) return;
 
-        var wrote_any = false;
+        const data = self.feed.allocator.alloc(u8, totalLen) catch return;
+        defer self.feed.allocator.free(data);
+        var offset: usize = 0;
         for (data_slices) |slice| {
-            self.feed.write(slice) catch return;
-            wrote_any = true;
+            @memcpy(data[offset .. offset + slice.len], slice);
+            offset += slice.len;
         }
-        if (wrote_any) self.feed.commit() catch {};
+        self.feed.writeAtomic(data) catch {};
     }
 
     /// Write a debug dump placeholder. FeedBackend has no flat previous-frame

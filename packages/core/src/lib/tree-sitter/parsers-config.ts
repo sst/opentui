@@ -1,7 +1,7 @@
 /**
  * This file contains the configuration for the defaulttree-sitter parsers.
- * It is used by ./assets/update.ts to generate the default-parsers.ts file.
- * For changes here to be reflected in the default-parsers.ts file, you need to run `bun run ./assets/update.ts`
+ * It is used by ./assets/update.ts to generate the default parser runtime files and asset manifest.
+ * For changes here to be reflected in generated files, you need to run `bun run ./assets/update.ts`
  */
 export default {
   parsers: [

@@ -218,10 +218,12 @@ import moduleResolver from "babel-plugin-module-resolver"
 import solid from "babel-preset-solid"
 
 const solidRuntime = await import(${JSON.stringify(packageJson.name)})
+const componentsRuntime = await import(${JSON.stringify(`${packageJson.name}/components`)})
 const jsxRuntime = await import(${JSON.stringify(`${packageJson.name}/jsx-runtime`)})
 const jsxDevRuntime = await import(${JSON.stringify(`${packageJson.name}/jsx-dev-runtime`)})
 
 assert.equal(typeof solidRuntime.testRender, "function")
+assert.equal(componentsRuntime.getComponentCatalogue(), solidRuntime.getComponentCatalogue())
 assert.equal(typeof jsxRuntime.jsx, "function")
 assert.equal(typeof jsxRuntime.jsxs, "function")
 assert.equal(typeof jsxRuntime.Fragment, "function")
@@ -339,9 +341,14 @@ export async function run() {
   )
   writeFileSync(
     join(bunDir, "index.bun.mjs"),
-    `import { ensureRuntimePluginSupport } from ${JSON.stringify(`${packageJson.name}/runtime-plugin-support/configure`)}
-import { testRender } from ${JSON.stringify(packageJson.name)}
+    `import assert from "node:assert/strict"
+
+import { ensureRuntimePluginSupport } from ${JSON.stringify(`${packageJson.name}/runtime-plugin-support/configure`)}
+import { getComponentCatalogue, testRender } from ${JSON.stringify(packageJson.name)}
+import { getComponentCatalogue as getComponentsEntrypointCatalogue } from ${JSON.stringify(`${packageJson.name}/components`)}
 import { jsx } from ${JSON.stringify(`${packageJson.name}/jsx-runtime`)}
+
+assert.equal(getComponentsEntrypointCatalogue(), getComponentCatalogue())
 
 const setup = await testRender(() => jsx("box", {}))
 setup.renderer.destroy()

@@ -214,12 +214,13 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (selectElement) {
-    rendererInstance.root.remove(selectElement.id)
+    rendererInstance.root.remove(selectElement)
     selectElement.destroy()
     selectElement = null
   }
 
-  rendererInstance.root.remove("parent-container")
+  const parentContainer = rendererInstance.root.getRenderable("parent-container")
+  if (parentContainer) rendererInstance.root.remove(parentContainer)
 
   keyLegendDisplay = null
   statusDisplay = null

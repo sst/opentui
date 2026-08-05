@@ -1,3 +1,4 @@
+import { appendFileSync, writeFileSync } from "node:fs"
 import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
@@ -88,6 +89,13 @@ registerEnvVar({
   description: "Enable debug mode to capture all raw input for debugging purposes.",
   type: "boolean",
   default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_STDIN_LOG",
+  description: "Write the raw stdin byte stream to this file for debugging.",
+  type: "string",
+  default: "",
 })
 
 registerEnvVar({
@@ -256,6 +264,11 @@ export interface CliRendererStats extends NativeRenderStats {
 
 export interface CliRendererFrameEvent {
   frameId: number
+}
+
+export interface CliRendererErrorEvent {
+  error: Error
+  renderable: Renderable | undefined
 }
 
 export interface RendererSchedulerState {
@@ -432,9 +445,12 @@ const CHAR_FLAG_MASK = 0xc0000000 >>> 0
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
   public width: number
   public height: number
+  public terminalWidth: number
+  public terminalHeight: number
+  public resolution: PixelResolution | null
   public frameId = 0
   public widthMethod: WidthMethod
-  public capabilities: TerminalCapabilities | null = null
+  public capabilities: TerminalCapabilities | null
   public hasSelection: boolean = false
   public currentFocusedRenderable: Renderable | null = null
   public keyInput: KeyHandler
@@ -442,10 +458,22 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 
   private lifecyclePasses: Set<Renderable> = new Set()
 
-  constructor(width: number, height: number, widthMethod: WidthMethod) {
+  constructor(
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    terminalWidth: number = width,
+    terminalHeight: number = height,
+    resolution: PixelResolution | null = null,
+    capabilities: TerminalCapabilities | null = null,
+  ) {
     super()
     this.width = width
     this.height = height
+    this.terminalWidth = terminalWidth
+    this.terminalHeight = terminalHeight
+    this.resolution = resolution
+    this.capabilities = capabilities
     this.widthMethod = widthMethod
     this.keyInput = new KeyHandler()
     this._internalKeyInput = new InternalKeyHandler()
@@ -505,6 +533,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "ZELLIJ_PANE_ID",
   "TERM",
   "OPENTUI_GRAPHICS",
+  "OPENTUI_IMAGE_PROTOCOL",
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_FEATURES",
@@ -612,6 +641,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
+  public readonly currentTarget: Renderable | null = null
   public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
@@ -643,6 +673,11 @@ export class MouseEvent {
   public preventDefault(): void {
     this._defaultPrevented = true
   }
+}
+
+export interface CliRendererHandlerErrorEvent {
+  error: unknown
+  event: MouseEvent
 }
 
 export enum MouseButton {
@@ -693,6 +728,8 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
+  RENDER_ERROR = "render:error",
+  HANDLER_ERROR = "handler:error",
   EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
   BLUR = "blur",
@@ -757,6 +794,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private waitingForPixelResolution: boolean = false
+  private pixelResolutionRequeryPending: boolean = false
   private readonly clock: Clock
 
   private rendering: boolean = false
@@ -888,6 +926,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
+  private readonly stdinLogPath: string = env.OTUI_STDIN_LOG
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -1020,6 +1059,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let feed: NativeSpanFeed | null = null
     if (useFeedOutput) {
       try {
+        // Keep high-level feeds growable and uncapped so control/shutdown writes
+        // can publish while async Writable callbacks still pin earlier chunks.
         feed = NativeSpanFeed.create()
       } catch (error) {
         throw new Error(
@@ -1863,7 +1904,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const tailColumn = renderer.getPendingSplitTailColumn()
     const firstLineOffset = !startOnNewLine && tailColumn > 0 && tailColumn < renderer.width ? tailColumn : 0
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(renderer.width, 1, renderer.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      renderer.width,
+      1,
+      renderer.widthMethod,
+      renderer._terminalWidth,
+      renderer._terminalHeight,
+      renderer.resolution,
+      renderer.capabilities,
+    )
     let firstLineOffsetOwner: Renderable | null = null
     const renderContext = Object.create(snapshotContext) as RenderContext
     Object.defineProperty(renderContext, "claimFirstLineOffset", {
@@ -1901,6 +1950,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let surfaceWidth = renderer.width
     let surfaceHeight = 1
     let surfaceWidthMethod = renderer.widthMethod
+    let surfaceTerminalWidth = renderer._terminalWidth
+    let surfaceTerminalHeight = renderer._terminalHeight
+    let surfaceResolutionWidth = renderer.resolution?.width ?? null
+    let surfaceResolutionHeight = renderer.resolution?.height ?? null
     let surfaceDestroyed = false
     let hasRendered = false
     let nextCommitStartOnNewLine = startOnNewLine
@@ -1925,7 +1978,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     const assertGeometryStillCurrent = (): void => {
-      if (renderer.width !== surfaceWidth || renderer.widthMethod !== surfaceWidthMethod) {
+      if (
+        renderer.width !== surfaceWidth ||
+        renderer.widthMethod !== surfaceWidthMethod ||
+        renderer._terminalWidth !== surfaceTerminalWidth ||
+        renderer._terminalHeight !== surfaceTerminalHeight ||
+        (renderer.resolution?.width ?? null) !== surfaceResolutionWidth ||
+        (renderer.resolution?.height ?? null) !== surfaceResolutionHeight
+      ) {
         throw new Error("ScrollbackSurface.commitRows requires render() after renderer geometry changes")
       }
     }
@@ -2005,6 +2065,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       snapshotContext.width = width
       snapshotContext.widthMethod = widthMethod
+      snapshotContext.terminalWidth = renderer._terminalWidth
+      snapshotContext.terminalHeight = renderer._terminalHeight
+      snapshotContext.resolution = renderer.resolution
+      snapshotContext.capabilities = renderer.capabilities
       publicRoot.width = width
 
       const renderPass = (height: number): void => {
@@ -2035,6 +2099,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           surfaceWidth = width
           surfaceHeight = measuredHeight
           surfaceWidthMethod = widthMethod
+          surfaceTerminalWidth = renderer._terminalWidth
+          surfaceTerminalHeight = renderer._terminalHeight
+          surfaceResolutionWidth = renderer.resolution?.width ?? null
+          surfaceResolutionHeight = renderer.resolution?.height ?? null
           hasRendered = true
           return
         }
@@ -2047,6 +2115,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       surfaceWidth = width
       surfaceHeight = targetHeight
       surfaceWidthMethod = widthMethod
+      surfaceTerminalWidth = renderer._terminalWidth
+      surfaceTerminalHeight = renderer._terminalHeight
+      surfaceResolutionWidth = renderer.resolution?.width ?? null
+      surfaceResolutionHeight = renderer.resolution?.height ?? null
       hasRendered = true
     }
 
@@ -2197,7 +2269,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      this.height,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
@@ -2439,7 +2519,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private createStdoutSnapshotCommit(line: string, trailingNewline: boolean): ExternalOutputCommit {
     // Convert captured stdout into the same commit shape used by writeToScrollback.
     // One commit format keeps split append behavior consistent across both sources.
-    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, 1, this.widthMethod)
+    const snapshotContext = new ScrollbackSnapshotRenderContext(
+      this.width,
+      1,
+      this.widthMethod,
+      this._terminalWidth,
+      this._terminalHeight,
+      this.resolution,
+      this.capabilities,
+    )
     const maxWidth = Math.max(1, this.width)
     const lineCells = [...line]
     const rowColumns = Math.min(lineCells.length, maxWidth)
@@ -2556,6 +2644,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let acceptedCommits = 0
     let nativeBackpressured = false
     let nativeFailed = false
+    let nextRenderOffset = this.renderOffset
 
     for (const [index, commit] of commits.entries()) {
       // Force repaint only on the last commit in a frame. Repainting after every
@@ -2589,14 +2678,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         break
       }
 
-      this.renderOffset = nativeResult.renderOffset
-      this.recordSplitCommit(commit)
+      nextRenderOffset = nativeResult.renderOffset
       hasCommittedOutput = true
       acceptedCommits++
-    }
-
-    if (acceptedCommits > 0) {
-      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (nativeFailed) {
@@ -2606,6 +2690,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (nativeBackpressured) {
       this.scheduleRenderAfterFeedIdle()
       return "backpressured"
+    }
+
+    if (acceptedCommits > 0) {
+      this.renderOffset = nextRenderOffset
+      for (const commit of commits.slice(0, acceptedCommits)) this.recordSplitCommit(commit)
+      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (!hasCommittedOutput) {
@@ -3169,6 +3259,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     if (!this.stdinParser) return
 
+    if (this.stdinLogPath) {
+      appendFileSync(this.stdinLogPath, data)
+    }
+
     try {
       this.stdinParser.push(data)
       this.drainStdinParser()
@@ -3304,6 +3398,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinEvent(event: StdinEvent): void {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      if (event.type === "response" && isPixelResolutionResponse(event.sequence)) {
+        this.dispatchSequenceHandlers(event.sequence)
+      }
+      return
+    }
     switch (event.type) {
       case "key":
         if (this.dispatchSequenceHandlers(event.raw)) {
@@ -3354,17 +3454,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private setupInput(): void {
+    if (this.stdinLogPath) {
+      writeFileSync(this.stdinLogPath, Buffer.alloc(0), { mode: 0o600 })
+    }
+
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
     }
 
     this.addInputHandler((sequence: string) => {
       if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+        this.waitingForPixelResolution = false
+        if (this.pixelResolutionRequeryPending) {
+          this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false })
+          this.queryPixelResolution()
+          return true
+        }
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
+          this.requestRender()
         }
-        this.waitingForPixelResolution = false
         this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)
         return true
       }
@@ -3387,7 +3497,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
   ): MouseEvent {
     const event = new MouseEvent(target, attributes)
-    target.processMouseEvent(event)
+    this.sendMouseEvent(target, event)
 
     if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
       let current: Renderable | null = target
@@ -3401,6 +3511,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return event
+  }
+
+  private sendMouseEvent(target: Renderable, event: MouseEvent): void {
+    try {
+      target.processMouseEvent(event)
+    } catch (error) {
+      const handled = this.emit(CliRenderEvents.HANDLER_ERROR, { error, event } satisfies CliRendererHandlerErrorEvent)
+      if (!handled) console.error("Error in mouse handler:", error)
+    }
   }
 
   private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
@@ -3443,7 +3562,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (scrollTarget) {
         const event = new MouseEvent(scrollTarget, mouseEvent)
-        scrollTarget.processMouseEvent(event)
+        this.sendMouseEvent(scrollTarget, event)
       }
       return true
     }
@@ -3481,7 +3600,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           isDragging: true,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
 
       return true
@@ -3493,7 +3612,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           isDragging: true,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
 
       this.finishSelection()
@@ -3518,7 +3637,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           ...mouseEvent,
           type: "out",
         })
-        this.lastOverRenderable.processMouseEvent(event)
+        this.sendMouseEvent(this.lastOverRenderable, event)
       }
       this.lastOverRenderable = maybeRenderable
       if (maybeRenderable) {
@@ -3527,13 +3646,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           type: "over",
           source: this.capturedRenderable,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
     }
 
     if (this.capturedRenderable && mouseEvent.type !== "up") {
       const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-      this.capturedRenderable.processMouseEvent(event)
+      this.sendMouseEvent(this.capturedRenderable, event)
       return true
     }
 
@@ -3542,15 +3661,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         ...mouseEvent,
         type: "drag-end",
       })
-      this.capturedRenderable.processMouseEvent(event)
-      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      this.sendMouseEvent(this.capturedRenderable, event)
+      this.sendMouseEvent(this.capturedRenderable, new MouseEvent(this.capturedRenderable, mouseEvent))
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
           ...mouseEvent,
           type: "drop",
           source: this.capturedRenderable,
         })
-        maybeRenderable.processMouseEvent(event)
+        this.sendMouseEvent(maybeRenderable, event)
       }
       this.lastOverRenderable = this.capturedRenderable
       this.lastOverRenderableNum = this.capturedRenderable.num
@@ -3610,7 +3729,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Fire out on old element
     if (lastOver && !lastOver.isDestroyed) {
       const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
-      lastOver.processMouseEvent(event)
+      this.sendMouseEvent(lastOver, event)
     }
 
     this.lastOverRenderable = hitRenderable
@@ -3622,7 +3741,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         ...baseEvent,
         type: "over",
       })
-      hitRenderable.processMouseEvent(event)
+      this.sendMouseEvent(hitRenderable, event)
     }
   }
   public setMousePointer(style: MousePointerStyle): void {
@@ -3699,6 +3818,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private queryPixelResolution() {
+    this.pixelResolutionRequeryPending = true
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED || this.waitingForPixelResolution) return
+    this.pixelResolutionRequeryPending = false
     this.waitingForPixelResolution = true
     this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
     this.lib.queryPixelResolution(this.rendererPtr)
@@ -3729,6 +3851,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
+    this._resolution = null
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
@@ -3857,7 +3980,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public isOsc52Supported(): boolean {
-    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
+    return this._capabilities ? this._capabilities.osc52_support !== "unsupported" : this.clipboard.isOsc52Supported()
   }
 
   public dumpHitGrid(): void {
@@ -4001,14 +4124,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this.waitingForPixelResolution = false
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
-      pixelResolutionQueryActive: false,
+      pixelResolutionQueryActive: this.waitingForPixelResolution,
       explicitWidthCprActive: false,
       startupCursorCprActive: false,
     })
-    this.stdinParser?.reset()
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
 
     this.themeModeState.cancelRefresh()
@@ -4027,11 +4150,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
 
-    // Drain any input buffered during suspension before registering the
-    // listener. Adding a "data" listener can auto-resume a Readable, so the
-    // drain must come first while the stream is still paused and read()
-    // pulls from the internal buffer rather than being a flowing-mode no-op.
-    while (this.stdin.read() !== null) {}
+    let drained: Buffer | string | null
+    while ((drained = this.stdin.read()) !== null) this.stdinListener(drained)
+    if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
+    else this.stdinParser?.reset()
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
@@ -4067,6 +4189,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.forceFullRepaintRequested = true
     this._controlState = this._previousControlState
+    if (this.pixelResolutionRequeryPending) this.queryPixelResolution()
+    this.stdinParser?.resumePendingTimeout()
 
     if (
       this._previousControlState === RendererControlState.AUTO_STARTED ||
@@ -4172,6 +4296,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._isRunning = false
     this.waitingForPixelResolution = false
+    this.pixelResolutionRequeryPending = false
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,
@@ -4288,11 +4413,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     //   d) detach the handler now that no more data will flow
     //   e) close the feed (releases chunk memory once async handlers settle)
     //
-    // Memory-lifetime invariant: `lib.destroyRenderer` calls into Zig's
-    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP — feed memory is
-    // owned by the TS side and only released by `feed.close()` at step (e).
-    // Consequently, step (c)'s drain operates on still-valid chunk memory;
-    // there is no use-after-free window between (b) and (e).
+    // Memory-lifetime invariant: `FeedBackend.deinit` releases its staging
+    // buffer but does not own feed chunks. Those remain valid until the TS side
+    // calls `feed.close()` at step (e), so step (c) can safely drain them.
     //
     // Caller note: `feed.close()` is queued as a microtask when async handlers
     // from the final drain are still pending. If the caller tears down the
@@ -4372,13 +4495,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
-    this.renderTimeout = null
-
-    this.rendering = true
     if (this.renderTimeout) {
       this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
+    this.rendering = true
+    let renderFailed = false
     try {
       // Bump before any work so all callers this iteration see the new id.
       this._frameId++
@@ -4495,10 +4617,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderTimeout = null
         }
       }
+    } catch (error) {
+      renderFailed = true
+      const renderError = error instanceof Error ? error : new Error(String(error))
+      const event: CliRendererErrorEvent = { error: renderError, renderable: this.root.takeCurrentRenderable() }
+      const handled = this.emit(CliRenderEvents.RENDER_ERROR, event)
+      if (!handled) this.handleError(renderError)
     } finally {
       this.rendering = false
       if (this._destroyPending) {
         this.finalizeDestroy()
+      }
+      if (renderFailed && (this._isRunning || this.immediateRerenderRequested) && !this._isDestroyed) {
+        this.immediateRerenderRequested = false
+        this.scheduleRenderTimer()
       }
       this.resolveIdleIfNeeded()
     }

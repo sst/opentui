@@ -11,10 +11,33 @@ pub const GraphemePoolError = error{
 // Encoding flags for char buffer entries (u32)
 // Bits 31-30: encoding type
 //   00xxxxxxxx: direct unicode scalar value (30 bits, as-is)
+//   01xxxxxxxx: image cell with reservation ID and fallback quadrant
 //   10xxxxxxxx: grapheme start cell with pool ID (26 bits total payload)
 //   11xxxxxxxx: continuation cell marker for wide/grapheme rendering
+pub const CHAR_FLAG_IMAGE: u32 = 0x4000_0000;
 pub const CHAR_FLAG_GRAPHEME: u32 = 0x8000_0000;
 pub const CHAR_FLAG_CONTINUATION: u32 = 0xC000_0000;
+pub const CHAR_TYPE_MASK: u32 = 0xC000_0000;
+pub const IMAGE_ID_MASK: u32 = 0x03FF_FFFF;
+
+pub fn packImageCell(id: u32, fallback: u4) u32 {
+    assert(id <= IMAGE_ID_MASK);
+    return CHAR_FLAG_IMAGE | (id << 4) | fallback;
+}
+
+pub fn isImageChar(char: u32) bool {
+    return char & CHAR_TYPE_MASK == CHAR_FLAG_IMAGE;
+}
+
+pub fn imageIdFromChar(char: u32) u32 {
+    assert(isImageChar(char));
+    return (char >> 4) & IMAGE_ID_MASK;
+}
+
+pub fn imageFallbackFromChar(char: u32) u4 {
+    assert(isImageChar(char));
+    return @truncate(char);
+}
 
 // For grapheme start and continuation cells:
 // Bits 29..28: right extent (u2), Bits 27..26: left extent (u2)

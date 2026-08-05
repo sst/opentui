@@ -1,5 +1,11 @@
 import { RGBA } from "./lib/RGBA.js"
-import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferViewHandle } from "./zig.js"
+import {
+  resolveRenderLib,
+  type LineInfo,
+  type MeasureResult,
+  type RenderLib,
+  type TextBufferViewHandle,
+} from "./zig.js"
 import type { TextBuffer } from "./text-buffer.js"
 
 export class TextBufferView {
@@ -175,7 +181,7 @@ export class TextBufferView {
     this.lib.textBufferViewSetTruncate(this.viewPtr, truncate)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
+  public measureForDimensions(width: number, height: number): MeasureResult | null {
     this.guard()
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }
