@@ -48,6 +48,8 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
   CursorStateStruct,
+  EmbeddedTerminalComposeResultStruct,
+  EmbeddedTerminalCursorStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
@@ -117,6 +119,49 @@ export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
 export type ImageHandle = NativeHandle<"image">
+export type EmbeddedTerminalHandle = NativeHandle<"embedded_terminal">
+
+export type EmbeddedTerminalDirty = "clean" | "partial" | "full"
+export type EmbeddedTerminalCursorStyle = "bar" | "block" | "underline" | "block-hollow"
+export type EmbeddedTerminalKeyAction = "release" | "press" | "repeat"
+export type EmbeddedTerminalMouseAction = "press" | "release" | "motion"
+export type EmbeddedTerminalMouseButton = "unknown" | "left" | "right" | "middle" | "four" | "five" | "six" | "seven"
+
+export type EmbeddedTerminalCursor = {
+  x: number
+  y: number
+  hasValue: boolean
+  visible: boolean
+  blinking: boolean
+  wideTail: boolean
+  style: EmbeddedTerminalCursorStyle
+  color?: { r: number; g: number; b: number }
+}
+
+export type EmbeddedTerminalComposeResult = {
+  rows: number
+  cells: number
+  dirty: EmbeddedTerminalDirty
+}
+
+export type EmbeddedTerminalKey = {
+  action?: EmbeddedTerminalKeyAction
+  key?: string
+  mods?: number
+  consumedMods?: number
+  composing?: boolean
+  text?: string
+  unshiftedCodepoint?: number
+}
+
+export type EmbeddedTerminalMouse = {
+  action: EmbeddedTerminalMouseAction
+  button?: EmbeddedTerminalMouseButton
+  mods?: number
+  x: number
+  y: number
+  anyButtonPressed?: boolean
+}
 let targetLibPath: string | undefined
 let targetLibError: Error | undefined
 
@@ -220,6 +265,47 @@ function ptrOrNull(value: ArrayBufferView): Pointer | null {
   return value.byteLength === 0 ? null : ptr(value)
 }
 
+const EMBEDDED_TERMINAL_ERRORS: Record<number, string> = {
+  [-1]: "invalid value or handle",
+  [-2]: "out of memory",
+  [-3]: "embedded terminal support is unavailable",
+  [-4]: "output buffer is too small",
+  [-5]: "processing failed",
+}
+
+function embeddedTerminalResult(status: number, operation: string) {
+  if (status >= 0) return status
+  throw new Error(`Embedded terminal ${operation} failed: ${EMBEDDED_TERMINAL_ERRORS[status] ?? `status ${status}`}`)
+}
+
+function embeddedTerminalDimension(value: number, name: string) {
+  if (!Number.isInteger(value) || value < 1 || value > 0xffff) {
+    throw new RangeError(`Embedded terminal ${name} must be an integer between 1 and 65535`)
+  }
+  return value
+}
+
+function embeddedTerminalScrollback(value: number) {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_FFI_U32) {
+    throw new RangeError(`Embedded terminal maxScrollback must be an integer between 0 and ${MAX_FFI_U32}`)
+  }
+  return value
+}
+
+function embeddedTerminalI32(value: number, name: string) {
+  if (!Number.isInteger(value) || value < -0x8000_0000 || value > 0x7fff_ffff) {
+    throw new RangeError(`Embedded terminal ${name} must be a signed 32-bit integer`)
+  }
+  return value
+}
+
+function embeddedTerminalF32(value: number, name: string) {
+  if (!Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38) {
+    throw new RangeError(`Embedded terminal ${name} must be a finite 32-bit float`)
+  }
+  return value
+}
+
 function rgbaPtr(value: RGBA): Pointer {
   return ptr(value.buffer)
 }
@@ -267,6 +353,58 @@ function getOpenTUILib(libPath?: string) {
     nativeRenderableSetMeasureTarget: {
       args: ["u32", "u32", "u32"],
       returns: "bool",
+    },
+    createEmbeddedTerminal: {
+      args: ["u16", "u16", "u32", "ptr"],
+      returns: "i32",
+    },
+    destroyEmbeddedTerminal: {
+      args: ["u32"],
+      returns: "void",
+    },
+    embeddedTerminalWrite: {
+      args: ["u32", "ptr", "u32"],
+      returns: "i32",
+    },
+    embeddedTerminalResize: {
+      args: ["u32", "u16", "u16"],
+      returns: "i32",
+    },
+    embeddedTerminalInvalidate: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    embeddedTerminalScroll: {
+      args: ["u32", "i32"],
+      returns: "i32",
+    },
+    embeddedTerminalCompose: {
+      args: ["u32", "u32", "i32", "i32", "ptr"],
+      returns: "i32",
+    },
+    embeddedTerminalCursor: {
+      args: ["u32", "ptr"],
+      returns: "i32",
+    },
+    embeddedTerminalEncodeKey: {
+      args: ["u32", "u8", "ptr", "u32", "u16", "u16", "u8", "ptr", "u32", "u32", "ptr", "u32", "ptr"],
+      returns: "i32",
+    },
+    embeddedTerminalEncodeMouse: {
+      args: ["u32", "u8", "i8", "u16", "f32", "f32", "u8", "ptr", "u32"],
+      returns: "i32",
+    },
+    embeddedTerminalEncodePaste: {
+      args: ["u32", "ptr", "u32", "ptr", "u32"],
+      returns: "i32",
+    },
+    embeddedTerminalEncodeFocus: {
+      args: ["u32", "u8", "ptr", "u32"],
+      returns: "i32",
+    },
+    embeddedTerminalDrainResponses: {
+      args: ["u32", "ptr", "u32"],
+      returns: "i32",
     },
     // Renderer management
     createRenderer: {
@@ -2754,6 +2892,24 @@ export interface RenderLib extends AudioEngineLib {
     kind: NativeMeasureTargetKind,
     target: NativeMeasureTargetHandle | 0,
   ) => boolean
+  createEmbeddedTerminal: (options: { cols: number; rows: number; maxScrollback?: number }) => EmbeddedTerminalHandle
+  destroyEmbeddedTerminal: (handle: EmbeddedTerminalHandle) => void
+  embeddedTerminalWrite: (handle: EmbeddedTerminalHandle, data: string | Uint8Array) => void
+  embeddedTerminalResize: (handle: EmbeddedTerminalHandle, cols: number, rows: number) => void
+  embeddedTerminalInvalidate: (handle: EmbeddedTerminalHandle) => void
+  embeddedTerminalScroll: (handle: EmbeddedTerminalHandle, delta: number) => void
+  embeddedTerminalCompose: (
+    handle: EmbeddedTerminalHandle,
+    target: OptimizedBufferHandle,
+    x: number,
+    y: number,
+  ) => EmbeddedTerminalComposeResult
+  embeddedTerminalCursor: (handle: EmbeddedTerminalHandle) => EmbeddedTerminalCursor
+  embeddedTerminalEncodeKey: (handle: EmbeddedTerminalHandle, key: EmbeddedTerminalKey) => Uint8Array
+  embeddedTerminalEncodeMouse: (handle: EmbeddedTerminalHandle, mouse: EmbeddedTerminalMouse) => Uint8Array
+  embeddedTerminalEncodePaste: (handle: EmbeddedTerminalHandle, input: Uint8Array) => Uint8Array
+  embeddedTerminalEncodeFocus: (handle: EmbeddedTerminalHandle, focused: boolean) => Uint8Array
+  embeddedTerminalDrainResponses: (handle: EmbeddedTerminalHandle) => Uint8Array
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2786,6 +2942,8 @@ class FFIRenderLib implements RenderLib {
       ...allocStruct(MeasureResultStruct),
       result: { lineCount: 0, widthColsMax: 0 } as MeasureResult,
     },
+    embeddedTerminalCompose: allocStruct(EmbeddedTerminalComposeResultStruct),
+    embeddedTerminalCursor: allocStruct(EmbeddedTerminalCursorStruct),
     audioStreamStats: {
       ...allocStruct(AudioStreamStatsStruct),
       result: {
@@ -2836,6 +2994,194 @@ class FFIRenderLib implements RenderLib {
     target: NativeMeasureTargetHandle | 0,
   ): boolean {
     return Boolean(this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target))
+  }
+
+  public createEmbeddedTerminal(options: {
+    cols: number
+    rows: number
+    maxScrollback?: number
+  }): EmbeddedTerminalHandle {
+    const cols = embeddedTerminalDimension(options.cols, "columns")
+    const rows = embeddedTerminalDimension(options.rows, "rows")
+    const maxScrollback = embeddedTerminalScrollback(options.maxScrollback ?? 10_000)
+    const out = new Uint32Array(1)
+    embeddedTerminalResult(this.opentui.symbols.createEmbeddedTerminal(cols, rows, maxScrollback, out), "creation")
+    if (!out[0]) throw new Error("Embedded terminal creation returned an invalid handle")
+    return out[0] as EmbeddedTerminalHandle
+  }
+
+  public destroyEmbeddedTerminal(handle: EmbeddedTerminalHandle): void {
+    this.opentui.symbols.destroyEmbeddedTerminal(handle)
+  }
+
+  public embeddedTerminalWrite(handle: EmbeddedTerminalHandle, data: string | Uint8Array): void {
+    const bytes = typeof data === "string" ? this.encoder.encode(data) : data
+    const length = toSafeFFIU32Length(bytes.byteLength, "Embedded terminal write length")
+    embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalWrite(handle, length === 0 ? null : bytes, length),
+      "write",
+    )
+  }
+
+  public embeddedTerminalResize(handle: EmbeddedTerminalHandle, cols: number, rows: number): void {
+    embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalResize(
+        handle,
+        embeddedTerminalDimension(cols, "columns"),
+        embeddedTerminalDimension(rows, "rows"),
+      ),
+      "resize",
+    )
+  }
+
+  public embeddedTerminalInvalidate(handle: EmbeddedTerminalHandle): void {
+    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalInvalidate(handle), "invalidation")
+  }
+
+  public embeddedTerminalScroll(handle: EmbeddedTerminalHandle, delta: number): void {
+    embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalScroll(handle, embeddedTerminalI32(delta, "scroll delta")),
+      "scroll",
+    )
+  }
+
+  public embeddedTerminalCompose(
+    handle: EmbeddedTerminalHandle,
+    target: OptimizedBufferHandle,
+    x: number,
+    y: number,
+  ): EmbeddedTerminalComposeResult {
+    const storage = this.ffiStructStorage.embeddedTerminalCompose
+    embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalCompose(
+        handle,
+        target,
+        embeddedTerminalI32(x, "composition x"),
+        embeddedTerminalI32(y, "composition y"),
+        storage.buffer,
+      ),
+      "compose",
+    )
+    const result = EmbeddedTerminalComposeResultStruct.unpack(storage.buffer)
+    return {
+      rows: result.rows,
+      cells: result.cells,
+      dirty: (["clean", "partial", "full"] as const)[result.dirty] ?? "full",
+    }
+  }
+
+  public embeddedTerminalCursor(handle: EmbeddedTerminalHandle): EmbeddedTerminalCursor {
+    const storage = this.ffiStructStorage.embeddedTerminalCursor
+    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalCursor(handle, storage.buffer), "cursor query")
+    const result = EmbeddedTerminalCursorStruct.unpack(storage.buffer)
+    return {
+      x: result.x,
+      y: result.y,
+      hasValue: result.hasValue,
+      visible: result.visible,
+      blinking: result.blinking,
+      wideTail: result.wideTail,
+      style: (["bar", "block", "underline", "block-hollow"] as const)[result.style] ?? "block",
+      ...(result.colorHasValue ? { color: { r: result.colorR, g: result.colorG, b: result.colorB } } : {}),
+    }
+  }
+
+  public embeddedTerminalEncodeKey(handle: EmbeddedTerminalHandle, key: EmbeddedTerminalKey): Uint8Array {
+    const keyCode = key.key ? this.encoder.encode(key.key) : new Uint8Array()
+    const keyCodeLength = toSafeFFIU32Length(keyCode.byteLength, "Embedded terminal physical key length")
+    const text = key.text ? this.encoder.encode(key.text) : new Uint8Array()
+    const textLength = toSafeFFIU32Length(text.byteLength, "Embedded terminal key text length")
+    const required = new Uint32Array(1)
+    const encode = (output: Uint8Array) =>
+      this.opentui.symbols.embeddedTerminalEncodeKey(
+        handle,
+        { release: 0, press: 1, repeat: 2 }[key.action ?? "press"],
+        keyCodeLength === 0 ? null : keyCode,
+        keyCodeLength,
+        key.mods ?? 0,
+        key.consumedMods ?? 0,
+        key.composing ? 1 : 0,
+        textLength === 0 ? null : text,
+        textLength,
+        key.unshiftedCodepoint ?? 0,
+        output,
+        output.byteLength,
+        required,
+      )
+    const initial = new Uint8Array(Math.max(64, textLength))
+    const status = encode(initial)
+    if (status >= 0) return initial.slice(0, status)
+    if (status !== -4 || required[0] <= initial.byteLength) embeddedTerminalResult(status, "key encoding")
+    const output = new Uint8Array(required[0])
+    const length = embeddedTerminalResult(encode(output), "key encoding")
+    return output.slice(0, length)
+  }
+
+  public embeddedTerminalEncodeMouse(handle: EmbeddedTerminalHandle, mouse: EmbeddedTerminalMouse): Uint8Array {
+    const output = new Uint8Array(128)
+    const length = embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalEncodeMouse(
+        handle,
+        { press: 0, release: 1, motion: 2 }[mouse.action],
+        mouse.button
+          ? { unknown: 0, left: 1, right: 2, middle: 3, four: 4, five: 5, six: 6, seven: 7 }[mouse.button]
+          : -1,
+        mouse.mods ?? 0,
+        embeddedTerminalF32(mouse.x, "mouse x"),
+        embeddedTerminalF32(mouse.y, "mouse y"),
+        mouse.anyButtonPressed ? 1 : 0,
+        output,
+        output.byteLength,
+      ),
+      "mouse encoding",
+    )
+    return output.slice(0, length)
+  }
+
+  public embeddedTerminalEncodePaste(handle: EmbeddedTerminalHandle, input: Uint8Array): Uint8Array {
+    const inputLength = toSafeFFIU32Length(input.byteLength, "Embedded terminal paste length")
+    const outputLength = toSafeFFIU32Length(inputLength + 16, "Embedded terminal paste output length")
+    const output = new Uint8Array(outputLength)
+    const length = embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalEncodePaste(
+        handle,
+        inputLength === 0 ? null : input,
+        inputLength,
+        output,
+        output.byteLength,
+      ),
+      "paste encoding",
+    )
+    return output.slice(0, length)
+  }
+
+  public embeddedTerminalEncodeFocus(handle: EmbeddedTerminalHandle, focused: boolean): Uint8Array {
+    const output = new Uint8Array(16)
+    const length = embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalEncodeFocus(handle, focused ? 1 : 0, output, output.byteLength),
+      "focus encoding",
+    )
+    return output.slice(0, length)
+  }
+
+  public embeddedTerminalDrainResponses(handle: EmbeddedTerminalHandle): Uint8Array {
+    const chunks: Uint8Array[] = []
+    while (true) {
+      const output = new Uint8Array(64 * 1024)
+      const length = embeddedTerminalResult(
+        this.opentui.symbols.embeddedTerminalDrainResponses(handle, output, output.byteLength),
+        "response drain",
+      )
+      if (length > 0) chunks.push(output.slice(0, length))
+      if (length < output.byteLength) break
+    }
+    const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+    let offset = 0
+    for (const chunk of chunks) {
+      result.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return result
   }
 
   constructor(libPath?: string) {
