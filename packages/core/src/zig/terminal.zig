@@ -77,7 +77,7 @@ const NOTIFICATION_QUERY_ID = "opentui-notifications";
 pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
 pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
 const OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x1b\\".len;
-const PASSTHROUGH_ESCAPED_OSC52_SIZE = OSC52_FRAMING_SIZE + 2;
+const SCREEN_OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x07".len;
 
 pub const MouseLevel = enum {
     none,
@@ -1562,10 +1562,10 @@ pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
     }
 
     if (self.isInScreen()) {
-        const escaped_len = try std.math.add(usize, encoded_len, PASSTHROUGH_ESCAPED_OSC52_SIZE);
-        const chunk_count = @divFloor(escaped_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
+        const screen_sequence_len = try std.math.add(usize, encoded_len, SCREEN_OSC52_FRAMING_SIZE);
+        const chunk_count = @divFloor(screen_sequence_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
         const envelopes_len = try std.math.mul(usize, chunk_count, ansi.ANSI.screenDcsStart.len + ansi.ANSI.screenDcsEnd.len);
-        return std.math.add(usize, escaped_len, envelopes_len);
+        return std.math.add(usize, screen_sequence_len, envelopes_len);
     }
 
     return sequence_len;
@@ -1581,19 +1581,19 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, te
 
     if (self.isInTmux()) {
         try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try writeClipboardSequence(tty, target, text_utf8, true);
+        try writeClipboardSequence(tty, target, text_utf8, true, "\x1b\\");
         try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
         return;
     }
 
     if (self.isInScreen()) {
         var screen_writer = ScreenPassthroughWriter(@TypeOf(tty)).init(tty);
-        try writeClipboardSequence(&screen_writer, target, text_utf8, false);
+        try writeClipboardSequence(&screen_writer, target, text_utf8, false, "\x07");
         try screen_writer.finish();
         return;
     }
 
-    try writeClipboardSequence(tty, target, text_utf8, false);
+    try writeClipboardSequence(tty, target, text_utf8, false, "\x1b\\");
 }
 
 fn ScreenPassthroughWriter(comptime Writer: type) type {
@@ -1613,13 +1613,7 @@ fn ScreenPassthroughWriter(comptime Writer: type) type {
         }
 
         pub fn writeByte(self: *Self, byte: u8) !void {
-            const encoded_length: usize = if (byte == '\x1b') 2 else 1;
-            if (self.length + encoded_length > self.buffer.len) try self.flush();
-
-            if (byte == '\x1b') {
-                self.buffer[self.length] = '\x1b';
-                self.length += 1;
-            }
+            if (self.length == self.buffer.len) try self.flush();
             self.buffer[self.length] = byte;
             self.length += 1;
         }
@@ -1638,12 +1632,12 @@ fn ScreenPassthroughWriter(comptime Writer: type) type {
     };
 }
 
-fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool) !void {
+fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool, terminator: []const u8) !void {
     try writeClipboardBytes(writer, "\x1b]52;", escape);
     try writer.writeByte(target.toChar());
     try writer.writeByte(';');
     try writeClipboardBase64(writer, text_utf8);
-    try writeClipboardBytes(writer, "\x1b\\", escape);
+    try writeClipboardBytes(writer, terminator, escape);
 }
 
 fn writeClipboardBase64(writer: anytype, source: []const u8) !void {

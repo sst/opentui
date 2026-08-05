@@ -1048,13 +1048,13 @@ test "renderer - clipboard chunks OSC 52 in screen DCS passthrough" {
     const payload = [_]u8{'A'} ** 2048;
     try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
 
-    // Escaped sequence: base64 (2732) + OSC 52 framing (9) + doubled ESC bytes
-    // (+2) = 2743 bytes, split into 11 chunks of at most 252 bytes, each wrapped
-    // in "\x1bP" .. "\x1b\\" (+4 per chunk) = 2787 total.
+    // Sequence: base64 (2732) + OSC 52 framing with BEL (8) = 2740 bytes,
+    // split into 11 chunks of at most 252 bytes, each wrapped in
+    // "\x1bP" .. "\x1b\\" (+4 per chunk) = 2784 total.
     const output = test_renderer.lastOutput();
-    try std.testing.expectEqual(@as(usize, 2787), output.len);
-    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b\x1b]52;c;QUFB"));
-    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+    try std.testing.expectEqual(@as(usize, 2784), output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x07\x1b\\"));
 
     // ESC only precedes 'P' at envelope starts, so this counts the chunks.
     try std.testing.expectEqual(@as(usize, 11), std.mem.count(u8, output, "\x1bP"));
