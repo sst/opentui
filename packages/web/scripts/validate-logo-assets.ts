@@ -20,6 +20,22 @@ const targets = [
 
 const expectedViewBox = "0 0 27 6"
 const expectedPath = buildPath()
+const expectedSpectrumStops = [
+  ["0", "#ff6b6b"],
+  ["16%", "#ff6b6b"],
+  ["16%", "#ffa94d"],
+  ["32%", "#ffa94d"],
+  ["32%", "#ffe066"],
+  ["44%", "#ffe066"],
+  ["44%", "#69db7c"],
+  ["60%", "#69db7c"],
+  ["60%", "#4dabf7"],
+  ["72%", "#4dabf7"],
+  ["72%", "#748ffc"],
+  ["88%", "#748ffc"],
+  ["88%", "#da77f2"],
+  ["100%", "#da77f2"],
+] as const
 
 for (const target of targets) {
   const source = await readFile(new URL(`../${target}`, import.meta.url), "utf8")
@@ -34,7 +50,19 @@ for (const target of targets) {
   }
 }
 
-console.log(`OpenTUI logo geometry validated across ${targets.length} renditions.`)
+for (const target of ["public/opentui-logo-spectrum.svg", "src/components/OpenTUILogo.astro"] as const) {
+  const source = await readFile(new URL(`../${target}`, import.meta.url), "utf8")
+  const stops = [...source.matchAll(/<stop offset="([^"]+)" stop-color="([^"]+)" \/>/g)].map((match) => [
+    match[1],
+    match[2]?.toLowerCase(),
+  ])
+
+  if (JSON.stringify(stops) !== JSON.stringify(expectedSpectrumStops)) {
+    throw new Error(`${target}: spectrum must use the same discrete column colors as the terminal theme`)
+  }
+}
+
+console.log(`OpenTUI logo geometry and spectrum colors validated across ${targets.length} renditions.`)
 
 function buildPath(): string {
   const widths = terminalRows.map((row) => [...row].length)
