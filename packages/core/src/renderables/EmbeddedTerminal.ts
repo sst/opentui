@@ -261,8 +261,8 @@ function modifiers(input: {
   let value = 0
   if (input.shift) value |= MOD_SHIFT
   if (input.ctrl) value |= MOD_CTRL
-  if (input.alt || input.meta || input.option) value |= MOD_ALT
-  if (input.super) value |= MOD_SUPER
+  if (input.alt || input.option) value |= MOD_ALT
+  if (input.meta || input.super) value |= MOD_SUPER
   if (input.capsLock) value |= MOD_CAPS_LOCK
   if (input.numLock) value |= MOD_NUM_LOCK
   return value
