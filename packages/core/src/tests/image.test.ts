@@ -551,13 +551,23 @@ describe("NativeImage", () => {
   test("adopts raw RGBA files and deletes them after lazy materialization", async () => {
     const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
     const path = join(directory, "frame.rgba")
-    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 90, 91, 92, 93, 5, 6, 7, 255))
+    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 5, 6, 7, 255))
 
-    const image = NativeImage.adoptRgbaFile({ path, width: 1, height: 2, stride: 8 })
+    const image = NativeImage.adoptRgbaFile(path, 1, 2)
     try {
-      expect(image.info()).toMatchObject({ width: 1, height: 2, format: "raw-rgba", hasAlpha: true })
+      const info = image.info()
+      expect(info).toEqual({
+        width: 1,
+        height: 2,
+        sourceWidth: 1,
+        sourceHeight: 2,
+        format: "raw-rgba",
+        colorStatus: "explicit-srgb",
+        orientation: 1,
+        hasAlpha: true,
+      })
       expect([...image.raw().data]).toEqual([1, 2, 3, 255, 5, 6, 7, 255])
-      expect(image.info().hasAlpha).toBe(false)
+      expect(image.info()).toEqual(info)
       await expectMissingPath(path)
     } finally {
       image.dispose()
@@ -570,10 +580,39 @@ describe("NativeImage", () => {
     const path = join(directory, "frame.rgba")
     await writeFile(path, Uint8Array.of(1, 2, 3, 255))
 
-    const image = NativeImage.adoptRgbaFile({ path, width: 1, height: 1 })
+    const image = NativeImage.adoptRgbaFile(path, 1, 1)
     image.dispose()
     try {
       await expectMissingPath(path)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects invalid adopted RGBA file arguments without taking ownership", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    const pixels = Uint8Array.of(1, 2, 3, 255)
+    await writeFile(path, pixels)
+
+    try {
+      expect(() => NativeImage.adoptRgbaFile(path, 0, 1)).toThrow(RangeError)
+      expect(() => NativeImage.adoptRgbaFile("", 1, 1)).toThrow(TypeError)
+      expect([...new Uint8Array(await readFile(path))]).toEqual([...pixels])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("requires an exact tightly packed RGBA file without taking ownership on failure", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    const pixels = Uint8Array.of(1, 2, 3, 255, 5)
+    await writeFile(path, pixels)
+
+    try {
+      expect(() => NativeImage.adoptRgbaFile(path, 1, 1)).toThrow()
+      expect([...new Uint8Array(await readFile(path))]).toEqual([...pixels])
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

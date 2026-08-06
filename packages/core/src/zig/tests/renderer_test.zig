@@ -40,7 +40,7 @@ const AdoptedRgbaFixture = struct {
     handle: handles.Handle,
     handle_live: bool = true,
 
-    fn create(allocator: std.mem.Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !AdoptedRgbaFixture {
+    fn create(allocator: std.mem.Allocator, pixels: []const u8, width: u32, height: u32) !AdoptedRgbaFixture {
         const directory = try createKittyTemporaryDirectory(allocator);
         errdefer {
             std.fs.deleteTreeAbsolute(directory) catch {};
@@ -51,7 +51,7 @@ const AdoptedRgbaFixture = struct {
         const file = try std.fs.createFileAbsolute(path, .{});
         defer file.close();
         try file.writeAll(pixels);
-        const value = try image.adoptRgbaFile(allocator, path, width, height, stride);
+        const value = try image.adoptRgbaFile(allocator, path, width, height);
         errdefer value.deinit();
         const handle = try handles.insert(.image, @ptrCast(value));
         return .{ .allocator = allocator, .directory = directory, .path = path, .value = value, .handle = handle };
@@ -109,11 +109,10 @@ const CountingOutput = struct {
         return .{ .ctx = self, .write_fn = write, .thread_safe = true };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) bool {
+    fn write(ctx: *anyopaque, data: []const u8) void {
         const self: *CountingOutput = @ptrCast(@alignCast(ctx));
         _ = data;
         self.writes += 1;
-        return true;
     }
 };
 
@@ -127,7 +126,7 @@ const SlowThreadSafeOutput = struct {
         return .{ .ctx = self, .write_fn = write, .thread_safe = true };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) bool {
+    fn write(ctx: *anyopaque, data: []const u8) void {
         const self: *SlowThreadSafeOutput = @ptrCast(@alignCast(ctx));
         const index = self.writes.fetchAdd(1, .monotonic);
         if (index < self.payloads.len) {
@@ -135,21 +134,6 @@ const SlowThreadSafeOutput = struct {
             @memcpy(self.payloads[index][0..self.lengths[index]], data[0..self.lengths[index]]);
         }
         std.Thread.sleep(self.delay_ns);
-        return true;
-    }
-};
-
-const FailedThreadSafeOutput = struct {
-    writes: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
-
-    fn bufferedOutput(self: *FailedThreadSafeOutput) @import("../renderer-output.zig").BufferedOutput {
-        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
-    }
-
-    fn write(ctx: *anyopaque, _: []const u8) bool {
-        const self: *FailedThreadSafeOutput = @ptrCast(@alignCast(ctx));
-        _ = self.writes.fetchAdd(1, .monotonic);
-        return false;
     }
 };
 test "renderer emits Kitty image once and leaves unchanged frame empty" {
@@ -984,7 +968,7 @@ test "buffered backend grows and commits a complete large frame" {
     defer std.testing.allocator.free(oversized);
     @memset(oversized, 42);
     try writer.writeAll(oversized);
-    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
     try std.testing.expectEqual(oversized.len, memory.bytes.items.len);
     try std.testing.expectEqualSlices(u8, oversized, memory.bytes.items);
 }
@@ -3467,7 +3451,7 @@ test "FeedBackend - failed frame publishes no partial bytes" {
     var failed_writer = backend.writer();
     try failed_writer.writeAll("pending");
     try failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk");
-    try std.testing.expectEqual(.failed, backend.endFrame(false));
+    try std.testing.expectEqual(.failed, backend.endFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
@@ -3910,7 +3894,7 @@ test "threaded buffered backend skips instead of blocking behind output" {
 
     backend.beginFrame();
     try backend.writer().writeAll("large graphics frame");
-    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 
     var timer = try std.time.Timer.start();
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.skipped, backend.prepareFrame());
@@ -3921,11 +3905,11 @@ test "threaded buffered backend skips instead of blocking behind output" {
 
     backend.setUseThread(true);
     backend.beginFrame();
-    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 
     backend.beginFrame();
     try backend.writer().writeAll("next graphics frame");
-    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
     backend.setUseThread(false);
     try std.testing.expectEqual(@as(u32, 2), output.writes.load(.monotonic));
     try std.testing.expectEqualStrings("next graphics frame", output.payloads[1][0..output.lengths[1]]);
@@ -3957,13 +3941,13 @@ test "buffered backend reports a failed frame when growth allocation fails" {
     // A frame whose bytes were dropped must be reported as failed so the
     // renderer can force a full repaint, and the truncated ANSI stream must
     // not reach the terminal.
-    try std.testing.expectEqual(rout.WriteStatus.failed, backend.endFrame(false));
+    try std.testing.expectEqual(rout.WriteStatus.failed, backend.endFrame());
     try std.testing.expectEqual(@as(u32, 0), out.writes);
 
     // The failure is per-frame: a following frame that fits reports ok.
     backend.beginFrame();
     try backend.writer().writeAll("recovered");
-    try std.testing.expectEqual(rout.WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(rout.WriteStatus.ok, backend.endFrame());
     try std.testing.expect(out.writes >= 1);
 }
 
@@ -3983,7 +3967,7 @@ test "buffered backend releases oversized frame buffers after the spike passes" 
     while (written < 4 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
         try w.writeAll(&chunk);
     }
-    _ = backend.endFrame(false);
+    _ = backend.endFrame();
     try std.testing.expect(gpa.total_requested_bytes > 3 * renderer.OUTPUT_BUFFER_SIZE);
 
     // A long run of ordinary frames afterwards must release the spike memory
@@ -3992,7 +3976,7 @@ test "buffered backend releases oversized frame buffers after the spike passes" 
     while (i < 200) : (i += 1) {
         backend.beginFrame();
         try backend.writer().writeAll("small frame");
-        _ = backend.endFrame(false);
+        _ = backend.endFrame();
     }
 
     try std.testing.expect(gpa.total_requested_bytes <= 3 * renderer.OUTPUT_BUFFER_SIZE);
@@ -4014,7 +3998,7 @@ test "buffered backend frees grown buffers cleanly on deinit" {
     while (written < 2 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
         try w.writeAll(&chunk);
     }
-    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame(false));
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }
 
 test "renderer scales kitty transmission alpha by placement opacity" {
@@ -4319,105 +4303,24 @@ test "ineligible renderer outputs materialize adopted RGBA files" {
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
     const pixels = [_]u8{ 9, 8, 7, 128 } ** 64;
-    for ([_]struct { remote: bool, file_transport: bool }{
-        .{ .remote = false, .file_transport = false },
-        .{ .remote = true, .file_transport = true },
-    }) |scenario| {
-        var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
-        defer test_renderer.deinit();
-        var fixture = try AdoptedRgbaFixture.create(std.testing.allocator, &pixels, 8, 8, 32);
-        defer fixture.deinit();
-        test_renderer.renderer.terminal.remote = scenario.remote;
-        test_renderer.renderer.terminal.caps.remote = scenario.remote;
-        test_renderer.renderer.terminal.caps.kitty_graphics = true;
-        test_renderer.renderer.backend.buffered.output.kitty_file_transport = scenario.file_transport;
-
-        const next = test_renderer.renderer.getNextBuffer();
-        try std.testing.expect(try next.drawImage(fixture.value, fixture.handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
-        try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-        const output = test_renderer.memory.lastWrite();
-        try std.testing.expect(std.mem.indexOf(u8, output, "t=t") == null);
-        try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,s=8,v=8") != null);
-        const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
-        const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
-        const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
-        defer std.testing.allocator.free(transmitted);
-        try std.testing.expectEqualSlices(u8, &pixels, transmitted);
-        try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(fixture.path, .{}));
-    }
-}
-
-test "failed terminal frame rolls back adopted-file transfer before a successful retry" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    defer link.deinitGlobalLinkPool();
-    const width: u32 = 4096;
-    var test_renderer = try TestRenderer.create(std.testing.allocator, width, 1, pool);
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
     defer test_renderer.deinit();
-    test_renderer.renderer.terminal.caps.kitty_graphics = true;
-    test_renderer.renderer.backend.buffered.output.kitty_file_transport = true;
-
-    var fixture = try AdoptedRgbaFixture.create(std.testing.allocator, &[_]u8{ 9, 8, 7, 128 }, 1, 1, 4);
+    var fixture = try AdoptedRgbaFixture.create(std.testing.allocator, &pixels, 8, 8);
     defer fixture.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
 
-    var next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(fixture.value, fixture.handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
-    for (1..width) |x| {
-        next.set(@intCast(x), 0, .{
-            .char = 'X',
-            .fg = ansi.rgbColor(255, 255, 255, 255),
-            .bg = ansi.rgbColor(0, 0, 0, 255),
-            .attributes = 0,
-        });
-    }
-
-    const backend = &test_renderer.renderer.backend.buffered;
-    std.testing.allocator.free(backend.outputA);
-    backend.outputA = try std.testing.allocator.alloc(u8, 1024);
-    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0, .resize_fail_index = 0 });
-    backend.allocator = failing.allocator();
-    const failed_status = test_renderer.renderer.render(true);
-    backend.allocator = std.testing.allocator;
-
-    try std.testing.expect(failing.has_induced_failure);
-    try std.testing.expectEqual(renderer.RenderStatus.failed, failed_status);
-    try std.fs.accessAbsolute(fixture.path, .{});
-    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
-
-    next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(fixture.value, fixture.handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(fixture.value, fixture.handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
-    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "t=t") != null);
-
-    fixture.destroyImage();
-    // The collecting writer stands in for a terminal, so committed deletion ownership leaves the fixture in place.
-    try std.fs.accessAbsolute(fixture.path, .{});
-}
-
-test "failed stdout sink write rolls back adopted-file ownership" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    defer link.deinitGlobalLinkPool();
-    for ([_]bool{ false, true }) |use_thread| {
-        var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
-        defer test_renderer.deinit();
-        var failed_output: FailedThreadSafeOutput = .{};
-        test_renderer.renderer.backend.buffered.output = failed_output.bufferedOutput();
-        test_renderer.renderer.backend.buffered.output.kitty_file_transport = true;
-        test_renderer.renderer.terminal.caps.kitty_graphics = true;
-        test_renderer.renderer.setUseThread(use_thread);
-
-        var fixture = try AdoptedRgbaFixture.create(std.testing.allocator, &[_]u8{ 9, 8, 7, 128 }, 1, 1, 4);
-        defer fixture.deinit();
-
-        try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(fixture.value, fixture.handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
-        try std.testing.expectEqual(renderer.RenderStatus.failed, test_renderer.renderer.render(true));
-        try std.testing.expectEqual(@as(u32, 1), failed_output.writes.load(.monotonic));
-        try std.fs.accessAbsolute(fixture.path, .{});
-
-        fixture.destroyImage();
-        try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(fixture.path, .{}));
-    }
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "t=t") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=32,s=8,v=8") != null);
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, &pixels, transmitted);
+    try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(fixture.path, .{}));
 }
 
 test "renderer transmits only cropped kitty source pixels" {

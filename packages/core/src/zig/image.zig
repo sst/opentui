@@ -151,48 +151,11 @@ pub const RenderProtocol = enum(u32) {
     blocks,
 };
 
-const kitty_temp_marker = "tty-graphics-protocol";
-
-const RawRgbaFileTransferState = enum {
-    owned,
-    staged,
-    transferred,
-};
-
 const RawRgbaFile = struct {
     file: std.fs.File,
     path: []u8,
-    stride: u32,
-    kitty_temporary: bool,
-    transfer_state: RawRgbaFileTransferState = .owned,
+    transferred: bool = false,
 };
-
-fn pathIsInside(path: []const u8, root: []const u8) bool {
-    if (root.len == 0 or !std.fs.path.isAbsolute(root)) return false;
-    var root_len = root.len;
-    while (root_len > 1 and root[root_len - 1] == std.fs.path.sep) root_len -= 1;
-    return path.len > root_len and
-        std.mem.eql(u8, path[0..root_len], root[0..root_len]) and
-        path[root_len] == std.fs.path.sep;
-}
-
-fn canonicalPathIsInside(allocator: Allocator, canonical_path: []const u8, root: []const u8) bool {
-    if (!std.fs.path.isAbsolute(root)) return false;
-    const canonical_root = std.fs.realpathAlloc(allocator, root) catch return false;
-    defer allocator.free(canonical_root);
-    return pathIsInside(canonical_path, canonical_root);
-}
-
-fn isKittyTemporaryPath(allocator: Allocator, path: []const u8) bool {
-    if (builtin.os.tag == .windows or std.mem.indexOf(u8, path, kitty_temp_marker) == null) return false;
-    const canonical_path = std.fs.realpathAlloc(allocator, path) catch return false;
-    defer allocator.free(canonical_path);
-    if (canonicalPathIsInside(allocator, canonical_path, "/tmp") or
-        canonicalPathIsInside(allocator, canonical_path, "/dev/shm")) return true;
-    const temporary_directory = std.process.getEnvVarOwned(allocator, "TMPDIR") catch return false;
-    defer allocator.free(temporary_directory);
-    return canonicalPathIsInside(allocator, canonical_path, temporary_directory);
-}
 
 const OpenedRegularFile = struct {
     file: std.fs.File,
@@ -284,21 +247,13 @@ pub const Image = struct {
             try checkedPixelBytes(self.width(), self.height(), .{});
         if (self.pixels.len == expected_len) return self.pixels;
         if (self.raw_rgba_file) |*source| {
-            const row_bytes = try std.math.mul(u32, self.width(), 4);
             const pixels = try self.allocator.alloc(u8, expected_len);
             errdefer self.allocator.free(pixels);
-            for (0..self.height()) |y| {
-                const destination_offset = y * row_bytes;
-                const source_offset = std.math.mul(u64, y, source.stride) catch return error.InvalidArgument;
-                const read = try source.file.preadAll(pixels[destination_offset..][0..row_bytes], source_offset);
-                if (read != row_bytes) return error.MalformedInput;
-            }
-            const release_source = source.transfer_state != .staged;
+            const read = try source.file.preadAll(pixels, 0);
+            if (read != pixels.len) return error.MalformedInput;
             self.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(pixels));
             self.pixels = pixels;
-            // Keep a staged path and its descriptor alive until the renderer
-            // either commits terminal deletion or rolls ownership back.
-            if (release_source) self.releaseRawRgbaFile(true);
+            self.releaseRawRgbaFile(true);
             return pixels;
         }
         if (self.pixels.len != 0 or self.metadata.format != @intFromEnum(Format.png) or self.metadata.orientation != 1) {
@@ -328,24 +283,17 @@ pub const Image = struct {
         return pixels;
     }
 
-    pub fn stageRawRgbaFileTransfer(self: *Image) ?[]const u8 {
+    pub fn rawRgbaFilePath(self: *const Image) ?[]const u8 {
         if (self.raw_rgba_file) |*source| {
-            if (!source.kitty_temporary or source.transfer_state != .owned or source.stride != self.width() * 4) return null;
-            source.transfer_state = .staged;
+            if (source.transferred) return null;
             return source.path;
         }
         return null;
     }
 
-    pub fn commitRawRgbaFileTransfer(self: *Image) void {
+    pub fn markRawRgbaFileTransferred(self: *Image) void {
         if (self.raw_rgba_file) |*source| {
-            if (source.transfer_state == .staged) source.transfer_state = .transferred;
-        }
-    }
-
-    pub fn rollbackRawRgbaFileTransfer(self: *Image) void {
-        if (self.raw_rgba_file) |*source| {
-            if (source.transfer_state == .staged) source.transfer_state = .owned;
+            source.transferred = true;
         }
     }
 
@@ -356,7 +304,7 @@ pub const Image = struct {
     fn releaseRawRgbaFile(self: *Image, delete_owned: bool) void {
         if (self.raw_rgba_file) |source| {
             source.file.close();
-            if (delete_owned and source.transfer_state != .transferred) std.fs.deleteFileAbsolute(source.path) catch {};
+            if (delete_owned and !source.transferred) std.fs.deleteFileAbsolute(source.path) catch {};
             self.allocator.free(source.path);
             self.raw_rgba_file = null;
         }
@@ -902,13 +850,9 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
     return image;
 }
 
-pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height: u32, stride: u32) !*Image {
+pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height: u32) !*Image {
     if (!std.fs.path.isAbsolute(path)) return error.InvalidArgument;
-    _ = try checkedPixelBytes(width, height, .{});
-    const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
-    if (stride < row_bytes) return error.InvalidArgument;
-    const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
-    const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
+    const required = try checkedPixelBytes(width, height, .{});
 
     const opened = try openRegularFileAbsolute(path);
     const file = opened.file;
@@ -923,8 +867,6 @@ pub fn adoptRgbaFile(allocator: Allocator, path: []const u8, width: u32, height:
         .raw_rgba_file = .{
             .file = file,
             .path = owned_path,
-            .stride = stride,
-            .kitty_temporary = isKittyTemporaryPath(allocator, path),
         },
         .metadata = rawRgbaInfo(width, height, true),
     };

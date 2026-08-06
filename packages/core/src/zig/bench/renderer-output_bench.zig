@@ -42,7 +42,7 @@ fn runScenario(
                 backend.beginFrame();
                 var writer = backend.writer();
                 try writer.writeAll(bytes);
-                if (backend.endFrame(false) != .ok) return error.FeedWriteFailed;
+                if (backend.endFrame() != .ok) return error.FeedWriteFailed;
             },
         }
         const elapsed = timer.read();

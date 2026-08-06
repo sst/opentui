@@ -2880,13 +2880,12 @@ export fn imageAdoptRgbaFile(
     path_len: u32,
     width: u32,
     height: u32,
-    stride: u32,
     out_handle: ?*NativeHandle,
 ) u32 {
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
     if (path_len == 0 or path_ptr == null) return @intFromEnum(native_image.Status.invalid_argument);
-    const image = native_image.adoptRgbaFile(globalAllocator, path_ptr.?[0..path_len], width, height, stride) catch |err| {
+    const image = native_image.adoptRgbaFile(globalAllocator, path_ptr.?[0..path_len], width, height) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
     output.* = handles.insert(.image, erasePtr(image)) catch {

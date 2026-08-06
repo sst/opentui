@@ -119,42 +119,49 @@ test "PNG probe and decode return canonical red RGBA" {
 test "adopted RGBA files materialize lazily and release their owned path" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 4, 90, 91, 92, 93, 5, 6, 7, 8 } });
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255, 5, 6, 7, 255 } });
     const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(directory);
     const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
     defer std.testing.allocator.free(path);
-    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 2, 8);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 2);
     defer value.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 }, try value.ensurePixels());
+    try std.testing.expectEqual(@as(u32, 1), value.info().has_alpha);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 255, 5, 6, 7, 255 }, try value.ensurePixels());
+    try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
     try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
 }
 
-test "adopted RGBA files outside temp are not Kitty-transferable through a temp symlink" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
+test "failed RGBA file adoption preserves caller ownership" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255 } });
     const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(directory);
-    const target_path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
-    defer std.testing.allocator.free(target_path);
-    const link_path = try std.fmt.allocPrint(
-        std.testing.allocator,
-        "/tmp/tty-graphics-protocol-opentui-{d}",
-        .{std.time.nanoTimestamp()},
-    );
-    defer std.testing.allocator.free(link_path);
-    try std.fs.symLinkAbsolute(target_path, link_path, .{});
-    defer std.fs.deleteFileAbsolute(link_path) catch {};
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
 
-    const value = try image.adoptRgbaFile(std.testing.allocator, link_path, 1, 1, 4);
-    defer value.deinit();
+    try std.testing.expectError(error.MalformedInput, image.adoptRgbaFile(std.testing.allocator, path, 2, 1));
+    try tmp.dir.access("frame.rgba", .{});
+    try std.testing.expectError(error.DimensionLimit, image.adoptRgbaFile(std.testing.allocator, path, 0, 1));
+    try tmp.dir.access("frame.rgba", .{});
+}
 
-    try std.testing.expectEqual(@as(?[]const u8, null), value.stageRawRgbaFileTransfer());
+test "relinquishing an adopted RGBA file preserves the caller path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 1);
+    value.relinquishRawRgbaFile();
+    value.deinit();
+    try tmp.dir.access("frame.rgba", .{});
 }
 
 test "adopting a FIFO rejects without waiting for a writer" {
@@ -172,7 +179,7 @@ test "adopting a FIFO rejects without waiting for a writer" {
     var unblock = FifoUnblockContext{ .path = path };
     const thread = try std.Thread.spawn(.{}, FifoUnblockContext.run, .{&unblock});
     var timer = try std.time.Timer.start();
-    const result = image.adoptRgbaFile(std.testing.allocator, path, 1, 1, 4);
+    const result = image.adoptRgbaFile(std.testing.allocator, path, 1, 1);
     const elapsed = timer.read();
     unblock.done.store(true, .release);
     thread.join();

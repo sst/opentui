@@ -29,16 +29,15 @@ pub const WriteStatus = enum(u8) {
     failed = 2,
 };
 
-pub const BufferedWriteFn = *const fn (ctx: *anyopaque, data: []const u8) bool;
+pub const BufferedWriteFn = *const fn (ctx: *anyopaque, data: []const u8) void;
 
 pub const BufferedOutput = struct {
     ctx: *anyopaque,
     write_fn: BufferedWriteFn,
     thread_safe: bool = false,
-    kitty_file_transport: bool = false,
 
-    pub fn write(self: BufferedOutput, data: []const u8) bool {
-        return self.write_fn(self.ctx, data);
+    pub fn write(self: BufferedOutput, data: []const u8) void {
+        self.write_fn(self.ctx, data);
     }
 };
 
@@ -161,44 +160,42 @@ pub const StdoutOutput = struct {
             .ctx = self,
             .write_fn = write,
             .thread_safe = true,
-            .kitty_file_transport = self.stdout.isTty(),
         };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) bool {
-        if (data.len == 0) return true;
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        if (data.len == 0) return;
 
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
         if (builtin.os.tag == .windows) {
             if (self.windowsConsole) {
-                return self.writeWindowsConsole(data);
+                self.writeWindowsConsole(data);
+                return;
             }
         }
 
-        return self.writeBytes(data);
+        self.writeBytes(data);
     }
 
-    fn writeBytes(self: *StdoutOutput, data: []const u8) bool {
+    fn writeBytes(self: *StdoutOutput, data: []const u8) void {
         var stdoutWriter = self.stdout.writerStreaming(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
-        w.writeAll(data) catch return false;
-        w.flush() catch return false;
-        return true;
+        w.writeAll(data) catch {};
+        w.flush() catch {};
     }
 
-    fn writeWindowsConsole(self: *StdoutOutput, data: []const u8) bool {
+    fn writeWindowsConsole(self: *StdoutOutput, data: []const u8) void {
         // Frames and control writes are complete UTF-8 units. Drop malformed
         // input rather than partially emitting an ANSI sequence to the console.
-        if (!std.unicode.utf8ValidateSlice(data)) return false;
+        if (!std.unicode.utf8ValidateSlice(data)) return;
 
         var input = data;
         while (input.len > 0) {
             const chunk = utf8ToUtf16Chunk(&self.utf16Buffer, input) catch unreachable;
             std.debug.assert(chunk.input_len > 0);
-            if (!self.writeWindowsConsoleUtf16(self.utf16Buffer[0..chunk.output_len])) return false;
+            if (!self.writeWindowsConsoleUtf16(self.utf16Buffer[0..chunk.output_len])) return;
             input = input[chunk.input_len..];
         }
-        return true;
     }
 
     fn writeWindowsConsoleUtf16(self: *StdoutOutput, data: []const u16) bool {
@@ -243,27 +240,13 @@ test "StdoutOutput preserves bytes for redirected output" {
     var stdout_output = StdoutOutput.initForFile(file);
     const expected = "\x1b[31mAé東😀\x1b[0m";
     const split = expected.len / 2;
-    try std.testing.expect(stdout_output.bufferedOutput().write(expected[0..split]));
-    try std.testing.expect(stdout_output.bufferedOutput().write(expected[split..]));
+    stdout_output.bufferedOutput().write(expected[0..split]);
+    stdout_output.bufferedOutput().write(expected[split..]);
 
     var actual: [expected.len]u8 = undefined;
     const actual_len = try file.preadAll(&actual, 0);
     try std.testing.expectEqual(expected.len, actual_len);
     try std.testing.expectEqualStrings(expected, &actual);
-}
-
-test "StdoutOutput reports write failures" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    {
-        const created = try tmp.dir.createFile("stdout", .{});
-        created.close();
-    }
-    const read_only = try tmp.dir.openFile("stdout", .{ .mode = .read_only });
-    defer read_only.close();
-    var stdout_output = StdoutOutput.initForFile(read_only);
-    try std.testing.expect(!stdout_output.bufferedOutput().write("frame"));
 }
 
 pub const MemoryOutput = struct {
@@ -282,10 +265,9 @@ pub const MemoryOutput = struct {
         return .{ .ctx = self, .write_fn = write };
     }
 
-    fn write(ctx: *anyopaque, data: []const u8) bool {
+    fn write(ctx: *anyopaque, data: []const u8) void {
         const self: *MemoryOutput = @ptrCast(@alignCast(ctx));
-        self.bytes.appendSlice(self.allocator, data) catch return false;
-        return true;
+        self.bytes.appendSlice(self.allocator, data) catch {};
     }
 };
 
@@ -348,7 +330,7 @@ pub const OutputBackend = union(enum) {
     /// may be consumed elsewhere or not consumed by a terminal at all.
     pub fn allowsKittyFileTransport(self: *const OutputBackend) bool {
         return switch (self.*) {
-            .buffered => |b| b.output.kitty_file_transport,
+            .buffered => |b| if (b.ownedStdoutOutput) |stdout| stdout.stdout.isTty() else false,
             .feed => false,
         };
     }
@@ -617,7 +599,7 @@ pub const BufferedBackend = struct {
         }
     }
 
-    pub fn endFrame(self: *BufferedBackend, require_sink_success: bool) WriteStatus {
+    pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const frame_len = if (self.activeBuffer == .A) self.outputLenA else self.outputLenB;
 
         if (self.frameWriteFailed) {
@@ -640,10 +622,7 @@ pub const BufferedBackend = struct {
         const writeStart = std.time.microTimestamp();
         const committed_buffer = self.activeBuffer;
 
-        // File-transfer frames must observe the sink result before releasing
-        // deletion ownership, so they stay on the caller even in threaded mode.
-        var sink_succeeded = true;
-        if (self.useThread and !require_sink_success) {
+        if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
                 self.renderCondition.wait(&self.renderMutex);
@@ -670,13 +649,12 @@ pub const BufferedBackend = struct {
                 self.outputA[0..self.outputLenA]
             else
                 self.outputB[0..self.outputLenB];
-            sink_succeeded = self.output.write(to_write);
+            self.output.write(to_write);
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
 
         self.lastCommittedBuffer = committed_buffer;
         self.hasCommittedFrame = true;
-        if (require_sink_success and !sink_succeeded) return .failed;
         return .ok;
     }
 
@@ -702,7 +680,7 @@ pub const BufferedBackend = struct {
 
             const writeStart = std.time.microTimestamp();
 
-            _ = self.output.write(outputData[0..outputLen]);
+            self.output.write(outputData[0..outputLen]);
 
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
             self.renderInProgress = false;
@@ -722,7 +700,7 @@ pub const BufferedBackend = struct {
             self.renderMutex.unlock();
         }
 
-        _ = self.output.write(data);
+        self.output.write(data);
     }
 
     pub fn writeOutMultiple(self: *BufferedBackend, data_slices: []const []const u8) void {
@@ -741,7 +719,7 @@ pub const BufferedBackend = struct {
         if (totalLen == 0) return;
 
         for (data_slices) |slice| {
-            _ = self.output.write(slice);
+            self.output.write(slice);
         }
     }
 
@@ -859,7 +837,7 @@ pub const FeedBackend = struct {
         self.frameWriteFailed = true;
     }
 
-    pub fn endFrame(self: *FeedBackend, _: bool) WriteStatus {
+    pub fn endFrame(self: *FeedBackend) WriteStatus {
         const writeStart = std.time.microTimestamp();
         var status: WriteStatus = .ok;
 

@@ -38,13 +38,6 @@ export interface ImageLoadOptions {
   fetch?: (input: URL, init?: RequestInit) => Promise<Response>
 }
 
-export interface RgbaFileSource {
-  path: string
-  width: number
-  height: number
-  stride?: number
-}
-
 export interface ImageInfo {
   width: number
   height: number
@@ -447,24 +440,31 @@ export class NativeImage {
   }
 
   /**
-   * Adopts a raw RGBA8 file without copying its pixels into JavaScript. OpenTUI
+   * Adopts a tightly packed raw RGBA8 file without copying its pixels into JavaScript. OpenTUI
    * owns the path after this returns and deletes it after materialization or
    * disposal; a direct local-terminal Kitty render transfers deletion only for protocol-qualified paths in the OS
    * temporary directory.
    */
-  public static adoptRgbaFile(source: RgbaFileSource): NativeImage {
-    if (!source || typeof source !== "object") throw new TypeError("source must be an RGBA file descriptor")
-    if (typeof source.path !== "string" || source.path.length === 0 || source.path.includes("\0")) {
-      throw new TypeError("source.path must be a non-empty path without null bytes")
+  public static adoptRgbaFile(path: string, width: number, height: number): NativeImage {
+    if (typeof path !== "string" || path.length === 0 || path.includes("\0")) {
+      throw new TypeError("path must be a non-empty path without null bytes")
     }
-    const width = requireU32(source.width, "width")
-    const height = requireU32(source.height, "height")
-    const stride = requireU32(source.stride ?? width * 4, "stride")
+    requireU32(width, "width")
+    requireU32(height, "height")
     const lib = resolveRenderLib()
-    const result = lib.imageAdoptRgbaFile(resolve(source.path), width, height, stride)
+    const result = lib.imageAdoptRgbaFile(resolve(path), width, height)
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
-    return NativeImage.fromHandle(lib, result.handle)
+    return new NativeImage(lib, result.handle, {
+      width,
+      height,
+      sourceWidth: width,
+      sourceHeight: height,
+      format: "raw-rgba",
+      colorStatus: "explicit-srgb",
+      orientation: 1,
+      hasAlpha: true,
+    })
   }
 
   private static fromHandle(lib: RenderLib, handle: ImageHandle): NativeImage {
@@ -492,9 +492,7 @@ export class NativeImage {
   }
 
   public info(): ImageInfo {
-    const result = this.lib.imageGetInfo(this.guard())
-    checkStatus(result.status)
-    this.imageInfo = unpackInfo(result.info)
+    this.guard()
     return { ...this.imageInfo }
   }
 
