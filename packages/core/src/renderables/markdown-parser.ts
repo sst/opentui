@@ -12,40 +12,43 @@ export interface ParseState {
  * `extensions.inline` / `extensions.block`, with `start` fns in
  * `startInline` / `startBlock`.
  */
-export function normalizeExtensions(extensions?: MarkedExtension[]): Record<string, unknown> | undefined {
+type NormalizedExtensions = NonNullable<Parameters<typeof Lexer.lex>[1]>["extensions"]
+
+export function normalizeExtensions(extensions?: MarkedExtension[]): NormalizedExtensions | undefined {
   if (!extensions || extensions.length === 0) return undefined
-  const out: Record<string, unknown> = { renderers: {}, childTokens: {} }
+  const out: {
+    renderers: Record<string, unknown>
+    childTokens: Record<string, unknown>
+    inline?: unknown[]
+    block?: unknown[]
+    startInline?: unknown[]
+    startBlock?: unknown[]
+  } = { renderers: {}, childTokens: {} }
   for (const ext of extensions) {
     for (const item of ext.extensions ?? []) {
       if ("tokenizer" in item && item.tokenizer) {
-        const tokenizer = item.tokenizer
         if (item.level === "block") {
-          const list = (out.block as unknown[] | undefined) ?? []
-          list.unshift(tokenizer)
-          out.block = list
+          out.block ??= []
+          out.block.unshift(item.tokenizer)
           if (item.start) {
-            const starts = (out.startBlock as unknown[] | undefined) ?? []
-            starts.push(item.start)
-            out.startBlock = starts
+            out.startBlock ??= []
+            out.startBlock.push(item.start)
           }
         } else {
-          const list = (out.inline as unknown[] | undefined) ?? []
-          list.unshift(tokenizer)
-          out.inline = list
+          out.inline ??= []
+          out.inline.unshift(item.tokenizer)
           if (item.start) {
-            const starts = (out.startInline as unknown[] | undefined) ?? []
-            starts.push(item.start)
-            out.startInline = starts
+            out.startInline ??= []
+            out.startInline.push(item.start)
           }
         }
       }
       if ("renderer" in item && item.renderer) {
-        const renderers = out.renderers as Record<string, unknown>
-        renderers[item.name] = item.renderer
+        out.renderers[item.name] = item.renderer
       }
     }
   }
-  return out
+  return out as unknown as NormalizedExtensions
 }
 
 /**
