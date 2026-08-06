@@ -245,7 +245,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
+            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false, false);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -261,7 +261,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             var counting: CountingWriter = .{};
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
+            try terminal_image.writeKittyTransmit(&counting, cover, 7, false, false);
             stats.record(timer.read());
         }
         try appendResult(allocator, results, names[2], stats, null);
@@ -423,7 +423,7 @@ fn appendKittyRawRgbaFileBenchmarks(
         {
             const value = try image.adoptRgbaFile(work_allocator, absolute_path, width, height);
             defer value.deinit();
-            try terminal_image.writeKittyTransmitWithFileTransport(&counting, value, 7, false, true);
+            try terminal_image.writeKittyTransmit(&counting, value, 7, false, true);
         }
         stats.record(timer.read());
         output_bytes = counting.bytes;

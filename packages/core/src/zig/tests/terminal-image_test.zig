@@ -158,7 +158,7 @@ test "kitty transmission chunks RGBA payloads and places without cursor movement
     };
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 7, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 7, false, false);
     try terminal_image.writeKittyPlacement(output.writer(std.testing.allocator), 7, 8, 2, 3, 4, 5, 0, 0, 1, 1, -99, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "i=7,m=1,q=2;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "\x1b_Gm=0,q=2;") != null);
@@ -170,7 +170,7 @@ test "kitty transmission uses RGB only when every pixel is opaque" {
     defer opaque_image.deinit();
     var rgb: std.ArrayList(u8) = .empty;
     defer rgb.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(rgb.writer(std.testing.allocator), opaque_image, 1, false);
+    try terminal_image.writeKittyTransmit(rgb.writer(std.testing.allocator), opaque_image, 1, false, false);
     try std.testing.expect(std.mem.indexOf(u8, rgb.items, "f=24") != null);
     try std.testing.expect(std.mem.indexOf(u8, rgb.items, ";AQID\x1b\\") != null);
 
@@ -178,7 +178,7 @@ test "kitty transmission uses RGB only when every pixel is opaque" {
     defer transparent.deinit();
     var rgba: std.ArrayList(u8) = .empty;
     defer rgba.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(rgba.writer(std.testing.allocator), transparent, 1, false);
+    try terminal_image.writeKittyTransmit(rgba.writer(std.testing.allocator), transparent, 1, false, false);
     try std.testing.expect(std.mem.indexOf(u8, rgba.items, "f=32") != null);
     try std.testing.expect(std.mem.indexOf(u8, rgba.items, ";AQIDBA==\x1b\\") != null);
 }
@@ -197,7 +197,7 @@ test "kitty transmission materializes ordinary adopted RGBA paths" {
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmitWithFileTransport(output.writer(std.testing.allocator), value, 17, false, true);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 17, false, true);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "t=t") == null);
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
@@ -224,18 +224,18 @@ test "qualified Kitty file transmission retries failures and transmits only once
     var failed = std.io.fixedBufferStream(&short_buffer);
     try std.testing.expectError(
         error.NoSpaceLeft,
-        terminal_image.writeKittyTransmitWithFileTransport(failed.writer(), value, 16, false, true),
+        terminal_image.writeKittyTransmit(failed.writer(), value, 16, false, true),
     );
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmitWithFileTransport(output.writer(std.testing.allocator), value, 17, false, true);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 17, false, true);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=32,t=t,s=2,v=1,i=17,q=2;") != null);
 
     // The retained descriptor supports inline fallback after the path has
     // already been handed to Kitty.
     output.clearRetainingCapacity();
-    try terminal_image.writeKittyTransmitWithFileTransport(output.writer(std.testing.allocator), value, 18, false, true);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 18, false, true);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "t=t") == null);
     try std.fs.accessAbsolute(path, .{});
 
@@ -271,7 +271,7 @@ test "Kitty file transmission rejects a qualified symlink escaping temporary roo
     defer value.deinit();
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmitWithFileTransport(output.writer(std.testing.allocator), value, 19, false, true);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 19, false, true);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "t=t") == null);
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
@@ -290,7 +290,7 @@ test "kitty transmission sends retained PNG bytes as f=100" {
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
 
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 9, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 9, false, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=100,i=9") != null);
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
@@ -309,7 +309,7 @@ test "kitty transmission passes ICC PNG bytes without materializing pixels" {
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, false, false);
 
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
@@ -330,7 +330,7 @@ test "kitty transmission preserves retained PNG bytes through clone" {
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
 
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), cloned, 10, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), cloned, 10, false, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=100,i=10") != null);
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
@@ -346,7 +346,7 @@ test "kitty transmission rejects truncated image storage before writing" {
     };
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try std.testing.expectError(error.InvalidImageData, terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 1, false));
+    try std.testing.expectError(error.InvalidImageData, terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 1, false, false));
     try std.testing.expectEqual(@as(usize, 0), output.items.len);
 }
 
@@ -368,7 +368,7 @@ test "kitty RGB transmission preserves pixels across chunk boundaries" {
     defer value.deinit();
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 1, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 1, false, false);
     const decoded = try decodeKittyChunks(output.items);
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualSlices(u8, expected, decoded);
@@ -404,7 +404,7 @@ test "kitty tmux passthrough doubles inner escape bytes" {
     defer value.deinit();
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, true);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, true, false);
     try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bPtmux;\x1b\x1b_G"));
     try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
 }
@@ -650,7 +650,7 @@ test "kitty transmits decoded JPEG images as raw RGB pixels" {
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 21, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 21, false, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=24,s=16,v=8,i=21") != null);
 
     const transmitted = try decodeKittyChunks(output.items);
@@ -673,7 +673,7 @@ test "kitty transmits decoded WebP alpha images as raw RGBA pixels" {
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 22, false);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 22, false, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "f=32") != null);
 
     const transmitted = try decodeKittyChunks(output.items);

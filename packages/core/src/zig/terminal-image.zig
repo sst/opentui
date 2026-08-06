@@ -4,6 +4,7 @@ const native_image = @import("image.zig");
 
 pub const KittyPixelFormat = enum { auto, rgb, rgba };
 const kitty_temp_marker = "tty-graphics-protocol";
+const kitty_raw_chunk = 3072;
 
 fn pathIsInside(path: []const u8, root: []const u8) bool {
     if (root.len == 0 or !std.fs.path.isAbsolute(root)) return false;
@@ -32,36 +33,21 @@ fn isKittyTemporaryPath(allocator: std.mem.Allocator, path: []const u8) bool {
     return canonicalPathIsInside(allocator, canonical_path, temporary_directory);
 }
 
-pub fn writeKittyTransmit(writer: anytype, image: *native_image.Image, id: u32, tmux: bool) !void {
-    return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
-}
-
-pub fn writeKittyTransmitFormat(
-    writer: anytype,
-    image: *native_image.Image,
-    id: u32,
-    tmux: bool,
-    requested_format: KittyPixelFormat,
-) !void {
-    return writeKittyTransmitFormatInternal(writer, image, id, tmux, requested_format);
-}
-
-pub fn writeKittyTransmitWithFileTransport(
+pub fn writeKittyTransmit(
     writer: anytype,
     image: *native_image.Image,
     id: u32,
     tmux: bool,
     allow_file_transport: bool,
 ) !void {
-    const raw_chunk = 3072;
     if (allow_file_transport) {
         if (image.rawRgbaFilePath()) |path| {
-            if (!isKittyTemporaryPath(image.allocator, path)) return writeKittyTransmit(writer, image, id, tmux);
+            if (!isKittyTemporaryPath(image.allocator, path)) return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
             if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
             try writer.print("a=t,f=32,t=t,s={d},v={d},i={d},q=2;", .{ image.width(), image.height(), id });
             var offset: usize = 0;
             while (offset < path.len) {
-                const end = @min(offset + raw_chunk, path.len);
+                const end = @min(offset + kitty_raw_chunk, path.len);
                 var encoded: [4096]u8 = undefined;
                 const payload = std.base64.standard.Encoder.encode(encoded[0..std.base64.standard.Encoder.calcSize(end - offset)], path[offset..end]);
                 try writer.writeAll(payload);
@@ -72,17 +58,16 @@ pub fn writeKittyTransmitWithFileTransport(
             return;
         }
     }
-    return writeKittyTransmit(writer, image, id, tmux);
+    return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
 }
 
-fn writeKittyTransmitFormatInternal(
+pub fn writeKittyTransmitFormat(
     writer: anytype,
     image: *native_image.Image,
     id: u32,
     tmux: bool,
     requested_format: KittyPixelFormat,
 ) !void {
-    const raw_chunk = 3072;
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
     if (requested_format == .auto) {
@@ -90,7 +75,7 @@ fn writeKittyTransmitFormatInternal(
             var offset: usize = 0;
             var first = true;
             while (offset < png.len) {
-                const end = @min(offset + raw_chunk, png.len);
+                const end = @min(offset + kitty_raw_chunk, png.len);
                 const more = end < png.len;
                 if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
                 if (first) {
@@ -115,7 +100,7 @@ fn writeKittyTransmitFormatInternal(
     else
         requested_format;
     if (format == .rgb) {
-        var raw: [raw_chunk]u8 = undefined;
+        var raw: [kitty_raw_chunk]u8 = undefined;
         const rgb_len = std.math.mul(usize, pixel_count, 3) catch return error.InvalidImageData;
         var rgb_offset: usize = 0;
         var first = true;
@@ -147,7 +132,7 @@ fn writeKittyTransmitFormatInternal(
     var offset: usize = 0;
     var first = true;
     while (offset < rgba_len) {
-        const end = @min(offset + raw_chunk, rgba_len);
+        const end = @min(offset + kitty_raw_chunk, rgba_len);
         const more = end < rgba_len;
         if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
         if (first) {

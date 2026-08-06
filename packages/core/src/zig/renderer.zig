@@ -1386,7 +1386,7 @@ pub const CliRenderer = struct {
     ) !void {
         const transmit = try self.kittyPlacementTransmit(placement);
         defer if (transmit.owned) transmit.image.deinit();
-        try terminal_image.writeKittyTransmitWithFileTransport(
+        try terminal_image.writeKittyTransmit(
             writer,
             transmit.image,
             image_id,
@@ -2085,7 +2085,7 @@ pub const CliRenderer = struct {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement);
                 defer if (transmit.owned) transmit.image.deinit();
-                try terminal_image.writeKittyTransmitWithFileTransport(
+                try terminal_image.writeKittyTransmit(
                     writer,
                     transmit.image,
                     image_id,
