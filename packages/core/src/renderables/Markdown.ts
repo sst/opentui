@@ -5,7 +5,7 @@ import type { TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
-import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
+import { Lexer, type MarkedExtension, type MarkedToken, type Token, type Tokens } from "marked"
 import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
@@ -115,6 +115,10 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    * or undefined/null to use default rendering.
    */
   renderNode?: (token: Token, context: RenderNodeContext) => Renderable | undefined | null
+  /**
+   * Marked extensions applied to the markdown lexer.
+   */
+  extensions?: MarkedExtension[]
   /**
    * Internal only.
    * - "coalesced": combine ordinary markdown into larger render blocks.
@@ -268,6 +272,7 @@ export class MarkdownRenderable extends Renderable {
   private _treeSitterClient?: TreeSitterClient
   private _tableOptions?: MarkdownTableOptions
   private _renderNode?: MarkdownOptions["renderNode"]
+  private _extensions?: MarkedExtension[]
   private _internalBlockMode: "coalesced" | "top-level"
 
   _parseState: ParseState | null = null
@@ -305,6 +310,7 @@ export class MarkdownRenderable extends Renderable {
     this._treeSitterClient = options.treeSitterClient
     this._tableOptions = options.tableOptions
     this._renderNode = options.renderNode
+    this._extensions = options.extensions
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
 
@@ -1874,7 +1880,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     const trailingUnstable = this._streaming ? 2 : 0
-    this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable)
+    this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable, this._extensions)
 
     const tokens = this._parseState.tokens
 

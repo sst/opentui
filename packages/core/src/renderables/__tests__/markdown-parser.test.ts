@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { Lexer } from "marked"
+import { Lexer, type MarkedExtension } from "marked"
 import { parseMarkdownIncremental, type ParseState } from "../markdown-parser.js"
 
 test("first parse returns all tokens", () => {
@@ -9,6 +9,39 @@ test("first parse returns all tokens", () => {
   expect(state.tokens.length).toBeGreaterThan(0)
   expect(state.tokens[0].type).toBe("heading")
   expect(state.stableTokenCount).toBe(Math.max(0, state.tokens.length - 2))
+})
+
+test("honors marked extensions passed as argument", () => {
+  const mathExt: MarkedExtension = {
+    extensions: [
+      {
+        name: "math",
+        level: "inline",
+        start(src: string) {
+          return src.indexOf("$")
+        },
+        tokenizer(src: string) {
+          const m = /^\$([^$\n]+)\$/.exec(src)
+          if (!m) return
+          return { type: "math", raw: m[0], text: "β₁" }
+        },
+        renderer(t: any) {
+          return t.text
+        },
+      },
+    ],
+  }
+  const state = parseMarkdownIncremental("model $y = x$ here", null, 0, [mathExt])
+  const para = state.tokens[0] as any
+  const math = para.tokens?.find((t: any) => t.type === "math")
+  expect(math).toBeTruthy()
+  expect(math.text).toBe("β₁")
+})
+
+test("no extensions keeps default gfm behavior", () => {
+  const tokens = Lexer.lex("# Heading\n\n| a | b |\n| - | - |")
+  expect(tokens[0].type).toBe("heading")
+  expect(tokens.some((t) => t.type === "table")).toBe(true)
 })
 
 test("reuses unchanged tokens when appending content", () => {

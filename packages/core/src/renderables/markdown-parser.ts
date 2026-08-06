@@ -1,9 +1,51 @@
-import { Lexer, type MarkedToken } from "marked"
+import { Lexer, type MarkedExtension, type MarkedToken } from "marked"
 
 export interface ParseState {
   content: string
   tokens: MarkedToken[]
   stableTokenCount?: number
+}
+
+/**
+ * Normalize MarkedExtension[] into the shape marked's Lexer expects
+ * (same logic as `marked.use`): tokenizer functions collected under
+ * `extensions.inline` / `extensions.block`, with `start` fns in
+ * `startInline` / `startBlock`.
+ */
+export function normalizeExtensions(extensions?: MarkedExtension[]): Record<string, unknown> | undefined {
+  if (!extensions || extensions.length === 0) return undefined
+  const out: Record<string, unknown> = { renderers: {}, childTokens: {} }
+  for (const ext of extensions) {
+    for (const item of ext.extensions ?? []) {
+      if ("tokenizer" in item && item.tokenizer) {
+        const tokenizer = item.tokenizer
+        if (item.level === "block") {
+          const list = (out.block as unknown[] | undefined) ?? []
+          list.unshift(tokenizer)
+          out.block = list
+          if (item.start) {
+            const starts = (out.startBlock as unknown[] | undefined) ?? []
+            starts.push(item.start)
+            out.startBlock = starts
+          }
+        } else {
+          const list = (out.inline as unknown[] | undefined) ?? []
+          list.unshift(tokenizer)
+          out.inline = list
+          if (item.start) {
+            const starts = (out.startInline as unknown[] | undefined) ?? []
+            starts.push(item.start)
+            out.startInline = starts
+          }
+        }
+      }
+      if ("renderer" in item && item.renderer) {
+        const renderers = out.renderers as Record<string, unknown>
+        renderers[item.name] = item.renderer
+      }
+    }
+  }
+  return out
 }
 
 /**
@@ -14,10 +56,14 @@ export function parseMarkdownIncremental(
   newContent: string,
   prevState: ParseState | null,
   trailingUnstable: number = 2,
+  extensions?: MarkedExtension[],
 ): ParseState {
+  const normalized = normalizeExtensions(extensions)
+  const lex = (src: string) => (normalized ? Lexer.lex(src, { gfm: true, extensions: normalized }) : Lexer.lex(src))
+
   if (!prevState || prevState.tokens.length === 0) {
     try {
-      const tokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
+      const tokens = lex(newContent) as MarkedToken[]
       return {
         content: newContent,
         tokens,
@@ -62,7 +108,7 @@ export function parseMarkdownIncremental(
   }
 
   try {
-    const newTokens = Lexer.lex(remainingContent, { gfm: true }) as MarkedToken[]
+    const newTokens = lex(remainingContent) as MarkedToken[]
     return {
       content: newContent,
       tokens: [...stableTokens, ...newTokens],
@@ -70,7 +116,7 @@ export function parseMarkdownIncremental(
     }
   } catch {
     try {
-      const fullTokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
+      const fullTokens = lex(newContent) as MarkedToken[]
       return { content: newContent, tokens: fullTokens, stableTokenCount: 0 }
     } catch {
       return { content: newContent, tokens: [], stableTokenCount: 0 }
