@@ -2875,6 +2875,27 @@ export fn imageCreateFromRgba(
     return @intFromEnum(insertImage(image, output));
 }
 
+export fn imageAdoptRgbaFile(
+    path_ptr: ?[*]const u8,
+    path_len: u32,
+    width: u32,
+    height: u32,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (path_len == 0 or path_ptr == null) return @intFromEnum(native_image.Status.invalid_argument);
+    const image = native_image.adoptRgbaFile(globalAllocator, path_ptr.?[0..path_len], width, height) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    output.* = handles.insert(.image, erasePtr(image)) catch {
+        image.relinquishRawRgbaFile();
+        image.deinit();
+        return @intFromEnum(native_image.Status.out_of_memory);
+    };
+    return @intFromEnum(native_image.Status.ok);
+}
+
 export fn imageDestroy(image_handle: NativeHandle) void {
     const token = handles.beginDestroy(image_handle, .image, native_image.Image) orelse return;
     token.ptr.deinit();

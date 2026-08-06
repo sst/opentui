@@ -325,6 +325,16 @@ pub const OutputBackend = union(enum) {
         }
     }
 
+    /// File-path transport is safe only when bytes go directly to the local
+    /// terminal owned by this renderer. Memory, feed, and injected outputs
+    /// may be consumed elsewhere or not consumed by a terminal at all.
+    pub fn allowsKittyFileTransport(self: *const OutputBackend) bool {
+        return switch (self.*) {
+            .buffered => |b| if (b.ownedStdoutOutput) |stdout| stdout.stdout.isTty() else false,
+            .feed => false,
+        };
+    }
+
     /// Microseconds spent on the last write (populated after endFrame).
     pub fn getLastWriteTimeUs(self: *OutputBackend) ?f64 {
         switch (self.*) {

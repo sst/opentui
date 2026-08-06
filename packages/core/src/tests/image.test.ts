@@ -1,6 +1,6 @@
 import { createServer } from "node:http"
 import { spawnSync } from "node:child_process"
-import { chmod, mkdtemp, open, readFile, rm } from "node:fs/promises"
+import { chmod, mkdtemp, open, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -31,6 +31,16 @@ async function readBase64Fixture(name: string): Promise<Uint8Array> {
   return Uint8Array.from(
     Buffer.from((await readFile(new URL(`../zig/tests/fixtures/${name}`, import.meta.url), "utf8")).trim(), "base64"),
   )
+}
+
+async function expectMissingPath(path: string): Promise<void> {
+  try {
+    await stat(path)
+  } catch (error) {
+    expect(error).toMatchObject({ code: "ENOENT" })
+    return
+  }
+  throw new Error(`expected path to be missing: ${path}`)
 }
 
 function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8Array {
@@ -535,6 +545,76 @@ describe("NativeImage", () => {
       expect([...image.raw("bgra8").data]).toEqual([3, 2, 1, 4, 7, 6, 5, 8])
     } finally {
       image.dispose()
+    }
+  })
+
+  test("adopts raw RGBA files and deletes them after lazy materialization", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    await writeFile(path, Uint8Array.of(1, 2, 3, 255, 5, 6, 7, 255))
+
+    const image = NativeImage.adoptRgbaFile(path, 1, 2)
+    try {
+      const info = image.info()
+      expect(info).toEqual({
+        width: 1,
+        height: 2,
+        sourceWidth: 1,
+        sourceHeight: 2,
+        format: "raw-rgba",
+        colorStatus: "explicit-srgb",
+        orientation: 1,
+        hasAlpha: true,
+      })
+      expect([...image.raw().data]).toEqual([1, 2, 3, 255, 5, 6, 7, 255])
+      expect(image.info()).toEqual(info)
+      await expectMissingPath(path)
+    } finally {
+      image.dispose()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("disposing an unmaterialized adopted RGBA file releases its path", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    await writeFile(path, Uint8Array.of(1, 2, 3, 255))
+
+    const image = NativeImage.adoptRgbaFile(path, 1, 1)
+    image.dispose()
+    try {
+      await expectMissingPath(path)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects invalid adopted RGBA file arguments without taking ownership", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    const pixels = Uint8Array.of(1, 2, 3, 255)
+    await writeFile(path, pixels)
+
+    try {
+      expect(() => NativeImage.adoptRgbaFile(path, 0, 1)).toThrow(RangeError)
+      expect(() => NativeImage.adoptRgbaFile("", 1, 1)).toThrow(TypeError)
+      expect([...new Uint8Array(await readFile(path))]).toEqual([...pixels])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("requires an exact tightly packed RGBA file without taking ownership on failure", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-raw-image-"))
+    const path = join(directory, "frame.rgba")
+    const pixels = Uint8Array.of(1, 2, 3, 255, 5)
+    await writeFile(path, pixels)
+
+    try {
+      expect(() => NativeImage.adoptRgbaFile(path, 1, 1)).toThrow()
+      expect([...new Uint8Array(await readFile(path))]).toEqual([...pixels])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
     }
   })
 

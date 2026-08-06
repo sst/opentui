@@ -1,4 +1,5 @@
 import { open, stat } from "node:fs/promises"
+import { resolve } from "node:path"
 
 import { toArrayBuffer } from "./platform/ffi.js"
 import { resolveRenderLib, type ImageHandle, type RenderLib } from "./zig.js"
@@ -436,6 +437,34 @@ export class NativeImage {
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
     return NativeImage.fromHandle(lib, result.handle)
+  }
+
+  /**
+   * Adopts a tightly packed raw RGBA8 file without copying its pixels into JavaScript. OpenTUI
+   * owns the path after this returns and deletes it after materialization or
+   * disposal; a direct local-terminal Kitty render transfers deletion only for protocol-qualified paths in the OS
+   * temporary directory.
+   */
+  public static adoptRgbaFile(path: string, width: number, height: number): NativeImage {
+    if (typeof path !== "string" || path.length === 0 || path.includes("\0")) {
+      throw new TypeError("path must be a non-empty path without null bytes")
+    }
+    requireU32(width, "width")
+    requireU32(height, "height")
+    const lib = resolveRenderLib()
+    const result = lib.imageAdoptRgbaFile(resolve(path), width, height)
+    checkStatus(result.status)
+    if (!result.handle) throw imageError(10)
+    return new NativeImage(lib, result.handle, {
+      width,
+      height,
+      sourceWidth: width,
+      sourceHeight: height,
+      format: "raw-rgba",
+      colorStatus: "explicit-srgb",
+      orientation: 1,
+      hasAlpha: true,
+    })
   }
 
   private static fromHandle(lib: RenderLib, handle: ImageHandle): NativeImage {

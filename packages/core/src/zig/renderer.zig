@@ -38,6 +38,16 @@ const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
+fn kittyFileTransportAllowed(tty_stdout: bool, remote: bool) bool {
+    return tty_stdout and !remote;
+}
+
+test "Kitty file transport requires a local TTY stdout" {
+    try std.testing.expect(kittyFileTransportAllowed(true, false));
+    try std.testing.expect(!kittyFileTransportAllowed(true, true));
+    try std.testing.expect(!kittyFileTransportAllowed(false, false));
+}
+
 pub const RendererError = error{
     OutOfMemory,
     InvalidDimensions,
@@ -1376,7 +1386,13 @@ pub const CliRenderer = struct {
     ) !void {
         const transmit = try self.kittyPlacementTransmit(placement);
         defer if (transmit.owned) transmit.image.deinit();
-        try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, self.terminal.isInTmux());
+        try terminal_image.writeKittyTransmit(
+            writer,
+            transmit.image,
+            image_id,
+            self.terminal.isInTmux(),
+            kittyFileTransportAllowed(self.backend.allowsKittyFileTransport(), self.terminal.remote),
+        );
         try terminal_image.writeKittyPlacementAtCursor(
             writer,
             image_id,
@@ -2069,7 +2085,13 @@ pub const CliRenderer = struct {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement);
                 defer if (transmit.owned) transmit.image.deinit();
-                try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, tmux);
+                try terminal_image.writeKittyTransmit(
+                    writer,
+                    transmit.image,
+                    image_id,
+                    tmux,
+                    kittyFileTransportAllowed(self.backend.allowsKittyFileTransport(), self.terminal.remote),
+                );
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
                 previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
                 previous.?.source_height != placement.source_height)

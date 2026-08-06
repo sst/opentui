@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const bench_utils = @import("../bench-utils.zig");
 const ansi = @import("../ansi.zig");
 const buffer = @import("../buffer.zig");
@@ -51,6 +52,26 @@ const CountingWriter = struct {
         self.bytes += std.fmt.count(format, args);
     }
 };
+
+fn benchmarkTemporaryRoot(allocator: std.mem.Allocator) ![]u8 {
+    const environment_variables = if (builtin.os.tag == .windows)
+        [_][]const u8{ "TEMP", "TMP" }
+    else
+        [_][]const u8{"TMPDIR"};
+
+    for (environment_variables) |name| {
+        const value = std.process.getEnvVarOwned(allocator, name) catch continue;
+        if (value.len == 0) {
+            allocator.free(value);
+            continue;
+        }
+        if (std.fs.path.isAbsolute(value)) return value;
+        allocator.free(value);
+    }
+
+    if (builtin.os.tag == .windows) return error.TemporaryDirectoryUnavailable;
+    return allocator.dupe(u8, "/tmp");
+}
 
 fn fillPixels(pixels: []u8, scenario: Scenario) void {
     var random = std.Random.DefaultPrng.init(0x1234_5678_9abc_def0);
@@ -172,6 +193,13 @@ fn appendResult(
     });
 }
 
+fn outputMemStats(allocator: std.mem.Allocator, show_mem: bool, output_bytes: usize) !?[]const bench_utils.MemStat {
+    if (!show_mem) return null;
+    const values = try allocator.alloc(bench_utils.MemStat, 1);
+    values[0] = .{ .name = "Terminal output/frame", .bytes = output_bytes };
+    return values;
+}
+
 fn appendKittyBenchmarks(
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
@@ -217,7 +245,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
+            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false, false);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -233,7 +261,7 @@ fn appendKittyBenchmarks(
         for (0..20) |_| {
             var counting: CountingWriter = .{};
             var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
+            try terminal_image.writeKittyTransmit(&counting, cover, 7, false, false);
             stats.record(timer.read());
         }
         try appendResult(allocator, results, names[2], stats, null);
@@ -326,6 +354,81 @@ fn appendKittyBenchmarks(
         if (checksum == 0) return error.InvalidKittyOpacityBenchmark;
         try appendResult(allocator, results, names[8], stats, null);
     }
+}
+
+// Compare OpenTUI host work for a producer that has already published an RGBA
+// frame file. File creation and terminal-side file reads are outside the timed
+// region; placement is also excluded because both renderer paths share it.
+fn appendKittyRawRgbaFileBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const width: u32 = 1280;
+    const height: u32 = 720;
+    const inline_name = "RGBA 1280x720 copy + Kitty inline";
+    const file_name = "RGBA 1280x720 adopt + Kitty file";
+    const run_inline = bench_utils.matchesBenchFilter(inline_name, bench_filter);
+    const run_file = builtin.os.tag != .windows and bench_utils.matchesBenchFilter(file_name, bench_filter);
+    if (!run_inline and !run_file) return;
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const work_allocator = gpa.allocator();
+    const pixels = try work_allocator.alloc(u8, @as(usize, width) * height * 4);
+    defer work_allocator.free(pixels);
+    fillPixels(pixels, .{ .name = "", .width = width, .height = height, .pattern = .photo });
+
+    if (run_inline) {
+        var stats: bench_utils.BenchStats = .{};
+        var output_bytes: usize = 0;
+        for (0..10) |_| {
+            var counting: CountingWriter = .{};
+            var timer = try std.time.Timer.start();
+            {
+                const value = try image.createFromRgba(work_allocator, pixels, width, height, width * 4);
+                defer value.deinit();
+                try terminal_image.writeKittyTransmitFormat(&counting, value, 7, false, .rgba);
+            }
+            stats.record(timer.read());
+            output_bytes = counting.bytes;
+        }
+        try appendResult(allocator, results, inline_name, stats, try outputMemStats(allocator, show_mem, output_bytes));
+    }
+
+    if (!run_file) return;
+    const temporary_root = try benchmarkTemporaryRoot(work_allocator);
+    defer work_allocator.free(temporary_root);
+    const temporary_name = try std.fmt.allocPrint(
+        work_allocator,
+        "opentui-tty-graphics-protocol-benchmark-{d}.rgba",
+        .{std.time.nanoTimestamp()},
+    );
+    defer work_allocator.free(temporary_name);
+    const absolute_path = try std.fs.path.join(work_allocator, &.{ temporary_root, temporary_name });
+    defer work_allocator.free(absolute_path);
+    defer std.fs.deleteFileAbsolute(absolute_path) catch {};
+    {
+        const file = try std.fs.createFileAbsolute(absolute_path, .{});
+        defer file.close();
+        try file.writeAll(pixels);
+    }
+
+    var stats: bench_utils.BenchStats = .{};
+    var output_bytes: usize = 0;
+    for (0..500) |_| {
+        var counting: CountingWriter = .{};
+        var timer = try std.time.Timer.start();
+        {
+            const value = try image.adoptRgbaFile(work_allocator, absolute_path, width, height);
+            defer value.deinit();
+            try terminal_image.writeKittyTransmit(&counting, value, 7, false, true);
+        }
+        stats.record(timer.read());
+        output_bytes = counting.bytes;
+    }
+    try appendResult(allocator, results, file_name, stats, try outputMemStats(allocator, show_mem, output_bytes));
 }
 
 fn appendKittyPngBenchmarks(
@@ -715,6 +818,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         }
     }
     try appendKittyBenchmarks(allocator, &results, show_mem, bench_filter);
+    try appendKittyRawRgbaFileBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendKittyPngBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);

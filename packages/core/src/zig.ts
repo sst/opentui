@@ -1261,6 +1261,7 @@ function getOpenTUILib(libPath?: string) {
     imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageAdoptRgbaFile: { args: ["ptr", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     imageMaterialize: { args: ["u32"], returns: "u32" },
@@ -2678,6 +2679,7 @@ export interface RenderLib extends AudioEngineLib {
     height: number,
     stride: number,
   ) => { status: number; handle: ImageHandle | null }
+  imageAdoptRgbaFile: (path: string, width: number, height: number) => { status: number; handle: ImageHandle | null }
   imageDestroy: (image: ImageHandle) => void
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
   imageMaterialize: (image: ImageHandle) => number
@@ -5669,6 +5671,18 @@ class FFIRenderLib implements RenderLib {
       stride,
       output,
     )
+    return this.imageHandleResult(status, output)
+  }
+
+  public imageAdoptRgbaFile(
+    path: string,
+    width: number,
+    height: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const pathBytes = this.encoder.encode(path)
+    const pathLength = toSafeFFIU32Length(pathBytes.byteLength, "raw RGBA file path")
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageAdoptRgbaFile(pathBytes, pathLength, width, height, output)
     return this.imageHandleResult(status, output)
   }
 

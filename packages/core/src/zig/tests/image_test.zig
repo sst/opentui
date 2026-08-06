@@ -1,5 +1,29 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const image = @import("../image.zig");
+
+const posix_test = if (builtin.os.tag == .windows) struct {} else @cImport({
+    @cInclude("sys/stat.h");
+});
+
+const FifoUnblockContext = struct {
+    path: []const u8,
+    done: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+    fn run(self: *FifoUnblockContext) void {
+        var attempts: usize = 0;
+        while (attempts < 50) : (attempts += 1) {
+            if (self.done.load(.acquire)) return;
+            std.Thread.sleep(5 * std.time.ns_per_ms);
+        }
+
+        var flags: std.posix.O = .{ .ACCMODE = .RDWR };
+        if (@hasField(std.posix.O, "NONBLOCK")) flags.NONBLOCK = true;
+        if (@hasField(std.posix.O, "CLOEXEC")) flags.CLOEXEC = true;
+        const fd = std.posix.open(self.path, flags, 0) catch return;
+        std.posix.close(fd);
+    }
+};
 
 fn makeImage(pixels: []const u8, width: u32, height: u32) !*image.Image {
     return image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
@@ -90,6 +114,83 @@ test "PNG probe and decode return canonical red RGBA" {
     const decoded = try image.decode(std.testing.allocator, png, .{});
     defer decoded.deinit();
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
+}
+
+test "adopted RGBA files materialize lazily and release their owned path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255, 5, 6, 7, 255 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 2);
+    defer value.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
+    try std.testing.expectEqual(@as(u32, 1), value.info().has_alpha);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 255, 5, 6, 7, 255 }, try value.ensurePixels());
+    try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access("frame.rgba", .{}));
+}
+
+test "failed RGBA file adoption preserves caller ownership" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.MalformedInput, image.adoptRgbaFile(std.testing.allocator, path, 2, 1));
+    try tmp.dir.access("frame.rgba", .{});
+    try std.testing.expectError(error.DimensionLimit, image.adoptRgbaFile(std.testing.allocator, path, 0, 1));
+    try tmp.dir.access("frame.rgba", .{});
+}
+
+test "relinquishing an adopted RGBA file preserves the caller path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "frame.rgba", .data = &[_]u8{ 1, 2, 3, 255 } });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+
+    const value = try image.adoptRgbaFile(std.testing.allocator, path, 1, 1);
+    value.relinquishRawRgbaFile();
+    value.deinit();
+    try tmp.dir.access("frame.rgba", .{});
+}
+
+test "adopting a FIFO rejects without waiting for a writer" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ directory, "frame.rgba" });
+    defer std.testing.allocator.free(path);
+    const path_z = try std.posix.toPosixPath(path);
+    if (posix_test.mkfifo(&path_z, 0o600) != 0) return error.Unexpected;
+
+    var unblock = FifoUnblockContext{ .path = path };
+    const thread = try std.Thread.spawn(.{}, FifoUnblockContext.run, .{&unblock});
+    var timer = try std.time.Timer.start();
+    const result = image.adoptRgbaFile(std.testing.allocator, path, 1, 1);
+    const elapsed = timer.read();
+    unblock.done.store(true, .release);
+    thread.join();
+
+    if (result) |value| {
+        value.deinit();
+        return error.TestExpectedError;
+    } else |err| {
+        try std.testing.expectEqual(error.MalformedInput, err);
+    }
+    try std.testing.expect(elapsed < 100 * std.time.ns_per_ms);
 }
 
 test "ICC transforms are cached across images and materialization" {
