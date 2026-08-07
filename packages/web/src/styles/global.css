@@ -673,6 +673,16 @@ h4,
   text-decoration: none;
 }
 
+.logo svg,
+.logo-mark,
+.editorial-logo-mark {
+  width: 96px;
+  height: 21.33px;
+  aspect-ratio: 27 / 6;
+  color: var(--foreground);
+  display: block;
+}
+
 .nav {
   display: flex;
   align-items: center;
