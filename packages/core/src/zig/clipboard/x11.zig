@@ -1,6 +1,48 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const clipboard_clock = @import("clock.zig");
+const sync = @import("sync.zig");
+const posix_io = @import("posix-io.zig");
+
+const SocketAddress = extern union {
+    any: std.posix.sockaddr,
+    in: std.posix.sockaddr.in,
+    in6: std.posix.sockaddr.in6,
+    un: std.posix.sockaddr.un,
+
+    fn initUnix(path: []const u8) !SocketAddress {
+        var address: std.posix.sockaddr.un = .{ .family = std.posix.AF.UNIX, .path = undefined };
+        if (path.len + 1 > address.path.len) return error.NameTooLong;
+        @memset(&address.path, 0);
+        @memcpy(address.path[0..path.len], path);
+        return .{ .un = address };
+    }
+
+    fn initIp4(bytes: [4]u8, port: u16) SocketAddress {
+        return .{ .in = .{
+            .port = std.mem.nativeToBig(u16, port),
+            .addr = @as(*align(1) const u32, @ptrCast(&bytes)).*,
+        } };
+    }
+
+    fn initIp6(bytes: [16]u8, port: u16) SocketAddress {
+        return .{ .in6 = .{
+            .addr = bytes,
+            .port = std.mem.nativeToBig(u16, port),
+            .flowinfo = 0,
+            .scope_id = 0,
+        } };
+    }
+
+    fn length(self: SocketAddress) std.posix.socklen_t {
+        return switch (self.any.family) {
+            std.posix.AF.INET => @sizeOf(std.posix.sockaddr.in),
+            std.posix.AF.INET6 => @sizeOf(std.posix.sockaddr.in6),
+            std.posix.AF.UNIX => @sizeOf(std.posix.sockaddr.un),
+            else => unreachable,
+        };
+    }
+};
 const linux = @import("linux.zig");
 
 pub const ATOM_PRIMARY: u32 = 1;
@@ -62,7 +104,7 @@ const DisplayEndpoint = struct {
 };
 
 const DisplayAddress = struct {
-    address: std.net.Address,
+    address: SocketAddress,
     length: std.posix.socklen_t,
     kind: DisplayKind,
 };
@@ -189,7 +231,7 @@ pub const Connection = struct {
     connect_exited: std.atomic.Value(bool) = .init(false),
     connect_result: ?*linux.XcbConnection = null,
     connect_screen_index: c_int = 0,
-    connect_mutex: std.Thread.Mutex = .{},
+    connect_mutex: sync.Mutex = .{},
     connect_cancel_requested: bool = false,
     connect_cancel_fd: ?std.posix.fd_t = null,
     test_connected_fd: ?std.posix.fd_t = null,
@@ -295,7 +337,7 @@ pub const Connection = struct {
         var endpoint: DisplayEndpoint = undefined;
         var fd: std.posix.fd_t = undefined;
         var fd_owned = false;
-        defer if (fd_owned) std.posix.close(fd);
+        defer if (fd_owned) posix_io.close(fd);
         if (comptime builtin.is_test) {
             if (self.test_connected_fd) |test_fd| {
                 self.test_connected_fd = null;
@@ -303,19 +345,19 @@ pub const Connection = struct {
                 fd = test_fd;
                 fd_owned = true;
             } else {
-                endpoint = try parseDisplay(std.posix.getenv("DISPLAY") orelse return error.UnsupportedDisplay);
+                endpoint = try parseDisplay(posix_io.getEnv("DISPLAY") orelse return error.UnsupportedDisplay);
                 fd = try self.connectSocket(&endpoint);
                 fd_owned = true;
             }
         } else {
-            endpoint = try parseDisplay(std.posix.getenv("DISPLAY") orelse return error.UnsupportedDisplay);
+            endpoint = try parseDisplay(posix_io.getEnv("DISPLAY") orelse return error.UnsupportedDisplay);
             fd = try self.connectSocket(&endpoint);
             fd_owned = true;
         }
 
         const cancel_fd = try duplicateCancellationFd(fd);
         if (!self.publishCancellationFd(cancel_fd)) {
-            std.posix.close(cancel_fd);
+            posix_io.close(cancel_fd);
             return;
         }
         defer self.unpublishCancellationFd(cancel_fd);
@@ -368,7 +410,7 @@ pub const Connection = struct {
     pub fn requestShutdown(self: *Connection) void {
         self.connect_mutex.lock();
         self.connect_cancel_requested = true;
-        if (self.connect_cancel_fd) |fd| std.posix.shutdown(fd, .recv) catch {};
+        if (self.connect_cancel_fd) |fd| posix_io.shutdownRead(fd);
         self.connect_mutex.unlock();
     }
 
@@ -391,7 +433,7 @@ pub const Connection = struct {
         self.connect_mutex.lock();
         std.debug.assert(self.connect_cancel_fd == fd);
         self.connect_cancel_fd = null;
-        std.posix.close(fd);
+        posix_io.close(fd);
         self.connect_mutex.unlock();
     }
 
@@ -412,14 +454,14 @@ pub const Connection = struct {
 
     fn connectCandidate(self: *Connection, candidate: DisplayAddress) !std.posix.fd_t {
         if (self.cancelRequested()) return error.Cancelled;
-        const fd = try std.posix.socket(
+        const fd = try posix_io.socket(
             candidate.address.any.family,
             std.posix.SOCK.STREAM | std.posix.SOCK.NONBLOCK | std.posix.SOCK.CLOEXEC,
             0,
         );
-        errdefer std.posix.close(fd);
+        errdefer posix_io.close(fd);
 
-        std.posix.connect(fd, &candidate.address.any, candidate.length) catch |err| switch (err) {
+        posix_io.connect(fd, &candidate.address.any, candidate.length) catch |err| switch (err) {
             error.WouldBlock, error.ConnectionPending => {
                 var poll_count: u16 = 0;
                 while (poll_count < CONNECT_POLL_COUNT_MAX) : (poll_count += 1) {
@@ -432,7 +474,7 @@ pub const Connection = struct {
                     const count = try std.posix.poll(&descriptors, CONNECT_POLL_SLICE_MS);
                     if (count == 0) continue;
                     if (descriptors[0].revents & std.posix.POLL.NVAL != 0) return error.SocketInvalid;
-                    try std.posix.getsockoptError(fd);
+                    try posix_io.checkSocketError(fd);
                     break;
                 }
                 if (poll_count == CONNECT_POLL_COUNT_MAX) return error.ConnectionTimedOut;
@@ -1626,9 +1668,9 @@ fn parseDisplay(display: []const u8) !DisplayEndpoint {
 }
 
 fn duplicateCancellationFd(fd: std.posix.fd_t) !std.posix.fd_t {
-    const duplicate = try std.posix.dup(fd);
-    errdefer std.posix.close(duplicate);
-    _ = try std.posix.fcntl(duplicate, std.posix.F.SETFD, std.posix.FD_CLOEXEC);
+    const duplicate = try posix_io.duplicate(fd);
+    errdefer posix_io.close(duplicate);
+    try posix_io.setDescriptorFlags(duplicate, std.posix.FD_CLOEXEC);
     return duplicate;
 }
 
@@ -1659,40 +1701,38 @@ fn displayAddress(endpoint: DisplayEndpoint, candidate_index: u8) !DisplayAddres
             const path_length: usize = endpoint.unix_path_length;
             if (path_length + 1 > abstract_path.len) return error.UnsupportedDisplay;
             @memcpy(abstract_path[1 .. path_length + 1], endpoint.unix_path[0..path_length]);
-            const address = try std.net.Address.initUnix(abstract_path[0 .. path_length + 1]);
+            const address = try SocketAddress.initUnix(abstract_path[0 .. path_length + 1]);
             return .{
                 .address = address,
                 .length = @intCast(@offsetOf(std.posix.sockaddr.un, "path") + path_length + 1),
                 .kind = .unix,
             };
         }
-        const address = try std.net.Address.initUnix(endpoint.unix_path[0..endpoint.unix_path_length]);
-        return .{ .address = address, .length = address.getOsSockLen(), .kind = .unix };
+        const address = try SocketAddress.initUnix(endpoint.unix_path[0..endpoint.unix_path_length]);
+        return .{ .address = address, .length = address.length(), .kind = .unix };
     }
     const kind: DisplayKind = if (endpoint.kind == .tcp6 and endpoint.tcp4_fallback and candidate_index == 1)
         .tcp4
     else
         endpoint.kind;
     const address = switch (kind) {
-        .tcp4 => std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 6000 + endpoint.display),
-        .tcp6 => std.net.Address.initIp6(
+        .tcp4 => SocketAddress.initIp4(.{ 127, 0, 0, 1 }, 6000 + endpoint.display),
+        .tcp6 => SocketAddress.initIp6(
             .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
             6000 + endpoint.display,
-            0,
-            0,
         ),
         .unix => unreachable,
     };
-    return .{ .address = address, .length = address.getOsSockLen(), .kind = kind };
+    return .{ .address = address, .length = address.length(), .kind = kind };
 }
 
 fn loadXauthority(self: *Connection, endpoint: DisplayEndpoint) !XauthorityMatch {
     const allocator = self.allocator;
     var allocated_path: []u8 = &.{};
     defer if (allocated_path.len > 0) allocator.free(allocated_path);
-    const path = if (std.posix.getenv("XAUTHORITY")) |configured|
+    const path = if (posix_io.getEnv("XAUTHORITY")) |configured|
         configured
-    else if (std.posix.getenv("HOME")) |home| blk: {
+    else if (posix_io.getEnv("HOME")) |home| blk: {
         allocated_path = try std.fs.path.join(allocator, &.{ home, ".Xauthority" });
         break :blk allocated_path;
     } else return .{};
@@ -1708,10 +1748,10 @@ fn loadXauthorityPath(self: *Connection, endpoint: DisplayEndpoint, path: []cons
         .NOFOLLOW = true,
     };
     // O_NONBLOCK bounds FIFOs and devices. A hostile FUSE filesystem may still block open itself.
-    const fd = std.posix.open(path, open_flags, 0) catch return .{};
-    defer std.posix.close(fd);
-    const stat = std.posix.fstat(fd) catch return .{};
-    if (!std.posix.S.ISREG(stat.mode)) return .{};
+    const fd = std.posix.openat(std.posix.AT.FDCWD, path, open_flags, 0) catch return .{};
+    defer posix_io.close(fd);
+    const stat = posix_io.stat(fd) catch return .{};
+    if (stat.kind != .file) return .{};
     if (stat.size > XAUTHORITY_SIZE_MAX) return .{};
     const size_bytes: usize = @intCast(stat.size);
     const storage = try self.allocator.alloc(u8, size_bytes);
@@ -1739,7 +1779,7 @@ fn loadXauthorityPath(self: *Connection, endpoint: DisplayEndpoint, path: []cons
 
 fn parseXauthority(storage: []u8, endpoint: DisplayEndpoint) !XauthorityMatch {
     var hostname_buffer: [std.posix.HOST_NAME_MAX]u8 = undefined;
-    const hostname = std.posix.getenv("XAUTHLOCALHOSTNAME") orelse
+    const hostname = posix_io.getEnv("XAUTHLOCALHOSTNAME") orelse
         (std.posix.gethostname(&hostname_buffer) catch &.{});
     var best_score: u8 = 0;
     var best_name: []u8 = &.{};
@@ -1979,7 +2019,7 @@ test "X11 STRING conversion is Latin-1 aware and bounded after UTF-8 expansion" 
     try std.testing.expectEqualSlices(u8, &.{ 'A', 0xe9 }, latin1);
     try std.testing.expectError(error.NotRepresentable, encodeLatin1(std.testing.allocator, "\u{20ac}"));
 
-    var output: std.ArrayListUnmanaged(u8) = .{};
+    var output: std.ArrayListUnmanaged(u8) = .empty;
     defer output.deinit(std.testing.allocator);
     try std.testing.expect(try appendLatin1(std.testing.allocator, &output, latin1, 3));
     try std.testing.expectEqualStrings("A\u{e9}", output.items);
@@ -2480,7 +2520,7 @@ test "X11 DISPLAY parser accepts bounded local transports and rejects remote hos
 
 test "X11 Xauthority parser selects exact loopback MIT cookie and rejects truncation" {
     if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
-    var bytes: std.ArrayListUnmanaged(u8) = .{};
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer bytes.deinit(std.testing.allocator);
     try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_WILD, &.{}, "10", XAUTH_NAME, "wild");
     try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_INTERNET, &.{ 127, 0, 0, 1 }, "10", XAUTH_NAME, "best");
@@ -2497,28 +2537,24 @@ test "X11 Xauthority loading accepts only bounded regular files and observes can
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const endpoint = try parseDisplay("127.0.0.1:10");
-    var bytes: std.ArrayListUnmanaged(u8) = .{};
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer bytes.deinit(std.testing.allocator);
     try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_INTERNET, &.{ 127, 0, 0, 1 }, "10", XAUTH_NAME, "cookie");
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const file = try tmp.dir.createFile("authority", .{});
-    try file.writeAll(bytes.items);
-    file.close();
-    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(dir_path);
-    const authority_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "authority" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "authority", .data = bytes.items });
+    const authority_path = try tmp.dir.realPathFileAlloc(std.testing.io, "authority", std.testing.allocator);
     defer std.testing.allocator.free(authority_path);
 
     var match = try loadXauthorityPath(&connection, endpoint, authority_path);
     defer match.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("cookie", match.data);
 
-    const oversized = try tmp.dir.createFile("oversized", .{});
-    try oversized.setEndPos(XAUTHORITY_SIZE_MAX + 1);
-    oversized.close();
-    const oversized_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "oversized" });
+    const oversized = try tmp.dir.createFile(std.testing.io, "oversized", .{});
+    try oversized.setLength(std.testing.io, XAUTHORITY_SIZE_MAX + 1);
+    oversized.close(std.testing.io);
+    const oversized_path = try tmp.dir.realPathFileAlloc(std.testing.io, "oversized", std.testing.allocator);
     defer std.testing.allocator.free(oversized_path);
     var oversized_match = try loadXauthorityPath(&connection, endpoint, oversized_path);
     defer oversized_match.deinit(std.testing.allocator);
@@ -2536,8 +2572,8 @@ test "X11 Xauthority FIFO is rejected without waiting for a writer" {
     const endpoint = try parseDisplay(":0");
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(dir_path);
+    var dir_path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const dir_path = dir_path_buffer[0..try tmp.dir.realPath(std.testing.io, &dir_path_buffer)];
     const fifo_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "authority.fifo" });
     defer std.testing.allocator.free(fifo_path);
     const fifo_path_z = try std.testing.allocator.dupeZ(u8, fifo_path);
@@ -2557,11 +2593,11 @@ test "X11 bare DISPLAY connects to an abstract-only listener" {
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const listener = try testDisplayListener(.unix, 0);
-    defer std.posix.close(listener.fd);
+    defer posix_io.close(listener.fd);
     var endpoint = listener.endpoint;
 
     const fd = try connection.connectSocket(&endpoint);
-    defer std.posix.close(fd);
+    defer posix_io.close(fd);
     try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
 }
 
@@ -2571,12 +2607,12 @@ test "X11 bare DISPLAY falls back to a filesystem listener" {
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const listener = try testDisplayListener(.unix, 1);
-    defer std.posix.close(listener.fd);
+    defer posix_io.close(listener.fd);
     var endpoint = listener.endpoint;
-    defer std.posix.unlink(endpoint.unix_path[0..endpoint.unix_path_length]) catch {};
+    defer posix_io.unlink(endpoint.unix_path[0..endpoint.unix_path_length]) catch {};
 
     const fd = try connection.connectSocket(&endpoint);
-    defer std.posix.close(fd);
+    defer posix_io.close(fd);
     try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
 }
 
@@ -2589,11 +2625,11 @@ test "X11 localhost DISPLAY connects to an IPv6-only listener" {
         error.AddressFamilyNotSupported => return error.SkipZigTest,
         else => return err,
     };
-    defer std.posix.close(listener.fd);
+    defer posix_io.close(listener.fd);
     var endpoint = listener.endpoint;
 
     const fd = try connection.connectSocket(&endpoint);
-    defer std.posix.close(fd);
+    defer posix_io.close(fd);
     try std.testing.expectEqual(DisplayKind.tcp6, endpoint.kind);
 }
 
@@ -2603,11 +2639,11 @@ test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const listener = try testDisplayListener(.tcp4, 1);
-    defer std.posix.close(listener.fd);
+    defer posix_io.close(listener.fd);
     var endpoint = listener.endpoint;
 
     const fd = try connection.connectSocket(&endpoint);
-    defer std.posix.close(fd);
+    defer posix_io.close(fd);
     try std.testing.expectEqual(DisplayKind.tcp4, endpoint.kind);
 }
 
@@ -2632,14 +2668,14 @@ test "X11 connection establishment does not block a drive unit" {
     symbols.xcb_disconnect = fakeDisconnect;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const sockets = try testSocketPair();
-    defer std.posix.close(sockets[1]);
+    defer posix_io.close(sockets[1]);
     connection.test_connected_fd = sockets[0];
 
     const started_ns = clipboard_clock.nowNs();
     try std.testing.expectEqual(Progress.pending, connection.drive());
     try std.testing.expect(clipboard_clock.nowNs() - started_ns < 50 * std.time.ns_per_ms);
 
-    std.Thread.sleep(250 * std.time.ns_per_ms);
+    clipboard_clock.sleep(250 * std.time.ns_per_ms);
     try std.testing.expectEqual(Progress.pending, connection.drive());
     connection.deinit();
 }
@@ -2653,7 +2689,7 @@ test "X11 shutdown cancels a silent setup connection" {
     symbols.xcb_disconnect = fakeDisconnect;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const sockets = try testSocketPair();
-    defer std.posix.close(sockets[1]);
+    defer posix_io.close(sockets[1]);
     connection.test_connected_fd = sockets[0];
     fake_setup_started.store(false, .release);
     try std.testing.expectEqual(Progress.pending, connection.drive());
@@ -2674,7 +2710,7 @@ test "X11 shutdown immediately after setup completion still joins and closes" {
     symbols.xcb_disconnect = fakeDisconnect;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     const sockets = try testSocketPair();
-    defer std.posix.close(sockets[1]);
+    defer posix_io.close(sockets[1]);
     connection.test_connected_fd = sockets[0];
     fake_slow_connection = .{};
     fake_setup_completed.store(false, .release);
@@ -2707,7 +2743,7 @@ fn expectSetupStarted(connection: *Connection, flag: *std.atomic.Value(bool)) !v
     const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
     while (clipboard_clock.nowNs() < deadline_ns) {
         if (flag.load(.acquire)) return;
-        std.Thread.sleep(std.time.ns_per_ms);
+        clipboard_clock.sleep(std.time.ns_per_ms);
     }
     connection.requestShutdown();
     try expectShutdownReady(connection);
@@ -2719,7 +2755,7 @@ fn expectShutdownReady(connection: *Connection) !void {
     const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
     while (clipboard_clock.nowNs() < deadline_ns) {
         if (connection.shutdownReady()) return;
-        std.Thread.sleep(std.time.ns_per_ms);
+        clipboard_clock.sleep(std.time.ns_per_ms);
     }
     return error.TestConnectShutdownTimeout;
 }
@@ -2798,8 +2834,8 @@ fn fakeConnectionHasError(_: *linux.XcbConnection) callconv(.c) c_int {
 }
 
 fn fakeSlowConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
-    std.Thread.sleep(200 * std.time.ns_per_ms);
-    std.posix.close(fd);
+    clipboard_clock.sleep(200 * std.time.ns_per_ms);
+    posix_io.close(fd);
     return @ptrCast(&fake_slow_connection);
 }
 
@@ -2807,7 +2843,7 @@ fn fakeSilentConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux
     fake_setup_started.store(true, .release);
     var byte: [1]u8 = undefined;
     _ = std.posix.read(fd, &byte) catch {};
-    std.posix.close(fd);
+    posix_io.close(fd);
     return null;
 }
 
@@ -2815,7 +2851,7 @@ var fake_setup_started: std.atomic.Value(bool) = .init(false);
 var fake_setup_completed: std.atomic.Value(bool) = .init(false);
 
 fn fakeImmediateConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
-    std.posix.close(fd);
+    posix_io.close(fd);
     fake_setup_completed.store(true, .release);
     return @ptrCast(&fake_slow_connection);
 }
@@ -2849,18 +2885,18 @@ fn testDisplayListener(kind: DisplayKind, candidate_index: u8) !TestDisplayListe
             DisplayEndpoint{ .kind = .tcp6, .display = display, .screen = 0, .tcp4_fallback = true };
         const candidate = try displayAddress(endpoint, candidate_index);
         std.debug.assert(candidate.kind == kind);
-        const fd = try std.posix.socket(
+        const fd = try posix_io.socket(
             candidate.address.any.family,
             std.posix.SOCK.STREAM | std.posix.SOCK.CLOEXEC,
             0,
         );
-        std.posix.bind(fd, &candidate.address.any, candidate.length) catch |err| {
-            std.posix.close(fd);
+        posix_io.bind(fd, &candidate.address.any, candidate.length) catch |err| {
+            posix_io.close(fd);
             if (err == error.AddressInUse or err == error.AccessDenied) continue;
             return err;
         };
-        errdefer std.posix.close(fd);
-        try std.posix.listen(fd, 1);
+        errdefer posix_io.close(fd);
+        try posix_io.listen(fd, 1);
         return .{ .fd = fd, .endpoint = endpoint };
     }
     return error.NoTestDisplayAddress;

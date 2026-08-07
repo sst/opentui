@@ -1,21 +1,12 @@
 const std = @import("std");
+const sync = @import("sync.zig");
 
-var mutex: std.Thread.Mutex = .{};
-var timer: ?std.time.Timer = null;
+pub fn init() !void {}
 
-pub fn init() !void {
-    mutex.lock();
-    defer mutex.unlock();
-
-    if (timer != null) return;
-    timer = try std.time.Timer.start();
-}
+pub const sleep = sync.sleep;
 
 pub fn nowNs() i128 {
-    mutex.lock();
-    defer mutex.unlock();
-
-    return @intCast(timer.?.read());
+    return sync.nowNs();
 }
 
 test "clipboard clock is monotonic process-relative time" {

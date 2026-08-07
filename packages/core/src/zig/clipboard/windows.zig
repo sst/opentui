@@ -215,7 +215,7 @@ pub const Worker = struct {
             const remaining_ns: u64 = @intCast(@min(options.deadline_ns - now_ns, std.math.maxInt(u64)));
             const sleep_ns = @min(OPEN_RETRY_SLEEP_NS, remaining_ns);
             std.debug.assert(sleep_ns > 0);
-            std.Thread.sleep(sleep_ns);
+            clipboard_clock.sleep(sleep_ns);
         }
     }
 
