@@ -100,11 +100,20 @@ const ErrorCode = enum(u32) {
 
 extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) std.c.mach_port_t;
 extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
+extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
 
 fn tryJoinThread(thread: std.Thread) bool {
     return switch (builtin.os.tag) {
         .linux => switch (pthread_tryjoin_np(thread.getHandle(), null)) {
             0 => true,
+            @intFromEnum(std.posix.E.BUSY) => false,
+            else => false,
+        },
+        .freebsd => switch (pthread_peekjoin_np(thread.getHandle(), null)) {
+            0 => {
+                thread.join();
+                return true;
+            },
             @intFromEnum(std.posix.E.BUSY) => false,
             else => false,
         },
