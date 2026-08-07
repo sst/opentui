@@ -25,6 +25,11 @@ pub const WrapMode = enum {
     word,
 };
 
+pub const WrapIndent = enum {
+    none,
+    same,
+};
+
 pub const ChunkFitResult = struct {
     char_count: u32,
     width: u32,
