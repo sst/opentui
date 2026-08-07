@@ -191,7 +191,7 @@ h4,
 /* Quiet Masthead */
 .editorial-masthead {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: baseline;
   padding-bottom: 16px;
   margin-bottom: 36px;
@@ -201,11 +201,6 @@ h4,
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.editorial-masthead-title {
-  color: var(--foreground);
-  font-weight: 400;
 }
 
 .editorial-masthead-nav {
@@ -223,23 +218,9 @@ h4,
   color: var(--foreground);
 }
 
-/* Hero Section with Logo in H1 Spot */
+/* Product Hero */
 .editorial-hero {
   margin-bottom: 44px;
-}
-
-.hero-brand-heading {
-  margin: 0 0 20px;
-  display: flex;
-  align-items: center;
-}
-
-.hero-logo-large {
-  width: min(290px, 75vw);
-  height: auto;
-  aspect-ratio: 27 / 6;
-  color: var(--foreground);
-  display: block;
 }
 
 .sr-only {
@@ -273,19 +254,150 @@ h4,
   margin: 0 0 20px;
 }
 
-.editorial-byline {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+.hero-logo-mark {
+  width: min(220px, 60vw);
+  height: auto;
+  aspect-ratio: 27 / 6;
+  color: var(--foreground);
+  display: block;
+  margin: 0 0 24px;
 }
 
-.editorial-byline span {
+.hero-headline {
+  font-family: var(--font-serif);
+  font-size: clamp(30px, 4.4vw, 52px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
   color: var(--foreground);
+  max-width: 900px;
+  margin: 0 0 16px;
+}
+
+.hero-start {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.hero-start-cmd {
+  border: 1px solid var(--border-color);
+  background: var(--bg-subtle);
+  padding: 8px 14px;
+  color: var(--foreground);
+}
+
+/* Illustrated Introduction Front Matter */
+.editorial-frontmatter {
+  margin: 56px 0 22px;
+  border-top: 2px solid var(--foreground);
+  padding-top: 22px;
+}
+
+.frontmatter-title {
+  font-family: var(--font-serif);
+  font-size: clamp(22px, 2.8vw, 32px);
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0 0 10px;
+}
+
+.frontmatter-subtitle {
+  font-family: var(--font-serif);
+  font-size: clamp(15px, 1.6vw, 17px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-muted);
+  max-width: 720px;
+  margin: 0;
+}
+
+.editorial-intro {
+  max-width: 860px;
+  margin: 0 0 28px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+.editorial-lead-figure {
+  margin: 0 0 14px;
+}
+
+.figure-code-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 16px 20px;
+}
+
+.figure-code-grid > div {
+  min-width: 0;
+}
+
+.editorial-intro-links {
+  margin: 0 0 48px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Code listings and captured output inside figure plates */
+.figure-code-label {
+  display: block;
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.figure-code {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: left;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  color: var(--text-body);
+}
+
+.figure-output-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.figure-output {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  overflow-x: auto;
+  color: var(--foreground);
+}
+
+/* Continue-reading routes after flow passages */
+.editorial-flow p.flow-refs {
+  text-indent: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -8px 0 22px;
 }
 
 /* Multi-Column Balanced Flow */
@@ -328,7 +440,7 @@ h4,
   width: 100%;
   break-inside: avoid;
   margin: 28px 0;
-  padding: 26px 18px 18px;
+  padding: 26px 18px 28px;
   background-color: var(--background);
   background-image: var(--texture-url);
   background-repeat: repeat;
@@ -370,6 +482,59 @@ h4,
   color: var(--text-muted);
   background: var(--background);
   padding: 0 4px;
+}
+
+.fig-tag-bottom-left {
+  position: absolute;
+  bottom: 6px;
+  left: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--background);
+  padding: 0 4px;
+}
+
+.fig-tag-bottom-right {
+  position: absolute;
+  bottom: 6px;
+  right: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--background);
+  padding: 0 4px;
+}
+
+@media (max-width: 639px) {
+  .figure-code-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .editorial-masthead {
+    align-items: center;
+    font-size: 10px;
+  }
+
+  .editorial-logo-mark {
+    width: 80px;
+    height: auto;
+  }
+
+  .editorial-masthead-nav {
+    gap: 12px;
+  }
+
+  .fig-tag-top-right,
+  .fig-tag-bottom-right {
+    display: none;
+  }
 }
 
 .figure-canvas-wrap {
@@ -613,6 +778,21 @@ h4,
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
+}
+
+.footer-identity,
+.footer-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.footer-identity {
+  gap: 12px;
+}
+
+.footer-links {
+  gap: 12px 20px;
 }
 
 .footer-bottom {
