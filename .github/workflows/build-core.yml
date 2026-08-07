@@ -60,7 +60,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-libraries
-          path: packages/core/node_modules/@opentui/
+          path: packages/core/node_modules/@opentui/core-*/**
+          if-no-files-found: error
           retention-days: 1
 
   test:
