@@ -23,11 +23,12 @@ const TestItem = struct {
 const RopeType = rope_mod.Rope(TestItem);
 
 fn benchInsertOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Sequential appends
@@ -40,7 +41,7 @@ fn benchInsertOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.init(arena.allocator());
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10000) |i| {
                     try rope.append(.{ .value = @intCast(i) });
                 }
@@ -69,7 +70,7 @@ fn benchInsertOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.init(arena.allocator());
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10000) |i| {
                     try rope.prepend(.{ .value = @intCast(i) });
                 }
@@ -100,7 +101,7 @@ fn benchInsertOperations(
                 var rope = try RopeType.init(arena.allocator());
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..5000) |i| {
                     const pos = if (rope.count() > 0)
                         random.intRangeAtMost(u32, 0, rope.count())
@@ -127,11 +128,12 @@ fn benchInsertOperations(
 }
 
 fn benchDeleteOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
@@ -149,7 +151,7 @@ fn benchDeleteOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.from_slice(arena.allocator(), &items);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..5000) |_| {
                     try rope.delete(rope.count() - 1);
                 }
@@ -178,7 +180,7 @@ fn benchDeleteOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.from_slice(arena.allocator(), &items);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..5000) |_| {
                     try rope.delete(0);
                 }
@@ -209,7 +211,7 @@ fn benchDeleteOperations(
                 var rope = try RopeType.from_slice(arena.allocator(), &items);
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..5000) |_| {
                     const pos = random.intRangeAtMost(u32, 0, rope.count() - 1);
                     try rope.delete(pos);
@@ -233,11 +235,12 @@ fn benchDeleteOperations(
 }
 
 fn benchBulkOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
@@ -259,7 +262,7 @@ fn benchBulkOperations(
                 for (&chunk, 0..) |*item, i| {
                     item.* = .{ .value = @intCast(i) };
                 }
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10) |_| {
                     try rope.insert_slice(rope.count(), &chunk);
                 }
@@ -288,7 +291,7 @@ fn benchBulkOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.from_slice(arena.allocator(), &items);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10) |_| {
                     const start = if (rope.count() > 500) rope.count() - 500 else 0;
                     const end = rope.count();
@@ -319,7 +322,7 @@ fn benchBulkOperations(
                 defer arena.deinit();
 
                 var rope = try RopeType.from_slice(arena.allocator(), &items);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |_| {
                     const mid = rope.count() / 2;
                     var right = try rope.split(mid);
@@ -351,7 +354,7 @@ fn benchBulkOperations(
 
                 var rope1 = try RopeType.from_slice(arena.allocator(), items[0..5000]);
                 const rope2 = try RopeType.from_slice(arena.allocator(), items[5000..]);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try rope1.concat(&rope2);
                 stats.record(timer.read());
             }
@@ -372,11 +375,12 @@ fn benchBulkOperations(
 }
 
 fn benchAccessPatterns(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
@@ -394,7 +398,7 @@ fn benchAccessPatterns(
                 defer arena.deinit();
 
                 const rope = try RopeType.from_slice(arena.allocator(), &items);
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10000) |i| {
                     _ = rope.get(@intCast(i));
                 }
@@ -425,7 +429,7 @@ fn benchAccessPatterns(
                 const rope = try RopeType.from_slice(arena.allocator(), &items);
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10000) |_| {
                     const pos = random.intRangeAtMost(u32, 0, 9999);
                     _ = rope.get(pos);
@@ -465,7 +469,7 @@ fn benchAccessPatterns(
                     }
                 };
                 var ctx: Ctx = .{};
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try rope.walk(&ctx, Ctx.walker);
                 stats.record(timer.read());
             }
@@ -486,28 +490,29 @@ fn benchAccessPatterns(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem; // Rope benchmarks don't currently track memory
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Run all benchmark categories and filter results
-    const insert_results = try benchInsertOperations(allocator, iterations, bench_filter);
+    const insert_results = try benchInsertOperations(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, insert_results);
 
-    const delete_results = try benchDeleteOperations(allocator, iterations, bench_filter);
+    const delete_results = try benchDeleteOperations(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, delete_results);
 
-    const bulk_results = try benchBulkOperations(allocator, iterations, bench_filter);
+    const bulk_results = try benchBulkOperations(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, bulk_results);
 
-    const access_results = try benchAccessPatterns(allocator, iterations, bench_filter);
+    const access_results = try benchAccessPatterns(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, access_results);
 
     return all_results.toOwnedSlice(allocator);

@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
@@ -187,10 +189,10 @@ pub const UnifiedTextBuffer = struct {
 
         const init_rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
 
-        var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
+        var view_dirty_flags: std.ArrayListUnmanaged(bool) = .empty;
         errdefer view_dirty_flags.deinit(global_allocator);
 
-        var free_view_ids: std.ArrayListUnmanaged(u32) = .{};
+        var free_view_ids: std.ArrayListUnmanaged(u32) = .empty;
         errdefer free_view_ids.deinit(global_allocator);
 
         var mem_registry = MemRegistry.init(global_allocator);
@@ -217,8 +219,8 @@ pub const UnifiedTextBuffer = struct {
             .next_view_id = 0,
             .free_view_ids = free_view_ids,
             .content_epoch = 0,
-            .line_highlights = .{},
-            .line_spans = .{},
+            .line_highlights = .empty,
+            .line_spans = .empty,
             .internal_highlight_count = 0,
             .highlight_batch_depth = 0,
             .dirty_span_lines = dirty_span_lines,
@@ -549,7 +551,7 @@ pub const UnifiedTextBuffer = struct {
         defer break_result.deinit();
         try utf8.findLineBreaks(text, &break_result);
 
-        var segments: std.ArrayListUnmanaged(Segment) = .{};
+        var segments: std.ArrayListUnmanaged(Segment) = .empty;
         errdefer segments.deinit(allocator);
 
         if (prepend_linestart) {
@@ -713,10 +715,10 @@ pub const UnifiedTextBuffer = struct {
     // Highlight system
     fn ensureLineHighlightStorage(self: *Self, line_idx: usize) TextBufferError!void {
         while (self.line_highlights.items.len <= line_idx) {
-            try self.line_highlights.append(self.global_allocator, .{});
+            try self.line_highlights.append(self.global_allocator, .empty);
         }
         while (self.line_spans.items.len <= line_idx) {
-            try self.line_spans.append(self.global_allocator, .{});
+            try self.line_spans.append(self.global_allocator, .empty);
         }
     }
 
@@ -808,7 +810,7 @@ pub const UnifiedTextBuffer = struct {
             hl_idx: usize,
         };
 
-        var events: std.ArrayListUnmanaged(Event) = .{};
+        var events: std.ArrayListUnmanaged(Event) = .empty;
         defer events.deinit(self.global_allocator);
 
         for (highlights, 0..) |hl, idx| {
@@ -1136,7 +1138,7 @@ pub const UnifiedTextBuffer = struct {
         try self.setTextInternal(self.styled_text_mem_id.?, full_text);
 
         if (self.syntax_style) |style| {
-            var seen_link_ids: std.AutoHashMapUnmanaged(u32, void) = .{};
+            var seen_link_ids: std.AutoHashMapUnmanaged(u32, void) = .empty;
             defer seen_link_ids.deinit(self.global_allocator);
 
             self.startHighlightsTransaction();
@@ -1187,21 +1189,24 @@ pub const UnifiedTextBuffer = struct {
     /// Load text from a file path (relative to cwd)
     /// The file content is allocated in the arena and will be freed when the buffer is destroyed
     pub fn loadFile(self: *Self, path: []const u8) TextBufferError!void {
-        const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+        const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
             return switch (err) {
                 error.FileNotFound => TextBufferError.InvalidIndex,
                 error.AccessDenied => TextBufferError.InvalidIndex,
                 else => TextBufferError.OutOfMemory,
             };
         };
-        defer file.close();
+        defer file.close(io);
 
-        const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
+        const stat = file.stat(io) catch return TextBufferError.OutOfMemory;
+        const file_size = std.math.cast(usize, stat.size) orelse return TextBufferError.OutOfMemory;
 
         self.clear();
 
         const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
-        const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
+        var read_buffer: [4096]u8 = undefined;
+        var reader = file.reader(io, &read_buffer);
+        const bytes_read = reader.interface.readSliceShort(content) catch return TextBufferError.OutOfMemory;
         const text = content[0..bytes_read];
         const mem_id = try self.mem_registry.register(text, false);
 

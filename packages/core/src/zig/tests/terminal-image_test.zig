@@ -25,9 +25,12 @@ fn quantizeWithAllocator(allocator: std.mem.Allocator) !void {
 fn writeIndexedWithAllocator(allocator: std.mem.Allocator) !void {
     const indices = [_]u8{ 0, 1, 1, 0 };
     const palette = [_][3]u8{ .{ 255, 0, 0 }, .{ 0, 255, 0 } };
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(allocator);
-    try terminal_image.writeSixelIndexedPayload(allocator, output.writer(allocator), &indices, &palette, 2, 2);
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    terminal_image.writeSixelIndexedPayload(allocator, &output.writer, &indices, &palette, 2, 2) catch |err| {
+        if (err == error.WriteFailed) return error.OutOfMemory;
+        return err;
+    };
 }
 
 test "Sixel preparation releases partial allocations on OOM" {
@@ -46,7 +49,7 @@ fn parseUnsigned(bytes: []const u8, position: *usize) !usize {
 }
 
 fn decodeSixelIndices(payload: []const u8) !DecodedSixel {
-    const quote = std.mem.indexOfScalar(u8, payload, '"') orelse return error.InvalidSixel;
+    const quote = std.mem.findScalar(u8, payload, '"') orelse return error.InvalidSixel;
     var position = quote + 1;
     _ = try parseUnsigned(payload, &position);
     if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
@@ -122,9 +125,9 @@ pub fn decodeKittyChunks(payload: []const u8) ![]u8 {
     var decoded: std.ArrayList(u8) = .empty;
     errdefer decoded.deinit(std.testing.allocator);
     var offset: usize = 0;
-    while (std.mem.indexOfPos(u8, payload, offset, "\x1b_G")) |start| {
-        const separator = std.mem.indexOfScalarPos(u8, payload, start + 3, ';') orelse return error.InvalidKittyPayload;
-        const end = std.mem.indexOfPos(u8, payload, separator + 1, "\x1b\\") orelse return error.InvalidKittyPayload;
+    while (std.mem.findPos(u8, payload, offset, "\x1b_G")) |start| {
+        const separator = std.mem.findScalarPos(u8, payload, start + 3, ';') orelse return error.InvalidKittyPayload;
+        const end = std.mem.findPos(u8, payload, separator + 1, "\x1b\\") orelse return error.InvalidKittyPayload;
         const encoded = payload[separator + 1 .. end];
         const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
         const destination = try decoded.addManyAsSlice(std.testing.allocator, decoded_len);
@@ -143,31 +146,31 @@ test "kitty transmission chunks RGBA payloads and places without cursor movement
         .pixels = pixels,
         .metadata = .{ .width = 1025, .height = 1, .has_alpha = 1 },
     };
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 7, false);
-    try terminal_image.writeKittyPlacement(output.writer(std.testing.allocator), 7, 8, 2, 3, 4, 5, 0, 0, 1, 1, -99, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "i=7,m=1,q=2;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "\x1b_Gm=0,q=2;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=p,i=7,p=8,c=4,r=5,x=0,y=0,w=1,h=1,C=1,z=-99") != null);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, &value, 7, false);
+    try terminal_image.writeKittyPlacement(&output.writer, 7, 8, 2, 3, 4, 5, 0, 0, 1, 1, -99, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "i=7,m=1,q=2;") != null);
+    try std.testing.expect(std.mem.find(u8, output.written(), "\x1b_Gm=0,q=2;") != null);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=p,i=7,p=8,c=4,r=5,x=0,y=0,w=1,h=1,C=1,z=-99") != null);
 }
 
 test "kitty transmission uses RGB only when every pixel is opaque" {
     const opaque_image = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
     defer opaque_image.deinit();
-    var rgb: std.ArrayList(u8) = .empty;
-    defer rgb.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(rgb.writer(std.testing.allocator), opaque_image, 1, false);
-    try std.testing.expect(std.mem.indexOf(u8, rgb.items, "f=24") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rgb.items, ";AQID\x1b\\") != null);
+    var rgb: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer rgb.deinit();
+    try terminal_image.writeKittyTransmit(&rgb.writer, opaque_image, 1, false);
+    try std.testing.expect(std.mem.find(u8, rgb.written(), "f=24") != null);
+    try std.testing.expect(std.mem.find(u8, rgb.written(), ";AQID\x1b\\") != null);
 
     const transparent = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 4 }, 1, 1, 4);
     defer transparent.deinit();
-    var rgba: std.ArrayList(u8) = .empty;
-    defer rgba.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(rgba.writer(std.testing.allocator), transparent, 1, false);
-    try std.testing.expect(std.mem.indexOf(u8, rgba.items, "f=32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rgba.items, ";AQIDBA==\x1b\\") != null);
+    var rgba: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer rgba.deinit();
+    try terminal_image.writeKittyTransmit(&rgba.writer, transparent, 1, false);
+    try std.testing.expect(std.mem.find(u8, rgba.written(), "f=32") != null);
+    try std.testing.expect(std.mem.find(u8, rgba.written(), ";AQIDBA==\x1b\\") != null);
 }
 
 test "kitty transmission sends retained PNG bytes as f=100" {
@@ -178,12 +181,12 @@ test "kitty transmission sends retained PNG bytes as f=100" {
     try std.base64.standard.Decoder.decode(png, encoded);
     const value = try image.decode(std.testing.allocator, png, .{});
     defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
 
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 9, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=100,i=9") != null);
-    const decoded = try decodeKittyChunks(output.items);
+    try terminal_image.writeKittyTransmit(&output.writer, value, 9, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=t,f=100,i=9") != null);
+    const decoded = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualSlices(u8, png, decoded);
 }
@@ -198,11 +201,11 @@ test "kitty transmission passes ICC PNG bytes without materializing pixels" {
     defer value.deinit();
     try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, false);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, value, 11, false);
 
-    const decoded = try decodeKittyChunks(output.items);
+    const decoded = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualSlices(u8, png, decoded);
     try std.testing.expectEqual(@as(usize, 0), value.pixels.len);
@@ -218,12 +221,12 @@ test "kitty transmission preserves retained PNG bytes through clone" {
     defer value.deinit();
     const cloned = try value.clone();
     defer cloned.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
 
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), cloned, 10, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=100,i=10") != null);
-    const decoded = try decodeKittyChunks(output.items);
+    try terminal_image.writeKittyTransmit(&output.writer, cloned, 10, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=t,f=100,i=10") != null);
+    const decoded = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualSlices(u8, png, decoded);
 }
@@ -235,10 +238,10 @@ test "kitty transmission rejects truncated image storage before writing" {
         .pixels = &pixels,
         .metadata = .{ .width = 1, .height = 1 },
     };
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try std.testing.expectError(error.InvalidImageData, terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 1, false));
-    try std.testing.expectEqual(@as(usize, 0), output.items.len);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expectError(error.InvalidImageData, terminal_image.writeKittyTransmit(&output.writer, &value, 1, false));
+    try std.testing.expectEqual(@as(usize, 0), output.written().len);
 }
 
 test "kitty RGB transmission preserves pixels across chunk boundaries" {
@@ -257,10 +260,10 @@ test "kitty RGB transmission preserves pixels across chunk boundaries" {
     }
     const value = try image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
     defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 1, false);
-    const decoded = try decodeKittyChunks(output.items);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, value, 1, false);
+    const decoded = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualSlices(u8, expected, decoded);
 }
@@ -268,12 +271,12 @@ test "kitty RGB transmission preserves pixels across chunk boundaries" {
 test "sixel encoding writes palette raster and terminator" {
     const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
     defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
-    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bP0;1;0q\"1;1;1;1"));
-    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\\"));
-    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;100;0;0") != null);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixel(std.testing.allocator, &output.writer, value, false);
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "\x1bP0;1;0q\"1;1;1;1"));
+    try std.testing.expect(std.mem.endsWith(u8, output.written(), "\x1b\\"));
+    try std.testing.expect(std.mem.find(u8, output.written(), ";2;100;0;0") != null);
 }
 
 test "sixel encoding does not open a DCS when payload generation fails" {
@@ -284,20 +287,20 @@ test "sixel encoding does not open a DCS when payload generation fails" {
         .pixels = pixels,
         .metadata = .{ .width = 1, .height = 1 },
     };
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try std.testing.expectError(error.InvalidImageData, terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), &value, false));
-    try std.testing.expectEqual(@as(usize, 0), output.items.len);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expectError(error.InvalidImageData, terminal_image.writeSixel(std.testing.allocator, &output.writer, &value, false));
+    try std.testing.expectEqual(@as(usize, 0), output.written().len);
 }
 
 test "kitty tmux passthrough doubles inner escape bytes" {
     const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 4 }, 1, 1, 4);
     defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 11, true);
-    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bPtmux;\x1b\x1b_G"));
-    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, value, 11, true);
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "\x1bPtmux;\x1b\x1b_G"));
+    try std.testing.expect(std.mem.endsWith(u8, output.written(), "\x1b\x1b\\\x1b\\"));
 }
 
 test "sixel encoding uses RLE and omits transparent pixels" {
@@ -307,10 +310,10 @@ test "sixel encoding uses RLE and omits transparent pixels" {
     };
     const value = try image.createFromRgba(std.testing.allocator, &pixels, 5, 1, 20);
     defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "!4@") != null);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixel(std.testing.allocator, &output.writer, value, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "!4@") != null);
 }
 
 test "sixel adaptive palette caps at 255 colors deterministically" {
@@ -326,14 +329,14 @@ test "sixel adaptive palette caps at 255 colors deterministically" {
     }
     const value = try image.createFromRgba(std.testing.allocator, pixels, width, 1, width * 4);
     defer value.deinit();
-    var first: std.ArrayList(u8) = .empty;
-    defer first.deinit(std.testing.allocator);
-    var second: std.ArrayList(u8) = .empty;
-    defer second.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, first.writer(std.testing.allocator), value, false);
-    try terminal_image.writeSixel(std.testing.allocator, second.writer(std.testing.allocator), value, false);
-    try std.testing.expectEqualSlices(u8, first.items, second.items);
-    try std.testing.expectEqual(@as(usize, 255), std.mem.count(u8, first.items, ";2;"));
+    var first: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer first.deinit();
+    var second: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer second.deinit();
+    try terminal_image.writeSixel(std.testing.allocator, &first.writer, value, false);
+    try terminal_image.writeSixel(std.testing.allocator, &second.writer, value, false);
+    try std.testing.expectEqualSlices(u8, first.written(), second.written());
+    try std.testing.expectEqual(@as(usize, 255), std.mem.count(u8, first.written(), ";2;"));
 }
 
 test "sixel adaptive palette assigns shorter indices to common colors" {
@@ -356,25 +359,25 @@ test "sixel adaptive palette assigns shorter indices to common colors" {
 test "sixel indexed encoding preserves the supplied palette" {
     const indices = [_]u8{ 0, 1, 0, 1 };
     const palette = [_][3]u8{ .{ 12, 34, 56 }, .{ 210, 180, 90 } };
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), &indices, &palette, 4, 1);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0;2;5;13;22") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "#1;2;82;71;35") != null);
-    const decoded = try decodeSixelIndices(output.items);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, &output.writer, &indices, &palette, 4, 1);
+    try std.testing.expect(std.mem.find(u8, output.written(), "#0;2;5;13;22") != null);
+    try std.testing.expect(std.mem.find(u8, output.written(), "#1;2;82;71;35") != null);
+    const decoded = try decodeSixelIndices(output.written());
     defer decoded.deinit();
     try std.testing.expectEqualSlices(u8, &indices, decoded.indices);
 }
 
 test "sixel indexed encoding reserves index 255 for transparency" {
     const palette = [_][3]u8{.{ 0, 0, 0 }} ** 256;
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
     try std.testing.expectError(
         error.InvalidImageData,
-        terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), &[_]u8{255}, &palette, 1, 1),
+        terminal_image.writeSixelIndexedPayload(std.testing.allocator, &output.writer, &[_]u8{255}, &palette, 1, 1),
     );
-    try std.testing.expectEqual(@as(usize, 0), output.items.len);
+    try std.testing.expectEqual(@as(usize, 0), output.written().len);
 }
 
 test "sixel indexed scheduling preserves cursor resets bands and transparency" {
@@ -392,16 +395,16 @@ test "sixel indexed scheduling preserves cursor resets bands and transparency" {
     indices[12 * width] = 1;
     indices[12 * width + 64] = 0;
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), indices, &palette, width, height);
-    const decoded = try decodeSixelIndices(output.items);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, &output.writer, indices, &palette, width, height);
+    const decoded = try decodeSixelIndices(output.written());
     defer decoded.deinit();
     try std.testing.expectEqual(width, decoded.width);
     try std.testing.expectEqual(height, decoded.height);
     try std.testing.expectEqualSlices(u8, indices, decoded.indices);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output.items, "-"));
-    try std.testing.expect(std.mem.indexOfScalar(u8, output.items, '$') != null);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output.written(), "-"));
+    try std.testing.expect(std.mem.findScalar(u8, output.written(), '$') != null);
 }
 
 test "sixel indexed scheduling handles cover-sized geometry" {
@@ -418,13 +421,13 @@ test "sixel indexed scheduling handles cover-sized geometry" {
     indices[(height - 1) * width] = 1;
     indices[height * width - 1] = 0;
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), indices, &palette, width, height);
-    const decoded = try decodeSixelIndices(output.items);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, &output.writer, indices, &palette, width, height);
+    const decoded = try decodeSixelIndices(output.written());
     defer decoded.deinit();
     try std.testing.expectEqualSlices(u8, indices, decoded.indices);
-    try std.testing.expect(output.items.len < 10_000);
+    try std.testing.expect(output.written().len < 10_000);
 }
 
 test "sixel indexed scheduling handles width and band boundaries" {
@@ -443,20 +446,20 @@ test "sixel indexed scheduling handles width and band boundaries" {
                 indices[64] = 0;
             }
 
-            var output: std.ArrayList(u8) = .empty;
-            defer output.deinit(std.testing.allocator);
+            var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+            defer output.deinit();
             try terminal_image.writeSixelIndexedPayload(
                 std.testing.allocator,
-                output.writer(std.testing.allocator),
+                &output.writer,
                 indices,
                 &palette,
                 @intCast(width),
                 @intCast(height),
             );
-            const decoded = try decodeSixelIndices(output.items);
+            const decoded = try decodeSixelIndices(output.written());
             defer decoded.deinit();
             try std.testing.expectEqualSlices(u8, indices, decoded.indices);
-            try std.testing.expect(std.mem.indexOf(u8, output.items, "$-") == null);
+            try std.testing.expect(std.mem.find(u8, output.written(), "$-") == null);
         }
     }
 }
@@ -532,19 +535,19 @@ test "adaptive Sixel palette quality by color limit" {
 }
 
 test "kitty transmits decoded JPEG images as raw RGB pixels" {
-    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20);
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/halves.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const decoded = try image.decode(std.testing.allocator, jpeg, .{});
     defer decoded.deinit();
     try std.testing.expect(decoded.encoded_png == null);
     try std.testing.expectEqual(@as(u32, 0), decoded.metadata.has_alpha);
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 21, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=24,s=16,v=8,i=21") != null);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, decoded, 21, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=t,f=24,s=16,v=8,i=21") != null);
 
-    const transmitted = try decodeKittyChunks(output.items);
+    const transmitted = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqual(@as(usize, 16 * 8 * 3), transmitted.len);
     for (0..16 * 8) |pixel| {
@@ -555,51 +558,51 @@ test "kitty transmits decoded JPEG images as raw RGB pixels" {
 }
 
 test "kitty transmits decoded WebP alpha images as raw RGBA pixels" {
-    const webp = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/alpha.webp", 1 << 20);
+    const webp = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/alpha.webp", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(webp);
     const decoded = try image.decode(std.testing.allocator, webp, .{});
     defer decoded.deinit();
     try std.testing.expect(decoded.encoded_png == null);
     try std.testing.expectEqual(@as(u32, 1), decoded.metadata.has_alpha);
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 22, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "f=32") != null);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, decoded, 22, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "f=32") != null);
 
-    const transmitted = try decodeKittyChunks(output.items);
+    const transmitted = try decodeKittyChunks(output.written());
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqualSlices(u8, decoded.pixels, transmitted);
 }
 
 test "kitty tmux passthrough wraps placement and delete frames" {
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeKittyPlacement(output.writer(std.testing.allocator), 5, 6, 1, 2, 3, 4, 0, 0, 3, 4, -7, true);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyPlacement(&output.writer, 5, 6, 1, 2, 3, 4, 0, 0, 3, 4, -7, true);
     // The cursor move stays outside the passthrough; the graphics frame is wrapped.
-    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1b[3;2H\x1bPtmux;\x1b\x1b_G"));
-    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=p,i=5,p=6") != null);
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "\x1b[3;2H\x1bPtmux;\x1b\x1b_G"));
+    try std.testing.expect(std.mem.endsWith(u8, output.written(), "\x1b\x1b\\\x1b\\"));
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=p,i=5,p=6") != null);
 
     output.clearRetainingCapacity();
-    try terminal_image.writeKittyDelete(output.writer(std.testing.allocator), 5, 6, true, true);
-    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bPtmux;\x1b\x1b_G"));
-    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=d,d=I,i=5,p=6") != null);
+    try terminal_image.writeKittyDelete(&output.writer, 5, 6, true, true);
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "\x1bPtmux;\x1b\x1b_G"));
+    try std.testing.expect(std.mem.endsWith(u8, output.written(), "\x1b\x1b\\\x1b\\"));
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=d,d=I,i=5,p=6") != null);
 
     output.clearRetainingCapacity();
-    try terminal_image.writeKittyDelete(output.writer(std.testing.allocator), 9, null, false, true);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=d,d=i,i=9") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "p=") == null);
+    try terminal_image.writeKittyDelete(&output.writer, 9, null, false, true);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=d,d=i,i=9") != null);
+    try std.testing.expect(std.mem.find(u8, output.written(), "p=") == null);
 }
 
 test "sixel tmux passthrough wraps the framed payload" {
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixelFramedPayload(output.writer(std.testing.allocator), "0;1;0qPAYLOAD", true);
-    try std.testing.expectEqualStrings("\x1bPtmux;\x1b\x1bP0;1;0qPAYLOAD\x1b\x1b\\\x1b\\", output.items);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeSixelFramedPayload(&output.writer, "0;1;0qPAYLOAD", true);
+    try std.testing.expectEqualStrings("\x1bPtmux;\x1b\x1bP0;1;0qPAYLOAD\x1b\x1b\\\x1b\\", output.written());
 
     output.clearRetainingCapacity();
-    try terminal_image.writeSixelFramedPayload(output.writer(std.testing.allocator), "0;1;0qPAYLOAD", false);
-    try std.testing.expectEqualStrings("\x1bP0;1;0qPAYLOAD\x1b\\", output.items);
+    try terminal_image.writeSixelFramedPayload(&output.writer, "0;1;0qPAYLOAD", false);
+    try std.testing.expectEqualStrings("\x1bP0;1;0qPAYLOAD\x1b\\", output.written());
 }

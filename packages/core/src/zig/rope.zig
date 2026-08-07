@@ -318,7 +318,7 @@ pub fn Rope(comptime T: type) type {
             pub fn rebalance(self: *const Node, allocator: Allocator, tmp_allocator: Allocator) !*const Node {
                 if (self.is_balanced()) return self;
 
-                var leaves: std.ArrayListUnmanaged(*const Node) = .{};
+                var leaves: std.ArrayListUnmanaged(*const Node) = .empty;
                 defer leaves.deinit(tmp_allocator);
 
                 try leaves.ensureTotalCapacity(tmp_allocator, self.count());
@@ -524,7 +524,7 @@ pub fn Rope(comptime T: type) type {
                 return try initWithConfig(allocator, config);
             }
 
-            var leaves: std.ArrayListUnmanaged(*const Node) = .{};
+            var leaves: std.ArrayListUnmanaged(*const Node) = .empty;
             defer leaves.deinit(allocator);
             try leaves.ensureTotalCapacity(allocator, items.len);
 
@@ -691,7 +691,7 @@ pub fn Rope(comptime T: type) type {
             };
 
             var context = SliceContext{
-                .items = .{},
+                .items = .empty,
                 .allocator = allocator,
                 .start = start,
                 .end = end,
@@ -742,7 +742,7 @@ pub fn Rope(comptime T: type) type {
             };
 
             var context = ToArrayContext{
-                .items = .{},
+                .items = .empty,
                 .allocator = allocator,
             };
             errdefer context.items.deinit(allocator);
@@ -752,27 +752,27 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn toText(self: *const Self, allocator: Allocator) ![]u8 {
-            var buffer: std.ArrayListUnmanaged(u8) = .{};
-            errdefer buffer.deinit(allocator);
+            var buffer: std.Io.Writer.Allocating = .init(allocator);
+            defer buffer.deinit();
 
-            try buffer.appendSlice(allocator, "[root");
-            try nodeToText(self.root, &buffer, allocator);
-            try buffer.append(allocator, ']');
+            try buffer.writer.writeAll("[root");
+            try nodeToText(self.root, &buffer.writer);
+            try buffer.writer.writeByte(']');
 
-            return buffer.toOwnedSlice(allocator);
+            return buffer.toOwnedSlice();
         }
 
-        fn nodeToText(node: *const Node, buffer: *std.ArrayListUnmanaged(u8), allocator: Allocator) !void {
+        fn nodeToText(node: *const Node, writer: *std.Io.Writer) !void {
             switch (node.*) {
                 .branch => |*b| {
-                    try buffer.appendSlice(allocator, "[branch");
-                    try nodeToText(b.left, buffer, allocator);
-                    try nodeToText(b.right, buffer, allocator);
-                    try buffer.append(allocator, ']');
+                    try writer.writeAll("[branch");
+                    try nodeToText(b.left, writer);
+                    try nodeToText(b.right, writer);
+                    try writer.writeByte(']');
                 },
                 .leaf => |*l| {
                     if (l.is_sentinel) {
-                        try buffer.appendSlice(allocator, "[empty]");
+                        try writer.writeAll("[empty]");
                         return;
                     }
 
@@ -780,31 +780,31 @@ pub fn Rope(comptime T: type) type {
                         const tag = std.meta.activeTag(l.data);
                         const tag_name = @tagName(tag);
 
-                        try buffer.append(allocator, '[');
-                        try buffer.appendSlice(allocator, tag_name);
+                        try writer.writeByte('[');
+                        try writer.writeAll(tag_name);
 
                         if (@hasDecl(T, "Metrics")) {
                             const metrics = l.metrics();
-                            try buffer.append(allocator, ':');
-                            try buffer.writer(allocator).print("w{d}", .{metrics.weight()});
+                            try writer.writeByte(':');
+                            try writer.print("w{d}", .{metrics.weight()});
 
                             if (@hasDecl(T.Metrics, "total_width")) {
-                                try buffer.writer(allocator).print(",tw{d}", .{metrics.custom.total_width});
+                                try writer.print(",tw{d}", .{metrics.custom.total_width});
                             }
                             if (@hasDecl(T.Metrics, "total_bytes")) {
-                                try buffer.writer(allocator).print(",b{d}", .{metrics.custom.total_bytes});
+                                try writer.print(",b{d}", .{metrics.custom.total_bytes});
                             }
                         }
 
-                        try buffer.append(allocator, ']');
+                        try writer.writeByte(']');
                     } else {
-                        try buffer.appendSlice(allocator, "[leaf");
+                        try writer.writeAll("[leaf");
                         if (@hasDecl(T, "Metrics")) {
                             const metrics = l.metrics();
-                            try buffer.append(allocator, ':');
-                            try buffer.writer(allocator).print("w{d}", .{metrics.weight()});
+                            try writer.writeByte(':');
+                            try writer.print("w{d}", .{metrics.weight()});
                         }
-                        try buffer.append(allocator, ']');
+                        try writer.writeByte(']');
                     }
                 },
             }
@@ -930,7 +930,7 @@ pub fn Rope(comptime T: type) type {
 
             // Handle insertion
             if (action.insert_between.len > 0) {
-                var leaves: std.ArrayListUnmanaged(*const Node) = .{};
+                var leaves: std.ArrayListUnmanaged(*const Node) = .empty;
                 defer leaves.deinit(self.allocator);
                 try leaves.ensureTotalCapacity(self.allocator, action.insert_between.len);
 
@@ -1121,7 +1121,7 @@ pub fn Rope(comptime T: type) type {
                 return;
             }
 
-            var leaves: std.ArrayListUnmanaged(*const Node) = .{};
+            var leaves: std.ArrayListUnmanaged(*const Node) = .empty;
             defer leaves.deinit(self.allocator);
             try leaves.ensureTotalCapacity(self.allocator, items.len);
 
@@ -1171,7 +1171,7 @@ pub fn Rope(comptime T: type) type {
                             return .{ .keep_walking = false, .err = e };
                         };
                         if (!gop.found_existing) {
-                            gop.value_ptr.* = .{};
+                            gop.value_ptr.* = .empty;
                         }
 
                         gop.value_ptr.append(context.cache.allocator, .{

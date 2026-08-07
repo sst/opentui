@@ -149,7 +149,7 @@ pub const EditBuffer = struct {
         const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);
         errdefer {}
 
-        var cursors: std.ArrayListUnmanaged(Cursor) = .{};
+        var cursors: std.ArrayListUnmanaged(Cursor) = .empty;
         errdefer cursors.deinit(allocator);
 
         try cursors.append(allocator, .{ .row = 0, .col = 0 });

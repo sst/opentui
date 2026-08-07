@@ -8,7 +8,7 @@ const SupportedZigVersion = struct {
 };
 
 const SUPPORTED_ZIG_VERSIONS = [_]SupportedZigVersion{
-    .{ .major = 0, .minor = 15, .patch = 2 },
+    .{ .major = 0, .minor = 16, .patch = 0 },
 };
 
 const SupportedTarget = struct {
@@ -33,7 +33,7 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
-const GHOSTTY_VT_VERSION = "0.1.0-dev+74d0c72f";
+const GHOSTTY_VT_VERSION = "0.1.0-dev+b988efcf";
 
 const YOGA_CXX_FLAGS = [_][]const u8{
     "-std=c++20",
@@ -97,23 +97,23 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
         return b.resolveTargetQuery(.{});
     }
 
-    // Zig 0.15.2's ELF linker currently fails on newer glibc startup objects
-    // that ship .sframe relocations. Keep shipped libraries on linux-gnu, but
-    // use musl for local native executables so test/debug/bench still work.
+    // Zig 0.16's ELF linker still fails on newer glibc startup objects that
+    // ship .sframe relocations. Keep shipped libraries on linux-gnu, but use
+    // musl for local native executables so test/debug/bench still work.
     var query = b.graph.host.query;
     query.abi = .musl;
     query.glibc_version = null;
     return b.resolveTargetQuery(query);
 }
 
-fn pathExists(path: []const u8) bool {
+fn pathExists(b: *std.Build, path: []const u8) bool {
     if (path.len == 0) return false;
-    std.fs.cwd().access(path, .{}) catch return false;
+    std.Io.Dir.cwd().access(b.graph.io, path, .{}) catch return false;
     return true;
 }
 
 fn isMacOSSDKPath(path: []const u8) bool {
-    const trimmed_path = std.mem.trimRight(u8, path, "/");
+    const trimmed_path = std.mem.trimEnd(u8, path, "/");
     if (trimmed_path.len == 0) return false;
 
     const base_name = std.fs.path.basename(trimmed_path);
@@ -121,12 +121,12 @@ fn isMacOSSDKPath(path: []const u8) bool {
 }
 
 fn macOSSDKHasFramework(b: *std.Build, sdk_path: []const u8, framework: []const u8) bool {
-    return pathExists(b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks", b.fmt("{s}.framework", .{framework}) }));
+    return pathExists(b, b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks", b.fmt("{s}.framework", .{framework}) }));
 }
 
 fn isMacOSSDKAvailable(b: *std.Build, sdk_path: []const u8) bool {
     return isMacOSSDKPath(sdk_path) and
-        pathExists(b.pathJoin(&.{ sdk_path, "usr", "lib" })) and
+        pathExists(b, b.pathJoin(&.{ sdk_path, "usr", "lib" })) and
         macOSSDKHasFramework(b, sdk_path, "CoreFoundation") and
         macOSSDKHasFramework(b, sdk_path, "CoreAudio") and
         macOSSDKHasFramework(b, sdk_path, "AudioToolbox");
@@ -141,14 +141,14 @@ fn resolveMacOSSDKPath(b: *std.Build) ?[]const u8 {
 
     const env_vars = [_][]const u8{ "SDKROOT", "MACOS_SDK_PATH", "MACOSX_SDK_PATH" };
     for (env_vars) |env_var| {
-        if (b.graph.env_map.get(env_var)) |sdk_path| {
+        if (b.graph.environ_map.get(env_var)) |sdk_path| {
             if (isMacOSSDKAvailable(b, sdk_path)) return sdk_path;
         }
     }
 
-    if (builtin.os.tag == .macos and std.zig.system.darwin.isSdkInstalled(b.allocator)) {
+    if (builtin.os.tag == .macos and std.zig.system.darwin.isSdkInstalled(b.allocator, b.graph.io)) {
         const sdk_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
-        if (std.zig.system.darwin.getSdk(b.allocator, &sdk_target.result)) |sdk_path| {
+        if (std.zig.system.darwin.getSdk(b.allocator, b.graph.io, &sdk_target.result)) |sdk_path| {
             if (isMacOSSDKAvailable(b, sdk_path)) return sdk_path;
         }
     }
@@ -166,7 +166,7 @@ fn printMissingMacOSSDK(target_description: []const u8) void {
 
 fn addMiniaudioShim(
     b: *std.Build,
-    artifact: *std.Build.Step.Compile,
+    module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     macos_sdk_path: ?[]const u8,
 ) void {
@@ -182,9 +182,9 @@ fn addMiniaudioShim(
         else => &.{"-std=c99"},
     };
 
-    artifact.addIncludePath(b.path("."));
-    artifact.linkLibC();
-    artifact.addCSourceFile(.{
+    module.addIncludePath(b.path("."));
+    module.link_libc = true;
+    module.addCSourceFile(.{
         .file = b.path("miniaudio_shim.c"),
         .flags = c_flags,
     });
@@ -197,19 +197,19 @@ fn appendCFlags(b: *std.Build, base: []const []const u8, extra: []const []const 
     return flags;
 }
 
-fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
+fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
     const flags: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden" },
     };
 
-    artifact.addCSourceFile(.{
+    module.addCSourceFile(.{
         .file = b.path("image-shim.c"),
         .flags = flags,
     });
-    artifact.addIncludePath(b.path("vendor/lcms2/include"));
-    artifact.addIncludePath(b.path("vendor/lcms2/src"));
-    artifact.addCSourceFiles(.{
+    module.addIncludePath(b.path("vendor/lcms2/include"));
+    module.addIncludePath(b.path("vendor/lcms2/src"));
+    module.addCSourceFiles(.{
         .root = b.path("vendor/lcms2"),
         .files = &LCMS2_SOURCES,
         // image.zig serializes every LittleCMS operation with icc_cache_mutex.
@@ -226,7 +226,7 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" },
     };
-    artifact.addCSourceFile(.{
+    module.addCSourceFile(.{
         .file = b.path("image-resize-shim.c"),
         .flags = resize_flags,
     });
@@ -239,12 +239,12 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
     else
         webp_flags;
-    artifact.addIncludePath(b.path("vendor/libwebp"));
-    artifact.addCSourceFile(.{
+    module.addIncludePath(b.path("vendor/libwebp"));
+    module.addCSourceFile(.{
         .file = b.path("image-webp-config.c"),
         .flags = webp_dispatch_flags,
     });
-    artifact.addCSourceFiles(.{
+    module.addCSourceFiles(.{
         .root = b.path("vendor/libwebp"),
         .files = &.{
             "src/dec/alpha_dec.c",
@@ -282,7 +282,7 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
 
     switch (target.result.cpu.arch) {
         .x86_64 => {
-            artifact.addCSourceFiles(.{
+            module.addCSourceFiles(.{
                 .root = b.path("vendor/libwebp"),
                 .files = &.{
                     "src/dsp/alpha_processing_sse2.c",
@@ -295,16 +295,16 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
                 },
                 .flags = webp_flags,
             });
-            artifact.addCSourceFile(.{
+            module.addCSourceFile(.{
                 .file = b.path("image-webp-sse41.c"),
                 .flags = webp_flags,
             });
-            artifact.addCSourceFile(.{
+            module.addCSourceFile(.{
                 .file = b.path("image-webp-avx2.c"),
                 .flags = webp_flags,
             });
         },
-        .aarch64 => artifact.addCSourceFiles(.{
+        .aarch64 => module.addCSourceFiles(.{
             .root = b.path("vendor/libwebp"),
             .files = &.{
                 "src/dsp/alpha_processing_neon.c",
@@ -321,51 +321,51 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
     }
 }
 
-fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
+fn addMacOSSDKSearchPaths(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
     const include_path = b.pathJoin(&.{ sdk_path, "usr", "include" });
     const framework_path = b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks" });
     const lib_path = b.pathJoin(&.{ sdk_path, "usr", "lib" });
 
-    artifact.addSystemIncludePath(.{ .cwd_relative = include_path });
-    artifact.addSystemFrameworkPath(.{ .cwd_relative = framework_path });
-    artifact.addFrameworkPath(.{ .cwd_relative = framework_path });
-    artifact.addLibraryPath(.{ .cwd_relative = lib_path });
+    module.addSystemIncludePath(.{ .cwd_relative = include_path });
+    module.addSystemFrameworkPath(.{ .cwd_relative = framework_path });
+    module.addFrameworkPath(.{ .cwd_relative = framework_path });
+    module.addLibraryPath(.{ .cwd_relative = lib_path });
 }
 
-fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
-    artifact.linkFramework("CoreFoundation");
-    artifact.linkFramework("CoreAudio");
-    artifact.linkFramework("AudioToolbox");
-    artifact.linkSystemLibrary("pthread");
-    addMacOSSDKSearchPaths(b, artifact, sdk_path);
+fn addMacOSSystemLibraries(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
+    module.linkFramework("CoreFoundation", .{});
+    module.linkFramework("CoreAudio", .{});
+    module.linkFramework("AudioToolbox", .{});
+    module.linkSystemLibrary("pthread", .{});
+    addMacOSSDKSearchPaths(b, module, sdk_path);
 }
 
 fn addNativeAudioDependencies(
     b: *std.Build,
-    artifact: *std.Build.Step.Compile,
+    module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     macos_sdk_path: ?[]const u8,
 ) void {
-    addMiniaudioShim(b, artifact, target, macos_sdk_path);
-    addImageShim(b, artifact, target, macos_sdk_path);
+    addMiniaudioShim(b, module, target, macos_sdk_path);
+    addImageShim(b, module, target, macos_sdk_path);
 
     switch (target.result.os.tag) {
-        .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
+        .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
         .linux => {
-            artifact.linkSystemLibrary("dl");
-            artifact.linkSystemLibrary("pthread");
-            artifact.linkSystemLibrary("m");
+            module.linkSystemLibrary("dl", .{});
+            module.linkSystemLibrary("pthread", .{});
+            module.linkSystemLibrary("m", .{});
         },
         else => {},
     }
 }
 
-fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
+fn addYogaDependencies(b: *std.Build, module: *std.Build.Module) void {
     const yoga_dep = b.dependency("yoga", .{});
 
-    artifact.linkLibCpp();
-    artifact.addIncludePath(yoga_dep.path(""));
-    artifact.addCSourceFiles(.{
+    module.link_libcpp = true;
+    module.addIncludePath(yoga_dep.path(""));
+    module.addCSourceFiles(.{
         .root = yoga_dep.path(""),
         .files = &YOGA_CXX_SOURCES,
         .flags = &YOGA_CXX_FLAGS,
@@ -385,6 +385,30 @@ fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
     };
 }
 
+fn addTranslatedCImports(
+    b: *std.Build,
+    module: *std.Build.Module,
+    optimize: std.builtin.OptimizeMode,
+    target: std.Build.ResolvedTarget,
+) void {
+    const miniaudio_translate = b.addTranslateC(.{
+        .root_source_file = b.path("vendor/miniaudio/miniaudio.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    miniaudio_translate.addIncludePath(b.path("."));
+    module.addImport("miniaudio", miniaudio_translate.createModule());
+
+    const yoga_dep = b.dependency("yoga", .{});
+    const yoga_translate = b.addTranslateC(.{
+        .root_source_file = yoga_dep.path("yoga/Yoga.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    yoga_translate.addIncludePath(yoga_dep.path(""));
+    module.addImport("yoga", yoga_translate.createModule());
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -394,6 +418,8 @@ fn applyDependencies(
     build_options: *std.Build.Step.Options,
 ) void {
     module.addOptions("build_options", build_options);
+    addTranslatedCImports(b, module, optimize, target);
+
     const ghostty_vt_available = ghosttyVtAvailable(target);
     const ghostty_vt_options = b.addOptions();
     ghostty_vt_options.addOption(bool, "available", ghostty_vt_available);
@@ -515,8 +541,8 @@ pub fn build(b: *std.Build) void {
         printMissingMacOSSDK("native macOS tests");
         std.process.exit(1);
     }
-    addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
-    addYogaDependencies(b, test_artifact);
+    addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
+    addYogaDependencies(b, test_mod);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -533,9 +559,9 @@ pub fn build(b: *std.Build) void {
         .name = "opentui-bench",
         .root_module = bench_mod,
     });
-    bench_exe.linkLibC();
-    addImageShim(b, bench_exe, native_target, macos_sdk_path);
-    if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_exe, macos_sdk_path.?);
+    bench_mod.link_libc = true;
+    addImageShim(b, bench_mod, native_target, macos_sdk_path);
+    if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_mod, macos_sdk_path.?);
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
         run_bench.addArgs(args);
@@ -543,23 +569,24 @@ pub fn build(b: *std.Build) void {
     bench_step.dependOn(&run_bench.step);
 
     const bench_ffi_step = b.step("bench-ffi", "Build NativeSpanFeed benchmark library");
+    const bench_ffi_target = b.resolveTargetQuery(.{});
     const bench_ffi_mod = b.createModule(.{
         .root_source_file = b.path("native-span-feed-bench-lib.zig"),
-        .target = native_target,
+        .target = bench_ffi_target,
         .optimize = bench_optimize,
     });
-    applyDependencies(b, bench_ffi_mod, bench_optimize, native_target, build_options);
+    applyDependencies(b, bench_ffi_mod, bench_optimize, bench_ffi_target, build_options);
     const bench_ffi_lib = b.addLibrary(.{
         .name = "native_span_feed_bench",
         .root_module = bench_ffi_mod,
         .linkage = .dynamic,
     });
-    if (native_target.result.os.tag == .macos and macos_sdk_path == null) {
+    if (bench_ffi_target.result.os.tag == .macos and macos_sdk_path == null) {
         printMissingMacOSSDK("native macOS benchmark FFI library");
         std.process.exit(1);
     }
-    addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
-    addYogaDependencies(b, bench_ffi_lib);
+    addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
+    addYogaDependencies(b, bench_ffi_mod);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
@@ -612,8 +639,8 @@ fn buildNativeTarget(
 
     for (SUPPORTED_TARGETS) |supported_target| {
         // Check if this target matches the native platform
-        if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) != null and
-            std.mem.indexOf(u8, supported_target.zig_target, native_os) != null)
+        if (std.mem.find(u8, supported_target.zig_target, native_arch) != null and
+            std.mem.find(u8, supported_target.zig_target, native_os) != null)
         {
             try buildTarget(
                 b,
@@ -690,8 +717,8 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
-    addNativeAudioDependencies(b, lib, target, macos_sdk_path);
-    addYogaDependencies(b, lib);
+    addNativeAudioDependencies(b, module, target, macos_sdk_path);
+    addYogaDependencies(b, module);
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

@@ -95,7 +95,7 @@ pub const VirtualLine = struct {
 
     pub fn init() VirtualLine {
         return .{
-            .chunks = .{},
+            .chunks = .empty,
             .width_cols = 0,
             .col_offset = 0,
             .source_line = 0,
@@ -192,14 +192,14 @@ pub const UnifiedTextBufferView = struct {
             .wrap_width = null,
             .wrap_mode = .none,
             .first_line_offset = 0,
-            .virtual_lines = .{},
+            .virtual_lines = .empty,
             .virtual_lines_dirty = true,
-            .cached_line_starts = .{},
-            .cached_line_widths = .{},
-            .cached_line_sources = .{},
-            .cached_line_wrap_indices = .{},
-            .cached_line_first_vline = .{},
-            .cached_line_vline_counts = .{},
+            .cached_line_starts = .empty,
+            .cached_line_widths = .empty,
+            .cached_line_sources = .empty,
+            .cached_line_wrap_indices = .empty,
+            .cached_line_first_vline = .empty,
+            .cached_line_vline_counts = .empty,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
             .measure_arena = std.heap.ArenaAllocator.init(global_allocator),
@@ -346,13 +346,13 @@ pub const UnifiedTextBufferView = struct {
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
         _ = self.virtual_lines_arena.reset(.free_all);
-        self.virtual_lines = .{};
-        self.cached_line_starts = .{};
-        self.cached_line_widths = .{};
-        self.cached_line_sources = .{};
-        self.cached_line_wrap_indices = .{};
-        self.cached_line_first_vline = .{};
-        self.cached_line_vline_counts = .{};
+        self.virtual_lines = .empty;
+        self.cached_line_starts = .empty;
+        self.cached_line_widths = .empty;
+        self.cached_line_sources = .empty;
+        self.cached_line_wrap_indices = .empty;
+        self.cached_line_first_vline = .empty;
+        self.cached_line_vline_counts = .empty;
         self.truncation_applied = false;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
@@ -852,7 +852,7 @@ pub const UnifiedTextBufferView = struct {
             const prefix_width = available_width / 2;
             const suffix_width = available_width - prefix_width;
 
-            var new_chunks: std.ArrayListUnmanaged(VirtualChunk) = .{};
+            var new_chunks: std.ArrayListUnmanaged(VirtualChunk) = .empty;
 
             var prefix_accumulated: u32 = 0;
             for (vline.chunks.items) |chunk| {
@@ -958,13 +958,13 @@ pub const UnifiedTextBufferView = struct {
         const measure_allocator = self.measure_arena.allocator();
 
         // Create temporary output structures
-        var temp_virtual_lines: std.ArrayListUnmanaged(VirtualLine) = .{};
-        var temp_line_starts: std.ArrayListUnmanaged(u32) = .{};
-        var temp_line_widths: std.ArrayListUnmanaged(u32) = .{};
-        var temp_line_sources: std.ArrayListUnmanaged(u32) = .{};
-        var temp_line_wrap_indices: std.ArrayListUnmanaged(u32) = .{};
-        var temp_line_first_vline: std.ArrayListUnmanaged(u32) = .{};
-        var temp_line_vline_counts: std.ArrayListUnmanaged(u32) = .{};
+        var temp_virtual_lines: std.ArrayListUnmanaged(VirtualLine) = .empty;
+        var temp_line_starts: std.ArrayListUnmanaged(u32) = .empty;
+        var temp_line_widths: std.ArrayListUnmanaged(u32) = .empty;
+        var temp_line_sources: std.ArrayListUnmanaged(u32) = .empty;
+        var temp_line_wrap_indices: std.ArrayListUnmanaged(u32) = .empty;
+        var temp_line_first_vline: std.ArrayListUnmanaged(u32) = .empty;
+        var temp_line_vline_counts: std.ArrayListUnmanaged(u32) = .empty;
 
         const output: VirtualLineOutput = .{
             .virtual_lines = &temp_virtual_lines,

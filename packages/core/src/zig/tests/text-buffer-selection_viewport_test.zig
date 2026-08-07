@@ -33,10 +33,10 @@ test "Selection - vertical viewport selection without wrapping" {
     const len = view.getSelectedTextIntoBuffer(&buffer);
     const text = buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "Line 5") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Line 6") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Li") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Line 7") == null);
+    try std.testing.expect(std.mem.find(u8, text, "Line 5") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Line 6") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Li") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Line 7") == null);
 }
 
 test "Selection - horizontal viewport selection without wrapping" {
@@ -144,8 +144,8 @@ test "Selection - across empty line with viewport offset" {
     var buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&buffer);
     const text = buffer[0..len];
-    try std.testing.expect(std.mem.indexOf(u8, text, "Line2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Lin") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Line2") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Lin") != null);
 }
 
 test "Selection - viewport offset with multi-line selection" {

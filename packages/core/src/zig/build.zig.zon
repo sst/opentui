@@ -2,15 +2,15 @@
     .name = .opentui,
     .version = "0.1.11",
     .fingerprint = 0x5445027d063f5083,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .uucode = .{
-            .url = "https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz",
-            .hash = "uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
+            .url = "https://github.com/jacobsandlund/uucode/archive/8ad04b756f85a5ba1ac8d2b8cb48d0946f06b630.tar.gz",
+            .hash = "uucode-0.2.0-ZZjBPuS4VABmt0lQ-jDiKB4afmuZVvZpbX09FP5JrR8N",
         },
         .ghostty = .{
-            .url = "https://github.com/ghostty-org/ghostty/archive/74d0c72fd9318ad3ab95bfb56f6c2d995e267e2e.tar.gz",
-            .hash = "ghostty-1.3.2-dev-5UdBC48HIgU0iYKZzcmjpJ76Ulg3fI9cIH1hPM1JA6NC",
+            .url = "https://github.com/ghostty-org/ghostty/archive/b988efcfe584e88a3d0330e2c17c386ffa419d72.tar.gz",
+            .hash = "ghostty-1.3.2-dev-5UdBC9WdJAU1k1nuTdAexwmdzbmW1VTy6KhL_EfHjoTt",
             .lazy = true,
         },
         .yoga = .{

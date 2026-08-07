@@ -252,7 +252,7 @@ test "TextBuffer line info - lines with different widths" {
     defer tb.deinit();
 
     // Create text with different line lengths
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
     try text_builder.appendSlice(std.testing.allocator, "Short\n");
     try text_builder.appendNTimes(std.testing.allocator, 'A', 50);
@@ -355,7 +355,7 @@ test "TextBuffer line info - buffer resize operations" {
     defer tb.deinit();
 
     // Add text that will cause multiple resizes
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
     try text_builder.appendNTimes(std.testing.allocator, 'A', 100);
     try text_builder.appendSlice(std.testing.allocator, "\n");
@@ -376,17 +376,17 @@ test "TextBuffer line info - thousands of lines" {
     defer tb.deinit();
 
     // Create text with 1000 lines
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
-    defer text_builder.deinit(std.testing.allocator);
+    var text_builder: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer text_builder.deinit();
 
     var i: u32 = 0;
     while (i < 999) : (i += 1) {
-        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
+        try text_builder.writer.print("Line {}\n", .{i});
     }
     // Last line without newline
-    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
+    try text_builder.writer.print("Line {}", .{i});
 
-    try tb.setText(text_builder.items);
+    try tb.setText(text_builder.written());
 
     try std.testing.expectEqual(@as(u32, 1000), tb.getLineCount());
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
@@ -583,7 +583,7 @@ test "TextBuffer line iteration - walkLines callback" {
         }
     };
 
-    var ctx: Context = .{ .lines = .{}, .allocator = std.testing.allocator };
+    var ctx: Context = .{ .lines = .empty, .allocator = std.testing.allocator };
     defer ctx.lines.deinit(std.testing.allocator);
 
     iter_mod.walkLines(tb.rope(), &ctx, Context.callback, true);
@@ -1449,7 +1449,7 @@ test "TextBuffer setText - very long line with SIMD processing" {
     defer tb.deinit();
 
     // Create a text longer than 16 bytes (SIMD vector size) to test SIMD path
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
 
     try text_builder.appendNTimes(std.testing.allocator, 'A', 100);
@@ -1510,7 +1510,7 @@ test "TextBuffer setText - SIMD boundary conditions" {
     defer tb.deinit();
 
     // Create text with newlines at SIMD vector boundaries (16 bytes)
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
 
     // 15 chars + \n = exactly 16 bytes
@@ -1540,7 +1540,7 @@ test "TextBuffer setText - CRLF at SIMD boundary" {
     defer tb.deinit();
 
     // Create text where \r is at end of SIMD vector and \n is at start of next
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
 
     // 15 chars + \r = 16 bytes, then \n at position 16
@@ -1963,7 +1963,7 @@ test "TextBuffer append - streaming/chunked append vs ground truth" {
     try tb.append(" end");
 
     // Build expected ground truth
-    var expected: std.ArrayListUnmanaged(u8) = .{};
+    var expected: std.ArrayListUnmanaged(u8) = .empty;
     defer expected.deinit(std.testing.allocator);
     try expected.appendSlice(std.testing.allocator, "First");
     try expected.appendSlice(std.testing.allocator, "\nLine2");

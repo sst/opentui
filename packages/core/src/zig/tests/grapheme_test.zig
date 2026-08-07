@@ -325,7 +325,7 @@ test "GraphemePool - allocations with varying sizes" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    var ids: std.ArrayListUnmanaged(u32) = .{};
+    var ids: std.ArrayListUnmanaged(u32) = .empty;
     defer ids.deinit(std.testing.allocator);
 
     for (0..50) |i| {

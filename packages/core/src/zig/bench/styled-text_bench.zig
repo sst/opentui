@@ -26,11 +26,12 @@ fn rgba(r: f32, g: f32, b: f32, a: f32) RGBA {
 }
 
 fn benchSetStyledTextOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Setup global resources
@@ -66,7 +67,7 @@ fn benchSetStyledTextOperations(
                     .attributes = 0,
                 }};
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(&chunks);
                 stats.record(timer.read());
             }
@@ -120,7 +121,7 @@ fn benchSetStyledTextOperations(
                     .{ .text_ptr = text5.ptr, .text_len = text5.len, .fg_ptr = rgbaToPtr(&magenta), .bg_ptr = null, .attributes = 0 },
                 };
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(&chunks);
                 stats.record(timer.read());
             }
@@ -177,7 +178,7 @@ fn benchSetStyledTextOperations(
                     .{ .text_ptr = t7.ptr, .text_len = t7.len, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 },
                 };
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(&chunks);
                 stats.record(timer.read());
             }
@@ -225,7 +226,7 @@ fn benchSetStyledTextOperations(
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
                 };
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(&chunks);
                 stats.record(timer.read());
             }
@@ -270,7 +271,7 @@ fn benchSetStyledTextOperations(
                     .{ .text_ptr = t4.ptr, .text_len = t4.len, .fg_ptr = null, .bg_ptr = null, .attributes = 3 },
                 };
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(&chunks);
                 stats.record(timer.read());
             }
@@ -291,11 +292,12 @@ fn benchSetStyledTextOperations(
 }
 
 fn benchHighlightOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Setup global resources
@@ -324,7 +326,7 @@ fn benchHighlightOperations(
                 const text = "Line 1 with some text\nLine 2 with more text\nLine 3 here\nLine 4 content\nLine 5 final";
                 try tb.setText(text);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
 
                 // Add 1000 highlights sequentially
                 for (0..1000) |i| {
@@ -367,7 +369,7 @@ fn benchHighlightOperations(
                 const text = "Line 1 with some text\nLine 2 with more text\nLine 3 here\nLine 4 content\nLine 5 final";
                 try tb.setText(text);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
 
                 // Batch all highlights in a transaction
                 tb.startHighlightsTransaction();
@@ -403,7 +405,7 @@ fn benchHighlightOperations(
             var stats: BenchStats = .{};
 
             // Build a realistic multi-line code snippet with 100 chunks
-            var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
+            var chunk_list: std.ArrayList(StyledChunk) = .empty;
             defer chunk_list.deinit(allocator);
 
             const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
@@ -434,7 +436,7 @@ fn benchHighlightOperations(
                 defer style.deinit();
                 tb.setSyntaxStyle(style);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setStyledText(chunk_list.items);
                 stats.record(timer.read());
             }
@@ -455,21 +457,22 @@ fn benchHighlightOperations(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 100;
 
-    const styled_text_results = try benchSetStyledTextOperations(allocator, iterations, bench_filter);
+    const styled_text_results = try benchSetStyledTextOperations(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, styled_text_results);
 
-    const highlight_results = try benchHighlightOperations(allocator, iterations, bench_filter);
+    const highlight_results = try benchHighlightOperations(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, highlight_results);
 
     return all_results.toOwnedSlice(allocator);

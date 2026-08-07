@@ -13,7 +13,7 @@ pub const benchName = "TextBuffer Coordinate Conversion";
 
 /// Create a text buffer with N lines for testing
 fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_line: u32) !UnifiedRope {
-    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    var segments: std.ArrayList(Segment) = .empty;
     defer segments.deinit(allocator);
 
     for (0..line_count) |i| {
@@ -37,11 +37,12 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
 }
 
 fn benchCoordsToOffsetCurrent(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Small buffer - 100 lines
@@ -56,7 +57,7 @@ fn benchCoordsToOffsetCurrent(
 
                 var rope = try createTestBuffer(arena.allocator(), 100, 50);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Access lines throughout the buffer
                 for (0..100) |i| {
                     const line: u32 = @intCast(i % 100);
@@ -89,7 +90,7 @@ fn benchCoordsToOffsetCurrent(
 
                 var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |i| {
                     const line: u32 = @intCast((i * 10) % 1000);
                     _ = iter_mod.coordsToOffset(&rope, line, 25);
@@ -121,7 +122,7 @@ fn benchCoordsToOffsetCurrent(
 
                 var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |i| {
                     const line: u32 = @intCast((i * 100) % 10000);
                     _ = iter_mod.coordsToOffset(&rope, line, 25);
@@ -153,7 +154,7 @@ fn benchCoordsToOffsetCurrent(
 
                 var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |_| {
                     _ = iter_mod.coordsToOffset(&rope, 999, 25); // Last line
                 }
@@ -176,11 +177,12 @@ fn benchCoordsToOffsetCurrent(
 }
 
 fn benchOffsetToCoordsCurrent(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Small buffer
@@ -199,7 +201,7 @@ fn benchOffsetToCoordsCurrent(
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |_| {
                     const offset = random.intRangeAtMost(u32, 0, total_width);
                     _ = iter_mod.offsetToCoords(&rope, offset);
@@ -235,7 +237,7 @@ fn benchOffsetToCoordsCurrent(
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |_| {
                     const offset = random.intRangeAtMost(u32, 0, total_width);
                     _ = iter_mod.offsetToCoords(&rope, offset);
@@ -271,7 +273,7 @@ fn benchOffsetToCoordsCurrent(
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |_| {
                     const offset = random.intRangeAtMost(u32, 0, total_width);
                     _ = iter_mod.offsetToCoords(&rope, offset);
@@ -295,11 +297,12 @@ fn benchOffsetToCoordsCurrent(
 }
 
 fn benchGetLineCount(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // getLineCount is already optimized with metrics
@@ -314,7 +317,7 @@ fn benchGetLineCount(
 
                 var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100000) |_| {
                     _ = iter_mod.getLineCount(&rope);
                 }
@@ -337,25 +340,26 @@ fn benchGetLineCount(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Current implementation benchmarks
-    const coords_results = try benchCoordsToOffsetCurrent(allocator, iterations, bench_filter);
+    const coords_results = try benchCoordsToOffsetCurrent(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, coords_results);
 
-    const offset_results = try benchOffsetToCoordsCurrent(allocator, iterations, bench_filter);
+    const offset_results = try benchOffsetToCoordsCurrent(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, offset_results);
 
-    const count_results = try benchGetLineCount(allocator, iterations, bench_filter);
+    const count_results = try benchGetLineCount(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, count_results);
 
     return all_results.toOwnedSlice(allocator);

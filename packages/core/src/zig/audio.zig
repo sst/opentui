@@ -1,7 +1,7 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("vendor/miniaudio/miniaudio.h");
-});
+const builtin = @import("builtin");
+const c = @import("miniaudio");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 
 pub const Status = struct {
     pub const ok: i32 = 0;
@@ -285,8 +285,8 @@ const Stream = struct {
     input_read: usize = 0,
     input_write: usize = 0,
     input_count: usize = 0,
-    input_lock: std.Thread.Mutex = .{},
-    input_condition: std.Thread.Condition = .{},
+    input_lock: std.Io.Mutex = .init,
+    input_condition: std.Io.Condition = .init,
     // Keep EOF publication atomic so future decoder reads need not preserve a lock-only invariant.
     input_ended: u32 = 0,
     cancel_requested: u32 = 0,
@@ -329,7 +329,7 @@ const SoundGroup = struct {
 pub const Engine = struct {
     allocator: std.mem.Allocator,
     started: bool = false,
-    lock: std.Thread.Mutex = .{},
+    lock: std.Io.Mutex = .init,
     context: c.ma_context = undefined,
     context_initialized: bool = false,
     core: c.ma_engine = undefined,
@@ -410,7 +410,7 @@ pub const Engine = struct {
 
     pub fn deinit(self: *Engine) void {
         stopCaptureDevice(self);
-        self.lock.lock();
+        self.lock.lockUncancelable(io);
 
         if (self.has_device) {
             _ = c.ma_device_stop(&self.device);
@@ -432,7 +432,7 @@ pub const Engine = struct {
             transitionStreamToTerminal(stream, StreamState.cancelled);
             requestStreamCancellation(stream);
         }
-        self.lock.unlock();
+        self.lock.unlock(io);
 
         if (self.capture) |capture| {
             capture.destroy();
@@ -580,8 +580,8 @@ fn decoderExitRequested(stream: *const Stream) bool {
 }
 
 fn failDecoderWorker(stream: *Stream) void {
-    stream.input_lock.lock();
-    defer stream.input_lock.unlock();
+    stream.input_lock.lockUncancelable(io);
+    defer stream.input_lock.unlock(io);
     if (decoderExitRequested(stream)) return;
     failStream(stream);
 }
@@ -591,10 +591,10 @@ fn endStreamPlayback(stream: *Stream) void {
 }
 
 fn requestStreamCancellation(stream: *Stream) void {
-    stream.input_lock.lock();
+    stream.input_lock.lockUncancelable(io);
     @atomicStore(u32, &stream.cancel_requested, 1, .release);
-    stream.input_condition.broadcast();
-    stream.input_lock.unlock();
+    stream.input_condition.broadcast(io);
+    stream.input_lock.unlock(io);
 }
 
 fn destroyStreamStorage(stream: *Stream, out_final_stats: ?*StreamStats) void {
@@ -765,8 +765,8 @@ fn streamDecoderRead(
     if (bytes_to_read == 0) return c.MA_SUCCESS;
     const output_ptr = buffer_out orelse return c.MA_INVALID_ARGS;
 
-    stream.input_lock.lock();
-    defer stream.input_lock.unlock();
+    stream.input_lock.lockUncancelable(io);
+    defer stream.input_lock.unlock(io);
 
     const output = @as([*]u8, @ptrCast(output_ptr))[0..bytes_to_read];
     const target_read = @min(bytes_to_read, stream_decoder_read_granularity);
@@ -782,7 +782,7 @@ fn streamDecoderRead(
                 stream.decoder_abort = true;
                 break;
             }
-            stream.input_condition.wait(&stream.input_lock);
+            stream.input_condition.waitUncancelable(io, &stream.input_lock);
         }
 
         if (decoderExitRequested(stream) or stream.decoder_abort) break;
@@ -850,10 +850,10 @@ fn streamDecoderWorker(stream: *Stream) void {
     }
     defer _ = c.ma_decoder_uninit(&decoder);
 
-    stream.input_lock.lock();
+    stream.input_lock.lockUncancelable(io);
     stream.probe_active = false;
     if (decoderExitRequested(stream)) {
-        stream.input_lock.unlock();
+        stream.input_lock.unlock(io);
         return;
     }
     const state = loadStreamState(stream);
@@ -864,13 +864,13 @@ fn streamDecoderWorker(stream: *Stream) void {
     }
     const ready_generation = @atomicLoad(u32, &stream.ready_generation, .acquire);
     @atomicStore(u32, &stream.ready_generation, if (ready_generation == std.math.maxInt(u32)) 1 else ready_generation + 1, .release);
-    stream.input_lock.unlock();
+    stream.input_lock.unlock(io);
 
     while (!decoderExitRequested(stream)) {
         const writable = c.ma_pcm_rb_available_write(&stream.pcm_ring);
         if (writable == 0) {
             // Only the full-ring producer polls; this avoids synchronizing the realtime consumer.
-            std.Thread.sleep(std.time.ns_per_ms);
+            io.sleep(.fromMilliseconds(1), .awake) catch {};
             continue;
         }
 
@@ -902,17 +902,17 @@ fn streamDecoderWorker(stream: *Stream) void {
             return;
         }
         if (frames_read == 0) {
-            stream.input_lock.lock();
+            stream.input_lock.lockUncancelable(io);
             if (decoderExitRequested(stream)) {
-                stream.input_lock.unlock();
+                stream.input_lock.unlock(io);
                 return;
             }
             if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
                 @atomicStore(u32, &stream.decoder_finished, 1, .release);
-                stream.input_lock.unlock();
+                stream.input_lock.unlock(io);
                 return;
             }
-            stream.input_lock.unlock();
+            stream.input_lock.unlock(io);
             failDecoderWorker(stream);
             return;
         }
@@ -1262,15 +1262,15 @@ pub fn destroy(engine: *Engine) void {
 
 pub fn refreshPlaybackDevices(engine: *Engine) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return refreshPlaybackDevicesLocked(e);
 }
 
 pub fn getPlaybackDeviceCount(engine: *Engine) u32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return @intCast(e.playback_devices.items.len);
 }
 
@@ -1278,8 +1278,8 @@ pub fn getPlaybackDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_l
     if (out_ptr == null) return 0;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.playback_devices.items.len) return 0;
@@ -1288,8 +1288,8 @@ pub fn getPlaybackDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_l
 
 pub fn isPlaybackDeviceDefault(engine: *Engine, index: u32) bool {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.playback_devices.items.len) return false;
@@ -1298,8 +1298,8 @@ pub fn isPlaybackDeviceDefault(engine: *Engine, index: u32) bool {
 
 pub fn selectPlaybackDevice(engine: *Engine, index: u32) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     if (e.started) return Status.err_invalid;
     if (e.playback_devices.items.len == 0) {
@@ -1321,8 +1321,8 @@ pub fn selectPlaybackDevice(engine: *Engine, index: u32) i32 {
 
 pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     e.selected_playback_index = null;
     if (!e.started and e.has_device) {
@@ -1334,15 +1334,15 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
 
 pub fn refreshCaptureDevices(engine: *Engine) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return refreshCaptureDevicesLocked(e);
 }
 
 pub fn getCaptureDeviceCount(engine: *Engine) u32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return @intCast(e.capture_devices.items.len);
 }
 
@@ -1350,8 +1350,8 @@ pub fn getCaptureDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_le
     if (out_ptr == null) return 0;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.capture_devices.items.len) return 0;
@@ -1360,8 +1360,8 @@ pub fn getCaptureDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_le
 
 pub fn isCaptureDeviceDefault(engine: *Engine, index: u32) bool {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.capture_devices.items.len) return false;
@@ -1370,8 +1370,8 @@ pub fn isCaptureDeviceDefault(engine: *Engine, index: u32) bool {
 
 pub fn selectCaptureDevice(engine: *Engine, index: u32) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     if (e.has_capture_device) return Status.err_invalid;
     if (e.capture_devices.items.len == 0) {
@@ -1390,8 +1390,8 @@ pub fn selectCaptureDevice(engine: *Engine, index: u32) i32 {
 
 pub fn clearCaptureDeviceSelection(engine: *Engine) void {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     e.selected_capture_index = null;
     e.has_selected_capture_device = false;
 }
@@ -1529,16 +1529,16 @@ pub fn getCaptureStats(engine: *Engine, out_stats: ?*CaptureStats) i32 {
 pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
     const e = engine;
     const options = if (options_ptr) |opts| opts.* else StartOptions{};
-    e.lock.lock();
+    e.lock.lockUncancelable(io);
     if (e.started and e.has_device) {
-        e.lock.unlock();
+        e.lock.unlock(io);
         return Status.ok;
     }
 
     if (!e.has_device) {
         const context_status = ensureContextInitialized(e);
         if (context_status != Status.ok) {
-            e.lock.unlock();
+            e.lock.unlock(io);
             return context_status;
         }
 
@@ -1547,14 +1547,14 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
             if (e.playback_devices.items.len == 0) {
                 const refresh_status = refreshPlaybackDevicesLocked(e);
                 if (refresh_status != Status.ok) {
-                    e.lock.unlock();
+                    e.lock.unlock(io);
                     return refresh_status;
                 }
             }
 
             const idx: usize = @intCast(selected_index);
             if (idx >= e.playback_devices.items.len) {
-                e.lock.unlock();
+                e.lock.unlock(io);
                 return Status.err_not_found;
             }
             selected_device_id = &e.playback_devices.items[idx].id;
@@ -1585,7 +1585,7 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
 
         const init_result = c.ma_device_init(&e.context, &config, &e.device);
         if (init_result != c.MA_SUCCESS) {
-            e.lock.unlock();
+            e.lock.unlock(io);
             return Status.err_device;
         }
 
@@ -1600,15 +1600,15 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
     // Device startup can fail after mixer-only mode is active; preserve that mode.
     const was_started = e.started;
     e.started = true;
-    e.lock.unlock();
+    e.lock.unlock(io);
 
     const start_result = c.ma_device_start(&e.device);
     if (start_result != c.MA_SUCCESS) {
-        e.lock.lock();
+        e.lock.lockUncancelable(io);
         e.started = was_started;
         c.ma_device_uninit(&e.device);
         e.has_device = false;
-        e.lock.unlock();
+        e.lock.unlock(io);
         return Status.err_device;
     }
 
@@ -1616,16 +1616,16 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
 }
 
 pub fn startMixer(engine: *Engine) i32 {
-    engine.lock.lock();
+    engine.lock.lockUncancelable(io);
     engine.started = true;
-    engine.lock.unlock();
+    engine.lock.unlock(io);
     return Status.ok;
 }
 
 pub fn stop(engine: *Engine) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     e.started = false;
     if (e.has_device) {
@@ -1693,8 +1693,8 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
 
     const e = engine;
     const preflight = blk: {
-        e.lock.lock();
-        defer e.lock.unlock();
+        e.lock.lockUncancelable(io);
+        defer e.lock.unlock(io);
 
         reapFinishedVoices(e);
         const group_index: usize = @intCast(options.group_id);
@@ -1753,11 +1753,11 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     }
     stream.source_ready = true;
 
-    e.lock.lock();
+    e.lock.lockUncancelable(io);
     const data_source: *c.ma_data_source = @ptrCast(&stream.source);
     const sound_flags: c.ma_uint32 = c.MA_SOUND_FLAG_NO_SPATIALIZATION | c.MA_SOUND_FLAG_NO_PITCH;
     if (c.ma_sound_init_from_data_source(&e.core, data_source, sound_flags, &e.groups.items[preflight.group_index].node, &stream.sound) != c.MA_SUCCESS) {
-        e.lock.unlock();
+        e.lock.unlock(io);
         destroyStreamStorage(stream, null);
         return Status.err_device;
     }
@@ -1767,7 +1767,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     if (c.ma_sound_start(&stream.sound) != c.MA_SUCCESS) {
         c.ma_sound_uninit(&stream.sound);
         stream.sound_ready = false;
-        e.lock.unlock();
+        e.lock.unlock(io);
         destroyStreamStorage(stream, null);
         return Status.err_device;
     }
@@ -1776,10 +1776,10 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     e.streams[slot_index] = stream;
     const stream_id = streamIdForSlot(e, slot_index);
     e.updateActiveVoiceCount();
-    e.lock.unlock();
+    e.lock.unlock(io);
 
     stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
-        e.lock.lock();
+        e.lock.lockUncancelable(io);
         if (stream.sound_ready) {
             _ = c.ma_sound_stop(&stream.sound);
             c.ma_sound_uninit(&stream.sound);
@@ -1787,7 +1787,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         }
         retireStreamSlotLocked(e, slot_index);
         e.updateActiveVoiceCount();
-        e.lock.unlock();
+        e.lock.unlock(io);
         destroyStreamStorage(stream, null);
         return Status.err_no_space;
     };
@@ -1806,12 +1806,12 @@ pub fn writeStream(
 
     const e = engine;
     // This pins the stream slot through the bounded copy; full input returns zero instead of waiting.
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
-    stream.input_lock.lock();
-    defer stream.input_lock.unlock();
+    stream.input_lock.lockUncancelable(io);
+    defer stream.input_lock.unlock(io);
     if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0 or
         @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
         stream.decoder_abort or isTerminalStreamState(loadStreamState(stream)))
@@ -1835,24 +1835,24 @@ pub fn writeStream(
     stream.input_write = (stream.input_write + write_count) % stream.input_buffer.len;
     stream.input_count += write_count;
     _ = @atomicRmw(u64, &stream.bytes_received, .Add, write_count, .monotonic);
-    stream.input_condition.signal();
+    stream.input_condition.signal(io);
     return @intCast(write_count);
 }
 
 pub fn endStream(engine: *Engine, stream_id: u32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
-    stream.input_lock.lock();
-    defer stream.input_lock.unlock();
+    stream.input_lock.lockUncancelable(io);
+    defer stream.input_lock.unlock(io);
     if (loadStreamState(stream) == StreamState.failed or @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) {
         return Status.err_invalid;
     }
     @atomicStore(u32, &stream.input_ended, 1, .release);
-    stream.input_condition.broadcast();
+    stream.input_condition.broadcast(io);
     return Status.ok;
 }
 
@@ -1860,39 +1860,39 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
 
-    e.lock.lock();
+    e.lock.lockUncancelable(io);
     const stream = getStream(e, stream_id) orelse {
-        e.lock.unlock();
+        e.lock.unlock(io);
         return Status.err_not_found;
     };
 
-    stream.input_lock.lock();
+    stream.input_lock.lockUncancelable(io);
     const state = loadStreamState(stream);
     if (state == StreamState.failed or
         state == StreamState.cancelled or
         @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
         stream.worker == null)
     {
-        stream.input_lock.unlock();
-        e.lock.unlock();
+        stream.input_lock.unlock(io);
+        e.lock.unlock(io);
         return Status.err_invalid;
     }
 
     setStreamState(stream, StreamState.reconnecting);
     @atomicStore(u32, &stream.decoder_stop_requested, 1, .release);
-    stream.input_condition.broadcast();
-    stream.input_lock.unlock();
+    stream.input_condition.broadcast(io);
+    stream.input_lock.unlock(io);
 
     const worker = stream.worker.?;
     stream.worker = null;
-    e.lock.unlock();
+    e.lock.unlock(io);
 
     worker.join();
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
-    stream.input_lock.lock();
+    stream.input_lock.lockUncancelable(io);
     stream.input_read = 0;
     stream.input_write = 0;
     stream.input_count = 0;
@@ -1903,7 +1903,7 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
     stream.probe_bytes = 0;
     @atomicStore(i32, &stream.error_code, 0, .release);
     @atomicStore(u32, &stream.decoder_stop_requested, 0, .release);
-    stream.input_lock.unlock();
+    stream.input_lock.unlock(io);
 
     if (state == StreamState.ended) {
         // start() clears atEnd only after its is-playing check; stop first so its
@@ -1928,8 +1928,8 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
 pub fn setStreamVolume(engine: *Engine, stream_id: u32, volume: f32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     c.ma_sound_set_volume(&stream.sound, clamp(volume, 0, 4));
@@ -1939,8 +1939,8 @@ pub fn setStreamVolume(engine: *Engine, stream_id: u32, volume: f32) i32 {
 pub fn setStreamPan(engine: *Engine, stream_id: u32, pan: f32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     c.ma_sound_set_pan(&stream.sound, clamp(pan, -1, 1));
@@ -1950,8 +1950,8 @@ pub fn setStreamPan(engine: *Engine, stream_id: u32, pan: f32) i32 {
 pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
     const group_index: usize = @intCast(group_id);
@@ -1991,13 +1991,13 @@ pub fn getStreamStats(engine: *Engine, stream_id: u32, out_stats: ?*StreamStats)
 pub fn closeStream(engine: *Engine, stream_id: u32, reason: u32, out_final_stats: ?*StreamStats) i32 {
     if (stream_id == 0 or out_final_stats == null or reason > StreamCloseReason.disposed) return Status.err_invalid;
     const e = engine;
-    e.lock.lock();
+    e.lock.lockUncancelable(io);
     const slot_index = streamSlotIndex(e, stream_id) orelse {
-        e.lock.unlock();
+        e.lock.unlock(io);
         return Status.err_not_found;
     };
     const stream = e.streams[slot_index] orelse {
-        e.lock.unlock();
+        e.lock.unlock(io);
         return Status.err_not_found;
     };
 
@@ -2013,7 +2013,7 @@ pub fn closeStream(engine: *Engine, stream_id: u32, reason: u32, out_final_stats
     }
     retireStreamSlotLocked(e, slot_index);
     e.updateActiveVoiceCount();
-    e.lock.unlock();
+    e.lock.unlock(io);
 
     requestStreamCancellation(stream);
     destroyStreamStorage(stream, out_final_stats);
@@ -2026,8 +2026,8 @@ pub fn load(engine: *Engine, data_ptr: ?[*]const u8, data_len: usize, out_sound_
     const encoded_audio = @as([*]const u8, @ptrCast(data_ptr.?))[0..data_len];
     const sound = decodeSoundFromMemory(e.allocator, encoded_audio) catch return Status.err_decode;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     e.sounds.append(e.allocator, sound) catch {
         e.allocator.free(sound.samples);
@@ -2043,8 +2043,8 @@ pub fn unload(engine: *Engine, sound_id: u32) i32 {
     if (sound_id == 0) return Status.err_invalid;
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const sound_index: usize = @intCast(sound_id - 1);
     if (sound_index >= e.sounds.items.len) return Status.err_not_found;
@@ -2075,8 +2075,8 @@ pub fn createGroup(engine: *Engine, name_ptr: ?[*]const u8, name_len: usize, out
     const e = engine;
     const name = @as([*]const u8, @ptrCast(name_ptr.?))[0..name_len];
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     for (e.groups.items, 0..) |group, idx| {
         if (std.mem.eql(u8, group.name, name)) {
@@ -2117,8 +2117,8 @@ pub fn play(engine: *Engine, sound_id: u32, options_ptr: ?*const VoiceOptions, o
     if (out_voice_id == null) return Status.err_invalid;
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     reapFinishedVoices(e);
 
     if (sound_id == 0 or sound_id > @as(u32, @intCast(e.sounds.items.len))) return Status.err_not_found;
@@ -2190,8 +2190,8 @@ pub fn stopVoice(engine: *Engine, voice_id: u32) i32 {
     if (voice_id == 0) return Status.err_invalid;
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(voice_id - 1);
     if (idx >= e.voices.len) return Status.err_not_found;
@@ -2207,8 +2207,8 @@ pub fn setVoiceGroup(engine: *Engine, voice_id: u32, group_id: u32) i32 {
     if (voice_id == 0) return Status.err_invalid;
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const voice_index: usize = @intCast(voice_id - 1);
     const group_index: usize = @intCast(group_id);
@@ -2252,8 +2252,8 @@ pub fn setVoiceGroup(engine: *Engine, voice_id: u32, group_id: u32) i32 {
 pub fn setGroupVolume(engine: *Engine, group_id: u32, volume: f32) i32 {
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const group_index: usize = @intCast(group_id);
     if (group_index >= e.groups.items.len) return Status.err_invalid;
@@ -2267,8 +2267,8 @@ pub fn setGroupVolume(engine: *Engine, group_id: u32, volume: f32) i32 {
 pub fn setMasterVolume(engine: *Engine, volume: f32) i32 {
     const e = engine;
 
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const clamped = clamp(volume, 0, 4);
     const result = c.ma_engine_set_volume(&e.core, clamped);
@@ -2280,8 +2280,8 @@ pub fn setMasterVolume(engine: *Engine, volume: f32) i32 {
 
 pub fn enableTap(engine: *Engine, enabled: bool, capacity_frames: u32) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     if (!enabled) {
         e.tap_enabled = false;
@@ -2318,8 +2318,8 @@ pub fn readTap(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8
     if (channels == 0) return Status.err_invalid;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const out = @as([*]f32, @ptrCast(out_ptr.?))[0 .. @as(usize, frame_count) * @as(usize, channels)];
     @memset(out, 0);
@@ -2391,7 +2391,7 @@ fn audioCallback(device_ptr: ?*c.ma_device, output_ptr: ?*anyopaque, input_ptr: 
         incrementLockMisses(engine);
         return;
     }
-    defer engine.lock.unlock();
+    defer engine.lock.unlock(io);
 
     if (!engine.started) {
         @memset(out, 0);
@@ -2449,8 +2449,8 @@ pub fn mixToBuffer(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, channels
     if (channels == 0) return Status.err_invalid;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const out = @as([*]f32, @ptrCast(out_ptr.?))[0 .. @as(usize, frame_count) * @as(usize, channels)];
     @memset(out, 0);
@@ -2510,8 +2510,8 @@ pub fn getStats(engine: *Engine, out_stats: ?*Stats) i32 {
     if (out_stats == null) return Status.err_invalid;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     e.stats.lock_misses = loadLockMisses(e);
     reapFinishedVoices(e);

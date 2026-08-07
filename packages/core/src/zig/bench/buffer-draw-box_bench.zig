@@ -42,13 +42,14 @@ fn rgba(r: f32, g: f32, b: f32, a: f32) buffer.RGBA {
 }
 
 fn runTransparentBoxes(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_opacity = "1k transparent boxes (opacity 0)";
@@ -76,7 +77,7 @@ fn runTransparentBoxes(
             try buf.pushOpacity(0.0);
             errdefer buf.popOpacity();
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -131,7 +132,7 @@ fn runTransparentBoxes(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -185,7 +186,7 @@ fn runTransparentBoxes(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -235,13 +236,14 @@ fn runTransparentBoxes(
 }
 
 fn runFilledBoxes(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_opaque = "1k filled boxes (fully opaque)";
@@ -266,7 +268,7 @@ fn runFilledBoxes(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -320,7 +322,7 @@ fn runFilledBoxes(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -377,7 +379,7 @@ fn runFilledBoxes(
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -427,13 +429,14 @@ fn runFilledBoxes(
 }
 
 fn runFilledBoxesTitle(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_title = "1k filled boxes (with title)";
@@ -453,7 +456,7 @@ fn runFilledBoxesTitle(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         var box_i: usize = 0;
         while (box_i < BOX_COUNT) : (box_i += 1) {
             const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -502,13 +505,14 @@ fn runFilledBoxesTitle(
 }
 
 fn runFilledBoxesBorders(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_noborders = "1k filled boxes (without borders)";
@@ -528,7 +532,7 @@ fn runFilledBoxesBorders(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         var box_i: usize = 0;
         while (box_i < BOX_COUNT) : (box_i += 1) {
             const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -577,13 +581,14 @@ fn runFilledBoxesBorders(
 }
 
 fn runFilledBoxesClipped(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_fully_clipped = "1k filled boxes (fully clipped)";
@@ -608,7 +613,7 @@ fn runFilledBoxesClipped(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 try buf.drawBox(
@@ -657,7 +662,7 @@ fn runFilledBoxesClipped(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -708,7 +713,7 @@ fn runFilledBoxesClipped(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 try buf.drawBox(
@@ -756,30 +761,31 @@ fn runFilledBoxesClipped(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     const pool = gp.initGlobalPool(allocator);
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
-    const transparent_results = try runTransparentBoxes(allocator, pool, show_mem, iterations, bench_filter);
+    const transparent_results = try runTransparentBoxes(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, transparent_results);
 
-    const filled_results = try runFilledBoxes(allocator, pool, show_mem, iterations, bench_filter);
+    const filled_results = try runFilledBoxes(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, filled_results);
 
-    const title_results = try runFilledBoxesTitle(allocator, pool, show_mem, iterations, bench_filter);
+    const title_results = try runFilledBoxesTitle(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, title_results);
 
-    const partial_results = try runFilledBoxesBorders(allocator, pool, show_mem, iterations, bench_filter);
+    const partial_results = try runFilledBoxesBorders(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, partial_results);
 
-    const clipped_results = try runFilledBoxesClipped(allocator, pool, show_mem, iterations, bench_filter);
+    const clipped_results = try runFilledBoxesClipped(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, clipped_results);
 
     return all_results.toOwnedSlice(allocator);

@@ -14,7 +14,7 @@ pub const benchName = "EditorView Visual Navigation";
 
 const calls_per_iteration = 10_000;
 
-fn appendResult(allocator: std.mem.Allocator, results: *std.ArrayListUnmanaged(BenchResult), name: []const u8, stats: BenchStats) !void {
+fn appendResult(allocator: std.mem.Allocator, results: *std.ArrayList(BenchResult), name: []const u8, stats: BenchStats) !void {
     try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
@@ -40,12 +40,13 @@ fn keepAlive(checksum: u64) !void {
 }
 
 fn benchMoveDownBoundary(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     link_pool: *link.LinkPool,
     iterations: usize,
     bench_filter: ?[]const u8,
-    results: *std.ArrayListUnmanaged(BenchResult),
+    results: *std.ArrayList(BenchResult),
 ) !void {
     const name = "moveDownVisual wrapped boundary: 10k calls";
     if (!bench_utils.matchesBenchFilter(name, bench_filter)) return;
@@ -62,7 +63,7 @@ fn benchMoveDownBoundary(
     var stats: BenchStats = .{};
     var checksum: u64 = 0;
     for (0..iterations) |_| {
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         for (0..calls_per_iteration) |_| {
             resetPrimaryCursor(eb, 0, 10, 10);
             ev.desired_visual_col = null;
@@ -77,12 +78,13 @@ fn benchMoveDownBoundary(
 }
 
 fn benchMoveUpBoundary(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     link_pool: *link.LinkPool,
     iterations: usize,
     bench_filter: ?[]const u8,
-    results: *std.ArrayListUnmanaged(BenchResult),
+    results: *std.ArrayList(BenchResult),
 ) !void {
     const name = "moveUpVisual wrapped boundary: 10k calls";
     if (!bench_utils.matchesBenchFilter(name, bench_filter)) return;
@@ -100,7 +102,7 @@ fn benchMoveUpBoundary(
     var stats: BenchStats = .{};
     var checksum: u64 = 0;
     for (0..iterations) |_| {
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         for (0..calls_per_iteration) |_| {
             resetPrimaryCursor(eb, 0, text.len, @intCast(text.len));
             ev.desired_visual_col = null;
@@ -115,12 +117,13 @@ fn benchMoveUpBoundary(
 }
 
 fn benchVisualEOLBoundary(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     link_pool: *link.LinkPool,
     iterations: usize,
     bench_filter: ?[]const u8,
-    results: *std.ArrayListUnmanaged(BenchResult),
+    results: *std.ArrayList(BenchResult),
 ) !void {
     const name = "getVisualEOL wrapped boundary: 10k calls";
     if (!bench_utils.matchesBenchFilter(name, bench_filter)) return;
@@ -138,7 +141,7 @@ fn benchVisualEOLBoundary(
     var stats: BenchStats = .{};
     var checksum: u64 = 0;
     for (0..iterations) |_| {
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         for (0..calls_per_iteration) |_| {
             const cursor = ev.getVisualEOL();
             checksum +%= cursor.visual_row + cursor.visual_col + cursor.logical_col;
@@ -150,6 +153,7 @@ fn benchVisualEOLBoundary(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     _: bool,
     bench_filter: ?[]const u8,
@@ -157,13 +161,13 @@ pub fn run(
     const pool = gp.initGlobalPool(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const iterations: usize = 20;
-    try benchMoveDownBoundary(allocator, pool, link_pool, iterations, bench_filter, &results);
-    try benchMoveUpBoundary(allocator, pool, link_pool, iterations, bench_filter, &results);
-    try benchVisualEOLBoundary(allocator, pool, link_pool, iterations, bench_filter, &results);
+    try benchMoveDownBoundary(io, allocator, pool, link_pool, iterations, bench_filter, &results);
+    try benchMoveUpBoundary(io, allocator, pool, link_pool, iterations, bench_filter, &results);
+    try benchVisualEOLBoundary(io, allocator, pool, link_pool, iterations, bench_filter, &results);
 
     return results.toOwnedSlice(allocator);
 }

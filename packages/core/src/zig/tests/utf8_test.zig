@@ -2347,7 +2347,7 @@ test "calculateTextWidth: U+269B atom symbol should be width 2" {
 // ============================================================================
 
 test "findGraphemeInfo: empty string" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "", 4, false, .unicode, &result);
@@ -2355,7 +2355,7 @@ test "findGraphemeInfo: empty string" {
 }
 
 test "findGraphemeInfo: ASCII-only returns empty" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "hello world", 4, true, .unicode, &result);
@@ -2363,7 +2363,7 @@ test "findGraphemeInfo: ASCII-only returns empty" {
 }
 
 test "findGraphemeInfo: ASCII with tab" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "hello\tworld", 4, false, .unicode, &result);
@@ -2377,7 +2377,7 @@ test "findGraphemeInfo: ASCII with tab" {
 }
 
 test "findGraphemeInfo: multiple tabs" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "a\tb\tc", 4, false, .unicode, &result);
@@ -2399,7 +2399,7 @@ test "findGraphemeInfo: multiple tabs" {
 }
 
 test "findGraphemeInfo: CJK characters" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "hello世界";
@@ -2422,7 +2422,7 @@ test "findGraphemeInfo: CJK characters" {
 }
 
 test "findGraphemeInfo: emoji with skin tone" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
@@ -2438,7 +2438,7 @@ test "findGraphemeInfo: emoji with skin tone" {
 }
 
 test "findGraphemeInfo: emoji with ZWJ" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "a👩‍🚀b"; // a + woman astronaut + b
@@ -2453,7 +2453,7 @@ test "findGraphemeInfo: emoji with ZWJ" {
 }
 
 test "findGraphemeInfo: combining mark" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "cafe\u{0301}"; // café with combining acute
@@ -2469,7 +2469,7 @@ test "findGraphemeInfo: combining mark" {
 }
 
 test "findGraphemeInfo: flag emoji" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "US🇺🇸"; // US + flag
@@ -2485,7 +2485,7 @@ test "findGraphemeInfo: flag emoji" {
 }
 
 test "findGraphemeInfo: mixed content" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "Hi\t世界!"; // Hi + tab + CJK + !
@@ -2514,7 +2514,7 @@ test "findGraphemeInfo: mixed content" {
 }
 
 test "findGraphemeInfo: only ASCII letters no cache" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "abcdefghij", 4, false, .unicode, &result);
@@ -2524,7 +2524,7 @@ test "findGraphemeInfo: only ASCII letters no cache" {
 }
 
 test "findGraphemeInfo: emoji with VS16" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
@@ -2539,7 +2539,7 @@ test "findGraphemeInfo: emoji with VS16" {
 }
 
 test "findGraphemeInfo: realistic text" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "function test() {\n\tconst 世界 = 10;\n}";
@@ -2550,7 +2550,7 @@ test "findGraphemeInfo: realistic text" {
 }
 
 test "findGraphemeInfo: hiragana" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "こんにちは";
@@ -2566,7 +2566,7 @@ test "findGraphemeInfo: hiragana" {
 }
 
 test "findGraphemeInfo: at SIMD boundary" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     // Create text with multibyte char near SIMD boundary (16 bytes)
@@ -3189,7 +3189,7 @@ test "calculateTextWidth: surrogate pair edge cases" {
 
 test "calculateTextWidth: long grapheme cluster chain" {
     // Create a base + many combining marks
-    var text: std.ArrayListUnmanaged(u8) = .{};
+    var text: std.ArrayListUnmanaged(u8) = .empty;
     defer text.deinit(testing.allocator);
 
     try text.appendSlice(testing.allocator, "e");
@@ -3792,7 +3792,7 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
         width: i32,
     };
 
-    const width_entries = std.zon.parse.fromSlice(
+    const width_entries = std.zon.parse.fromSliceAlloc(
         []const WidthEntry,
         allocator,
         zon_with_null,
@@ -3858,7 +3858,7 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     const expected_width = utf8.calculateTextWidth(text, 4, false, .unicode);
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
@@ -3996,7 +3996,7 @@ test "Thai: wrap by width with tone marks" {
 test "Thai: grapheme info for combining marks" {
     const text = "กี่";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
@@ -4008,7 +4008,7 @@ test "Thai: grapheme info for combining marks" {
 test "Thai: grapheme info for word with combining marks" {
     const text = "คือ";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
@@ -4050,7 +4050,7 @@ test "Thai: ว่ wcwidth vs unicode mode comparison" {
 test "Thai: ว่ is a single grapheme cluster" {
     const text = "ว่";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);

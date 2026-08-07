@@ -2,6 +2,9 @@ const std = @import("std");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
+var io_threaded: std.Io.Threaded = .init_single_threaded;
+pub const io = io_threaded.io();
+
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
@@ -220,10 +223,10 @@ export fn destroyEventSink(sink_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
-var gpa: std.heap.GeneralPurposeAllocator(.{
+var gpa: std.heap.DebugAllocator(.{
     .enable_memory_limit = build_options.gpa_safe_stats,
     .safety = build_options.gpa_safe_stats,
-}) = .{};
+}) = .init;
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
@@ -1143,14 +1146,14 @@ export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8
 
 export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, text_ptr: ?[*]const u8, text_len: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const targetEnum = std.enums.fromInt(terminal.ClipboardTarget, target) orelse .clipboard;
     const text_utf8 = sliceFromPtrLen(text_ptr, text_len);
     return object_ptr.copyToClipboardOSC52(targetEnum, text_utf8);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const targetEnum = std.enums.fromInt(terminal.ClipboardTarget, target) orelse .clipboard;
     return object_ptr.clearClipboardOSC52(targetEnum);
 }
 
@@ -1364,7 +1367,7 @@ export fn bufferDrawImage(
 ) u8 {
     const buffer_ptr = acquireBuffer(buffer_handle) orelse return 0;
     const image_ptr = acquireImage(image_handle) orelse return 0;
-    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return 0;
+    const protocol = std.enums.fromInt(native_image.RenderProtocol, options.protocol) orelse return 0;
     return @intFromBool(buffer_ptr.drawImage(
         image_ptr,
         image_handle,
@@ -2969,7 +2972,7 @@ export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filte
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
-    const resize_filter = std.meta.intToEnum(native_image.ResizeFilter, filter) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const resize_filter = std.enums.fromInt(native_image.ResizeFilter, filter) orelse return @intFromEnum(native_image.Status.invalid_argument);
     const resized = native_image.resize(globalAllocator, image, width, height, resize_filter) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
@@ -3016,7 +3019,7 @@ export fn imageTransform(image_handle: NativeHandle, operation: u32, out_handle:
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
-    const transform_operation = std.meta.intToEnum(native_image.Transform, operation) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const transform_operation = std.enums.fromInt(native_image.Transform, operation) orelse return @intFromEnum(native_image.Status.invalid_argument);
     const transformed = native_image.transform(globalAllocator, image, transform_operation) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
@@ -3036,7 +3039,7 @@ export fn imageComposite(
     const overlay = acquireImage(overlay_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
-    const blend_mode = std.meta.intToEnum(native_image.Blend, blend) catch return @intFromEnum(native_image.Status.invalid_argument);
+    const blend_mode = std.enums.fromInt(native_image.Blend, blend) orelse return @intFromEnum(native_image.Status.invalid_argument);
     const composited = native_image.composite(globalAllocator, base, overlay, left, top, blend_mode, opacity) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
@@ -3072,7 +3075,7 @@ export fn encodeUnicode(
     const is_ascii_only = utf8.isAsciiOnly(text);
 
     // Find grapheme info
-    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer grapheme_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;

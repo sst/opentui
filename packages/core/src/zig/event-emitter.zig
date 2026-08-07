@@ -33,7 +33,7 @@ pub fn EventEmitter(comptime EventType: type) type {
 
         pub fn on(self: *Self, event: EventType, listener: Listener) !void {
             const list_ptr = self.listeners.getPtr(event) orelse {
-                self.listeners.put(event, .{});
+                self.listeners.put(event, .empty);
                 return self.on(event, listener);
             };
 

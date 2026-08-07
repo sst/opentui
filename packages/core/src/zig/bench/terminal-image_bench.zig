@@ -91,6 +91,7 @@ fn fillPixels(pixels: []u8, scenario: Scenario) void {
 }
 
 fn appendDragonGeometryBenchmarks(
+    io: std.Io,
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
     show_mem: bool,
@@ -105,10 +106,10 @@ fn appendDragonGeometryBenchmarks(
     var run_any = false;
     for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
     if (!run_any) return;
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -120,22 +121,22 @@ fn appendDragonGeometryBenchmarks(
     };
     for (names, geometries) |name, geometry| {
         if (!bench_utils.matchesBenchFilter(name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
         var stats: bench_utils.BenchStats = .{};
         for (0..10) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const cropped = try image.extract(work_allocator, decoded, geometry.x, geometry.y, geometry.width, geometry.height);
             defer cropped.deinit();
             const resized = try image.resize(work_allocator, cropped, geometry.output_width, geometry.output_height, .area);
             defer resized.deinit();
-            try writeScenario(work_allocator, output.writer(work_allocator), resized, geometry.colors);
+            try writeScenario(work_allocator, &output.writer, resized, geometry.colors);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try results.append(allocator, .{
@@ -173,6 +174,7 @@ fn appendResult(
 }
 
 fn appendKittyBenchmarks(
+    io: std.Io,
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
     show_mem: bool,
@@ -193,10 +195,10 @@ fn appendKittyBenchmarks(
     for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
     if (!run_any) return;
 
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -210,19 +212,19 @@ fn appendKittyBenchmarks(
         .{ .name = names[1], .source = cover },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, scenario.source.pixels.len * 4 / 3 + 8192);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(scenario.source.pixels.len * 4 / 3 + 8192);
         var stats: bench_utils.BenchStats = .{};
         for (0..20) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeKittyTransmit(&output.writer, scenario.source, 7, false);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
@@ -232,7 +234,7 @@ fn appendKittyBenchmarks(
         var stats: bench_utils.BenchStats = .{};
         for (0..20) |_| {
             var counting: CountingWriter = .{};
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
             stats.record(timer.read());
         }
@@ -240,18 +242,18 @@ fn appendKittyBenchmarks(
     }
 
     if (bench_utils.matchesBenchFilter(names[3], bench_filter)) {
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
         var stats: bench_utils.BenchStats = .{};
         for (0..1000) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyPlacement(output.writer(work_allocator), 7, 8, 0, 0, 36, 29, 0, 0, 576, 1015, -1, false);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeKittyPlacement(&output.writer, 7, 8, 0, 0, 36, 29, 0, 0, 576, 1015, -1, false);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, names[3], stats, mem_stats);
@@ -262,19 +264,19 @@ fn appendKittyBenchmarks(
         .{ .name = names[5], .format = .rgb },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, cover.pixels.len * 4 / 3 + 8192);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(cover.pixels.len * 4 / 3 + 8192);
         var stats: bench_utils.BenchStats = .{};
         for (0..20) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), cover, 7, false, scenario.format);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeKittyTransmitFormat(&output.writer, cover, 7, false, scenario.format);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
@@ -288,21 +290,21 @@ fn appendKittyBenchmarks(
         .{ .name = names[7], .format = .rgba },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, photo_pixels.len * 4 / 3 + 8192);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(photo_pixels.len * 4 / 3 + 8192);
         var stats: bench_utils.BenchStats = .{};
         for (0..20) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const value = try image.createFromRgba(work_allocator, photo_pixels, 576, 1015, 576 * 4);
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), value, 7, false, scenario.format);
+            try terminal_image.writeKittyTransmitFormat(&output.writer, value, 7, false, scenario.format);
             value.deinit();
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
@@ -312,7 +314,7 @@ fn appendKittyBenchmarks(
         var stats: bench_utils.BenchStats = .{};
         var checksum: u64 = 0;
         for (0..100) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const copy = try cover.clone();
             copy.discardEncoded();
             var index: usize = 3;
@@ -329,6 +331,7 @@ fn appendKittyBenchmarks(
 }
 
 fn appendKittyPngBenchmarks(
+    io: std.Io,
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
     show_mem: bool,
@@ -339,10 +342,10 @@ fn appendKittyPngBenchmarks(
     for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
     if (!run_any) return;
 
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.png", 2 * 1024 * 1024);
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.png", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -352,23 +355,23 @@ fn appendKittyPngBenchmarks(
         .{ .name = names[1], .format = .rgba },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, @max(encoded.len, decoded.pixels.len) * 4 / 3 + 8192);
-        try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(@max(encoded.len, decoded.pixels.len) * 4 / 3 + 8192);
+        try terminal_image.writeKittyTransmitFormat(&output.writer, decoded, 7, false, scenario.format);
         var stats: bench_utils.BenchStats = .{};
         var checksum: usize = 0;
         for (0..50) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), decoded, 7, false, scenario.format);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeKittyTransmitFormat(&output.writer, decoded, 7, false, scenario.format);
             stats.record(timer.read());
-            checksum +%= output.items.len + output.items[output.items.len / 2];
+            checksum +%= output.written().len + output.written()[output.written().len / 2];
         }
         if (checksum == 0) return error.InvalidKittyPngBenchmark;
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
@@ -376,6 +379,7 @@ fn appendKittyPngBenchmarks(
 }
 
 fn appendImageSwitchBenchmarks(
+    io: std.Io,
     allocator: std.mem.Allocator,
     results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
     show_mem: bool,
@@ -403,10 +407,10 @@ fn appendImageSwitchBenchmarks(
     for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
     if (!run_any) return;
 
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -424,12 +428,12 @@ fn appendImageSwitchBenchmarks(
     defer fit_resized.deinit();
     const cover_resized = try image.resize(work_allocator, cover_crop, cover.output_width, cover.output_height, .area);
     defer cover_resized.deinit();
-    var fit_payload: std.ArrayList(u8) = .empty;
-    defer fit_payload.deinit(work_allocator);
-    try terminal_image.writeSixelPayload(work_allocator, fit_payload.writer(work_allocator), fit_resized);
-    var cover_payload: std.ArrayList(u8) = .empty;
-    defer cover_payload.deinit(work_allocator);
-    try terminal_image.writeSixelPayload(work_allocator, cover_payload.writer(work_allocator), cover_resized);
+    var fit_payload: std.Io.Writer.Allocating = .init(work_allocator);
+    defer fit_payload.deinit();
+    try terminal_image.writeSixelPayload(work_allocator, &fit_payload.writer, fit_resized);
+    var cover_payload: std.Io.Writer.Allocating = .init(work_allocator);
+    defer cover_payload.deinit();
+    try terminal_image.writeSixelPayload(work_allocator, &cover_payload.writer, cover_resized);
 
     for ([_]struct { name: []const u8, geometry: Geometry }{
         .{ .name = names[0], .geometry = fit },
@@ -442,7 +446,7 @@ fn appendImageSwitchBenchmarks(
             extracted.deinit();
         }
         for (0..100) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
             stats.record(timer.read());
             extracted.deinit();
@@ -457,7 +461,7 @@ fn appendImageSwitchBenchmarks(
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         var stats: bench_utils.BenchStats = .{};
         for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const resized = try image.resize(work_allocator, scenario.source, scenario.geometry.output_width, scenario.geometry.output_height, .area);
             stats.record(timer.read());
             resized.deinit();
@@ -472,7 +476,7 @@ fn appendImageSwitchBenchmarks(
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         var stats: bench_utils.BenchStats = .{};
         for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
             const resized = try image.resize(work_allocator, extracted, scenario.geometry.output_width, scenario.geometry.output_height, .area);
             stats.record(timer.read());
@@ -483,23 +487,23 @@ fn appendImageSwitchBenchmarks(
     }
 
     for ([_]struct { name: []const u8, source: *image.Image, payload_bytes: usize }{
-        .{ .name = names[6], .source = fit_resized, .payload_bytes = fit_payload.items.len },
-        .{ .name = names[7], .source = cover_resized, .payload_bytes = cover_payload.items.len },
+        .{ .name = names[6], .source = fit_resized, .payload_bytes = fit_payload.written().len },
+        .{ .name = names[7], .source = cover_resized, .payload_bytes = cover_payload.written().len },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, scenario.payload_bytes);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(scenario.payload_bytes);
         var stats: bench_utils.BenchStats = .{};
         for (0..iterations) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), scenario.source);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeSixelPayload(work_allocator, &output.writer, scenario.source);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
@@ -510,67 +514,67 @@ fn appendImageSwitchBenchmarks(
         .{ .name = names[15], .colors = 64 },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try writeScenario(work_allocator, output.writer(work_allocator), cover_resized, scenario.colors);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try writeScenario(work_allocator, &output.writer, cover_resized, scenario.colors);
         var stats: bench_utils.BenchStats = .{};
         for (0..iterations) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try writeScenario(work_allocator, output.writer(work_allocator), cover_resized, scenario.colors);
+            const timer = bench_utils.BenchTimer.start(io);
+            try writeScenario(work_allocator, &output.writer, cover_resized, scenario.colors);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
     }
 
     for ([_]struct { name: []const u8, geometry: Geometry, payload_bytes: usize }{
-        .{ .name = names[8], .geometry = fit, .payload_bytes = fit_payload.items.len },
-        .{ .name = names[9], .geometry = cover, .payload_bytes = cover_payload.items.len },
+        .{ .name = names[8], .geometry = fit, .payload_bytes = fit_payload.written().len },
+        .{ .name = names[9], .geometry = cover, .payload_bytes = cover_payload.written().len },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, scenario.payload_bytes);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(scenario.payload_bytes);
         var stats: bench_utils.BenchStats = .{};
         for (0..iterations) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
             const resized = try image.resize(work_allocator, extracted, scenario.geometry.output_width, scenario.geometry.output_height, .area);
-            try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), resized);
+            try terminal_image.writeSixelPayload(work_allocator, &output.writer, resized);
             stats.record(timer.read());
             resized.deinit();
             extracted.deinit();
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
             const values = try allocator.alloc(bench_utils.MemStat, 1);
-            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            values[0] = .{ .name = "Payload", .bytes = output.written().len };
             break :blk values;
         } else null;
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
     }
 
     for ([_]struct { name: []const u8, payload: []const u8 }{
-        .{ .name = names[10], .payload = fit_payload.items },
-        .{ .name = names[11], .payload = cover_payload.items },
+        .{ .name = names[10], .payload = fit_payload.written() },
+        .{ .name = names[11], .payload = cover_payload.written() },
     }) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         var stats: bench_utils.BenchStats = .{};
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, scenario.payload.len + 32);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
+        try output.ensureTotalCapacity(scenario.payload.len + 32);
         var checksum: usize = 0;
         for (0..500) |_| {
             output.clearRetainingCapacity();
-            var timer = try std.time.Timer.start();
-            try terminal_image.writeSixelFramedPayload(output.writer(work_allocator), scenario.payload, false);
+            const timer = bench_utils.BenchTimer.start(io);
+            try terminal_image.writeSixelFramedPayload(&output.writer, scenario.payload, false);
             stats.record(timer.read());
-            checksum +%= output.items.len + output.items[output.items.len / 2];
+            checksum +%= output.written().len + output.written()[output.written().len / 2];
         }
         if (checksum == 0) return error.InvalidWarmPayloadBenchmark;
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -599,7 +603,7 @@ fn appendImageSwitchBenchmarks(
         var stats: bench_utils.BenchStats = .{};
         for (0..100) |_| {
             draw_buffer.clear(ansi.rgbColor(0, 0, 0, 0), null);
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             if (!try draw_buffer.drawImage(
                 decoded,
                 1,
@@ -621,8 +625,8 @@ fn appendImageSwitchBenchmarks(
     }
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
     for (scenarios) |scenario| {
         const count_name = try std.fmt.allocPrint(allocator, "{s} count-only", .{scenario.name});
         const quantize_name = "Sixel 160x240 original baseline quantize-only";
@@ -630,7 +634,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         const run_counted = bench_utils.matchesBenchFilter(count_name, bench_filter);
         const run_quantized = scenario.pattern == .baseline and scenario.colors == 255 and bench_utils.matchesBenchFilter(quantize_name, bench_filter);
         if (!run_materialized and !run_counted and !run_quantized) continue;
-        var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+        var gpa: std.heap.DebugAllocator(.{}) = .init;
         defer _ = gpa.deinit();
         const work_allocator = gpa.allocator();
         const pixels = try work_allocator.alloc(u8, @as(usize, scenario.width) * scenario.height * 4);
@@ -638,22 +642,22 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         fillPixels(pixels, scenario);
         const value = try image.createFromRgba(work_allocator, pixels, scenario.width, scenario.height, scenario.width * 4);
         defer value.deinit();
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(work_allocator);
+        var output: std.Io.Writer.Allocating = .init(work_allocator);
+        defer output.deinit();
 
-        try writeScenario(work_allocator, output.writer(work_allocator), value, scenario.colors);
+        try writeScenario(work_allocator, &output.writer, value, scenario.colors);
         const iterations: usize = if (scenario.width > 160) 20 else 50;
         if (run_materialized) {
             var stats: bench_utils.BenchStats = .{};
             for (0..iterations) |_| {
                 output.clearRetainingCapacity();
-                var timer = try std.time.Timer.start();
-                try writeScenario(work_allocator, output.writer(work_allocator), value, scenario.colors);
+                const timer = bench_utils.BenchTimer.start(io);
+                try writeScenario(work_allocator, &output.writer, value, scenario.colors);
                 stats.record(timer.read());
             }
             const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
                 const values = try allocator.alloc(bench_utils.MemStat, 1);
-                values[0] = .{ .name = "Payload", .bytes = output.items.len };
+                values[0] = .{ .name = "Payload", .bytes = output.written().len };
                 break :blk values;
             } else null;
             try results.append(allocator, .{
@@ -673,10 +677,10 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             var count_stats: bench_utils.BenchStats = .{};
             for (0..iterations) |_| {
                 var counting: CountingWriter = .{};
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try writeScenario(work_allocator, &counting, value, scenario.colors);
                 count_stats.record(timer.read());
-                if (counting.bytes != output.items.len) return error.IncorrectSixelByteCount;
+                if (counting.bytes != output.written().len) return error.IncorrectSixelByteCount;
             }
             try results.append(allocator, .{
                 .name = count_name,
@@ -694,7 +698,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             var quantize_stats: bench_utils.BenchStats = .{};
             var checksum: usize = 0;
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 var quantized = try terminal_image.quantizeSixel(work_allocator, value, scenario.colors);
                 quantize_stats.record(timer.read());
                 checksum +%= quantized.palette_len + quantized.indices[0];
@@ -714,9 +718,9 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             });
         }
     }
-    try appendKittyBenchmarks(allocator, &results, show_mem, bench_filter);
-    try appendKittyPngBenchmarks(allocator, &results, show_mem, bench_filter);
-    try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
-    try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);
+    try appendKittyBenchmarks(io, allocator, &results, show_mem, bench_filter);
+    try appendKittyPngBenchmarks(io, allocator, &results, show_mem, bench_filter);
+    try appendDragonGeometryBenchmarks(io, allocator, &results, show_mem, bench_filter);
+    try appendImageSwitchBenchmarks(io, allocator, &results, show_mem, bench_filter);
     return results.toOwnedSlice(allocator);
 }
