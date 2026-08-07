@@ -215,7 +215,7 @@ comptime {
 export fn createEmbeddedTerminal(cols: u16, rows: u16, max_scrollback: u32, out_handle_ptr: ?*NativeHandle) i32 {
     const out_handle = out_handle_ptr orelse return EmbeddedTerminalStatus.invalid;
     out_handle.* = INVALID_HANDLE;
-    const terminal_value = EmbeddedTerminal.init(globalAllocator, .{
+    const terminal_value = EmbeddedTerminal.init(io, globalAllocator, .{
         .cols = cols,
         .rows = rows,
         .max_scrollback = max_scrollback,

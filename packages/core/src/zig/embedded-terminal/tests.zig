@@ -12,7 +12,7 @@ test "embedded terminal composes dirty rows into an OptimizedBuffer" {
     defer target.deinit();
     target.clear(ansi.rgbColor(0, 0, 0, 255), null);
 
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 8, .rows = 2 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 8, .rows = 2 });
     defer terminal.deinit();
     try terminal.write("A\x1b[1;32mB\x1b[0m\r\nwide: \xe7\x95\x8c");
 
@@ -42,7 +42,7 @@ test "embedded terminal redraws changed rows and clips composition" {
     var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 5, 2, .{ .pool = pool });
     defer target.deinit();
 
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 4, .rows = 2 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 4, .rows = 2 });
     defer terminal.deinit();
     try terminal.write("abcd");
     _ = try terminal.compose(target, -1, 0);
@@ -66,7 +66,7 @@ test "embedded terminal exposes cursor state" {
     var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 20, 4, .{ .pool = pool });
     defer target.deinit();
 
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
     try terminal.write("\x1b[2;3H\x1b[5 q");
     _ = try terminal.compose(target, 0, 0);
@@ -138,7 +138,7 @@ test "embedded terminal encodes long Kitty associated text" {
 }
 
 test "embedded terminal encodes Kitty key releases" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
     try terminal.write("\x1b[>3u");
     try std.testing.expectEqual(@as(u5, 3), terminal.terminal.screens.active.kitty_keyboard.current().int());
