@@ -8,6 +8,8 @@ const clipboard_x11 = @import("x11.zig");
 const clipboard_windows = @import("windows.zig");
 const clipboard_windows_dib = @import("windows-dib.zig");
 const clipboard_macos = @import("macos.zig");
+const sync = @import("sync.zig");
+const posix_io = @import("posix-io.zig");
 
 test {
     _ = clipboard_clock;
@@ -107,10 +109,8 @@ fn tryJoinThread(thread: std.Thread) bool {
             else => false,
         },
         .windows => blk: {
-            std.os.windows.WaitForSingleObject(thread.getHandle(), 0) catch |err| switch (err) {
-                error.WaitTimeOut => break :blk false,
-                else => break :blk false,
-            };
+            const timeout: std.os.windows.LARGE_INTEGER = 0;
+            if (std.os.windows.ntdll.NtWaitForSingleObject(thread.getHandle(), .FALSE, &timeout) != .SUCCESS) break :blk false;
             thread.join();
             break :blk true;
         },
@@ -136,7 +136,7 @@ const Operation = struct {
     allocator: Allocator,
     handle: Handle = 0,
     service: *Service,
-    mutex: std.Thread.Mutex = .{},
+    mutex: sync.Mutex = .{},
     thread: ?std.Thread = null,
     status: OperationStatus = .pending,
     cancel_requested: bool = false,
@@ -146,7 +146,7 @@ const Operation = struct {
     error_code: u32 = 0,
     diagnostic: []const u8 = &.{},
     result_mime: []u8 = &.{},
-    transfer_data: std.ArrayListUnmanaged(u8) = .{},
+    transfer_data: std.ArrayListUnmanaged(u8) = .empty,
     transfer_fd: ?std.posix.fd_t = null,
     wayland_transfer_format: WaylandTransferFormat = .direct,
     wayland_core_focus_acquired: bool = false,
@@ -189,7 +189,7 @@ const Operation = struct {
         operation.mutex.lock();
         defer operation.mutex.unlock();
         operation.transfer_data.deinit(operation.allocator);
-        operation.transfer_data = .{};
+        operation.transfer_data = .empty;
         if (operation.status != .pending) {
             if (converted) |png| operation.allocator.free(png) else |_| {}
             operation.wayland_conversion_started = false;
@@ -398,7 +398,7 @@ const Operation = struct {
             operation.transfer_fd = null;
             return;
         }
-        if (operation.transfer_fd) |fd| std.posix.close(fd);
+        if (operation.transfer_fd) |fd| posix_io.close(fd);
         operation.transfer_fd = null;
     }
 
@@ -439,10 +439,10 @@ const Service = struct {
     environment_wayland_seat: []u8,
     shutting_down: bool = false,
     next_mutation_sequence: u64 = 1,
-    operations: std.ArrayListUnmanaged(*Operation) = .{},
-    platform_mutex: std.Thread.Mutex = .{},
-    platform_condition: std.Thread.Condition = .{},
-    platform_queue: std.ArrayListUnmanaged(*Operation) = .{},
+    operations: std.ArrayListUnmanaged(*Operation) = .empty,
+    platform_mutex: sync.Mutex = .{},
+    platform_condition: sync.Condition = .{},
+    platform_queue: std.ArrayListUnmanaged(*Operation) = .empty,
     platform_thread: ?std.Thread = null,
     platform_stop: bool = false,
     platform_exited: bool = false,
@@ -1073,34 +1073,34 @@ const Service = struct {
         offered: []const u8,
     ) OperationStatus {
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
-        const pipe = std.posix.pipe2(.{ .CLOEXEC = true }) catch {
+        const pipe = posix_io.pipe(.{ .CLOEXEC = true }) catch {
             operation.rememberFailure(.wayland_transfer, "Failed to create Wayland clipboard transfer pipe");
             return service.rememberWaylandReadFailure(operation);
         };
         // Keep the transferred write end blocking; only the locally polled read end may return WouldBlock.
-        const flags = std.posix.fcntl(pipe[0], std.posix.F.GETFL, 0) catch {
-            std.posix.close(pipe[0]);
-            std.posix.close(pipe[1]);
+        const flags = posix_io.getFlags(pipe[0]) catch {
+            posix_io.close(pipe[0]);
+            posix_io.close(pipe[1]);
             operation.rememberFailure(.wayland_transfer, "Failed to configure Wayland clipboard transfer pipe");
             return service.rememberWaylandReadFailure(operation);
         };
         const nonblocking: u32 = @bitCast(std.posix.O{ .NONBLOCK = true });
-        _ = std.posix.fcntl(pipe[0], std.posix.F.SETFL, flags | nonblocking) catch {
-            std.posix.close(pipe[0]);
-            std.posix.close(pipe[1]);
+        posix_io.setFlags(pipe[0], flags | nonblocking) catch {
+            posix_io.close(pipe[0]);
+            posix_io.close(pipe[1]);
             operation.rememberFailure(.wayland_transfer, "Failed to configure Wayland clipboard transfer pipe");
             return service.rememberWaylandReadFailure(operation);
         };
         const requested = service.wayland.?.receive(offer, offered, pipe[1]);
-        std.posix.close(pipe[1]);
+        posix_io.close(pipe[1]);
         if (!requested) {
-            std.posix.close(pipe[0]);
+            posix_io.close(pipe[0]);
             operation.rememberFailure(.wayland_flush, "Failed to request Wayland clipboard transfer");
             return service.rememberWaylandReadFailure(operation);
         }
         operation.releaseCoreFocus();
         operation.result_mime = operation.allocator.dupe(u8, preferred) catch {
-            std.posix.close(pipe[0]);
+            posix_io.close(pipe[0]);
             operation.rememberFailure(.out_of_memory, "Failed to allocate Wayland clipboard MIME result");
             return service.rememberWaylandReadFailure(operation);
         };
@@ -1432,14 +1432,12 @@ pub fn createService(
     var environment_wayland_seat: []u8 = &.{};
     const libraries: clipboard_linux.Libraries = switch (builtin.os.tag) {
         .linux => blk: {
-            var env = std.process.getEnvMap(allocator) catch return 0;
-            defer env.deinit();
             if (configured_seat.len > 0) {
                 requested_wayland_seat = allocator.dupe(u8, configured_seat) catch return 0;
-            } else if (env.get("XDG_SEAT")) |seat| {
+            } else if (posix_io.getEnv("XDG_SEAT")) |seat| {
                 if (seat.len > 0) environment_wayland_seat = allocator.dupe(u8, seat) catch return 0;
             }
-            break :blk clipboard_linux.initialize(clipboard_linux.Environment.detect(&env));
+            break :blk clipboard_linux.initialize(clipboard_linux.Environment.detectProcess());
         },
         else => .{},
     };
@@ -1477,7 +1475,7 @@ pub fn createService(
 }
 
 fn parseSelection(value: u8) ?Selection {
-    return std.meta.intToEnum(Selection, value) catch null;
+    return std.enums.fromInt(Selection, value);
 }
 
 fn validateReadRequest(request: []const u8) bool {
@@ -1757,7 +1755,7 @@ fn destroyTestService(service: Handle) void {
     var status = pollServiceShutdown(service);
     var attempts: u32 = 0;
     while (status == .pending and attempts < 2_000) : (attempts += 1) {
-        std.Thread.sleep(std.time.ns_per_ms);
+        clipboard_clock.sleep(std.time.ns_per_ms);
         status = pollServiceShutdown(service);
     }
     if (status != .ready) @panic("clipboard service shutdown exceeded 2 seconds");
@@ -1817,7 +1815,7 @@ test "clipboard cancellation and service shutdown are asynchronous and isolated"
     var first_shutdown = pollServiceShutdown(first_service);
     var first_shutdown_attempts: u32 = 0;
     while (first_shutdown == .pending and first_shutdown_attempts < 2_000) : (first_shutdown_attempts += 1) {
-        std.Thread.sleep(std.time.ns_per_ms);
+        clipboard_clock.sleep(std.time.ns_per_ms);
         first_shutdown = pollServiceShutdown(first_service);
     }
     try std.testing.expectEqual(ShutdownStatus.ready, first_shutdown);
@@ -2004,7 +2002,7 @@ test "clipboard Wayland BMP transfer converts to PNG and releases source bytes" 
     var status = operation.poll();
     var attempts: u32 = 0;
     while (status == .pending and attempts < 2_000) : (attempts += 1) {
-        std.Thread.sleep(std.time.ns_per_ms);
+        clipboard_clock.sleep(std.time.ns_per_ms);
         status = operation.poll();
     }
     try std.testing.expectEqual(OperationStatus.read, status);

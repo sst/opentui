@@ -1,4 +1,5 @@
 const std = @import("std");
+const posix_io = @import("posix-io.zig");
 const builtin = @import("builtin");
 const clipboard_clock = @import("clock.zig");
 const linux = @import("linux.zig");
@@ -625,7 +626,7 @@ pub const Connection = struct {
     }
 
     fn freeProvider(self: *Connection, provider: *Provider) void {
-        for (provider.transfers[0..provider.transfer_count]) |transfer| std.posix.close(transfer.fd);
+        for (provider.transfers[0..provider.transfer_count]) |transfer| posix_io.close(transfer.fd);
         self.allocator.free(provider.transfers);
         if (provider.data.len > 0) self.allocator.free(provider.data);
         self.destroyProtocolProxy(provider.source, 1);
@@ -647,7 +648,7 @@ pub const Connection = struct {
         // Core data-device selection is focus-scoped, so WSLg needs a transparent 1x1 focused surface.
         const fd = std.posix.memfd_create("opentui-clipboard", std.os.linux.MFD.CLOEXEC) catch return false;
         self.helper_fd = fd;
-        std.posix.ftruncate(fd, 4) catch {
+        posix_io.truncate(fd, 4) catch {
             self.destroyCoreHelper();
             return false;
         };
@@ -730,7 +731,7 @@ pub const Connection = struct {
         if (self.helper_pool) |proxy| self.destroyProtocolProxy(proxy, 1);
         if (self.helper_shell_surface) |proxy| self.symbols.wl_proxy_destroy(proxy);
         if (self.helper_surface) |proxy| self.destroyProtocolProxy(proxy, 0);
-        if (self.helper_fd) |fd| std.posix.close(fd);
+        if (self.helper_fd) |fd| posix_io.close(fd);
         self.helper_shell_surface = null;
         self.helper_surface = null;
         self.helper_buffer = null;
@@ -1064,7 +1065,7 @@ pub const Connection = struct {
     fn coreDeviceDrop(_: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {}
 
     fn keyboardKeymap(_: ?*anyopaque, _: ?*WlProxy, _: u32, fd: std.posix.fd_t, _: u32) callconv(.c) void {
-        std.posix.close(fd);
+        posix_io.close(fd);
     }
 
     fn keyboardEnter(
@@ -1165,16 +1166,16 @@ pub const Connection = struct {
         if (essence == null or !std.ascii.eqlIgnoreCase(essence.?, "text/plain") or
             provider.cancelled or provider.transfer_count == provider.transfers.len)
         {
-            std.posix.close(fd);
+            posix_io.close(fd);
             return;
         }
-        const flags = std.posix.fcntl(fd, std.posix.F.GETFL, 0) catch {
-            std.posix.close(fd);
+        const flags = posix_io.getFlags(fd) catch {
+            posix_io.close(fd);
             return;
         };
         const nonblocking: u32 = @bitCast(std.posix.O{ .NONBLOCK = true });
-        _ = std.posix.fcntl(fd, std.posix.F.SETFL, flags | nonblocking) catch {
-            std.posix.close(fd);
+        posix_io.setFlags(fd, flags | nonblocking) catch {
+            posix_io.close(fd);
             return;
         };
         provider.transfers[provider.transfer_count] = .{
@@ -1192,8 +1193,8 @@ pub const Connection = struct {
     }
 };
 
-fn writeProviderPipe(fd: std.posix.fd_t, bytes: []const u8) std.posix.WriteError!usize {
-    if (comptime builtin.os.tag != .linux) return std.posix.write(fd, bytes);
+fn writeProviderPipe(fd: std.posix.fd_t, bytes: []const u8) std.Io.File.Writer.Error!usize {
+    if (comptime builtin.os.tag != .linux) return posix_io.write(fd, bytes);
 
     const Signal = struct {
         extern "c" fn sigpending(set: *std.posix.sigset_t) c_int;
@@ -1212,7 +1213,7 @@ fn writeProviderPipe(fd: std.posix.fd_t, bytes: []const u8) std.posix.WriteError
 
     var pending = std.posix.sigemptyset();
     const pipe_was_pending = Signal.sigpending(&pending) != 0 or std.posix.sigismember(&pending, std.posix.SIG.PIPE);
-    return std.posix.write(fd, bytes) catch |err| {
+    return posix_io.write(fd, bytes) catch |err| {
         if (err == error.BrokenPipe and !pipe_was_pending) {
             const timeout: std.posix.timespec = .{ .sec = 0, .nsec = 0 };
             while (true) {
@@ -1225,7 +1226,7 @@ fn writeProviderPipe(fd: std.posix.fd_t, bytes: []const u8) std.posix.WriteError
 }
 
 fn finishProviderTransfer(provider: *Provider, index: u32) void {
-    std.posix.close(provider.transfers[index].fd);
+    posix_io.close(provider.transfers[index].fd);
     provider.transfer_count -= 1;
     provider.transfers[index] = provider.transfers[provider.transfer_count];
     if (provider.transfer_count == 0) provider.transfer_cursor = 0 else provider.transfer_cursor %= provider.transfer_count;
@@ -1494,10 +1495,10 @@ test "Wayland selection barrier reports sync issue failure to the caller" {
 
 test "Wayland read queues callbacks for the next dispatch invocation" {
     if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
-    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
-    defer std.posix.close(pipe[0]);
-    defer std.posix.close(pipe[1]);
-    _ = try std.posix.write(pipe[1], "x");
+    const pipe = try posix_io.pipe(.{ .CLOEXEC = true });
+    defer posix_io.close(pipe[0]);
+    defer posix_io.close(pipe[1]);
+    _ = try posix_io.write(pipe[1], "x");
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_display_dispatch_pending_single = testDispatchNoPending;
     symbols.wl_display_prepare_read = testPrepareReadReady;
@@ -1961,8 +1962,8 @@ test "Wayland failed connection lets active transfers drain but rejects new send
         .transfers = try std.testing.allocator.alloc(Transfer, 1),
         .transfer_count = 1,
     };
-    const active_pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
-    defer std.posix.close(active_pipe[0]);
+    const active_pipe = try posix_io.pipe(.{ .CLOEXEC = true });
+    defer posix_io.close(active_pipe[0]);
     provider.transfers[0] = .{ .fd = active_pipe[1], .last_progress_ns = 0 };
     connection.providers[0] = provider;
     connection.clipboard_provider = provider;
@@ -1971,8 +1972,8 @@ test "Wayland failed connection lets active transfers drain but rejects new send
     try std.testing.expect(provider.cancelled);
     try std.testing.expect(connection.providers[0] == provider);
 
-    const rejected_pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
-    defer std.posix.close(rejected_pipe[0]);
+    const rejected_pipe = try posix_io.pipe(.{ .CLOEXEC = true });
+    defer posix_io.close(rejected_pipe[0]);
     Connection.sourceSend(provider, null, "text/plain", rejected_pipe[1]);
     try std.testing.expectEqual(@as(u32, 1), provider.transfer_count);
 
@@ -1997,8 +1998,8 @@ test "Wayland retired provider accepts queued sends until compositor cancellatio
     connection.clipboard_provider = null;
     connection.primary_provider = null;
     connection.providers = .{ &provider, null, null, null };
-    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
-    defer std.posix.close(pipe[0]);
+    const pipe = try posix_io.pipe(.{ .CLOEXEC = true });
+    defer posix_io.close(pipe[0]);
 
     Connection.sourceSend(&provider, null, "text/plain", pipe[1]);
 
@@ -2093,7 +2094,7 @@ test "Wayland provider handles a closed consumer pipe locally" {
     const State = struct {
         var sigpipe_count: std.atomic.Value(u32) = .init(0);
 
-        fn handleSigpipe(_: c_int) callconv(.c) void {
+        fn handleSigpipe(_: std.posix.SIG) callconv(.c) void {
             _ = sigpipe_count.fetchAdd(1, .seq_cst);
         }
     };
@@ -2113,9 +2114,9 @@ test "Wayland provider handles a closed consumer pipe locally" {
     std.posix.sigprocmask(std.posix.SIG.UNBLOCK, &unblocked, &old_mask);
     defer std.posix.sigprocmask(std.posix.SIG.SETMASK, &old_mask, null);
 
-    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
-    std.posix.close(pipe[0]);
-    defer std.posix.close(pipe[1]);
+    const pipe = try posix_io.pipe(.{ .CLOEXEC = true });
+    posix_io.close(pipe[0]);
+    defer posix_io.close(pipe[1]);
 
     try std.testing.expectError(error.BrokenPipe, writeProviderPipe(pipe[1], "clipboard"));
     try std.testing.expectEqual(@as(u32, 0), State.sigpipe_count.load(.seq_cst));

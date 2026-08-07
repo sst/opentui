@@ -1,11 +1,13 @@
 const std = @import("std");
+const sync = @import("sync.zig");
+const posix_io = @import("posix-io.zig");
 
 pub const Environment = struct {
     is_wsl: bool,
     has_wayland_display: bool,
     has_x11_display: bool,
 
-    pub fn fromMap(env: *const std.process.EnvMap) Environment {
+    pub fn fromMap(env: *const std.process.Environ.Map) Environment {
         return .{
             .is_wsl = env.get("WSL_DISTRO_NAME") != null or env.get("WSL_INTEROP") != null,
             .has_wayland_display = hasNonEmptyValue(env, "WAYLAND_DISPLAY") or hasNonEmptyValue(env, "WAYLAND_SOCKET"),
@@ -13,8 +15,21 @@ pub const Environment = struct {
         };
     }
 
-    pub fn detect(env: *const std.process.EnvMap) Environment {
+    pub fn detect(env: *const std.process.Environ.Map) Environment {
         var result = fromMap(env);
+        if (!result.is_wsl) {
+            const uts = std.posix.uname();
+            result.is_wsl = isWslKernelRelease(std.mem.sliceTo(&uts.release, 0));
+        }
+        return result;
+    }
+
+    pub fn detectProcess() Environment {
+        var result: Environment = .{
+            .is_wsl = posix_io.getEnv("WSL_DISTRO_NAME") != null or posix_io.getEnv("WSL_INTEROP") != null,
+            .has_wayland_display = hasNonEmptyProcessValue("WAYLAND_DISPLAY") or hasNonEmptyProcessValue("WAYLAND_SOCKET"),
+            .has_x11_display = hasNonEmptyProcessValue("DISPLAY"),
+        };
         if (!result.is_wsl) {
             const uts = std.posix.uname();
             result.is_wsl = isWslKernelRelease(std.mem.sliceTo(&uts.release, 0));
@@ -260,7 +275,7 @@ fn CachedLibrary(comptime Symbols: type) type {
     };
 }
 
-var cache_mutex: std.Thread.Mutex = .{};
+var cache_mutex: sync.Mutex = .{};
 var wayland_cache: CachedLibrary(WaylandSymbols) = .{};
 var xcb_cache: CachedLibrary(XcbSymbols) = .{};
 
@@ -326,8 +341,13 @@ fn loadSymbols(comptime Symbols: type, library: *std.DynLib) ?Symbols {
     return symbols;
 }
 
-fn hasNonEmptyValue(env: *const std.process.EnvMap, name: []const u8) bool {
+fn hasNonEmptyValue(env: *const std.process.Environ.Map, name: []const u8) bool {
     const value = env.get(name) orelse return false;
+    return value.len > 0;
+}
+
+fn hasNonEmptyProcessValue(name: [*:0]const u8) bool {
+    const value = posix_io.getEnv(name) orelse return false;
     return value.len > 0;
 }
 
@@ -430,7 +450,7 @@ test "clipboard linux routing preserves independent Wayland and X11 load results
 }
 
 test "clipboard linux environment treats display variables as nonempty and WSL as presence based" {
-    var env = std.process.EnvMap.init(std.testing.allocator);
+    var env = std.process.Environ.Map.init(std.testing.allocator);
     defer env.deinit();
     try env.put("WAYLAND_DISPLAY", "");
     try env.put("DISPLAY", ":0");

@@ -1,10 +1,11 @@
 const std = @import("std");
 const clipboard_clock = @import("clock.zig");
+const sync = @import("sync.zig");
 
 const Allocator = std.mem.Allocator;
 const LOCK_RETRY_SLEEP_NS: u64 = std.time.ns_per_ms;
 
-var pasteboard_mutex: std.Thread.Mutex = .{};
+var pasteboard_mutex: sync.Mutex = .{};
 
 pub const MimeType = enum(u32) {
     text_plain = 1,
@@ -117,7 +118,7 @@ fn runJobWithMutex(
     allocator: Allocator,
     job: Job,
     options: ExecuteOptions,
-    mutex: *std.Thread.Mutex,
+    mutex: *sync.Mutex,
 ) JobError!Result {
     if (job == .write_text and job.write_text.text.len > std.math.maxInt(u32)) return error.InvalidArgument;
     if (acquireJobLock(mutex, job, options)) |status| return statusResult(status);
@@ -172,7 +173,7 @@ fn stopStatus(options: ExecuteOptions) ?Status {
     return null;
 }
 
-fn acquirePasteboardLock(mutex: *std.Thread.Mutex, options: ExecuteOptions) ?Status {
+fn acquirePasteboardLock(mutex: *sync.Mutex, options: ExecuteOptions) ?Status {
     while (true) {
         if (stopStatus(options)) |status| return status;
         if (mutex.tryLock()) {
@@ -192,11 +193,11 @@ fn acquirePasteboardLock(mutex: *std.Thread.Mutex, options: ExecuteOptions) ?Sta
             break :blk @min(LOCK_RETRY_SLEEP_NS, remaining_ns);
         };
         std.debug.assert(sleep_ns > 0);
-        std.Thread.sleep(sleep_ns);
+        clipboard_clock.sleep(sleep_ns);
     }
 }
 
-fn acquireJobLock(mutex: *std.Thread.Mutex, job: Job, options: ExecuteOptions) ?Status {
+fn acquireJobLock(mutex: *sync.Mutex, job: Job, options: ExecuteOptions) ?Status {
     if (acquirePasteboardLock(mutex, options)) |status| return status;
     if (job != .write_text and job != .clear) return null;
     if (beginMutation(options)) |status| {
@@ -326,7 +327,7 @@ fn statusResult(status: Status) Result {
 }
 
 fn shimStatus(value: i32) ShimStatus {
-    return std.meta.intToEnum(ShimStatus, value) catch .failed;
+    return std.enums.fromInt(ShimStatus, value) orelse .failed;
 }
 
 test "macOS clipboard shim initializes absent output" {
@@ -369,7 +370,7 @@ fn testBeginMutation(context: ?*anyopaque) ?Status {
 
 test "macOS clipboard lock contention observes cancellation and deadline" {
     try clipboard_clock.init();
-    var mutex: std.Thread.Mutex = .{};
+    var mutex: sync.Mutex = .{};
     mutex.lock();
     defer mutex.unlock();
 
@@ -393,7 +394,7 @@ test "macOS clipboard lock contention observes cancellation and deadline" {
 
 test "macOS clipboard mutation callback is not called before the lock" {
     try clipboard_clock.init();
-    var mutex: std.Thread.Mutex = .{};
+    var mutex: sync.Mutex = .{};
     mutex.lock();
     defer mutex.unlock();
     var cancelled = std.atomic.Value(bool).init(true);
