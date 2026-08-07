@@ -3,7 +3,7 @@ const EmbeddedTerminal = @import("main.zig").EmbeddedTerminal;
 const ghostty = @import("ghostty.zig");
 
 test "embedded terminal supports lifecycle, resize, and viewport scroll" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 80, .rows = 24 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 80, .rows = 24 });
     defer terminal.deinit();
 
     try terminal.write("hello");
@@ -15,11 +15,11 @@ test "embedded terminal supports lifecycle, resize, and viewport scroll" {
     try std.testing.expectEqual(@as(u16, 40), terminal.rows);
     try std.testing.expectError(error.InvalidValue, terminal.resize(0, 40));
     try std.testing.expectError(error.InvalidValue, terminal.resize(100, 0));
-    try std.testing.expectError(error.InvalidValue, EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 0, .rows = 24 }));
+    try std.testing.expectError(error.InvalidValue, EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 0, .rows = 24 }));
 }
 
 test "embedded terminal preserves parser state and provides mode-aware input" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
     try terminal.write("\x1b[?20");
@@ -49,7 +49,7 @@ test "embedded terminal preserves parser state and provides mode-aware input" {
 }
 
 test "embedded terminal encodes long Kitty associated text" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
     try terminal.write("\x1b[>19u");
 
@@ -60,7 +60,7 @@ test "embedded terminal encodes long Kitty associated text" {
 }
 
 test "embedded terminal drains generated PTY responses incrementally" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
     try terminal.write("\x1b[5n");
@@ -76,7 +76,7 @@ test "embedded terminal drains generated PTY responses incrementally" {
 }
 
 test "embedded terminal bounds parser allocations" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
     const input = try std.testing.allocator.alloc(u8, @import("main.zig").parser_allocation_limit + 32);
@@ -88,7 +88,7 @@ test "embedded terminal bounds parser allocations" {
 }
 
 test "embedded terminal preserves queued responses when the bound is reached" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
     const query = "\x1b[5n";
@@ -107,7 +107,7 @@ test "embedded terminal preserves queued responses when the bound is reached" {
 }
 
 test "embedded terminal reports semantic failures per write" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
     terminal.stream.handler.semantic_failure = true;
@@ -116,7 +116,7 @@ test "embedded terminal reports semantic failures per write" {
 }
 
 test "embedded terminal resets mouse motion deduplication after resize" {
-    const terminal = try EmbeddedTerminal.init(std.testing.allocator, .{ .cols = 20, .rows = 4 });
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
     try terminal.write("\x1b[?1003h\x1b[?1006h");
 

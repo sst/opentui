@@ -94,7 +94,7 @@ pub const EmbeddedTerminal = struct {
     mouse_last_cell: ?ghostty.Coordinate = null,
     parser_allocator: BoundedAllocator = undefined,
 
-    pub fn init(allocator: std.mem.Allocator, options: Options) Error!*EmbeddedTerminal {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: Options) Error!*EmbeddedTerminal {
         if (options.cols == 0 or options.rows == 0) return error.InvalidValue;
 
         const self = try allocator.create(EmbeddedTerminal);
@@ -102,7 +102,7 @@ pub const EmbeddedTerminal = struct {
 
         self.* = .{
             .allocator = allocator,
-            .terminal = try .init(allocator, .{
+            .terminal = try .init(io, allocator, .{
                 .cols = options.cols,
                 .rows = options.rows,
                 .max_scrollback = options.max_scrollback,
