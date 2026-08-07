@@ -1,418 +1,584 @@
 ---
 import Base from "../layouts/Base.astro"
 import OpenTUILogo from "../components/OpenTUILogo.astro"
-import TuiSurface from "../components/TuiSurface.astro"
 
-const installCommands = {
-  create: { cmd: "bun create", pkg: "tui" },
-  manual: { cmd: "bun add", pkg: "@opentui/core" },
-  skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
-}
-
-const features = [
+const tocData = [
   {
-    type: "layout",
-    title: "Flexbox layout",
-    description: "Yoga-powered layout engine with familiar CSS-like positioning and sizing"
+    part: "PART I: PIXELS AND CHARACTERS",
+    chapters: [
+      { title: "The Anatomy of a Character Cell", words: "3.2K WORDS", slug: "/docs/core-concepts/renderables" },
+      { title: "Unicode Graphemes & wcwidth", words: "4.8K WORDS", slug: "/docs/core-concepts/layout" },
+      { title: "VT Escape Sequences & State Machines", words: "5.1K WORDS", slug: "/docs/core-concepts/renderer" },
+      { title: "24-Bit TrueColor & Color Spaces", words: "2.9K WORDS", slug: "/docs/core-concepts/colors" },
+    ]
   },
   {
-    type: "syntax",
-    title: "Syntax highlighting",
-    description: "Built-in tree-sitter integration for beautiful code rendering"
+    part: "PART II: THE RENDER ENGINE",
+    chapters: [
+      { title: "Double-Buffering & Damage Loops", words: "4.4K WORDS", slug: "/docs/core-concepts/renderer" },
+      { title: "Yoga Flexbox Grid Quantization", words: "6.2K WORDS", slug: "/docs/core-concepts/layout" },
+      { title: "4×4 RGBA SIMD Color Matrices", words: "3.7K WORDS", slug: "/docs/reference/color-matrix" },
+      { title: "Zero-Allocation Buffer Strides", words: "5.0K WORDS", slug: "/docs/reference/native-span-feed" },
+    ]
   },
   {
-    type: "components",
-    title: "Rich components",
-    description: "Text, Box, Input, Select, ScrollBox, Code, Diff, and more"
+    part: "PART III: GRAPHICS PROTOCOLS",
+    chapters: [
+      { title: "Kitty APC Protocol & GPU Rasters", words: "4.1K WORDS", slug: "/docs/components/image" },
+      { title: "Sixel 6-Pixel Scanline Bands", words: "3.5K WORDS", slug: "/docs/components/image" },
+      { title: "Unicode Quadrant Half-Blocks", words: "2.8K WORDS", slug: "/docs/components/frame-buffer" },
+      { title: "Native Miniaudio & PCM Streams", words: "3.9K WORDS", slug: "/docs/core-concepts/audio" },
+    ]
   },
   {
-    type: "keyboard",
-    title: "Keyboard handling",
-    description: "Focus management and input handling built in"
-  },
-  {
-    type: "react",
-    title: "React and Solid.js",
-    description: "First-class bindings for building UIs with your favorite framework"
-  },
-  {
-    type: "animations",
-    title: "Animations",
-    description: "Timeline API for smooth, performant terminal animations"
-  },
+    part: "PART IV: RUNTIMES & BINDINGS",
+    chapters: [
+      { title: "Native Zig Core & Universal C ABI", words: "5.6K WORDS", slug: "/docs/getting-started" },
+      { title: "React 19 Fiber Reconciler", words: "4.3K WORDS", slug: "/docs/bindings/react" },
+      { title: "Solid.js Fine-Grained Signals", words: "3.8K WORDS", slug: "/docs/bindings/solid" },
+      { title: "Remote SSH Multiplexing Server", words: "4.7K WORDS", slug: "/docs/reference/ssh" },
+    ]
+  }
 ]
 ---
 
-<Base title="OpenTUI - Terminal UIs">
-  <main class="landing">
-    <div class="landing-container">
-      <!-- Header -->
-      <header class="landing-header">
-        <a href="/" class="landing-logo" aria-label="OpenTUI home">
-          <OpenTUILogo class="landing-logo-mark" />
-        </a>
-        <button
-          class="mobile-menu-btn"
-          aria-label="Open navigation menu"
-          aria-expanded="false"
-          aria-controls="landing-mobile-nav"
-        >
-          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="5" y="8" width="14" height="2"></rect>
-            <rect x="5" y="14" width="14" height="2"></rect>
-          </svg>
-          <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
-            <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
-          </svg>
-        </button>
-        <nav class="landing-nav">
+<Base title="OpenTUI - A Reference Manual for Native Terminal Interfaces">
+  <div class="editorial-wrapper">
+    <div class="editorial-container">
+
+      <!-- Editorial Masthead -->
+      <div class="editorial-masthead">
+        <div class="editorial-masthead-title">OPENTUI REFERENCE MANUAL</div>
+        <div class="editorial-masthead-nav">
+          <a href="#toc">Table of Contents</a>
+          <a href="#lab">Laboratory</a>
+          <a href="/docs/getting-started">Documentation</a>
           <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="/docs/getting-started">Docs</a>
-        </nav>
+        </div>
+      </div>
+
+      <!-- Editorial Hero Header -->
+      <header class="editorial-hero">
+        <h1 class="editorial-title">OpenTUI</h1>
+        <p class="editorial-subtitle">
+          A reference manual for people who design and build native terminal user interfaces.
+        </p>
+        <div class="editorial-byline">
+          <div>Written and engineered by the <span>OpenTUI Contributors</span>.</div>
+          <div>&copy; 2026 Anomaly &middot; Version 0.5.1 &middot; 58 Chapters</div>
+        </div>
       </header>
 
-      <!-- Mobile nav overlay -->
-      <nav class="mobile-nav" id="landing-mobile-nav">
-        <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a href="/docs/getting-started">Docs</a>
-      </nav>
+      <!-- Editorial Multi-Column Flow with Masterpiece Vector Figures -->
+      <div class="editorial-flow">
+        
+        <p class="lead-paragraph">
+          Have you ever wondered how a terminal screen knows how to render rich, interactive user interfaces at sixty frames per second without flickering? In classical computing, the terminal is not a bitmap canvas with hardware scanouts; it is a stream of character cells transmitted over standard input and output pipes. When a modern application updates its state, re-emitting the entire terminal grid saturates the pseudo-terminal buffer, causing severe screen tearing and latency.
+        </p>
 
-      <!-- Content -->
-      <div class="landing-content">
-        <!-- Hero -->
-        <section class="hero">
-          <div class="hero-content">
-            <div class="hero-copy">
-              <h1>Terminal UIs on a Native Zig Core</h1>
-              <p class="hero-subtitle">
-                Build rich, interactive terminal interfaces with TypeScript bindings, first-class React/Solid support, and a C ABI for any language.
-              </p>
-            </div>
-
-            <!-- Install Tabs -->
-            <div class="install-section" aria-label="Install options">
-              <div class="install-tabs" role="tablist">
-                {Object.keys(installCommands).map((key, i) => (
-                  <button 
-                    role="tab" 
-                    class="install-tab" 
-                    data-tab={key}
-                    aria-selected={i === 0 ? "true" : "false"}
-                  >
-                    {key}
-                  </button>
-                ))}
-              </div>
-              <div class="install-panels">
-                <button class="install-command" id="install-display" data-command="bun create tui">
-                  <code>
-                    <span class="cmd">bun create </span><span class="highlight">tui</span>
-                  </code>
-                  <span class="copy-btn">
-                    <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
-                    </svg>
-                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
-                    </svg>
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </section>
-
-        <!-- Code Example -->
-        <section class="code-section">
-          <div class="code-editor">
-            <div class="code-editor-header">
-              <div class="code-editor-dots">
-                <span></span><span></span><span></span>
-              </div>
-              <div class="code-editor-tabs" role="tablist">
-                <button role="tab" class="code-editor-tab" data-tab="core" aria-selected="true">
-                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
-                    <polyline points="13 2 13 9 20 9"/>
-                  </svg>
-                  hello.ts
-                </button>
-                <button role="tab" class="code-editor-tab" data-tab="solid" aria-selected="false">
-                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
-                    <polyline points="13 2 13 9 20 9"/>
-                  </svg>
-                  input.ts
-                </button>
-                <button role="tab" class="code-editor-tab" data-tab="layout" aria-selected="false">
-                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
-                    <polyline points="13 2 13 9 20 9"/>
-                  </svg>
-                  layout.ts
-                </button>
-              </div>
-              <button class="code-editor-copy" id="code-copy-btn" aria-label="Copy code">
-                <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
-                </svg>
-                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
-                </svg>
-              </button>
-            </div>
-            
-            <!-- Core API Example -->
-            <div class="code-editor-body" data-panel="core" data-active="true">
-              <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
-              </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
-
-<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
-
-renderer.root.<span class="function">add</span>(
-  <span class="function">Text</span>({"{"}
-    <span class="property">content</span><span class="operator">:</span> <span class="string">"Hello, OpenTUI!"</span>,
-    <span class="property">fg</span><span class="operator">:</span> <span class="string">"#00FF00"</span>,
-  {"}"})
-)</code></pre>
-            </div>
-            
-            <!-- Input Example -->
-            <div class="code-editor-body" data-panel="solid" data-active="false">
-              <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span>
-              </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Input {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
-
-<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
-
-<span class="keyword">const</span> input <span class="operator">=</span> <span class="function">Input</span>({"{"}
-  <span class="property">placeholder</span><span class="operator">:</span> <span class="string">"Type something..."</span>,
-  <span class="property">width</span><span class="operator">:</span> <span class="number">30</span>,
-{"}"})
-
-input.<span class="function">focus</span>()
-renderer.root.<span class="function">add</span>(input)</code></pre>
-            </div>
-            
-            <!-- Layout Example -->
-            <div class="code-editor-body" data-panel="layout" data-active="false">
-              <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
-              </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
-
-<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
-
-renderer.root.<span class="function">add</span>(
-  <span class="function">Box</span>(
-    {"{"} <span class="property">width</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">height</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">flexDirection</span><span class="operator">:</span> <span class="string">"row"</span>, <span class="property">gap</span><span class="operator">:</span> <span class="number">2</span> {"}"},
-    <span class="function">Box</span>(
-      {"{"} <span class="property">flexGrow</span><span class="operator">:</span> <span class="number">1</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#1a1b26"</span> {"}"},
-      <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Sidebar"</span>, <span class="property">fg</span><span class="operator">:</span> <span class="string">"#bb9af7"</span> {"}"})
-    ),
-    <span class="function">Box</span>({"{"} <span class="property">flexGrow</span><span class="operator">:</span> <span class="number">3</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#24283b"</span> {"}"}, <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Main"</span> {"}"}))
-  )
-)</code></pre>
-            </div>
-          </div>
-        </section>
-
-        <!-- What is OpenTUI -->
-        <section class="what-section">
-          <div class="what-section-title">
-            <h3>What is OpenTUI?</h3>
-            <p>OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers OpenCode in production today and will also power terminal.shop. It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.</p>
-          </div>
+        <!-- FIG_001: The Anatomy of a Character Cell -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_001</span>
+          <span class="fig-tag-top-right">[ 16-BYTE CELL STRIDE ]</span>
           
-          <div class="features-split">
-            <div class="features-list">
-              <ul class="what-list">
-                {features.map((feature, i) => (
-                  <li class={`feature-item ${i === 0 ? 'active' : ''}`} data-feature={feature.type} tabindex="0">
-                    <span class="bullet">[{i === 0 ? 'o' : '*'}]</span>
-                    <div><strong>{feature.title}</strong> {feature.description}</div>
+          <div class="figure-canvas-wrap">
+            <svg viewBox="0 0 380 220" width="380" height="220" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Isometric Box Layer 1: UTF-32 Codepoint -->
+              <g transform="translate(40, 20)">
+                <path d="M150 10 L270 75 L150 140 L30 75 Z" fill="rgba(14, 165, 233, 0.08)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M30 75 L30 95 L150 160 L150 140 Z" fill="rgba(14, 165, 233, 0.15)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M270 75 L270 95 L150 160 L150 140 Z" fill="rgba(14, 165, 233, 0.2)" stroke="currentColor" stroke-width="1.2"/>
+                <text x="150" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="currentColor">0x0000: char_codepoint (u32)</text>
+              </g>
+
+              <!-- Isometric Layer 2: 24-Bit FG & BG RGBA -->
+              <g transform="translate(40, 50)">
+                <path d="M150 10 L270 75 L150 140 L30 75 Z" fill="rgba(16, 185, 129, 0.08)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M30 75 L30 90 L150 155 L150 140 Z" fill="rgba(16, 185, 129, 0.15)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M270 75 L270 90 L150 155 L150 140 Z" fill="rgba(16, 185, 129, 0.2)" stroke="currentColor" stroke-width="1.2"/>
+                <text x="150" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="currentColor">0x0004: fg_rgba &amp; bg_rgba (24-bit TrueColor)</text>
+              </g>
+
+              <!-- Isometric Layer 3: Style Flags & Damage Mask -->
+              <g transform="translate(40, 78)">
+                <path d="M150 10 L270 75 L150 140 L30 75 Z" fill="rgba(217, 119, 6, 0.08)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M30 75 L30 88 L150 153 L150 140 Z" fill="rgba(217, 119, 6, 0.15)" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M270 75 L270 88 L150 153 L150 140 Z" fill="rgba(217, 119, 6, 0.2)" stroke="currentColor" stroke-width="1.2"/>
+                <text x="150" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="currentColor">0x000C: style_flags &amp; damage_mask (u16)</text>
+              </g>
+            </svg>
+          </div>
+
+          <div class="figure-caption-text">
+            Exploded memory layout of an OpenTUI terminal cell. Each cell is packed into a compact 16-byte contiguous stride, aligning perfectly with CPU cache lines for high-throughput raster passes.
+          </div>
+          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-right">STRIDE: 16B</span>
+        </figure>
+
+        <p>
+          Because the terminal is arranged as a discrete matrix of rows and columns, a character is not merely a scalar glyph. It is an atomic structure containing a UTF-32 code point, a 24-bit TrueColor foreground vector, a 24-bit background vector, 16-bit typography attributes (bold, italics, underline, inverse), and a damage tracking bitmask. On an 80&times;24 terminal, this complete double-buffered matrix occupies exactly <strong>30.7 kilobytes</strong>.
+        </p>
+
+        <!-- FIG_002: The Differential Damage Loop -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_002</span>
+          <span class="fig-tag-top-right">[ DIFFERENTIAL DAMAGE LOOP ]</span>
+          
+          <div class="figure-canvas-wrap">
+            <svg viewBox="0 0 380 180" width="380" height="180" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Buffer A -->
+              <rect x="20" y="30" width="120" height="90" fill="var(--background)" stroke="currentColor" stroke-width="1"/>
+              <text x="80" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">PREVIOUS BUFFER</text>
+              <line x1="20" y1="60" x2="140" y2="60" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
+              <line x1="20" y1="90" x2="140" y2="90" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
+
+              <!-- Diff Comparator -->
+              <path d="M160 75 L200 75" stroke="var(--emerald-600)" stroke-width="1.5" marker-end="url(#arrow)"/>
+              <text x="180" y="65" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--emerald-600)">DIFF</text>
+
+              <!-- Buffer B with Damage Box -->
+              <rect x="220" y="30" width="120" height="90" fill="var(--background)" stroke="currentColor" stroke-width="1"/>
+              <text x="280" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">CURRENT BUFFER</text>
+              <rect x="245" y="45" width="55" height="35" fill="rgba(16, 185, 129, 0.15)" stroke="var(--emerald-600)" stroke-width="1.5"/>
+              <text x="272" y="66" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--emerald-600)">DIRTY [X, Y, W, H]</text>
+
+              <!-- Escape Stream Output -->
+              <rect x="20" y="140" width="320" height="28" fill="rgba(0,0,0,0.03)" stroke="currentColor" stroke-width="0.8"/>
+              <text x="30" y="158" font-family="var(--font-mono)" font-size="10" fill="currentColor">{"\\x1b[4;12H\\x1b[38;2;16;185;129mACTIVE\\x1b[0m"}</text>
+              <text x="330" y="158" text-anchor="end" font-family="var(--font-mono)" font-size="9" fill="var(--emerald-600)">-99.1% BYTES</text>
+            </svg>
+          </div>
+
+          <div class="figure-caption-text">
+            Double-buffered cell diffing isolates modified subregions. Rather than retransmitting 3,840 bytes for a full screen repaint, OpenTUI emits concise ANSI cursor hops, slashing bandwidth and eliminating flicker.
+          </div>
+          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-right">VT100 DELTA</span>
+        </figure>
+
+        <p>
+          To achieve liquid 60 FPS motion without screen tearing, OpenTUI employs a <strong>differential damage tracking pipeline</strong>. On every frame tick, the engine compares previous and current character cells, isolates the minimal damaged bounding box [x₁, y₁, x₂, y₂], and encodes delta run-length ANSI sequences. A state change that modifies only a status label emits less than 40 bytes instead of 3,840 bytes—an I/O bandwidth savings exceeding <strong>99.1%</strong>.
+        </p>
+
+        <!-- FIG_003: Continuous Flexbox to Discrete Grid Quantization -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_003</span>
+          <span class="fig-tag-top-right">[ YOGA GRID QUANTIZATION ]</span>
+          
+          <div class="figure-canvas-wrap">
+            <svg viewBox="0 0 380 170" width="380" height="170" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Continuous Float Box -->
+              <rect x="30" y="30" width="140" height="70" fill="rgba(14, 165, 233, 0.08)" stroke="var(--cobalt-600)" stroke-width="1.2" stroke-dasharray="3 3"/>
+              <text x="100" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">FLOAT: w=33.333% (15.998)</text>
+
+              <!-- Quantization Arrow -->
+              <path d="M185 65 L215 65" stroke="currentColor" stroke-width="1.2"/>
+              <text x="200" y="55" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="currentColor">FLOOR(X)</text>
+
+              <!-- Discrete Integer Cells -->
+              <g transform="translate(225, 30)">
+                <rect x="0" y="0" width="130" height="70" fill="rgba(14, 165, 233, 0.15)" stroke="currentColor" stroke-width="1.2"/>
+                <line x1="26" y1="0" x2="26" y2="70" stroke="currentColor" stroke-width="0.5"/>
+                <line x1="52" y1="0" x2="52" y2="70" stroke="currentColor" stroke-width="0.5"/>
+                <line x1="78" y1="0" x2="78" y2="70" stroke="currentColor" stroke-width="0.5"/>
+                <line x1="104" y1="0" x2="104" y2="70" stroke="currentColor" stroke-width="0.5"/>
+                <text x="65" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="currentColor">16 COLUMNS</text>
+              </g>
+              
+              <!-- Rulers -->
+              <text x="190" y="140" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--text-muted)">UNICODE 16.0 WCWIDTH: 👨‍👩‍👧‍👦 (2 CH) &middot; CJK (2 CH)</text>
+            </svg>
+          </div>
+
+          <div class="figure-caption-text">
+            Compiling continuous Yoga CSS flexbox geometry into rigid integer terminal cells without edge collisions or text clipping.
+          </div>
+          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-right">CSS &rarr; GRID</span>
+        </figure>
+
+        <p>
+          Or perhaps you have wondered how web-style CSS layout can exist inside a terminal without a bloated browser runtime? Web flexbox operates in continuous subpixel coordinates (33.333% width, 1.5rem padding). But a terminal screen is an immutable integer matrix. OpenTUI embeds the native <strong>Yoga C engine</strong> and executes an exact quantization pass: fractional bounds snap to integer boundaries, border strokes share single-cell seams, and text wrapping dynamically evaluates Unicode 16.0 grapheme widths (<code>wcwidth</code>) including zero-width joiners.
+        </p>
+
+        <!-- FIG_004: 4x4 RGBA SIMD Vector Lane Transformation -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_004</span>
+          <span class="fig-tag-top-right">[ 4×4 SIMD VECTOR LANES ]</span>
+          
+          <div class="figure-canvas-wrap">
+            <svg viewBox="0 0 380 160" width="380" height="160" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Matrix Equation -->
+              <g transform="translate(30, 25)">
+                <!-- Left Vector -->
+                <text x="15" y="25" font-family="var(--font-mono)" font-size="10" fill="currentColor">R'</text>
+                <text x="15" y="45" font-family="var(--font-mono)" font-size="10" fill="currentColor">G'</text>
+                <text x="15" y="65" font-family="var(--font-mono)" font-size="10" fill="currentColor">B'</text>
+                <text x="15" y="85" font-family="var(--font-mono)" font-size="10" fill="currentColor">A'</text>
+                <path d="M5 10 L0 10 L0 95 L5 95" stroke="currentColor" stroke-width="1"/>
+                <path d="M25 10 L30 10 L30 95 L25 95" stroke="currentColor" stroke-width="1"/>
+                
+                <text x="45" y="55" font-family="var(--font-mono)" font-size="14" fill="currentColor">=</text>
+
+                <!-- 4x4 Matrix -->
+                <g transform="translate(65, 0)">
+                  <path d="M5 10 L0 10 L0 95 L5 95" stroke="currentColor" stroke-width="1"/>
+                  <path d="M145 10 L150 10 L150 95 L145 95" stroke="currentColor" stroke-width="1"/>
+                  <text x="20" y="25" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.39</text>
+                  <text x="55" y="25" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.76</text>
+                  <text x="90" y="25" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.18</text>
+                  <text x="125" y="25" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+                  
+                  <text x="20" y="45" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.34</text>
+                  <text x="55" y="45" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.68</text>
+                  <text x="90" y="45" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.16</text>
+                  <text x="125" y="45" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+
+                  <text x="20" y="65" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.27</text>
+                  <text x="55" y="65" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.53</text>
+                  <text x="90" y="65" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.13</text>
+                  <text x="125" y="65" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+
+                  <text x="20" y="85" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+                  <text x="55" y="85" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+                  <text x="90" y="85" font-family="var(--font-mono)" font-size="9" fill="currentColor">0.00</text>
+                  <text x="125" y="85" font-family="var(--font-mono)" font-size="9" fill="currentColor">1.00</text>
+                </g>
+
+                <!-- Input Vector -->
+                <g transform="translate(230, 0)">
+                  <text x="15" y="25" font-family="var(--font-mono)" font-size="10" fill="currentColor">R</text>
+                  <text x="15" y="45" font-family="var(--font-mono)" font-size="10" fill="currentColor">G</text>
+                  <text x="15" y="65" font-family="var(--font-mono)" font-size="10" fill="currentColor">B</text>
+                  <text x="15" y="85" font-family="var(--font-mono)" font-size="10" fill="currentColor">A</text>
+                  <path d="M5 10 L0 10 L0 95 L5 95" stroke="currentColor" stroke-width="1"/>
+                  <path d="M25 10 L30 10 L30 95 L25 95" stroke="currentColor" stroke-width="1"/>
+                </g>
+              </g>
+              <text x="190" y="145" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--amber-600)">AVX2 / ARM NEON 4-WIDE VECTOR REGISTER</text>
+            </svg>
+          </div>
+
+          <div class="figure-caption-text">
+            Linear algebra vector transformations executed across 4-wide SIMD lanes. Instant amber CRT phosphor emulation, sepia grading, and contrast masks without traversing the DOM tree.
+          </div>
+          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-right">SIMD 4×4</span>
+        </figure>
+
+        <p>
+          Before character cells are serialized into ANSI truecolor sequences, OpenTUI applies vectorized linear algebra across foreground and background color vectors using SIMD lanes: [R', G', B', A']ᵀ = M₄ₓ₄ &middot; [R, G, B, A]ᵀ. This allows real-time color grading, scanline attenuation, sepia archiving, and CRT phosphor emulation at zero per-cell runtime cost.
+        </p>
+
+        <!-- FIG_005: Terminal Graphics Protocol Resolution -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_005</span>
+          <span class="fig-tag-top-right">[ GRAPHICS PROTOCOL RESOLUTION ]</span>
+          
+          <div class="figure-canvas-wrap">
+            <svg viewBox="0 0 380 150" width="380" height="150" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Tier 1 -->
+              <rect x="20" y="20" width="75" height="85" fill="rgba(14, 165, 233, 0.1)" stroke="var(--cobalt-600)" stroke-width="1"/>
+              <text x="57" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">TIER 1</text>
+              <text x="57" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)">KITTY</text>
+              <text x="57" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">APC PNG/RGB</text>
+
+              <!-- Tier 2 -->
+              <rect x="105" y="20" width="75" height="85" fill="rgba(217, 119, 6, 0.1)" stroke="var(--amber-600)" stroke-width="1"/>
+              <text x="142" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">TIER 2</text>
+              <text x="142" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--amber-600)">SIXEL</text>
+              <text x="142" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">6-PX BANDS</text>
+
+              <!-- Tier 3 -->
+              <rect x="190" y="20" width="85" height="85" fill="rgba(16, 185, 129, 0.1)" stroke="var(--emerald-600)" stroke-width="1"/>
+              <text x="232" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">TIER 3</text>
+              <text x="232" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--emerald-600)">QUADRANT</text>
+              <text x="232" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">▀ ▄ █ HALF-BLOCK</text>
+
+              <!-- Tier 4 -->
+              <rect x="285" y="20" width="75" height="85" fill="rgba(0,0,0,0.03)" stroke="currentColor" stroke-width="1"/>
+              <text x="322" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">TIER 4</text>
+              <text x="322" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="currentColor">ASCII</text>
+              <text x="322" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">░ ▒ ▓ HALFTONE</text>
+              
+              <text x="190" y="130" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--text-muted)">RUNTIME DEC / OSC CAPABILITY PROBING</text>
+            </svg>
+          </div>
+
+          <div class="figure-caption-text">
+            Automatic protocol negotiation. OpenTUI queries the host emulator at startup and seamlessly routes graphics across hardware Kitty protocols, DEC Sixel scanlines, or Unicode quadrant half-blocks.
+          </div>
+          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-right">AUTODETECT</span>
+        </figure>
+
+        <p>
+          Terminal graphic capabilities vary widely across platforms. OpenTUI probes terminal device attributes at startup and dynamically routes between Kitty graphics (PNG/RGB chunking over APC escapes), Sixel 6-pixel raster bands, and Unicode 2&times;2 quadrant half-block characters (<code>▀▄█</code>) with 24-bit TrueColor foreground and background.
+        </p>
+
+        <p>
+          All of this machinery is unified through a <strong>zero-allocation C ABI</strong> written in native Zig. Whether you construct terminal applications with declarative React 19 JSX, Solid.js fine-grained signals, or bare-metal Zig, the rendering engine operates with zero garbage collection pauses and uncompromising deterministic performance.
+        </p>
+
+      </div>
+
+      <!-- =========================================================================
+           TABLE OF CONTENTS: V1.0 ARCHIVAL INDEX
+           ========================================================================= -->
+      <section class="toc-section" id="toc">
+        <div class="toc-header">
+          <h2 class="toc-heading">Table of Contents.</h2>
+          <span class="toc-version">VOLUME I &middot; SPECIFICATION 2026</span>
+        </div>
+
+        <div class="toc-grid">
+          {tocData.map((part) => (
+            <div class="toc-part-card">
+              <div class="toc-part-label">{part.part}</div>
+              <ul class="toc-chapter-list">
+                {part.chapters.map((chap) => (
+                  <li class="toc-chapter-item">
+                    <a href={chap.slug}>
+                      <span>{chap.title}</span>
+                      <span class="chapter-words">{chap.words}</span>
+                    </a>
                   </li>
                 ))}
               </ul>
-              
-              <div class="what-actions">
-                <a href="/docs/getting-started" class="btn-dark">
-                  <span>Read docs</span>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6.5 12L17 12M13 16.5L17.5 12L13 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/>
-                  </svg>
-                </a>
-              </div>
             </div>
-            
-            <div class="features-visual">
-              <TuiSurface />
+          ))}
+        </div>
+      </section>
+
+      <!-- =========================================================================
+           INTERACTIVE LABORATORY DRAFTING BENCH
+           ========================================================================= -->
+      <section class="bench-section" id="lab">
+        <div class="bench-header">
+          <h2 class="bench-heading">Interactive Laboratory.</h2>
+          <div class="bench-sub">CALIBRATE THE NATIVE RENDERING PIPELINE IN REAL TIME</div>
+        </div>
+
+        <div class="bench-viewport">
+          <div class="bench-tabs-bar">
+            <div class="bench-tabs-list" role="tablist">
+              <button role="tab" class="bench-tab" data-bench-tab="diff" aria-selected="true">FIG_001: Delta Stream</button>
+              <button role="tab" class="bench-tab" data-bench-tab="matrix" aria-selected="false">FIG_003: Color Matrix</button>
+              <button role="tab" class="bench-tab" data-bench-tab="yoga" aria-selected="false">FIG_002: Yoga Quantizer</button>
+              <button role="tab" class="bench-tab" data-bench-tab="code" aria-selected="false">FIG_006: Reconciler Code</button>
+            </div>
+            <div style="padding: 8px 16px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);">
+              STATUS: <span style="color: var(--emerald-600);">LIVE INSTRUMENT</span>
             </div>
           </div>
-        </section>
 
-        <!-- Footer -->
-        <footer class="landing-footer">
-          <div class="landing-footer-cell"><a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a></div>
-          <div class="landing-footer-cell"><a href="/docs/getting-started">Docs</a></div>
-        </footer>
-      </div>
-    </div>
+          <!-- Panel 1: Delta Stream -->
+          <div class="bench-content-panel" data-bench-panel="diff" data-active="true">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div style="background: #0d1117; color: #c9d1d9; padding: 14px; font-family: var(--font-mono); font-size: 11.5px; border: 1px solid rgba(255,255,255,0.1);">
+                <div style="color: #6e7681; margin-bottom: 8px;">// LIVE BUFFER [80×24 CELL GRID]</div>
+                <div>┌──────────────────────────────────────┐</div>
+                <div>│ <span style="color: #3fb950;">● OPENTUI CORE</span>  FPS: <span style="color: #58a6ff;">60.0</span>  CPU: 0.8% │</div>
+                <div>├──────────────────────────────────────┤</div>
+                <div>│ Mutation: <span style="background: rgba(16,185,129,0.3); color: #34d399;" id="lab-diff-token">render_loop_</span><span style="color: #6e7681;">       </span> │</div>
+                <div>│ Status:   <span style="color: #3fb950;">STREAMING ACTIVE DELTAS</span>    │</div>
+                <div>└──────────────────────────────────────┘</div>
+              </div>
+              <div>
+                <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">
+                  EMITTED ANSI ESCAPE STREAM:
+                </div>
+                <div style="font-family: var(--font-mono); font-size: 11.5px; background: rgba(0,0,0,0.03); border: 1px solid var(--border-color); padding: 12px; min-height: 100px; color: var(--foreground);" id="lab-escape-stream">
+                  {"\\x1b[4;13H\\x1b[38;2;16;185;129mrender_loop_\\x1b[0m"}
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                  <button class="viewport-btn active" id="lab-btn-mutate">Mutate Buffer</button>
+                  <button class="viewport-btn" id="lab-btn-repaint">Full Repaint (3,840 B)</button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-    <!-- Legal - outside container, centered -->
-    <div class="landing-legal">
-      <span>&copy; 2026 <a href="https://anoma.ly">Anomaly</a></span>
+          <!-- Panel 2: Color Matrix -->
+          <div class="bench-content-panel" data-bench-panel="matrix" data-active="false">
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; align-items: start;">
+              <div>
+                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                  <button class="viewport-btn active" data-lab-preset="default">Default</button>
+                  <button class="viewport-btn" data-lab-preset="amber">Amber CRT</button>
+                  <button class="viewport-btn" data-lab-preset="green">VT220 Green</button>
+                  <button class="viewport-btn" data-lab-preset="sepia">Sepia Archive</button>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; background: #000; padding: 10px;" id="lab-glyph-swatches">
+                  <!-- Generated by script -->
+                </div>
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
+                <div style="margin-bottom: 8px;">SIMD MULTIPLICATION:</div>
+                <div style="padding: 10px; background: rgba(0,0,0,0.03); border: 1px solid var(--border-color); line-height: 1.6;" id="lab-matrix-readout">
+                  R' = 1.00 &middot; R + 0.00 &middot; G + 0.00 &middot; B<br/>
+                  G' = 0.00 &middot; R + 1.00 &middot; G + 0.00 &middot; B<br/>
+                  B' = 0.00 &middot; R + 0.00 &middot; G + 1.00 &middot; B
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 3: Yoga Quantizer -->
+          <div class="bench-content-panel" data-bench-panel="yoga" data-active="false">
+            <div style="font-family: var(--font-mono); font-size: 11px; margin-bottom: 12px; color: var(--text-muted);">
+              RESIZE CONTAINER (24 TO 60 COLUMNS):
+            </div>
+            <input type="range" id="lab-yoga-slider" min="24" max="60" value="48" style="width: 100%; height: 4px; margin-bottom: 16px;" />
+            <div style="height: 100px; background: rgba(0,0,0,0.02); border: 1px solid var(--border-color); display: flex; padding: 8px; gap: 8px;" id="lab-yoga-container">
+              <div style="width: 33.33%; background: rgba(14,165,233,0.1); border: 1px solid var(--cobalt-600); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px;" id="lab-yoga-nav">
+                16 CH (33.3%)
+              </div>
+              <div style="width: 66.66%; background: rgba(16,185,129,0.1); border: 1px solid var(--emerald-600); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px;" id="lab-yoga-main">
+                32 CH (66.7%)
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 4: Reconciler Code -->
+          <div class="bench-content-panel" data-bench-panel="code" data-active="false">
+            <pre style="margin: 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; color: var(--foreground);"><code><span style="color: var(--rose-600);">import</span> &#123; createCliRenderer, Box, Text &#125; <span style="color: var(--rose-600);">from</span> <span style="color: var(--emerald-600);">"@opentui/core"</span>
+
+<span style="color: var(--rose-600);">const</span> renderer = <span style="color: var(--rose-600);">await</span> createCliRenderer(&#123; exitOnCtrlC: <span style="color: var(--amber-600);">true</span> &#125;)
+
+renderer.root.add(
+  Box(
+    &#123; borderStyle: <span style="color: var(--emerald-600);">"rounded"</span>, padding: <span style="color: var(--amber-600);">1</span>, flexDirection: <span style="color: var(--emerald-600);">"column"</span> &#125;,
+    Text(&#123; content: <span style="color: var(--emerald-600);">"OpenTUI Systems Engine"</span>, fg: <span style="color: var(--emerald-600);">"#10b981"</span> &#125;)
+  )
+)</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Editorial Colophon & Footer -->
+      <footer class="editorial-footer">
+        <div class="footer-top">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <OpenTUILogo class="manual-logo-mark" style="width: 72px; height: 16px;" />
+            <span style="font-weight: 500; color: var(--foreground);">THE OPENTUI REFERENCE MANUAL</span>
+          </div>
+          <div style="display: flex; gap: 20px;">
+            <a href="/docs/getting-started">Documentation</a>
+            <a href="/docs/core-concepts/renderer">Renderer</a>
+            <a href="/docs/core-concepts/layout">Layout</a>
+            <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <div>Published under the MIT License &middot; Written in Native Zig &amp; TypeScript</div>
+          <div>ESTABLISHED 2026 &middot; ANOMALY</div>
+        </div>
+      </footer>
+
     </div>
-  </main>
+  </div>
 </Base>
 
 <script>
-  const installCommands: Record<string, { cmd: string; pkg: string }> = {
-    create: { cmd: "bun create", pkg: "tui" },
-    manual: { cmd: "bun add", pkg: "@opentui/core" },
-    skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
-  }
+  // Laboratory Bench Tab Switching
+  const benchTabs = document.querySelectorAll('.bench-tab')
+  const benchPanels = document.querySelectorAll('.bench-content-panel')
 
-  // Tab switching
-  const tabs = document.querySelectorAll('.install-tab')
-  const commandBtn = document.getElementById('install-display') as HTMLButtonElement
-  
-  tabs.forEach(tab => {
+  benchTabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      const key = tab.getAttribute('data-tab') as keyof typeof installCommands
-      const { cmd, pkg } = installCommands[key]
-      
-      // Update active tab
-      tabs.forEach(t => t.setAttribute('aria-selected', 'false'))
+      benchTabs.forEach(t => t.setAttribute('aria-selected', 'false'))
       tab.setAttribute('aria-selected', 'true')
-      
-      // Update command display
-      if (commandBtn) {
-        const codeEl = commandBtn.querySelector('code')
-        if (codeEl) {
-          codeEl.innerHTML = `<span class="cmd">${cmd} </span><span class="highlight">${pkg}</span>`
-        }
-        commandBtn.setAttribute('data-command', `${cmd} ${pkg}`)
-      }
-    })
-  })
-
-  // Copy functionality - clicking the whole command button copies
-  if (commandBtn) {
-    commandBtn.addEventListener('click', async () => {
-      const command = commandBtn.getAttribute('data-command')
-      if (command) {
-        await navigator.clipboard.writeText(command)
-        const copyBtn = commandBtn.querySelector('.copy-btn')
-        if (copyBtn) {
-          copyBtn.classList.add('copied')
-          setTimeout(() => copyBtn.classList.remove('copied'), 1500)
-        }
-      }
-    })
-  }
-
-  // Code editor tab switching
-  const editorTabs = document.querySelectorAll('.code-editor-tab')
-  const editorPanels = document.querySelectorAll('.code-editor-body')
-  
-  editorTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabId = tab.getAttribute('data-tab')
-      
-      editorTabs.forEach(t => t.setAttribute('aria-selected', 'false'))
-      tab.setAttribute('aria-selected', 'true')
-      
-      editorPanels.forEach(panel => {
-        panel.setAttribute('data-active', panel.getAttribute('data-panel') === tabId ? 'true' : 'false')
+      const target = tab.getAttribute('data-bench-tab')
+      benchPanels.forEach((p) => {
+        p.setAttribute('data-active', p.getAttribute('data-bench-panel') === target ? 'true' : 'false')
       })
     })
   })
 
-  // Feature switching logic
-  const featureItems = document.querySelectorAll('.feature-item');
-  
-  featureItems.forEach(item => {
-    item.addEventListener('click', () => {
-      // Update UI
-      featureItems.forEach(i => {
-        i.classList.remove('active');
-        const bull = i.querySelector('.bullet');
-        if (bull) bull.textContent = '[*]';
-      });
-      item.classList.add('active');
-      const bull = item.querySelector('.bullet');
-      if (bull) bull.textContent = '[o]';
-      
-      // Dispatch event
-      const feature = item.getAttribute('data-feature');
-      window.dispatchEvent(new CustomEvent('feature-change', { detail: feature }));
-    });
-    
-    // Keyboard support
-    item.addEventListener('keydown', (e: any) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        (item as HTMLElement).click();
-      }
-    });
-  });
+  // Lab: Delta Stream Mutator
+  const labBtnMutate = document.getElementById('lab-btn-mutate')
+  const labBtnRepaint = document.getElementById('lab-btn-repaint')
+  const labDiffToken = document.getElementById('lab-diff-token')
+  const labEscapeStream = document.getElementById('lab-escape-stream')
 
-  const codeCopyBtn = document.getElementById('code-copy-btn')
-  
-  if (codeCopyBtn) {
-    codeCopyBtn.addEventListener('click', async () => {
-      const activePanel = document.querySelector('.code-editor-body[data-active="true"]')
-      if (activePanel) {
-        const codeEl = activePanel.querySelector('pre code')
-        if (codeEl) {
-          const code = codeEl.textContent || ''
-          await navigator.clipboard.writeText(code)
-          
-          codeCopyBtn.classList.add('copied')
-          setTimeout(() => codeCopyBtn.classList.remove('copied'), 1500)
-        }
-      }
+  const tokens = ["render_loop_", "damage_matrix_", "yoga_flexbox_", "simd_vector_", "ssh_daemon_"]
+  let tIdx = 0
+
+  labBtnMutate?.addEventListener('click', () => {
+    tIdx = (tIdx + 1) % tokens.length
+    const tok = tokens[tIdx]
+    if (labDiffToken) labDiffToken.textContent = tok
+    if (labEscapeStream) {
+      labEscapeStream.innerHTML = `\\x1b[4;13H\\x1b[38;2;16;185;129m${tok}\\x1b[0m <span style="color: var(--emerald-600); float: right;">[34 BYTES]</span>`
+    }
+  })
+
+  labBtnRepaint?.addEventListener('click', () => {
+    if (labEscapeStream) {
+      labEscapeStream.innerHTML = `\\x1b[2J\\x1b[H\\x1b[38;2;255;255;255m[FULL SCREEN REPAINT OVER STDIO: 3,840 BYTES TRANSMITTED]`
+    }
+  })
+
+  // Lab: Color Matrix Grading
+  const labGlyphSwatches = document.getElementById('lab-glyph-swatches')
+  const labMatrixReadout = document.getElementById('lab-matrix-readout')
+  const glyphs = ['█', '▓', '▒', '░', '◆', '▲', '●', '✦', 'Z', 'I', 'G', '0', 'T', 'U', 'I', '1']
+
+  const matrixPresets: Record<string, { r: number; g: number; b: number; desc: string }> = {
+    default: { r: 1.0, g: 1.0, b: 1.0, desc: "R' = 1.00·R, G' = 1.00·G, B' = 1.00·B" },
+    amber: { r: 1.8, g: 1.1, b: 0.2, desc: "R' = 1.80·R, G' = 1.10·G, B' = 0.20·B (AMBER CRT)" },
+    green: { r: 0.2, g: 1.9, b: 0.4, desc: "R' = 0.20·R, G' = 1.90·G, B' = 0.40·B (VT220 GREEN)" },
+    sepia: { r: 1.4, g: 1.1, b: 0.7, desc: "R' = 1.40·R, G' = 1.10·G, B' = 0.70·B (SEPIA ARCHIVE)" },
+  }
+
+  function renderSwatches(pKey: string) {
+    const p = matrixPresets[pKey] || matrixPresets.default
+    if (labMatrixReadout) labMatrixReadout.innerHTML = p.desc
+    if (labGlyphSwatches) {
+      labGlyphSwatches.innerHTML = glyphs.map((g, i) => {
+        const baseR = (i * 18 + 40) % 255
+        const baseG = (i * 22 + 60) % 255
+        const baseB = (i * 26 + 80) % 255
+
+        const tr = Math.min(255, Math.floor(baseR * p.r))
+        const tg = Math.min(255, Math.floor(baseG * p.g))
+        const tb = Math.min(255, Math.floor(baseB * p.b))
+
+        return `<div style="background: rgb(${Math.floor(tr*0.2)}, ${Math.floor(tg*0.2)}, ${Math.floor(tb*0.2)}); color: rgb(${tr}, ${tg}, ${tb}); display: flex; align-items: center; justify-content: center; height: 28px; font-family: var(--font-mono); font-size: 12px; font-weight: bold;">${g}</div>`
+      }).join('')
+    }
+  }
+
+  document.querySelectorAll('[data-lab-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-lab-preset]').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      const p = btn.getAttribute('data-lab-preset') || 'default'
+      renderSwatches(p)
     })
-  }
-
-  // Mobile menu toggle
-  const menuBtn = document.querySelector('.mobile-menu-btn')
-  const mobileNav = document.querySelector('.mobile-nav')
-
-  function openMenu() {
-    document.body.classList.add('mobile-nav-open')
-    menuBtn?.setAttribute('aria-expanded', 'true')
-    menuBtn?.setAttribute('aria-label', 'Close navigation menu')
-  }
-
-  function closeMenu() {
-    document.body.classList.remove('mobile-nav-open')
-    menuBtn?.setAttribute('aria-expanded', 'false')
-    menuBtn?.setAttribute('aria-label', 'Open navigation menu')
-  }
-
-  menuBtn?.addEventListener('click', () => {
-    const isOpen = document.body.classList.contains('mobile-nav-open')
-    if (isOpen) {
-      closeMenu()
-    } else {
-      openMenu()
-    }
   })
+  renderSwatches('default')
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
-      closeMenu()
+  // Lab: Yoga Quantizer Slider
+  const labYogaSlider = document.getElementById('lab-yoga-slider') as HTMLInputElement
+  const labYogaNav = document.getElementById('lab-yoga-nav')
+  const labYogaMain = document.getElementById('lab-yoga-main')
+
+  labYogaSlider?.addEventListener('input', () => {
+    const totalCols = parseInt(labYogaSlider.value, 10)
+    const navCols = Math.floor(totalCols * 0.3333)
+    const mainCols = totalCols - navCols
+
+    if (labYogaNav) {
+      labYogaNav.style.width = `${(navCols / totalCols) * 100}%`
+      labYogaNav.textContent = `${navCols} CH (33.3%)`
     }
-  })
-
-  mobileNav?.querySelectorAll('a').forEach((link) => {
-    link.addEventListener('click', closeMenu)
+    if (labYogaMain) {
+      labYogaMain.style.width = `${(mainCols / totalCols) * 100}%`
+      labYogaMain.textContent = `${mainCols} CH (66.7%)`
+    }
   })
 </script>
