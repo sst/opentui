@@ -20,7 +20,7 @@ pub const Cursor = struct {
 };
 
 pub const EmbeddedTerminal = struct {
-    pub fn init(_: anytype, _: anytype) Error!*EmbeddedTerminal {
+    pub fn init(_: anytype, _: anytype, _: anytype) Error!*EmbeddedTerminal {
         return error.Unsupported;
     }
 
