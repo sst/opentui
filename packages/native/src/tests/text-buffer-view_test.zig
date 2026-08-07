@@ -3876,3 +3876,55 @@ test "TextBufferView wrap indent - click on pad maps to content start" {
     const sel2 = view.getSelection().?;
     try std.testing.expectEqual(content_start + 1, sel2.start);
 }
+
+test "TextBufferView wrap indent - measure includes continuation pad" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Word wrap: first visual row is short; continuation occupies full wrap width with pad.
+    try tb.setText("    hello world_and_more");
+    view.setWrapMode(.word);
+    view.setWrapIndent(.same);
+
+    const result = try view.measureForDimensions(12, 10);
+    try std.testing.expect(result.line_count >= 2);
+    try std.testing.expectEqual(@as(u32, 12), result.width_cols_max);
+}
+
+test "TextBufferView wrap indent - truncation accounts for pad" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var text_buf: [84]u8 = undefined;
+    @memset(text_buf[0..4], ' ');
+    @memset(text_buf[4..], 'a');
+    try tb.setText(&text_buf);
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(20);
+    view.setWrapIndent(.same);
+    // Force a continuation that would overflow a narrower viewport if pad is ignored.
+    view.setViewport(.{ .x = 0, .y = 0, .width = 18, .height = 10 });
+    view.setTruncate(true);
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expect(vlines.len >= 2);
+    try std.testing.expectEqual(@as(u32, 4), vlines[1].pad_cols);
+    try std.testing.expect(vlines[1].pad_cols + vlines[1].width_cols <= 18);
+}

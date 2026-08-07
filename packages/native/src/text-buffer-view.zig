@@ -1261,9 +1261,12 @@ pub const UnifiedTextBufferView = struct {
         const ellipsis_width: u32 = 3;
 
         for (self.virtual_lines.items) |*vline| {
-            if (vline.width_cols <= vp.width) continue;
+            // Painted width is pad + content; truncate against the content budget only.
+            if (vline.pad_cols + vline.width_cols <= vp.width) continue;
 
-            if (vp.width <= ellipsis_width) {
+            const content_vp_width = if (vp.width > vline.pad_cols) vp.width - vline.pad_cols else 0;
+
+            if (content_vp_width <= ellipsis_width) {
                 vline.chunks.clearRetainingCapacity();
                 vline.width_cols = 0;
                 vline.is_truncated = true;
@@ -1272,7 +1275,7 @@ pub const UnifiedTextBufferView = struct {
                 continue;
             }
 
-            const available_width = vp.width - ellipsis_width;
+            const available_width = content_vp_width - ellipsis_width;
             const prefix_width = available_width / 2;
             const suffix_width = available_width - prefix_width;
 
@@ -1327,7 +1330,7 @@ pub const UnifiedTextBufferView = struct {
 
             vline.chunks.clearRetainingCapacity();
             vline.chunks.appendSlice(self.virtual_lines_arena.allocator(), new_chunks.items) catch return;
-            vline.width_cols = vp.width;
+            vline.width_cols = content_vp_width;
             vline.is_truncated = true;
             vline.ellipsis_pos = prefix_width;
             vline.truncation_suffix_start = suffix_start_pos;
@@ -1416,10 +1419,10 @@ pub const UnifiedTextBufferView = struct {
             output,
         );
 
-        // Calculate max width from temp structures
+        // Visual occupancy includes continuation pad (width_cols stays content-only).
         var width_cols_max: u32 = 0;
-        for (temp_line_widths.items) |w| {
-            width_cols_max = @max(width_cols_max, w);
+        for (temp_virtual_lines.items) |vline| {
+            width_cols_max = @max(width_cols_max, vline.pad_cols + vline.width_cols);
         }
 
         const result: MeasureResult = .{
