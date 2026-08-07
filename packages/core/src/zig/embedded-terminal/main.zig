@@ -13,75 +13,7 @@ pub const Options = struct {
     max_scrollback: usize = 10_000,
 };
 
-pub const parser_allocation_limit = 1024 * 1024;
 pub const response_limit = 1024 * 1024;
-
-const BoundedAllocator = struct {
-    child: std.mem.Allocator,
-    limit: usize,
-    used: usize = 0,
-    failed: bool = false,
-
-    fn allocator(self: *BoundedAllocator) std.mem.Allocator {
-        return .{ .ptr = self, .vtable = &vtable };
-    }
-
-    const vtable: std.mem.Allocator.VTable = .{
-        .alloc = alloc,
-        .resize = resize,
-        .remap = remap,
-        .free = free,
-    };
-
-    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
-        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
-        if (len > self.limit -| self.used) {
-            self.failed = true;
-            return null;
-        }
-        const result = self.child.rawAlloc(len, alignment, ret_addr);
-        if (result) |_| {
-            self.used += len;
-        } else {
-            self.failed = true;
-        }
-        return result;
-    }
-
-    fn resize(
-        ctx: *anyopaque,
-        memory: []u8,
-        alignment: std.mem.Alignment,
-        new_len: usize,
-        ret_addr: usize,
-    ) bool {
-        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
-        if (new_len > memory.len and new_len - memory.len > self.limit -| self.used) return false;
-        if (!self.child.rawResize(memory, alignment, new_len, ret_addr)) return false;
-        self.used = self.used - memory.len + new_len;
-        return true;
-    }
-
-    fn remap(
-        ctx: *anyopaque,
-        memory: []u8,
-        alignment: std.mem.Alignment,
-        new_len: usize,
-        ret_addr: usize,
-    ) ?[*]u8 {
-        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
-        if (new_len > memory.len and new_len - memory.len > self.limit -| self.used) return null;
-        const result = self.child.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
-        self.used = self.used - memory.len + new_len;
-        return result;
-    }
-
-    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
-        const self: *BoundedAllocator = @ptrCast(@alignCast(ctx));
-        self.child.rawFree(memory, alignment, ret_addr);
-        self.used -= memory.len;
-    }
-};
 
 pub const EmbeddedTerminal = struct {
     allocator: std.mem.Allocator,
@@ -92,7 +24,6 @@ pub const EmbeddedTerminal = struct {
     responses: std.ArrayListUnmanaged(u8) = .empty,
     response_error: ?Error = null,
     mouse_last_cell: ?ghostty.Coordinate = null,
-    parser_allocator: BoundedAllocator = undefined,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: Options) Error!*EmbeddedTerminal {
         if (options.cols == 0 or options.rows == 0) return error.InvalidValue;
@@ -113,10 +44,9 @@ pub const EmbeddedTerminal = struct {
         };
         errdefer self.terminal.deinit(allocator);
 
-        self.parser_allocator = .{ .child = allocator, .limit = parser_allocation_limit };
         var handler = self.terminal.vtHandler();
         handler.effects.write_pty = &writePty;
-        self.stream = .initAlloc(self.parser_allocator.allocator(), handler);
+        self.stream = .init(handler);
         return self;
     }
 
@@ -129,10 +59,9 @@ pub const EmbeddedTerminal = struct {
     }
 
     pub fn write(self: *EmbeddedTerminal, bytes: []const u8) Error!void {
-        self.parser_allocator.failed = false;
         self.stream.handler.semantic_failure = false;
         self.stream.nextSlice(bytes);
-        if (self.parser_allocator.failed or self.stream.handler.semantic_failure) return error.ProcessingFailed;
+        if (self.stream.handler.semantic_failure) return error.ProcessingFailed;
     }
 
     pub fn resize(self: *EmbeddedTerminal, cols: u16, rows: u16) Error!void {

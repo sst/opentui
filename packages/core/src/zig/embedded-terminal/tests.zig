@@ -75,16 +75,23 @@ test "embedded terminal drains generated PTY responses incrementally" {
     try std.testing.expectEqualStrings("\x1b[0n", combined[0 .. first_len + rest_len]);
 }
 
-test "embedded terminal bounds parser allocations" {
+test "embedded terminal drops oversized OSC and resumes parsing" {
     const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
 
-    const input = try std.testing.allocator.alloc(u8, @import("main.zig").parser_allocation_limit + 32);
+    const prefix = "\x1b]52;c;";
+    const suffix = "\x07\x1b[5n";
+    const payload_len = 4096;
+    const input = try std.testing.allocator.alloc(u8, prefix.len + payload_len + suffix.len);
     defer std.testing.allocator.free(input);
-    @memset(input, 'x');
-    @memcpy(input[0..7], "\x1b]52;c;");
-    try std.testing.expectError(error.ProcessingFailed, terminal.write(input));
-    try std.testing.expect(terminal.parser_allocator.used <= @import("main.zig").parser_allocation_limit);
+    @memcpy(input[0..prefix.len], prefix);
+    @memset(input[prefix.len .. prefix.len + payload_len], 'x');
+    @memcpy(input[prefix.len + payload_len ..], suffix);
+
+    try terminal.write(input);
+    var response: [16]u8 = undefined;
+    const response_len = try terminal.drainResponses(&response);
+    try std.testing.expectEqualStrings("\x1b[0n", response[0..response_len]);
 }
 
 test "embedded terminal preserves queued responses when the bound is reached" {
