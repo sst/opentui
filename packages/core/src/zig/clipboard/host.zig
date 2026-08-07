@@ -116,10 +116,10 @@ fn tryJoinThread(thread: std.Thread) bool {
         },
         .macos => blk: {
             var info: std.c.thread_basic_info = undefined;
-            var count = std.c.THREAD_BASIC_INFO_COUNT;
+            var count = std.c.THREAD.BASIC.INFO_COUNT;
             const result = std.c.thread_info(
                 pthread_mach_thread_np(thread.getHandle()),
-                std.c.THREAD_BASIC_INFO,
+                std.c.THREAD.BASIC.INFO,
                 @ptrCast(&info),
                 &count,
             );
