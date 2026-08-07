@@ -36,7 +36,7 @@ pub const EmbeddedTerminal = struct {
             .terminal = try .init(io, allocator, .{
                 .cols = options.cols,
                 .rows = options.rows,
-                .max_scrollback = options.max_scrollback,
+                .max_scrollback_bytes = options.max_scrollback,
             }),
             .stream = undefined,
             .cols = options.cols,
@@ -46,7 +46,7 @@ pub const EmbeddedTerminal = struct {
 
         var handler = self.terminal.vtHandler();
         handler.effects.write_pty = &writePty;
-        self.stream = .init(handler);
+        self.stream = .init(.{ .allocator = allocator, .handler = handler });
         return self;
     }
 
