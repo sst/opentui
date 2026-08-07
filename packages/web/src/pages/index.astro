@@ -65,7 +65,7 @@ const tocData = [
         </p>
         <div class="editorial-byline">
           <div>Written and engineered by the <span>OpenTUI Contributors</span>.</div>
-          <div>&copy; 2026 Anomaly &middot; Version 0.5.1 &middot; 58 Chapters</div>
+          <div>Version 0.5.1 &middot; 58 Chapters</div>
         </div>
       </header>
 
@@ -78,7 +78,7 @@ const tocData = [
 
         <!-- FIG_001: The Anatomy of a Character Cell -->
         <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_001</span>
+          <span class="fig-tag-top-left">FIG_01</span>
           <span class="fig-tag-top-right">[ 16-BYTE CELL STRIDE ]</span>
           
           <div class="figure-canvas-wrap">
@@ -110,9 +110,9 @@ const tocData = [
           </div>
 
           <div class="figure-caption-text">
-            Exploded memory layout of an OpenTUI terminal cell. Each cell is packed into a compact 16-byte contiguous stride, aligning perfectly with CPU cache lines for high-throughput raster passes.
+            Exploded memory layout of an OpenTUI terminal cell. Each cell is packed into a compact 16-byte contiguous stride, aligning with CPU cache lines for high-throughput raster passes.
           </div>
-          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-left">OPENTUI CORE</span>
           <span class="fig-tag-bottom-right">STRIDE: 16B</span>
         </figure>
 
@@ -122,7 +122,7 @@ const tocData = [
 
         <!-- FIG_002: The Differential Damage Loop -->
         <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_002</span>
+          <span class="fig-tag-top-left">FIG_02</span>
           <span class="fig-tag-top-right">[ DIFFERENTIAL DAMAGE LOOP ]</span>
           
           <div class="figure-canvas-wrap">
@@ -134,7 +134,7 @@ const tocData = [
               <line x1="20" y1="90" x2="140" y2="90" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
 
               <!-- Diff Comparator -->
-              <path d="M160 75 L200 75" stroke="var(--emerald-600)" stroke-width="1.5" marker-end="url(#arrow)"/>
+              <path d="M160 75 L200 75" stroke="var(--emerald-600)" stroke-width="1.5"/>
               <text x="180" y="65" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--emerald-600)">DIFF</text>
 
               <!-- Buffer B with Damage Box -->
@@ -153,7 +153,7 @@ const tocData = [
           <div class="figure-caption-text">
             Double-buffered cell diffing isolates modified subregions. Rather than retransmitting 3,840 bytes for a full screen repaint, OpenTUI emits concise ANSI cursor hops, slashing bandwidth and eliminating flicker.
           </div>
-          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-left">DAMAGE TRACKING</span>
           <span class="fig-tag-bottom-right">VT100 DELTA</span>
         </figure>
 
@@ -163,7 +163,7 @@ const tocData = [
 
         <!-- FIG_003: Continuous Flexbox to Discrete Grid Quantization -->
         <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_003</span>
+          <span class="fig-tag-top-left">FIG_03</span>
           <span class="fig-tag-top-right">[ YOGA GRID QUANTIZATION ]</span>
           
           <div class="figure-canvas-wrap">
@@ -194,7 +194,7 @@ const tocData = [
           <div class="figure-caption-text">
             Compiling continuous Yoga CSS flexbox geometry into rigid integer terminal cells without edge collisions or text clipping.
           </div>
-          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-left">YOGA LAYOUT</span>
           <span class="fig-tag-bottom-right">CSS &rarr; GRID</span>
         </figure>
 
@@ -204,7 +204,7 @@ const tocData = [
 
         <!-- FIG_004: 4x4 RGBA SIMD Vector Lane Transformation -->
         <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_004</span>
+          <span class="fig-tag-top-left">FIG_04</span>
           <span class="fig-tag-top-right">[ 4×4 SIMD VECTOR LANES ]</span>
           
           <div class="figure-canvas-wrap">
@@ -263,7 +263,7 @@ const tocData = [
           <div class="figure-caption-text">
             Linear algebra vector transformations executed across 4-wide SIMD lanes. Instant amber CRT phosphor emulation, sepia grading, and contrast masks without traversing the DOM tree.
           </div>
-          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-left">COLOR PIPELINE</span>
           <span class="fig-tag-bottom-right">SIMD 4×4</span>
         </figure>
 
@@ -273,7 +273,7 @@ const tocData = [
 
         <!-- FIG_005: Terminal Graphics Protocol Resolution -->
         <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_005</span>
+          <span class="fig-tag-top-left">FIG_05</span>
           <span class="fig-tag-top-right">[ GRAPHICS PROTOCOL RESOLUTION ]</span>
           
           <div class="figure-canvas-wrap">
@@ -309,7 +309,7 @@ const tocData = [
           <div class="figure-caption-text">
             Automatic protocol negotiation. OpenTUI queries the host emulator at startup and seamlessly routes graphics across hardware Kitty protocols, DEC Sixel scanlines, or Unicode quadrant half-blocks.
           </div>
-          <span class="fig-tag-bottom-left">&copy; 2026 OPENTUI</span>
+          <span class="fig-tag-bottom-left">PROTOCOL NEGOTIATION</span>
           <span class="fig-tag-bottom-right">AUTODETECT</span>
         </figure>
 
@@ -329,7 +329,7 @@ const tocData = [
       <section class="toc-section" id="toc">
         <div class="toc-header">
           <h2 class="toc-heading">Table of Contents.</h2>
-          <span class="toc-version">VOLUME I &middot; SPECIFICATION 2026</span>
+          <span class="toc-version">SPECIFICATION INDEX</span>
         </div>
 
         <div class="toc-grid">
@@ -363,10 +363,10 @@ const tocData = [
         <div class="bench-viewport">
           <div class="bench-tabs-bar">
             <div class="bench-tabs-list" role="tablist">
-              <button role="tab" class="bench-tab" data-bench-tab="diff" aria-selected="true">FIG_001: Delta Stream</button>
-              <button role="tab" class="bench-tab" data-bench-tab="matrix" aria-selected="false">FIG_003: Color Matrix</button>
-              <button role="tab" class="bench-tab" data-bench-tab="yoga" aria-selected="false">FIG_002: Yoga Quantizer</button>
-              <button role="tab" class="bench-tab" data-bench-tab="code" aria-selected="false">FIG_006: Reconciler Code</button>
+              <button role="tab" class="bench-tab" data-bench-tab="diff" aria-selected="true">FIG_01: Delta Stream</button>
+              <button role="tab" class="bench-tab" data-bench-tab="matrix" aria-selected="false">FIG_04: Color Matrix</button>
+              <button role="tab" class="bench-tab" data-bench-tab="yoga" aria-selected="false">FIG_03: Yoga Quantizer</button>
+              <button role="tab" class="bench-tab" data-bench-tab="code" aria-selected="false">FIG_06: Reconciler Code</button>
             </div>
             <div style="padding: 8px 16px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);">
               STATUS: <span style="color: var(--emerald-600);">LIVE INSTRUMENT</span>
@@ -473,8 +473,8 @@ renderer.root.add(
         </div>
 
         <div class="footer-bottom">
-          <div>Published under the MIT License &middot; Written in Native Zig &amp; TypeScript</div>
-          <div>ESTABLISHED 2026 &middot; ANOMALY</div>
+          <div>Open source software under the MIT License &middot; Written in Native Zig &amp; TypeScript</div>
+          <div>ANOMALY</div>
         </div>
       </footer>
 
