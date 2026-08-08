@@ -80,3 +80,13 @@ Default protocol on 2026-08-07 with Bun 1.3.14 on macOS arm64:
 | `phase_final_completion`         | 339,424.63 | 52.44% | 16.56% |
 
 The individual update phases are diagnostic only. Keep an optimization only when the complete-cycle improvement is comfortably larger than the observed process-level noise and repeats in a fresh run.
+
+## Experiments
+
+### Pass block identity without constructing the default renderable
+
+- Hypothesis: creating and immediately destroying a default `CodeRenderable` only to read its ID adds avoidable work to every custom Mermaid update.
+- Change: expose the assigned block ID on `RenderNodeContext` and consume it directly in the Mermaid adapter.
+- Before: 948,453 ns/cycle.
+- After: 911,507 ns/cycle.
+- Result: 3.9% lower median cycle latency, with the invalid-fallback phase 7.8% lower. Kept because it also removes an allocation-heavy no-op path for every custom Markdown renderer.

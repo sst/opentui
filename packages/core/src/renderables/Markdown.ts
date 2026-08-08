@@ -124,6 +124,8 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 }
 
 export interface RenderNodeContext {
+  /** Stable renderable ID assigned to this top-level block. */
+  id: string
   syntaxStyle: SyntaxStyle
   conceal: boolean
   concealCode: boolean
@@ -1589,7 +1591,7 @@ export class MarkdownRenderable extends Renderable {
     index: number,
     nextToken: MarkedToken | undefined,
   ): CustomRenderableResult {
-    const custom = this.renderCustomNode(token, () => {
+    const custom = this.renderCustomNode(token, `${this.id}-block-${index}`, () => {
       return { renderable: this.createDefaultRenderable(token, index, nextToken) }
     })
     if (!custom.renderable) {
@@ -1606,7 +1608,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createTopLevelCustomRenderable(block: MarkdownRenderBlock, index: number): CustomRenderableResult {
-    const custom = this.renderCustomNode(block.token, () => {
+    const custom = this.renderCustomNode(block.token, `${this.id}-block-${index}`, () => {
       return this.createTopLevelDefaultRenderable(block, index)
     })
     if (!custom.renderable) {
@@ -1623,11 +1625,16 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private renderCustomNode(token: MarkedToken, createDefault: () => CustomRenderDefaultResult): RenderNodeResult {
+  private renderCustomNode(
+    token: MarkedToken,
+    id: string,
+    createDefault: () => CustomRenderDefaultResult,
+  ): RenderNodeResult {
     if (!this._renderNode) return {}
 
     let defaultResult: CustomRenderDefaultResult | undefined
     const custom = this._renderNode(token, {
+      id,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
       concealCode: this._concealCode,

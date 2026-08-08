@@ -185,8 +185,7 @@ export function createMermaidCodeBlockRenderer(
   return (token, context) => {
     const kind = detectMermaidDiagram(token.text)
     if (!kind) return undefined
-    // OpenTUI's default block ID is the stable identity available for this fence across streaming updates.
-    const key = context.defaultRender()?.id
+    const key = context.id
     const options = typeof input === "function" ? input() : input
 
     try {
