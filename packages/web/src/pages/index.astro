@@ -23,55 +23,86 @@ const capturedFrame = `╭──────────────────
 │                       │
 ╰───────────────────────╯`
 
-// FIG_02-05 are short fragments that continue an existing "renderer" in
-// scope (imports omitted) so lines stay narrow enough for the 3-column flow.
+// FIG_02-04 are one continuous example: the FIG_01 tree grows, step by
+// step, into a small menu app. Each listing is the small delta on top of
+// the previous one (imports/renderer omitted so lines fit the 3-column
+// flow). Re-verify against the cited docs pages if their API changes.
 const layoutListing = `Box(
   { flexDirection: "row", width: "100%" },
   Box(
-    { width: 24, border: true },
-    Text({ content: "Sidebar" }),
+    { width: 20, border: true },
+    Text({ content: "Menu" }),
   ),
   Box(
     { flexGrow: 1, padding: 1 },
-    Text({ content: "Content" }),
+    Text({ content: "Hello, OpenTUI!" }),
   ),
 )`
 
-const codeComponentListing = `new CodeRenderable(renderer, {
-  content: "const answer = 42",
-  filetype: "typescript",
-  width: 34,
-  syntaxStyle: SyntaxStyle.fromStyles({
-    keyword: { fg: RGBA.fromHex("#ff7b72") },
-    number: { fg: RGBA.fromHex("#79c0ff") },
+const selectListing = `Box(
+  { flexDirection: "row", width: "100%" },
+  Select({
+    width: 20,
+    options: [
+      { name: "Espresso", description: "$3" },
+      { name: "Filter", description: "$4" },
+      { name: "Cold brew", description: "$5" },
+    ],
   }),
-})`
+  Box(
+    { flexGrow: 1, padding: 1 },
+    Text({ content: "Hello, OpenTUI!" }),
+  ),
+)`
 
-const tableListing = `new TextTableRenderable(renderer, {
-  width: "100%",
-  borderStyle: "rounded",
-  content: [
-    [[bold("Service")], [bold("Status")]],
-    [[fg("#999")("api")], [fg("#2c5")("OK")]],
-    [[fg("#999")("job")], [fg("#f90")("BUSY")]],
-  ],
-})`
-
-const imageListing = `const panel = new BoxRenderable(renderer, {
-  flexDirection: "column",
-  gap: 1,
-})
-panel.add(new ImageRenderable(renderer, {
-  source: "./cover.webp",
-  width: 40,
-  height: 15,
-  fit: "cover",
-}))
-panel.add(new TextRenderable(renderer, {
-  content: "Now playing",
+const interactionListing = `const detail = Text({
+  content: "Espresso — $3",
   fg: "#38bdf8",
-}))
-renderer.root.add(panel)`
+})
+
+menu.on(
+  SelectRenderableEvents.SELECTION_CHANGED,
+  (i, option) => {
+    detail.content =
+      \`\${option.name} — \${option.description}\`
+  },
+)`
+
+// Verified against packages/react/src/utils/index.ts: a <select>'s
+// onChange prop is wired to SelectRenderableEvents.SELECTION_CHANGED.
+const jsxListing = `function Menu() {
+  const [item, setItem] = useState(
+    "Espresso",
+  )
+
+  return (
+    <box flexDirection="row" width="100%">
+      <select
+        width={20}
+        options={options}
+        onChange={(i, o) => setItem(o.name)}
+      />
+      <box flexGrow={1} padding={1}>
+        <text fg="#38bdf8">{item}</text>
+      </box>
+    </box>
+  )
+}`
+
+const sshListing = `createServer({
+  hostKey: { path: "./host_key" },
+}).serve((session) => {
+  session.renderer.root.add(
+    Box(
+      { flexDirection: "row", width: "100%" },
+      menu,
+      Box(
+        { flexGrow: 1, padding: 1 },
+        detail,
+      ),
+    ),
+  )
+})`
 
 const indexData = [
   {
@@ -165,14 +196,14 @@ const indexData = [
 
       <!-- Illustrated Introduction: Front Matter -->
       <section class="editorial-frontmatter">
-        <h2 class="frontmatter-title">Let's build a terminal app.</h2>
+        <h2 class="frontmatter-title">Building a terminal app.</h2>
         <p class="frontmatter-subtitle">
-          You'll start with one component and end with something you could ship.
+          A step-by-step demo: a menu, a detail pane, and the code behind both.
         </p>
       </section>
 
       <p class="editorial-intro">
-        Build a tree of boxes, text, tables, and images. Lay it out with the Flexbox you already know, wire up keyboard and mouse input, and OpenTUI turns the result into terminal output &mdash; on your machine, over SSH, or compiled into a single binary. Here's the smallest version of that tree.
+        OpenTUI turns a tree of components into terminal output. Here's the smallest one there is.
       </p>
 
       <!-- FIG_01: The interface you write -->
@@ -206,17 +237,17 @@ const indexData = [
       <div class="editorial-flow">
 
         <p>
-          One component is not an app. Nest boxes, set <code>flexDirection</code>, <code>flexGrow</code>, and <code>gap</code>, and OpenTUI lays out the tree the way CSS Flexbox would: a sidebar beside a scrolling pane, a header pinned above a body, a status line pinned below. You describe relationships between elements, not pixel offsets, and OpenTUI resolves them against however many rows and columns the terminal actually has.
+          One box is not a menu. Add a second box next to the first.
         </p>
 
         <p>
-          Resize the terminal and the same tree resolves again against the new size; nothing you wrote changes. That property &mdash; a layout that survives a resize without a rewrite &mdash; is what makes a terminal app feel like an app, not a script that happens to print boxes.
+          Give the first box a fixed width. Give the second room to grow. Now there are two panes: one 20 columns wide, one that takes whatever is left.
         </p>
 
-        <!-- FIG_02: Layout & composition -->
+        <!-- FIG_02: two boxes -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_02</span>
-          <span class="fig-tag-top-right">[ SIDEBAR + CONTENT ]</span>
+          <span class="fig-tag-top-right">[ TWO BOXES ]</span>
 
           <span class="figure-code-label">Source</span>
           <pre class="figure-code"><code>{layoutListing}</code></pre>
@@ -224,7 +255,7 @@ const indexData = [
           <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; rendered at 60&times;20, then resized live</div>
 
           <div class="figure-caption-text">
-            A 24-column sidebar and a growing content pane, in four lines. Every measurement here is relative &mdash; resize the terminal and this tree resolves again on its own.
+            Same two boxes, running for real. Resize the terminal: the numbers change, nothing else does.
           </div>
           <span class="fig-tag-bottom-left">LAYOUT</span>
           <span class="fig-tag-bottom-right">FLEX &rarr; CELLS</span>
@@ -235,108 +266,127 @@ const indexData = [
         </p>
 
         <p>
-          Layout gives you structure; components give you substance. Beyond <code>Box</code> and <code>Text</code>, the library includes <code>Select</code> for menus, <code>Input</code> and <code>TextArea</code> for entry, <code>TextTable</code> for tabular data with per-cell styling, <code>Markdown</code> and syntax-highlighted <code>Code</code> for prose and source, <code>Image</code> for real pictures, and more &mdash; scrollboxes, tabs, sliders, ASCII banners, QR codes &mdash; all built from the same renderables as the box in FIG_01.
+          The left box is still just a box. Replace it with a <code>Select</code>.
         </p>
 
         <p>
-          <code>Code</code> highlights source with Tree-sitter, the same parser technology editors use, so a log viewer or diff tool gets real syntax colors instead of a best-effort regex. None of this requires leaving the renderable tree: a table and a syntax-highlighted panel compose exactly like two boxes do.
+          Same spot in the tree. Same width. But a <code>Select</code> remembers which option is highlighted, and the Up and Down keys move it &mdash; you didn't write that part.
         </p>
 
-        <!-- FIG_03: The component library -->
+        <!-- FIG_03: the box becomes a list -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_03</span>
-          <span class="fig-tag-top-right">[ TWO OF THE LIBRARY ]</span>
-
-          <span class="figure-code-label">Code</span>
-          <pre class="figure-code"><code>{codeComponentListing}</code></pre>
-
-          <span class="figure-code-label">TextTable</span>
-          <pre class="figure-code"><code>{tableListing}</code></pre>
-
-          <div class="figure-caption-text">
-            Two of the library's components, declared the same way as the tree in FIG_01: accurately highlighted source above, a styled and bordered table below.
-          </div>
-          <span class="fig-tag-bottom-left">OPENTUI CORE</span>
-          <span class="fig-tag-bottom-right">CODE &middot; TEXTTABLE</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/components/code">Code</a> &middot; <a href="/docs/components/text-table">Text table</a> &middot; <a href="/docs/components/markdown">Markdown</a> &middot; <a href="/docs/components/select">Select</a>
-        </p>
-
-        <p>
-          Every one of those components can take focus, and focus is what makes a terminal app interactive rather than a poster. When a component has focus, keyboard events route to it; <code>renderer.keyInput</code> emits structured key events with the parsed key name, modifiers, and the original terminal sequence, and paste arrives as its own event. <code>Select</code> turns arrow keys and <code>Enter</code> into an <code>ITEM_SELECTED</code> event without you writing a key-matching switch statement yourself.
-        </p>
-
-        <p>
-          Mouse events follow the same resolved bounds layout already computed, and the whole interaction surface is testable: <code>createTestRenderer</code> drives real key and mouse events against a real render loop, so you can assert on behavior instead of eyeballing a terminal.
-        </p>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/keyboard">Keyboard and input</a> &middot; <a href="/docs/components/select">Select</a> &middot; <a href="/docs/core-concepts/testing">Testing</a>
-        </p>
-
-        <p>
-          Terminals are not limited to sixteen colors and block characters anymore, and OpenTUI does not pretend otherwise. Every color is a full RGBA value, and <code>Image</code> decodes PNG, JPEG, WebP, and GIF into whatever the terminal actually supports &mdash; Kitty graphics, Sixel, or Unicode blocks &mdash; so a real photo, not an ASCII approximation, sits inside your layout next to ordinary text.
-        </p>
-
-        <p>
-          Color is not only for content: <code>colorMatrix</code> and <code>colorMatrixUniform</code> apply 4&times;4 RGBA transforms &mdash; invert, desaturate, sepia &mdash; directly to a frame buffer, the same primitive image editors use, running on your terminal's cells.
-        </p>
-
-        <!-- FIG_04: Color & real images -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_04</span>
-          <span class="fig-tag-top-right">[ IMAGE + TEXT, ONE TREE ]</span>
+          <span class="fig-tag-top-right">[ THE BOX BECOMES A LIST ]</span>
 
           <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{imageListing}</code></pre>
+          <pre class="figure-code"><code>{selectListing}</code></pre>
 
-          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; Kitty, Sixel, and block fallback, side by side</div>
+          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; Down arrow moving the highlight</div>
 
           <div class="figure-caption-text">
-            A cover image and a status line, declared together. Which bytes actually reach your terminal &mdash; Kitty, Sixel, or blocks &mdash; depends on what the terminal reports, not on what you wrote.
+            Press Down. &ldquo;Filter &mdash; $4&rdquo; highlights on the left. The right pane hasn't caught up yet &mdash; that's next.
           </div>
-          <span class="fig-tag-bottom-left">IMAGERENDERABLE</span>
-          <span class="fig-tag-bottom-right">KITTY &middot; SIXEL &middot; BLOCKS</span>
+          <span class="fig-tag-bottom-left">SELECT</span>
+          <span class="fig-tag-bottom-right">OPTIONS &rarr; HIGHLIGHT</span>
         </figure>
 
         <p class="flow-refs">
-          Continue reading: <a href="/docs/components/image">Image component</a> &middot; <a href="/docs/core-concepts/colors">Colors</a> &middot; <a href="/docs/reference/color-matrix">Color matrix</a>
+          Continue reading: <a href="/docs/components/select">Select</a> &middot; <a href="/docs/core-concepts/keyboard">Keyboard and input</a>
         </p>
 
         <p>
-          Everything above runs through <code>CliRenderer</code>, and <code>CliRenderer</code> is not tied to your machine. Use the imperative API directly, or let <code>@opentui/react</code> or <code>@opentui/solid</code> drive the identical renderables through JSX &mdash; same renderer, same components, different syntax. <code>@opentui/ssh</code> turns each accepted SSH connection into its own <code>CliRenderer</code>, so the app you just built can serve multiple remote users at once, in whichever of the three APIs you already wrote it in.
+          Wire the highlight to the pane on the right.
         </p>
 
         <p>
-          Bun can compile the whole thing &mdash; native library, parsers, and grammars included &mdash; into one executable with <code>bun build --compile</code>; Node.js single-executable applications work too. What you built as a script becomes something you can hand someone as a single file.
+          Add one <code>Text</code> for the pane, and one handler on the <code>Select</code> from FIG_03. Press Down twice from Espresso and the pane reads &ldquo;Cold brew &mdash; $5&rdquo;.
         </p>
 
-        <!-- FIG_05: One renderer, everywhere it runs -->
+        <!-- FIG_04: wire the highlight -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_04</span>
+          <span class="fig-tag-top-right">[ WIRE THE HIGHLIGHT ]</span>
+
+          <span class="figure-code-label">Source</span>
+          <pre class="figure-code"><code>{interactionListing}</code></pre>
+
+          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; highlight moving, detail pane updating in sync</div>
+
+          <div class="figure-caption-text">
+            One event handler, one property assignment. That's the entire interaction &mdash; no redraw call, nothing to schedule.
+          </div>
+          <span class="fig-tag-bottom-left">SELECTION_CHANGED</span>
+          <span class="fig-tag-bottom-right">EVENT &rarr; CONTENT</span>
+        </figure>
+
+        <p class="flow-refs">
+          Continue reading: <a href="/docs/core-concepts/testing">Testing</a> &middot; <a href="/docs/core-concepts/colors">Colors</a>
+        </p>
+
+        <p>
+          The same interaction is testable: <code>createTestRenderer</code> can send a Down keypress in a script and check what the pane says next. No real terminal required.
+        </p>
+
+        <p class="flow-refs">
+          Continue reading: <a href="/docs/core-concepts/testing">Testing</a>
+        </p>
+
+        <p>
+          The tree so far is small: one <code>Select</code>, two <code>Text</code> nodes, two <code>Box</code> wrappers. Here it is again, written as JSX instead of function calls.
+        </p>
+
+        <!-- FIG_05: same tree, different syntax -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_05</span>
-          <span class="fig-tag-top-right">[ ONE RENDERER, THREE WAYS OUT ]</span>
+          <span class="fig-tag-top-right">[ SAME TREE, DIFFERENT SYNTAX ]</span>
 
-          <div class="figure-placeholder" aria-hidden="true">Diagram pending &mdash; CliRenderer branching to a local terminal, an SSH session, and a compiled binary</div>
+          <span class="figure-code-label">Source</span>
+          <pre class="figure-code"><code>{jsxListing}</code></pre>
 
           <div class="figure-caption-text">
-            The same renderer sits underneath a local terminal session, a remote SSH session, and a compiled binary. Nothing about the component tree changes between them.
+            Same tree, same renderer: <code>onChange</code> is the same <code>SELECTION_CHANGED</code> event from FIG_04, just wired through a prop instead of <code>.on(...)</code>.
           </div>
-          <span class="fig-tag-bottom-left">CLIRENDERER</span>
-          <span class="fig-tag-bottom-right">LOCAL &middot; SSH &middot; BINARY</span>
+          <span class="fig-tag-bottom-left">@OPENTUI/REACT</span>
+          <span class="fig-tag-bottom-right">ONCHANGE &rarr; SELECTION_CHANGED</span>
         </figure>
 
         <p class="flow-refs">
-          Continue reading: <a href="/docs/bindings/react">React</a> &middot; <a href="/docs/bindings/solid">Solid</a> &middot; <a href="/docs/reference/ssh">SSH</a> &middot; <a href="/docs/reference/standalone-executables">Standalone executables</a>
+          Continue reading: <a href="/docs/bindings/react">React</a> &middot; <a href="/docs/bindings/solid">Solid</a>
         </p>
 
         <p>
-          None of this is hypothetical: OpenTUI already powers OpenCode in production, and will power terminal.shop next.
+          The tree doesn't need a local terminal either. Wrap it in an SSH handler and it renders wherever someone connects from.
+        </p>
+
+        <!-- FIG_06: the same tree, over SSH -->
+        <figure class="editorial-figure">
+          <span class="fig-tag-top-left">FIG_06</span>
+          <span class="fig-tag-top-right">[ THE SAME TREE, OVER SSH ]</span>
+
+          <span class="figure-code-label">Source</span>
+          <pre class="figure-code"><code>{sshListing}</code></pre>
+
+          <div class="figure-caption-text">
+            The exact tree from FIG_04, attached to <code>session.renderer</code> instead of <code>renderer</code>. Whoever connects sees the same menu.
+          </div>
+          <span class="fig-tag-bottom-left">@OPENTUI/SSH</span>
+          <span class="fig-tag-bottom-right">SESSION.RENDERER</span>
+        </figure>
+
+        <p class="flow-refs">
+          Continue reading: <a href="/docs/reference/ssh">SSH</a> &middot; <a href="/docs/reference/standalone-executables">Standalone executables</a>
         </p>
 
         <p>
-          You have now seen the shape of it: components and layout, interaction and testing, color and images, and the reach to run anywhere from a laptop to an SSH session to a single compiled binary. The index below follows each piece into the documentation &mdash; including <a href="/docs/core-concepts/rendering-pipeline">how the renderer resolves all of it</a> beneath the tree you write.
+          <code>bun build --compile</code> packages the whole program, tree included, into a single file. None of these three &mdash; JSX, SSH, or a compiled binary &mdash; changes a line of the tree itself.
+        </p>
+
+        <p>
+          A list on the left, details on the right, reachable over SSH: you've just built the shape of <code>ssh terminal.shop</code>. The renderer underneath is the same one drawing OpenCode's interface today.
+        </p>
+
+        <p>
+          Layout, a real component, live interaction, and three ways to ship it &mdash; that's what you just built. The index below follows each piece into the documentation, including <a href="/docs/core-concepts/rendering-pipeline">how the renderer resolves all of it</a> beneath the tree you write.
         </p>
 
       </div>
