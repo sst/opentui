@@ -8,6 +8,7 @@ import type {
 } from "./types.js"
 import { MermaidSyntaxError } from "../diagnostics.js"
 import {
+  decodeMermaidText,
   firstMeaningfulMermaidLine,
   meaningfulNumberedMermaidLines,
   stripMermaidQuotes as stripQuotes,
@@ -145,7 +146,7 @@ function parseEdgeOperators(line: string): ParsedEdgeOperator[] {
     return {
       index: match.index,
       end: match.index + match[0].length,
-      label: (match[2] ?? match[4] ?? match[7] ?? "").trim(),
+      label: decodeMermaidText((match[2] ?? match[4] ?? match[7] ?? "").trim()),
       style: edgeStyleFromArrow(startArrow, endArrow),
       arrowhead: endArrow !== "---",
       orderOnly: endArrow === "~~~",

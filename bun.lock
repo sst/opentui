@@ -97,6 +97,7 @@
       "version": "0.5.1",
       "dependencies": {
         "@opentui/core": "workspace:*",
+        "entities": "7.0.1",
         "string-width": "7.2.0",
       },
       "devDependencies": {

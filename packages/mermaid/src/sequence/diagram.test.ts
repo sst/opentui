@@ -29,6 +29,18 @@ sequenceDiagram
     ])
   })
 
+  test("decodes HTML entities in participant, message, and note labels", () => {
+    const diagram = parseMermaidSequenceDiagram(`sequenceDiagram
+  participant A as Worker &amp; signer
+  participant B
+  A->>B: ack &lt;3s
+  Note over A,B: result &#8805; 1`)
+
+    expect(diagram.participants[0]?.label).toBe("Worker & signer")
+    expect(diagram.messages[0]?.label).toBe("ack <3s")
+    expect(diagram.steps.find((step) => step.type === "note")?.note.label).toBe("result ≥ 1")
+  })
+
   test("renders a terminal sequence diagram", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram

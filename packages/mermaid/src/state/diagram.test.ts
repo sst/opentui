@@ -47,6 +47,17 @@ stateDiagram-v2
     })
   })
 
+  test("decodes HTML entities in state, transition, and note labels", () => {
+    const diagram = parseMermaidStateDiagram(`stateDiagram-v2
+  state "Ready &amp; waiting" as Ready
+  Ready --> Done: elapsed &lt;3s
+  note right of Done: result &#x2265; 1`)
+
+    expect(diagram.states.find((state) => state.id === "Ready")?.label).toBe("Ready & waiting")
+    expect(diagram.transitions[0]?.label).toBe("elapsed <3s")
+    expect(diagram.notes[0]?.lines).toEqual(["result ≥ 1"])
+  })
+
   test("parses choice pseudo-states", () => {
     const diagram = parseMermaidStateDiagram(`
 stateDiagram-v2

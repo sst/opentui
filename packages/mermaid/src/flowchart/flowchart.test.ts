@@ -537,6 +537,14 @@ flowchart TD
     ])
   })
 
+  test("decodes HTML entities in node and edge labels", () => {
+    const diagram = parseMermaidFlowchartDiagram(`flowchart LR
+  A[HMAC verify &lt;3s &amp; continue] -->|result &#x2265; 1| B[Done]`)
+
+    expect(diagram.nodes.find((node) => node.id === "A")?.label).toBe("HMAC verify <3s & continue")
+    expect(diagram.edges[0]?.label).toBe("result ≥ 1")
+  })
+
   test("parses and renders each edge in a chained flowchart statement", () => {
     const content = `flowchart LR
   API --> Worker --> DB[(Database)]`

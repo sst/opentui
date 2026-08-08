@@ -26,9 +26,12 @@ if (!manifest.dependencies?.["@opentui/core"]?.match(/^\d+\.\d+\.\d+/)) {
 
 const temporaryDir = mkdtempSync(join(tmpdir(), "opentui-mermaid-dist-"))
 try {
+  const consumerDependencies = Object.fromEntries(
+    Object.entries(manifest.dependencies ?? {}).filter(([name]) => name !== "@opentui/core"),
+  )
   writeFileSync(
     join(temporaryDir, "package.json"),
-    `${JSON.stringify({ private: true, type: "module", dependencies: { "string-width": "7.2.0" } }, null, 2)}\n`,
+    `${JSON.stringify({ private: true, type: "module", dependencies: consumerDependencies }, null, 2)}\n`,
   )
   run("bun", ["install", "--ignore-scripts"], temporaryDir)
 
