@@ -165,7 +165,7 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
 
     const choiceMatch = line.match(CHOICE_STATE_RE)
     if (choiceMatch) {
-      ensureState(states, choiceMatch[1]!, "┼", "choice", parentId)
+      ensureState(states, choiceMatch[1]!, choiceMatch[1]!, "choice", parentId)
       continue
     }
 
