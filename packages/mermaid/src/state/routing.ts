@@ -736,6 +736,7 @@ export function createStateTransitionJunctionPlans(
   bounds: ReadonlyMap<string, BoxBounds>,
   renderPlans: readonly StateTransitionRenderPlan[],
 ): StateTransitionJunctionPlan[] {
+  const renderPlanByTransition = new Map(renderPlans.map((plan) => [plan.route.transition, plan]))
   return diagram.states.flatMap((state): StateTransitionJunctionPlan[] => {
     const kind =
       state.kind === "choice" ? "choice" : isHiddenCompositeMarker(state) ? "hidden-composite-marker" : undefined
@@ -746,7 +747,7 @@ export function createStateTransitionJunctionPlans(
     const connections = new Set<DiagramDirection>()
     const transitions: StateVisibleTransition[] = []
     for (const transition of diagram.transitions) {
-      const renderPlan = renderPlans.find((plan) => plan.route.transition === transition)
+      const renderPlan = renderPlanByTransition.get(transition)
       let connected = false
       if (transition.to === state.id) {
         const junction = renderPlan?.path.at(-1)

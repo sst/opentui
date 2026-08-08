@@ -23,7 +23,7 @@ import {
   type DiagramSide,
 } from "../core/geometry.js"
 import { diagramTextWidth, splitDiagramLines } from "../core/text.js"
-import { flowchartEdgeLabelLayout } from "./labels.js"
+import { flowchartEdgeLabelLayout, type FlowchartEdgeLabelLayout } from "./labels.js"
 import type {
   FlowchartDiagram,
   FlowchartDirection,
@@ -633,9 +633,8 @@ function pathIntersectsBounds(
   return false
 }
 
-function labelIntersectsBounds(route: FlowchartEdgeRoute, bounds: FlowchartNodeBounds): boolean {
-  if (!route.edge.label) return false
-  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
+function labelIntersectsBounds(label: FlowchartEdgeLabelLayout | undefined, bounds: FlowchartNodeBounds): boolean {
+  if (!label) return false
   return (
     label.point.x <= bounds.left + bounds.width - 1 &&
     label.point.x + label.width - 1 >= bounds.left &&
@@ -644,9 +643,11 @@ function labelIntersectsBounds(route: FlowchartEdgeRoute, bounds: FlowchartNodeB
   )
 }
 
-function labelIntersectsSubgraphFrame(route: FlowchartEdgeRoute, bounds: FlowchartSubgraphBounds): boolean {
-  if (!route.edge.label) return false
-  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
+function labelIntersectsSubgraphFrame(
+  label: FlowchartEdgeLabelLayout | undefined,
+  bounds: FlowchartSubgraphBounds,
+): boolean {
+  if (!label) return false
   const labelRight = label.point.x + label.width - 1
   const labelBottom = label.point.y + label.height - 1
   const right = bounds.left + bounds.width - 1
@@ -672,13 +673,12 @@ function routeLength(route: FlowchartEdgeRoute): number {
   return length
 }
 
-function labelIntersectsLabels(route: FlowchartEdgeRoute, routes: readonly FlowchartEdgeRoute[]): boolean {
-  if (!route.edge.label) return false
-  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
-  const routeIndex = routes.findIndex((candidate) => candidate.edge === route.edge)
-  return routes.slice(routeIndex + 1).some((other) => {
-    if (!other.edge.label) return false
-    const otherLabel = flowchartEdgeLabelLayout(other.points, other.edge.label, diagramTextWidth)
+function labelIntersectsLabels(
+  label: FlowchartEdgeLabelLayout | undefined,
+  otherLabels: readonly FlowchartEdgeLabelLayout[],
+): boolean {
+  if (!label) return false
+  return otherLabels.some((otherLabel) => {
     return label.lines.some((line, lineIndex) => {
       const textLeft = label.point.x + 1
       const textRight = label.point.x + diagramTextWidth(line) - 2
@@ -692,14 +692,15 @@ function labelIntersectsLabels(route: FlowchartEdgeRoute, routes: readonly Flowc
   })
 }
 
-function labelIntersectsLaterRoutePaths(route: FlowchartEdgeRoute, routes: readonly FlowchartEdgeRoute[]): boolean {
-  if (!route.edge.label) return false
-  const routeIndex = routes.findIndex((candidate) => candidate.edge === route.edge)
-  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
+function labelIntersectsLaterRoutePaths(
+  label: FlowchartEdgeLabelLayout | undefined,
+  laterRoutes: readonly FlowchartEdgeRoute[],
+): boolean {
+  if (!label) return false
   return label.lines.some((line, lineIndex) => {
     const width = diagramTextWidth(line) - 2
     if (width <= 0) return false
-    return routes.slice(routeIndex + 1).some((other) =>
+    return laterRoutes.some((other) =>
       pathIntersectsBounds(other.points, {
         left: label.point.x + 1,
         top: label.point.y + lineIndex,
@@ -715,20 +716,31 @@ function avoidNodeObstacles(
   routes: readonly FlowchartEdgeRoute[],
   bounds: Map<string, FlowchartNodeBounds>,
   subgraphBounds: ReadonlyMap<string, FlowchartSubgraphBounds> | undefined,
+  routeIndex: number,
 ): FlowchartEdgeRoute {
   const allNodeBounds = [...bounds.values()]
   const allSubgraphBounds = [...(subgraphBounds?.values() ?? [])]
-  const intersectsObstacle = (candidate: FlowchartEdgeRoute): boolean =>
-    allNodeBounds.some((bound) => {
-      const isSource = bound.id === route.edge.from
-      const isTarget = bound.id === route.edge.to
-      const allowedContact = isSource && isTarget ? "both" : isSource ? "source" : isTarget ? "target" : undefined
-      return pathIntersectsBounds(candidate.points, bound, allowedContact)
-    }) ||
-    allNodeBounds.some((bound) => labelIntersectsBounds(candidate, bound)) ||
-    allSubgraphBounds.some((bound) => labelIntersectsSubgraphFrame(candidate, bound)) ||
-    (subgraphBounds !== undefined &&
-      (labelIntersectsLabels(candidate, routes) || labelIntersectsLaterRoutePaths(candidate, routes)))
+  const laterRoutes = routes.slice(routeIndex + 1)
+  const laterLabels = laterRoutes.flatMap((laterRoute) =>
+    laterRoute.edge.label ? [flowchartEdgeLabelLayout(laterRoute.points, laterRoute.edge.label, diagramTextWidth)] : [],
+  )
+  const intersectsObstacle = (candidate: FlowchartEdgeRoute): boolean => {
+    const label = candidate.edge.label
+      ? flowchartEdgeLabelLayout(candidate.points, candidate.edge.label, diagramTextWidth)
+      : undefined
+    return (
+      allNodeBounds.some((bound) => {
+        const isSource = bound.id === route.edge.from
+        const isTarget = bound.id === route.edge.to
+        const allowedContact = isSource && isTarget ? "both" : isSource ? "source" : isTarget ? "target" : undefined
+        return pathIntersectsBounds(candidate.points, bound, allowedContact)
+      }) ||
+      allNodeBounds.some((bound) => labelIntersectsBounds(label, bound)) ||
+      allSubgraphBounds.some((bound) => labelIntersectsSubgraphFrame(label, bound)) ||
+      (subgraphBounds !== undefined &&
+        (labelIntersectsLabels(label, laterLabels) || labelIntersectsLaterRoutePaths(label, laterRoutes)))
+    )
+  }
   if (!intersectsObstacle(route)) return route
 
   const from = bounds.get(route.edge.from)
@@ -840,7 +852,7 @@ export function routeFlowchartEdges(
     routes.push({ edge, points: edgePath(from, to, directionForEdge(edge), leftBoundary) })
   }
   for (let index = routes.length - 1; index >= 0; index--) {
-    routes[index] = avoidNodeObstacles(routes[index]!, routes, bounds, subgraphBounds)
+    routes[index] = avoidNodeObstacles(routes[index]!, routes, bounds, subgraphBounds, index)
   }
   return routes
 }
