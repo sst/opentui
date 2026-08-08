@@ -129,22 +129,19 @@ export const validateClipboardText = (text: string, maxWriteBytes: number): void
   if (text.includes("\0")) throw new TypeError("writeText does not support NUL characters")
   const byteLimit = Math.min(maxWriteBytes, MAX_U32)
   let byteLength = 0
-  for (let index = 0; index < text.length; index += 1) {
-    const codeUnit = text.charCodeAt(index)
-    if (codeUnit <= 0x7f) {
+  for (const character of text) {
+    const codePoint = character.codePointAt(0)!
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+      throw new TypeError("writeText does not support unpaired UTF-16 surrogates")
+    }
+    if (codePoint <= 0x7f) {
       byteLength += 1
-    } else if (codeUnit <= 0x7ff) {
+    } else if (codePoint <= 0x7ff) {
       byteLength += 2
-    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < text.length) {
-      const nextCodeUnit = text.charCodeAt(index + 1)
-      if (nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff) {
-        byteLength += 4
-        index += 1
-      } else {
-        byteLength += 3
-      }
-    } else {
+    } else if (codePoint <= 0xffff) {
       byteLength += 3
+    } else {
+      byteLength += 4
     }
     if (byteLength > byteLimit) {
       throw new RangeError(`writeText exceeds the configured ${maxWriteBytes} byte limit`)

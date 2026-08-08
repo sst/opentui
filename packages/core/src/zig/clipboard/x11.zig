@@ -78,9 +78,12 @@ const ATOM_NAMES = [_][]const u8{
     "image/png",
     "OPENTUI_CLIPBOARD",
     "INCR",
+    "text/plain;charset=UTF-8",
     "TIMESTAMP",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
 };
-const ATOM_VALUE_COUNT = 11;
 const ATOM_TIMESTAMP_INDEX = 10;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
@@ -193,7 +196,11 @@ pub const Atoms = struct {
     text: u32,
     text_plain: u32,
     text_plain_utf8: u32,
+    text_plain_utf8_upper: u32,
     png: u32,
+    jpeg: u32,
+    webp: u32,
+    gif: u32,
     property: u32,
     incr: u32,
     timestamp: u32,
@@ -207,8 +214,7 @@ pub const Connection = struct {
     phase: Phase = .idle,
     failure: Failure = .none,
     cookies: [ATOM_NAMES.len]linux.XcbCookie = undefined,
-    // Keep the former MULTIPLE slot so host-side timestamp fixtures retain their stable index.
-    atom_values: [ATOM_VALUE_COUNT]u32 = undefined,
+    atom_values: [ATOM_NAMES.len]u32 = undefined,
     request_index: u8 = 0,
     reply_index: u8 = 0,
     output_ready_override: ?bool = null,
@@ -290,7 +296,11 @@ pub const Connection = struct {
             .text = self.atom_values[3],
             .text_plain = self.atom_values[4],
             .text_plain_utf8 = self.atom_values[5],
+            .text_plain_utf8_upper = self.atom_values[9],
             .png = self.atom_values[6],
+            .jpeg = self.atom_values[11],
+            .webp = self.atom_values[12],
+            .gif = self.atom_values[13],
             .property = self.atom_values[7],
             .incr = self.atom_values[8],
             .timestamp = self.atom_values[ATOM_TIMESTAMP_INDEX],
@@ -555,7 +565,7 @@ pub const Connection = struct {
         const reply: *const linux.XcbInternAtomReply = @ptrCast(@alignCast(opaque_reply));
         if (reply.atom == 0) return self.fail(.atom);
         const atom_index = self.reply_index - 1;
-        self.atom_values[if (atom_index < 9) atom_index else ATOM_TIMESTAMP_INDEX] = reply.atom;
+        self.atom_values[atom_index] = reply.atom;
 
         if (self.reply_index < self.request_index) return .pending;
         self.phase = .window;
@@ -566,14 +576,25 @@ pub const Connection = struct {
         return if (primary) ATOM_PRIMARY else self.atoms().?.clipboard;
     }
 
-    pub fn targetAtoms(self: *const Connection, mime: []const u8, output: *[5]u32) []const u32 {
+    pub fn targetAtoms(self: *const Connection, mime: []const u8, output: *[6]u32) []const u32 {
         const atoms_value = self.atoms().?;
-        if (std.ascii.eqlIgnoreCase(mime, "image/png")) {
-            output[0] = atoms_value.png;
+        const image_atom = if (std.ascii.eqlIgnoreCase(mime, "image/png"))
+            atoms_value.png
+        else if (std.ascii.eqlIgnoreCase(mime, "image/jpeg"))
+            atoms_value.jpeg
+        else if (std.ascii.eqlIgnoreCase(mime, "image/webp"))
+            atoms_value.webp
+        else if (std.ascii.eqlIgnoreCase(mime, "image/gif"))
+            atoms_value.gif
+        else
+            0;
+        if (image_atom != 0) {
+            output[0] = image_atom;
             return output[0..1];
         }
         if (!std.ascii.eqlIgnoreCase(mime, "text/plain")) return output[0..0];
         output.* = .{
+            atoms_value.text_plain_utf8_upper,
             atoms_value.text_plain_utf8,
             atoms_value.utf8_string,
             atoms_value.text_plain,
@@ -734,9 +755,11 @@ pub const Connection = struct {
         }
         const atoms_value = self.atoms().?;
         const text_type_supported = reply.atom_type == atoms_value.utf8_string or
+            reply.atom_type == atoms_value.text_plain_utf8_upper or
             reply.atom_type == atoms_value.text_plain_utf8 or reply.atom_type == atoms_value.text_plain or
             reply.atom_type == ATOM_STRING;
         const target_is_text = state.target == atoms_value.text or state.target == atoms_value.utf8_string or
+            state.target == atoms_value.text_plain_utf8_upper or
             state.target == atoms_value.text_plain_utf8 or state.target == atoms_value.text_plain or
             state.target == ATOM_STRING;
         const accepted_type = if (target_is_text)
@@ -1911,12 +1934,15 @@ test "X11 MIME candidates preserve caller order and deterministic target compati
     var connection: Connection = undefined;
     connection.phase = .ready;
     for (&connection.atom_values, 0..) |*atom, index| atom.* = @intCast(100 + index);
-    var output: [5]u32 = undefined;
+    var output: [6]u32 = undefined;
 
     const text = connection.targetAtoms("text/plain", &output);
-    try std.testing.expectEqualSlices(u32, &.{ 105, 102, 104, 103, 31 }, text);
+    try std.testing.expectEqualSlices(u32, &.{ 109, 105, 102, 104, 103, 31 }, text);
     const png = connection.targetAtoms("image/png", &output);
     try std.testing.expectEqualSlices(u32, &.{106}, png);
+    try std.testing.expectEqualSlices(u32, &.{111}, connection.targetAtoms("image/jpeg", &output));
+    try std.testing.expectEqualSlices(u32, &.{112}, connection.targetAtoms("image/webp", &output));
+    try std.testing.expectEqualSlices(u32, &.{113}, connection.targetAtoms("image/gif", &output));
     try std.testing.expectEqual(@as(usize, 0), connection.targetAtoms("application/octet-stream", &output).len);
 }
 
@@ -2799,7 +2825,7 @@ test "X11 atom initialization polls one reply per drive without blocking" {
     try std.testing.expectEqual(Progress.ready, connection.drive());
     const atoms = connection.atoms().?;
     try std.testing.expectEqual(@as(u32, 101), atoms.clipboard);
-    try std.testing.expectEqual(@as(u32, 110), atoms.timestamp);
+    try std.testing.expectEqual(@as(u32, 111), atoms.timestamp);
     try std.testing.expectEqual(@as(u32, 0), fake.discard_count);
 }
 

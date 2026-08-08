@@ -30,6 +30,10 @@ typedef struct {
     BOOL limit_exceeded;
 } ot_clipboard_macos_output;
 
+static int32_t ot_clipboard_macos_validate_pasteboard(NSPasteboard *pasteboard) {
+    return pasteboard == nil ? OT_CLIPBOARD_MACOS_STATUS_FAILED : OT_CLIPBOARD_MACOS_STATUS_OK;
+}
+
 static size_t ot_clipboard_macos_put_png_bytes(void *context, const void *bytes, size_t count) {
     ot_clipboard_macos_output *output = context;
     if (output->limit_exceeded || count > output->limit - output->length) {
@@ -216,6 +220,9 @@ int32_t ot_clipboard_macos_read(uint32_t mime, uint32_t max_bytes, uint32_t max_
                 return status;
             }
             NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+            if (ot_clipboard_macos_validate_pasteboard(pasteboard) != OT_CLIPBOARD_MACOS_STATUS_OK) {
+                return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+            }
             const void *source = NULL;
             NSUInteger length = 0;
             NSString *text = nil;
@@ -344,6 +351,10 @@ ot_clipboard_macos_test_bounded_output(uint32_t limit, uint32_t first_count,
 
 __attribute__((visibility("hidden"))) int32_t ot_clipboard_macos_test_clear_null(void) {
     return ot_clipboard_macos_clear_pasteboard(nil);
+}
+
+__attribute__((visibility("hidden"))) int32_t ot_clipboard_macos_test_read_null(void) {
+    return ot_clipboard_macos_validate_pasteboard(nil);
 }
 
 void ot_clipboard_macos_free_bytes(uint8_t *bytes) {

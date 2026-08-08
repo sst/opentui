@@ -173,7 +173,7 @@ const Operation = struct {
     mechanism: ?clipboard_linux.Mechanism = null,
     x11_read: clipboard_x11.ReadState = .{},
     x11_write: clipboard_x11.WriteState = .{},
-    x11_targets: [5]u32 = undefined,
+    x11_targets: [6]u32 = undefined,
     x11_target_count: u8 = 0,
     x11_target_index: u8 = 0,
     platform_cancel: std.atomic.Value(bool) = .init(false),
@@ -1042,7 +1042,7 @@ const Service = struct {
             operation.preference_offset = offset;
             const preferred_essence = clipboard_wayland.canonicalMimeEssence(preferred) orelse continue;
             if (!std.ascii.eqlIgnoreCase(preferred_essence, "text/plain") and
-                !std.ascii.eqlIgnoreCase(preferred_essence, "image/png")) continue;
+                !isEncodedImageMime(preferred_essence)) continue;
             implemented = true;
             operation.implemented_candidate_attempted = true;
             const match = service.wayland.?.offeredMime(offer, preferred) orelse continue;
@@ -1102,8 +1102,7 @@ const Service = struct {
             const preferred = request[offset .. offset + length];
             offset += length;
             const essence = clipboard_wayland.canonicalMimeEssence(preferred) orelse continue;
-            if (std.ascii.eqlIgnoreCase(essence, "text/plain") or
-                std.ascii.eqlIgnoreCase(essence, "image/png")) return true;
+            if (std.ascii.eqlIgnoreCase(essence, "text/plain") or isEncodedImageMime(essence)) return true;
         }
         return false;
     }
@@ -1150,6 +1149,13 @@ const Service = struct {
         operation.wayland_transfer_format = waylandTransferFormat(preferred, offered);
         operation.transfer_fd = pipe[0];
         return .pending;
+    }
+
+    fn isEncodedImageMime(mime: []const u8) bool {
+        return std.ascii.eqlIgnoreCase(mime, "image/png") or
+            std.ascii.eqlIgnoreCase(mime, "image/jpeg") or
+            std.ascii.eqlIgnoreCase(mime, "image/webp") or
+            std.ascii.eqlIgnoreCase(mime, "image/gif");
     }
 
     fn rememberWaylandReadFailure(_: *Service, operation: *Operation) OperationStatus {
@@ -1668,7 +1674,9 @@ pub fn startWriteOperation(
     if (service.operations.items.len >= service.max_operations) return .limit_exceeded;
     const selection = parseSelection(selection_value) orelse return .invalid_argument;
     const text = sliceFromPointer(text_pointer, text_length) orelse return .invalid_argument;
-    if (text.len == 0 or std.mem.indexOfScalar(u8, text, 0) != null) return .invalid_argument;
+    if (text.len == 0 or std.mem.indexOfScalar(u8, text, 0) != null or !std.unicode.utf8ValidateSlice(text)) {
+        return .invalid_argument;
+    }
     return startImmediateOperation(service, service_handle, .write, text, timeout_ms, 0, 0, 0, selection, out_handle);
 }
 
@@ -1925,6 +1933,10 @@ test "clipboard production operations validate requests and remain unsupported u
     try std.testing.expectEqual(
         StartStatus.invalid_argument,
         startWriteOperation(service, "bad\x00text", 8, 0, 100, &operation),
+    );
+    try std.testing.expectEqual(
+        StartStatus.invalid_argument,
+        startWriteOperation(service, "bad\xfftext", 8, 0, 100, &operation),
     );
     try std.testing.expectEqual(
         StartStatus.ok,

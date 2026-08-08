@@ -180,6 +180,9 @@ describe("createHostClipboard", () => {
     for (const [text, error] of [
       ["", "non-empty"],
       ["a\0b", "NUL"],
+      ["\ud800", "unpaired UTF-16 surrogate"],
+      ["\ud800a", "unpaired UTF-16 surrogate"],
+      ["\udc00", "unpaired UTF-16 surrogate"],
       ["hello", RangeError],
       ["世界", RangeError],
       ["ééé", RangeError],
@@ -189,7 +192,8 @@ describe("createHostClipboard", () => {
     expect(fake.writes).toHaveLength(0)
     await host.writeText("four")
     await host.writeText("éé")
-    expect(fake.writes).toHaveLength(2)
+    await host.writeText("😀")
+    expect(fake.writes).toHaveLength(3)
     await host.dispose()
   })
 
