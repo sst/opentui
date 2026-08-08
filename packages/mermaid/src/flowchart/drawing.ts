@@ -148,7 +148,7 @@ function drawSubgraphLabel(grid: FlowchartGrid, bounds: FlowchartSubgraphBounds)
 }
 
 function drawEdgeLabel(grid: FlowchartGrid, route: FlowchartEdgeRoute, style: FlowchartCellStyle): void {
-  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, visualLength)
+  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, visualLength, route.labelAxis)
   for (const [index, line] of label.lines.entries()) {
     grid.setText(label.point.x, label.point.y + index, line, style)
   }

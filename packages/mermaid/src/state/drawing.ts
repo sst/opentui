@@ -200,7 +200,8 @@ function drawTransitionJunctionPlans(
 ): void {
   for (const plan of createStateTransitionJunctionPlans(diagram, bounds, renderPlans)) {
     const style = plan.kind === "choice" ? "choice" : "transition"
-    setCell(grid, plan.bounds.left, plan.bounds.top, diagramLineGlyph(plan.connections, "rounded"), style)
+    const char = plan.kind === "choice" ? "┼" : diagramLineGlyph(plan.connections, "rounded")
+    setCell(grid, plan.bounds.left, plan.bounds.top, char, style)
   }
 }
 

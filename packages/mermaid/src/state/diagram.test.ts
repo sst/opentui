@@ -384,7 +384,7 @@ stateDiagram-v2
 
     expect(output).toMatchInlineSnapshot(`
       "              ╭─────────╮   submit          ok      ╭───────╮
-      ●────────────▶│ Editing ├─────────────┬────────────▶│ Saved │
+      ●────────────▶│ Editing ├─────────────┼────────────▶│ Saved │
                     ╰──┬──────╯             │             ╰───────╯
                      ▲ │    ▲ type          │ fail
                      │ ╰────╯               │
@@ -411,7 +411,7 @@ stateDiagram-v2
   Decision --> Done
   Done --> [*]`)
 
-    expect(output).toContain("Upper ├─────────────┬────────────▶│ Done")
+    expect(output).toContain("Upper ├─────────────┼────────────▶│ Done")
   })
 
   test("renders self transitions as loops in vertical diagrams", () => {
@@ -442,6 +442,52 @@ stateDiagram-v2
     expect(horizontal).toContain("second")
     expect(vertical).toContain("first")
     expect(vertical).toContain("second")
+  })
+
+  test("separates labels on four parallel vertical transitions", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction TB
+  A --> B: one
+  A --> B: two
+  A --> B: three
+  A --> B: four`)
+
+    expect(output).not.toContain("twothree")
+    for (const label of ["one", "two", "three", "four"]) {
+      expect(output.match(new RegExp(label, "g"))).toHaveLength(1)
+    }
+  })
+
+  test("keeps explicit choices visible in choice-only cycles", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction TB
+  state One <<choice>>
+  state Two <<choice>>
+  state Three <<choice>>
+  One --> Two: clockwise
+  Two --> Three: clockwise
+  Three --> One: clockwise`)
+
+    expect(output.match(/┼/g)).toHaveLength(3)
+  })
+
+  test("routes dense horizontal transitions around unrelated states", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B: ab
+  A --> C: ac
+  A --> D: ad
+  B --> A: ba
+  B --> C: bc
+  B --> D: bd
+  C --> A: ca
+  C --> B: cb
+  C --> D: cd
+  D --> A: da
+  D --> B: db
+  D --> C: dc`)
+
+    for (const state of ["A", "B", "C", "D"]) expect(output.match(new RegExp(state, "g"))).toHaveLength(1)
   })
 
   test("routes parallel transitions around vertically offset states", () => {

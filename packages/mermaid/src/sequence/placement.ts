@@ -11,7 +11,7 @@ import type {
   SequenceStep,
 } from "./types.js"
 
-const NOTE_HORIZONTAL_PADDING = 1
+const NOTE_HORIZONTAL_PADDING = 2
 const GROUP_HORIZONTAL_PADDING = 2
 const FRAGMENT_HORIZONTAL_OVERHANG = 3
 
@@ -25,7 +25,7 @@ export interface SequenceParticipantPlacement {
   centerX: number
   headerLeftX: number
   headerRightX: number
-  labelX: number
+  labelLines: string[]
 }
 
 export interface SequenceGroupPlacement {
@@ -39,6 +39,14 @@ export interface SequenceWallPlacement {
   bounds: SequenceHorizontalBounds
   startY: number
   endY: number
+}
+
+export interface SequenceActivationPlacement {
+  participant: string
+  centerX: number
+  startY: number
+  endY: number
+  depth: number
 }
 
 export type SequenceStepPlacement =
@@ -88,6 +96,7 @@ export interface SequencePlacementPlan {
   }
   participants: SequenceParticipantPlacement[]
   groups: SequenceGroupPlacement[]
+  activations: SequenceActivationPlacement[]
   steps: SequenceStepPlacement[]
 }
 
@@ -132,7 +141,8 @@ function messageLabelText(message: SequenceMessage): string {
 }
 
 function participantHeaderWidth(label: string, compact: boolean): number {
-  return compact ? visualLength(label) : Math.max(5, visualLength(label) + 4)
+  const width = labelLinesWidth(mermaidLabelLines(label))
+  return compact ? width : Math.max(5, width + 4)
 }
 
 function fragmentLabelText(fragment: SequenceFragment): string {
@@ -387,7 +397,9 @@ function resolveParticipantCenters(
     if (fromIndex === toIndex && fromIndex >= 0 && fromIndex < diagram.participants.length - 1) {
       gaps[fromIndex] = Math.max(
         gaps[fromIndex]!,
-        selfMessageLoopWidth(message) + Math.ceil(visualLength(diagram.participants[fromIndex + 1]!.label) / 2) + 2,
+        selfMessageLoopWidth(message) +
+          Math.ceil(labelLinesWidth(mermaidLabelLines(diagram.participants[fromIndex + 1]!.label)) / 2) +
+          2,
       )
       continue
     }
@@ -469,6 +481,7 @@ export function createSequencePlacementPlan(
       },
       participants: [],
       groups: [],
+      activations: [],
       steps: [],
     }
   }
@@ -505,9 +518,13 @@ export function createSequencePlacementPlan(
     fragments = fragmentBounds()
   }
   const hasGroups = groups.length > 0
+  const participantLabelHeight = Math.max(
+    1,
+    ...diagram.participants.map((participant) => mermaidLabelLines(participant.label).length),
+  )
   const participantHeaderTopY = hasGroups ? 1 : 0
   const participantHeaderY = participantHeaderTopY + (compact ? 0 : 1)
-  const participantRuleY = participantHeaderTopY + (compact ? 0 : 2)
+  const participantRuleY = participantHeaderTopY + (compact ? participantLabelHeight - 1 : participantLabelHeight + 1)
   const lifelineStartY = participantRuleY + 1
   const stepStartY = lifelineStartY + 1
   const width = Math.max(contentBounds.rightX + 1, ...groups.map((group) => group.rightX + 1), fragments.rightX + 1)
@@ -519,19 +536,46 @@ export function createSequencePlacementPlan(
     const centerX = centers[index]!
     const width = participantHeaderWidth(participant.label, compact)
     const headerLeftX = centerX - Math.floor(width / 2)
+    const labelLines = mermaidLabelLines(participant.label)
     return {
       participant,
       centerX,
       headerLeftX,
       headerRightX: headerLeftX + width - 1,
-      labelX: centeredStart(centerX, participant.label),
+      labelLines,
     }
   })
   const steps: SequenceStepPlacement[] = []
+  const activations: SequenceActivationPlacement[] = []
+  const activeByParticipant = new Map<string, Array<{ startY: number; depth: number }>>()
+  const lastEventYByParticipant = new Map<string, number>()
+  const openActivation = (participant: string, y: number): void => {
+    const active = activeByParticipant.get(participant) ?? []
+    active.push({ startY: y, depth: active.length })
+    activeByParticipant.set(participant, active)
+  }
+  const closeActivation = (participant: string, y: number): void => {
+    const active = activeByParticipant.get(participant)
+    const opened = active?.pop()
+    const participantIndex = indexes.get(participant)
+    if (!opened || participantIndex === undefined) return
+    activations.push({
+      participant,
+      centerX: centers[participantIndex]!,
+      startY: opened.startY,
+      endY: y,
+      depth: opened.depth,
+    })
+  }
   let stepY = stepStartY
   const activeFrames: ActiveFragmentFrame[] = []
   for (const [stepIndex, step] of diagram.steps.entries()) {
-    if (step.type === "activation") continue
+    if (step.type === "activation") {
+      const eventY = Math.min(lastEventYByParticipant.get(step.activation.participant) ?? stepY, lifelineEndY)
+      if (step.activation.active) openActivation(step.activation.participant, eventY)
+      else closeActivation(step.activation.participant, eventY)
+      continue
+    }
     const stepHeight = getStepHeight(step, centers, indexes, compact)
     if (step.type === "note") {
       const noteIndexes = getParticipantIndexes(indexes, step.note.over)
@@ -582,6 +626,7 @@ export function createSequencePlacementPlan(
     const labelLines = messageLabelLines(messageLabelText(step.message))
     if (fromIndex === toIndex) {
       const centerX = centers[fromIndex]!
+      const bottomY = stepY + labelLines.length + 1
       steps.push({
         type: "selfMessage",
         message: step.message,
@@ -589,8 +634,11 @@ export function createSequencePlacementPlan(
         centerX,
         rightX: centerX + selfMessageLoopWidthForLines(labelLines),
         topY: stepY,
-        bottomY: stepY + labelLines.length + 1,
+        bottomY,
       })
+      if (step.message.activate) openActivation(step.message.activate, bottomY)
+      if (step.message.deactivate) closeActivation(step.message.deactivate, bottomY)
+      lastEventYByParticipant.set(step.message.from, bottomY)
     } else {
       const fromX = centers[fromIndex]!
       const toX = centers[toIndex]!
@@ -598,13 +646,14 @@ export function createSequencePlacementPlan(
       const leftX = Math.min(fromX, toX)
       const rightX = Math.max(fromX, toX)
       const inlineLabel = inlineMessageLabel(step.message, labelLines, fromX, toX, compact)
+      const arrowY = inlineLabel ? stepY : stepY + labelLines.length
       steps.push({
         type: "message",
         message: step.message,
         labelLines,
         labelX: leftX + 2,
         labelY: stepY,
-        arrowY: inlineLabel ? stepY : stepY + labelLines.length,
+        arrowY,
         fromX,
         toX,
         leftX,
@@ -613,8 +662,15 @@ export function createSequencePlacementPlan(
         headX: arrowHeadX(toX, direction, step.message.head),
         inlineLabel,
       })
+      if (step.message.activate) openActivation(step.message.activate, arrowY)
+      if (step.message.deactivate) closeActivation(step.message.deactivate, arrowY)
+      lastEventYByParticipant.set(step.message.from, arrowY)
+      lastEventYByParticipant.set(step.message.to, arrowY)
     }
     stepY += stepHeight
+  }
+  for (const [participant, active] of activeByParticipant) {
+    while (active.length > 0) closeActivation(participant, lifelineEndY)
   }
   return {
     width,
@@ -622,6 +678,7 @@ export function createSequencePlacementPlan(
     rows: { participantHeaderTopY, participantHeaderY, participantRuleY, lifelineStartY, lifelineEndY },
     participants,
     groups,
+    activations,
     steps,
   }
 }

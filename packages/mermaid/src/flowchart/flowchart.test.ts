@@ -356,6 +356,36 @@ describe("FlowchartDiagram", () => {
     }
   })
 
+  test("keeps five parallel multiline edge labels distinct", () => {
+    const output = renderFlowchartDiagram(`flowchart TD
+  A[Source] -->|one alpha<br/>one beta| B[Target]
+  A -->|two alpha<br/>two beta| B
+  A -->|three alpha<br/>three beta| B
+  A -->|four alpha<br/>four beta| B
+  A -->|five alpha<br/>five beta| B`)
+
+    for (const number of ["one", "two", "three", "four", "five"]) {
+      expect(output.match(new RegExp(`${number} alpha`, "g"))).toHaveLength(1)
+      expect(output.match(new RegExp(`${number} beta`, "g"))).toHaveLength(1)
+    }
+  })
+
+  test("does not reserve label gaps for unlabeled fan-out", () => {
+    const output = renderFlowchartDiagram(`flowchart TD
+  S[The Boss] --> A[A]
+  S --> B[B]
+  S --> C[C]
+  S --> D[D]
+  S --> E[E]
+  S --> F[F]
+  S --> G[G]
+  S --> H[H]
+  S --> I[I]
+  S --> J[J]`)
+
+    expect(Math.max(...output.split("\n").map((line) => stringWidth(line)))).toBeLessThanOrEqual(100)
+  })
+
   test("keeps transitive targets below intermediate vertical stages", () => {
     const content = `flowchart TD
   A[Start] --> B[Validate]

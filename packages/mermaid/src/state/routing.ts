@@ -1,5 +1,6 @@
 import { BorderChars } from "@opentui/core"
 import type { DiagramDirection } from "../core/geometry.js"
+import { SpatialIndex, spatialPathClaim, spatialRectClaim } from "../core/spatial.js"
 import { diagramTextWidth, splitDiagramLines } from "../core/text.js"
 import type { StateDiagramBoxBounds as BoxBounds } from "./layout.js"
 import type { StateDiagram, StateDiagramState, StateDiagramTransition } from "./types.js"
@@ -214,6 +215,35 @@ function verticalCorridorCrossesUnrelatedState(
   })
 }
 
+function horizontalCorridorCrossesUnrelatedState(
+  diagram: StateVisibleDiagram,
+  transition: StateVisibleTransition,
+  from: BoxBounds,
+  to: BoxBounds,
+  bounds: ReadonlyMap<string, BoxBounds>,
+): boolean {
+  const leftToRight = from.centerX <= to.centerX
+  const startX = leftToRight ? from.left + from.width : from.left - 1
+  const endX = leftToRight ? to.left - 1 : to.left + to.width
+  const space = SpatialIndex.empty().add(
+    ...diagram.states.flatMap((state) => {
+      if (state.id === transition.from || state.id === transition.to || isHiddenCompositeMarker(state)) return []
+      const bound = bounds.get(state.id)
+      return bound ? [spatialRectClaim(`state:${state.id}`, `state:${state.id}`, "body", bound)] : []
+    }),
+  )
+  const corridor = spatialPathClaim(
+    `corridor:${transition.from}:${transition.to}`,
+    `transition:${transition.from}:${transition.to}`,
+    "route",
+    [
+      { x: startX, y: from.centerY },
+      { x: endX, y: from.centerY },
+    ],
+  )
+  return !space.isFree(corridor)
+}
+
 export function createStateTransitionRoutePlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
@@ -222,18 +252,29 @@ export function createStateTransitionRoutePlans(
 ): StateTransitionRoutePlan[] {
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
   const endpointOccurrences = new Map<string, number>()
-  const maxLabelWidth = Math.max(
-    0,
-    ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).width),
-  )
   const parallelLaneGap = Math.max(
     3,
     ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).height + 2),
   )
-  const sideLaneX = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + maxLabelWidth + 3
+  let nextSideRailX = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + 3
   const feedbackAllocations = createFeedbackAllocations(diagram, bounds, feedbackLaneY, parallelLaneGap, feedbackTopY)
-  let sideLane = 0
-  const allocateSideRail = (): number => sideLaneX + sideLane++ * parallelLaneGap
+  let nextBottomRailY =
+    Math.max(
+      feedbackLaneY - parallelLaneGap,
+      ...[...feedbackAllocations.values()]
+        .filter((allocation) => allocation.side === "bottom")
+        .map((allocation) => allocation.railY),
+    ) + parallelLaneGap
+  const allocateSideRail = (label: string): number => {
+    const railX = nextSideRailX
+    nextSideRailX += Math.max(3, measureStateTransitionLabel(label).width + 2)
+    return railX
+  }
+  const allocateBottomRail = (): number => {
+    const railY = nextBottomRailY
+    nextBottomRailY += parallelLaneGap
+    return railY
+  }
 
   return diagram.transitions.flatMap((transition): StateTransitionRoutePlan[] => {
     const from = bounds.get(transition.from)
@@ -265,20 +306,20 @@ export function createStateTransitionRoutePlans(
           {
             ...base,
             kind: "bottom-parallel",
-            railY: feedbackLaneY + (parallelIndex - 1) * parallelLaneGap,
+            railY: allocateBottomRail(),
           },
         ]
       }
-      return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
+      return [{ ...base, kind: "side-parallel", railX: allocateSideRail(transition.label) }]
     }
     if (diagram.direction !== "LR" && diagram.direction !== "RL") {
       const fromParent = statesById.get(transition.from)?.parentId
       const toParent = statesById.get(transition.to)?.parentId
       if (fromParent && toParent && fromParent !== toParent) {
-        return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
+        return [{ ...base, kind: "side-parallel", railX: allocateSideRail(transition.label) }]
       }
       if (verticalCorridorCrossesUnrelatedState(diagram, transition, from, to, bounds)) {
-        return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
+        return [{ ...base, kind: "side-parallel", railX: allocateSideRail(transition.label) }]
       }
       if (from.centerX !== to.centerX) {
         return [{ ...base, kind: "vertical-elbow", hasReverse: false, offsetConnector: false }]
@@ -299,6 +340,9 @@ export function createStateTransitionRoutePlans(
       ]
     }
     if (feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
+    if (horizontalCorridorCrossesUnrelatedState(diagram, transition, from, to, bounds)) {
+      return [{ ...base, kind: "bottom-parallel", railY: allocateBottomRail() }]
+    }
     return [{ ...base, kind: "horizontal-forward", leftToRight: from.centerX <= to.centerX }]
   })
 }
@@ -627,65 +671,47 @@ function createStateTransitionRenderPlan(route: StateTransitionRoutePlan): State
   return builder
 }
 
-interface StateTransitionLabelRect {
-  left: number
-  top: number
-  width: number
-  height: number
-}
-
-function labelRect(label: StateTransitionRenderLabel, width: number): StateTransitionLabelRect {
-  return { left: label.x, top: label.y, width, height: label.lines.length }
-}
-
-function rectsOverlap(left: StateTransitionLabelRect, right: StateTransitionLabelRect): boolean {
-  return (
-    left.left < right.left + right.width &&
-    left.left + left.width > right.left &&
-    left.top < right.top + right.height &&
-    left.top + left.height > right.top
-  )
-}
-
 function placeStateTransitionLabels(
   plans: readonly StateTransitionRenderPlan[],
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
 ): StateTransitionRenderPlan[] {
-  const routeCells = new Set(plans.flatMap((plan) => plan.cells.map((cell) => `${cell.x}:${cell.y}`)))
-  const placedLabels: StateTransitionLabelRect[] = []
-  const stateRects = diagram.states.flatMap((state) => {
-    const bound = bounds.get(state.id)
-    return bound && !isHiddenCompositeMarker(state)
-      ? [{ left: bound.left, top: bound.top, width: bound.width, height: bound.height }]
-      : []
-  })
+  let space = SpatialIndex.empty().add(
+    ...diagram.states.flatMap((state) => {
+      const bound = bounds.get(state.id)
+      return bound && !isHiddenCompositeMarker(state)
+        ? [spatialRectClaim(`state:${state.id}`, `state:${state.id}`, "body", bound)]
+        : []
+    }),
+    ...plans.map((plan, index) =>
+      spatialPathClaim(
+        `route:${index}`,
+        `route:${index}`,
+        "route",
+        plan.path.map(([x, y]) => ({ x, y })),
+      ),
+    ),
+  )
 
-  return plans.map((plan) => {
+  return plans.map((plan, planIndex) => {
     if (!plan.label) return plan
     const width = Math.max(...plan.label.lines.map(diagramTextWidth))
     const statePadding = plan.label.lines.length === 1 ? 0 : 1
+    const labelClaim = (x: number, y: number) =>
+      spatialRectClaim(`label:${planIndex}`, `label:${planIndex}`, "label", {
+        left: x,
+        top: y,
+        width,
+        height: plan.label!.lines.length,
+      })
     const isClear = (x: number, y: number): boolean => {
       if (x < 0 || y < 0) return false
-      const rect = labelRect({ ...plan.label!, x, y }, width)
-      if (
-        stateRects.some((state) =>
-          rectsOverlap(rect, {
-            left: state.left - statePadding,
-            top: state.top - statePadding,
-            width: state.width + statePadding * 2,
-            height: state.height + statePadding * 2,
-          }),
-        )
-      )
-        return false
-      if (placedLabels.some((label) => rectsOverlap(rect, label))) return false
-      for (let row = rect.top; row < rect.top + rect.height; row++) {
-        for (let column = rect.left; column < rect.left + rect.width; column++) {
-          if (routeCells.has(`${column}:${row}`)) return false
-        }
-      }
-      return true
+      return space.isFree(labelClaim(x, y), {
+        clearance: {
+          body: statePadding,
+          label: { x: 1, y: 0 },
+        },
+      })
     }
 
     let x = plan.label.x
@@ -705,7 +731,7 @@ function placeStateTransitionLabels(
       }
     }
 
-    placedLabels.push(labelRect({ ...plan.label, x, y }, width))
+    space = space.add(labelClaim(x, y))
     return { ...plan, label: { ...plan.label, x, y } }
   })
 }

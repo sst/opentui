@@ -246,16 +246,27 @@ sequenceDiagram
     ])
   })
 
-  test("parses activation syntax without rendering activation bars", () => {
+  test("renders activation syntax as visible intervals", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
   Browser->>+Server: request
   Server-->>-Browser: response
 `)
 
-    expect(output).not.toContain("┃")
+    expect(output).toContain("┃")
     expect(output).toContain("request")
     expect(output).toContain("response")
+  })
+
+  test("renders br-delimited participant aliases on separate lines", () => {
+    const output = renderSequenceDiagram(`sequenceDiagram
+  participant A as First line<br/>Second line
+  participant B as Normal
+  A->>B: hello`)
+
+    expect(output).not.toContain("<br")
+    expect(output).toContain("│ First line  │")
+    expect(output).toContain("│ Second line │")
   })
 
   test("parses Mermaid arrow head variants", () => {
@@ -694,7 +705,7 @@ sequenceDiagram
     `)
   })
 
-  test("places two spacer rows above note badges and one below", () => {
+  test("frames notes in their reserved rows", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
   Browser->>Server: one
@@ -706,9 +717,11 @@ sequenceDiagram
     const nextMessageRow = lines.findIndex((line) => line.includes("two"))
 
     expect(noteRow).toBeGreaterThan(0)
-    expect(lines[noteRow - 1]?.trim()).toBe("│                 │")
-    expect(lines[noteRow - 2]?.trim()).toBe("│                 │")
-    expect(lines[noteRow + 1]?.trim()).toBe("│                 │")
+    expect(lines[noteRow - 1]).toContain("╭")
+    expect(lines[noteRow - 1]).toContain("╮")
+    expect(lines[noteRow]).toContain("│ phase │")
+    expect(lines[noteRow + 1]).toContain("╰")
+    expect(lines[noteRow + 1]).toContain("╯")
     expect(nextMessageRow).toBe(noteRow + 2)
   })
 

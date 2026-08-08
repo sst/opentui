@@ -188,4 +188,21 @@ ${Array.from(
 
     expect(starts[0]!.bounds.rightX).toBeGreaterThan(starts[1]!.bounds.rightX)
   })
+
+  test("aligns explicit and shorthand activation intervals to message events", () => {
+    const shorthand = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  A->>+B: request
+  B-->>-A: response`),
+    )
+    const explicit = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  A->>B: request
+  activate B
+  B-->>A: response
+  deactivate B`),
+    )
+
+    expect(explicit.activations).toEqual(shorthand.activations)
+  })
 })

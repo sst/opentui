@@ -168,7 +168,7 @@ function labelHeight(edge: FlowchartEdge): number {
 function rightRenderExtent(route: FlowchartEdgeRoute): number {
   let right = Math.max(...route.points.map((point) => point.x))
   if (route.edge.label) {
-    const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
+    const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth, route.labelAxis)
     right = Math.max(right, label.point.x + label.width - 1)
   }
   return right
@@ -479,7 +479,11 @@ function routeParallelEdges(
             Math.max(boundsSidePoint(from, "bottom").y, boundsSidePoint(to, "bottom").y) + BUS_CLEARANCE,
             Math.max(...previousRoute.points.map((point) => point.y)) + Math.max(2, labelHeight(edge) + 1),
           )
-      const route = { edge, points: parallelEdgePath(from, to, direction, laneCoordinate) }
+      const route: FlowchartEdgeRoute = {
+        edge,
+        points: parallelEdgePath(from, to, direction, laneCoordinate),
+        labelAxis: isVerticalDirection(direction) ? "y" : "x",
+      }
       routes.push(route)
       handled.add(edge)
       previousRoute = route
@@ -722,11 +726,13 @@ function avoidNodeObstacles(
   const allSubgraphBounds = [...(subgraphBounds?.values() ?? [])]
   const laterRoutes = routes.slice(routeIndex + 1)
   const laterLabels = laterRoutes.flatMap((laterRoute) =>
-    laterRoute.edge.label ? [flowchartEdgeLabelLayout(laterRoute.points, laterRoute.edge.label, diagramTextWidth)] : [],
+    laterRoute.edge.label
+      ? [flowchartEdgeLabelLayout(laterRoute.points, laterRoute.edge.label, diagramTextWidth, laterRoute.labelAxis)]
+      : [],
   )
   const intersectsObstacle = (candidate: FlowchartEdgeRoute): boolean => {
     const label = candidate.edge.label
-      ? flowchartEdgeLabelLayout(candidate.points, candidate.edge.label, diagramTextWidth)
+      ? flowchartEdgeLabelLayout(candidate.points, candidate.edge.label, diagramTextWidth, candidate.labelAxis)
       : undefined
     return (
       allNodeBounds.some((bound) => {
@@ -758,39 +764,47 @@ function avoidNodeObstacles(
     end,
     targetSide === "left" ? "left" : targetSide === "right" ? "right" : targetSide === "top" ? "up" : "down",
   )
-  const preservedTargetCandidates = [
+  const preservedTargetCandidates: FlowchartEdgeRoute[] = [
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "y",
       points: pathThrough([start, { x: leftBusX, y: start.y }, { x: leftBusX, y: approach.y }, approach, end]),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "y",
       points: pathThrough([start, { x: rightBusX, y: start.y }, { x: rightBusX, y: approach.y }, approach, end]),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "x",
       points: pathThrough([start, { x: start.x, y: topBusY }, { x: approach.x, y: topBusY }, approach, end]),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "x",
       points: pathThrough([start, { x: start.x, y: bottomBusY }, { x: approach.x, y: bottomBusY }, approach, end]),
     },
   ]
-  const candidates = [
+  const candidates: FlowchartEdgeRoute[] = [
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "y",
       points: pathViaLane(boundsSidePoint(from, "right"), lane("x", rightBusX), boundsSidePoint(to, "right")),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "y",
       points: pathViaLane(boundsSidePoint(from, "left"), lane("x", leftBusX), boundsSidePoint(to, "left")),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "x",
       points: pathViaLane(boundsSidePoint(from, "top"), lane("y", topBusY), boundsSidePoint(to, "top")),
     },
     {
-      edge: route.edge,
+      ...route,
+      labelAxis: route.labelAxis === undefined ? undefined : "x",
       points: pathViaLane(boundsSidePoint(from, "bottom"), lane("y", bottomBusY), boundsSidePoint(to, "bottom")),
     },
   ]
