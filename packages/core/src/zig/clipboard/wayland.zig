@@ -11,7 +11,7 @@ const WlProxy = linux.WlProxy;
 const MAX_SEATS = 16;
 const MAX_SEAT_NAME_BYTES = 255;
 const MAX_OFFERS = 8;
-const MAX_OFFER_MIME_TYPES = 3;
+const MAX_OFFER_MIME_TYPES = 6;
 const MAX_MIME_BYTES = 255;
 const MAX_PROVIDERS = 4;
 // Clipboard payloads use file descriptors, so protocol metadata does not need unbounded connection buffers.
@@ -1253,6 +1253,12 @@ pub fn canonicalMimeEssence(mime: []const u8) ?[]const u8 {
         "text/plain"
     else if (std.ascii.eqlIgnoreCase(raw_essence, "image/png"))
         "image/png"
+    else if (std.ascii.eqlIgnoreCase(raw_essence, "image/jpeg"))
+        "image/jpeg"
+    else if (std.ascii.eqlIgnoreCase(raw_essence, "image/webp"))
+        "image/webp"
+    else if (std.ascii.eqlIgnoreCase(raw_essence, "image/gif"))
+        "image/gif"
     else if (std.ascii.eqlIgnoreCase(raw_essence, "image/bmp"))
         "image/bmp"
     else
@@ -1720,22 +1726,28 @@ test "Wayland MIME matching parses essence and UTF-8 charset parameters" {
         "image/png",
         connection.offeredMime(&connection.offers[0], "image/png").?.requested,
     );
+    inline for (.{ "image/jpeg", "image/webp", "image/gif" }) |mime| {
+        try std.testing.expectEqualStrings(mime, canonicalMimeEssence(mime).?);
+    }
 }
 
-test "Wayland MIME retention deduplicates canonical supported essences" {
+test "Wayland MIME retention preserves all supported essences and deduplicates aliases" {
     const proxy: *WlProxy = @ptrFromInt(1);
     var connection = testOfferConnection(proxy);
 
-    var index: u8 = 0;
-    while (index < MAX_OFFER_MIME_TYPES) : (index += 1) {
-        Connection.offerMime(&connection, proxy, "text/plain;charset=UTF-8");
-    }
+    Connection.offerMime(&connection, proxy, "image/jpeg");
+    Connection.offerMime(&connection, proxy, "image/webp");
+    Connection.offerMime(&connection, proxy, "IMAGE/JPEG; version=1");
+    Connection.offerMime(&connection, proxy, "image/gif");
+    Connection.offerMime(&connection, proxy, "image/bmp");
     Connection.offerMime(&connection, proxy, "text/plain; charset=utf-8; format=flowed");
     Connection.offerMime(&connection, proxy, "image/png; version=1");
 
-    try std.testing.expectEqual(@as(u8, 2), connection.offers[0].mime_count);
-    try std.testing.expectEqualStrings("text/plain;charset=UTF-8", connection.offers[0].mimes[0].slice());
-    try std.testing.expectEqualStrings("image/png; version=1", connection.offers[0].mimes[1].slice());
+    try std.testing.expectEqual(@as(u8, MAX_OFFER_MIME_TYPES), connection.offers[0].mime_count);
+    inline for (.{ "image/jpeg", "image/webp", "image/gif", "image/bmp", "text/plain", "image/png" }) |mime| {
+        try std.testing.expect(connection.offeredMime(&connection.offers[0], mime) != null);
+    }
+    try std.testing.expectEqualStrings("image/jpeg", connection.offers[0].mimes[0].slice());
 }
 
 test "Wayland BMP conversion fallback is restricted to WSL core compatibility" {
