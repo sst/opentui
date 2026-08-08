@@ -462,7 +462,8 @@ export function createStateDiagramLayout(
       x += size.width + options.minStateGap + 8
     }
     const labelRows = states.reduce((rows, state) => Math.max(rows, outgoingLabelRows.get(state.id) ?? 0), 0)
-    y += rowHeight + Math.max(4, labelRows + 3)
+    const pseudoStateApproachClearance = states.some((state) => state.kind === "choice") ? 2 : 0
+    y += rowHeight + Math.max(4, labelRows + 3) + pseudoStateApproachClearance
   }
 
   return finalizeLayout(diagram, emptyLayout(bounds, sizes))

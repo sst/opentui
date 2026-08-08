@@ -11,6 +11,7 @@ interface StateTransitionRoutePlanBase {
   from: BoxBounds
   to: BoxBounds
   targetIsChoice: boolean
+  targetIsHiddenMarker: boolean
 }
 
 export type StateTransitionRoutePlan =
@@ -282,8 +283,9 @@ export function createStateTransitionRoutePlans(
     if (!from || !to) return []
 
     const targetState = statesById.get(transition.to)
-    const targetIsChoice = targetState?.kind === "choice" || isHiddenCompositeMarker(targetState)
-    const base = { transition, from, to, targetIsChoice }
+    const targetIsChoice = targetState?.kind === "choice"
+    const targetIsHiddenMarker = isHiddenCompositeMarker(targetState)
+    const base = { transition, from, to, targetIsChoice, targetIsHiddenMarker }
     if (transition.from === transition.to) return [{ ...base, kind: "self" }]
     const endpointKey = `${transition.from}\u0000${transition.to}`
     const parallelIndex = endpointOccurrences.get(endpointKey) ?? 0
@@ -320,6 +322,15 @@ export function createStateTransitionRoutePlans(
       }
       if (verticalCorridorCrossesUnrelatedState(diagram, transition, from, to, bounds)) {
         return [{ ...base, kind: "side-parallel", railX: allocateSideRail(transition.label) }]
+      }
+      if (from.centerY > to.centerY) {
+        return [{ ...base, kind: "side-parallel", railX: allocateSideRail(transition.label) }]
+      }
+      if (from.centerY === to.centerY) {
+        if (hasReverseTransition(diagram, transition) && from.centerX > to.centerX) {
+          return [{ ...base, kind: "bottom-parallel", railY: allocateBottomRail() }]
+        }
+        return [{ ...base, kind: "horizontal-forward", leftToRight: from.centerX <= to.centerX }]
       }
       if (from.centerX !== to.centerX) {
         return [{ ...base, kind: "vertical-elbow", hasReverse: false, offsetConnector: false }]
@@ -414,7 +425,7 @@ function addTopDeparture(builder: StateTransitionRenderBuilder, bounds: BoxBound
 }
 
 function addHorizontalForward(builder: StateTransitionRenderBuilder): void {
-  const { from, to, targetIsChoice, leftToRight, transition } = builder.route as Extract<
+  const { from, to, targetIsChoice, targetIsHiddenMarker, leftToRight, transition } = builder.route as Extract<
     StateTransitionRoutePlan,
     { kind: "horizontal-forward" }
   >
@@ -424,9 +435,12 @@ function addHorizontalForward(builder: StateTransitionRenderBuilder): void {
   const step = leftToRight ? 1 : -1
   const startX = leftToRight ? from.left + from.width : from.left - 1
   const endX = leftToRight ? to.left - 1 : to.left + to.width
-  addHorizontalLine(builder, startX, targetIsChoice ? endX : endX - step, y, step)
-  if (targetIsChoice) addPathPoint(builder, to.left, y)
-  else addCell(builder, { x: endX, y, arrowDirection: leftToRight ? "right" : "left" })
+  addHorizontalLine(builder, startX, endX - step, y, step)
+  addCell(
+    builder,
+    targetIsHiddenMarker ? { x: endX, y, char: "─" } : { x: endX, y, arrowDirection: leftToRight ? "right" : "left" },
+  )
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, y)
   if (!transition.label) return
   const metrics = measureStateTransitionLabel(transition.label)
   const labelX = Math.min(startX, endX) + Math.max(1, Math.floor((Math.abs(endX - startX) - metrics.width) / 2))
@@ -459,7 +473,7 @@ function outsideTopY(bounds: BoxBounds): number {
 }
 
 function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, targetIsChoice, transition, railY } = builder.route as Extract<
+  const { from, to, targetIsChoice, targetIsHiddenMarker, transition, railY } = builder.route as Extract<
     StateTransitionRoutePlan,
     { kind: "bottom-feedback" | "bottom-parallel" }
   >
@@ -487,8 +501,13 @@ function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
       addCell(builder, { x, y: targetBottomY, char: "─" })
     }
   }
-  addCell(builder, { x: targetX, y: targetBottomY, ...(targetIsChoice ? { char: "│" } : { arrowDirection: "up" }) })
-  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  addCell(
+    builder,
+    targetIsHiddenMarker
+      ? { x: targetX, y: targetBottomY, char: "│" }
+      : { x: targetX, y: targetBottomY, arrowDirection: "up" },
+  )
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, to.top)
   if (!transition.label) return
   const metrics = measureStateTransitionLabel(transition.label)
   const horizontalRoom = Math.abs(sourceX - railTargetX) - 2
@@ -500,7 +519,7 @@ function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
 }
 
 function addTopFeedbackTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, targetIsChoice, transition, railY } = builder.route as Extract<
+  const { from, to, targetIsChoice, targetIsHiddenMarker, transition, railY } = builder.route as Extract<
     StateTransitionRoutePlan,
     { kind: "top-feedback" }
   >
@@ -518,8 +537,13 @@ function addTopFeedbackTransition(builder: StateTransitionRenderBuilder): void {
   }
   addCell(builder, { x: targetX, y: railY, char: sourceX > targetX ? "╭" : "╮" })
   for (let y = railY + 1; y < targetTopY; y++) addCell(builder, { x: targetX, y, char: "│" })
-  addCell(builder, { x: targetX, y: targetTopY, ...(targetIsChoice ? { char: "│" } : { arrowDirection: "down" }) })
-  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  addCell(
+    builder,
+    targetIsHiddenMarker
+      ? { x: targetX, y: targetTopY, char: "│" }
+      : { x: targetX, y: targetTopY, arrowDirection: "down" },
+  )
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, to.top)
   if (!transition.label) return
   const metrics = measureStateTransitionLabel(transition.label)
   const horizontalRoom = Math.abs(sourceX - targetX) - 2
@@ -531,7 +555,7 @@ function addTopFeedbackTransition(builder: StateTransitionRenderBuilder): void {
 }
 
 function addSideParallelTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, targetIsChoice, transition, railX } = builder.route as Extract<
+  const { from, to, targetIsChoice, targetIsHiddenMarker, transition, railX } = builder.route as Extract<
     StateTransitionRoutePlan,
     { kind: "side-parallel" }
   >
@@ -546,9 +570,16 @@ function addSideParallelTransition(builder: StateTransitionRenderBuilder): void 
   for (let y = startY + verticalStep; y !== endY; y += verticalStep) addCell(builder, { x: railX, y, char: "│" })
   addCell(builder, { x: railX, y: endY, char: verticalStep === 1 ? "╯" : "╮" })
   for (let x = railX - 1; x > endX; x--) addCell(builder, { x, y: endY, char: "─" })
-  addCell(builder, { x: endX, y: endY, ...(targetIsChoice ? { char: "─" } : { arrowDirection: "left" }) })
-  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
-  if (transition.label) addLabel(builder, railX + 2, Math.min(startY, endY) + 1, transition.label)
+  addCell(
+    builder,
+    targetIsHiddenMarker ? { x: endX, y: endY, char: "─" } : { x: endX, y: endY, arrowDirection: "left" },
+  )
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, to.top)
+  if (transition.label) {
+    const metrics = measureStateTransitionLabel(transition.label)
+    const labelY = Math.max(0, Math.floor((startY + endY - metrics.height + 1) / 2))
+    addLabel(builder, railX + 2, labelY, transition.label)
+  }
 }
 
 function innerConnectorX(bounds: BoxBounds, preferredX: number): number {
@@ -557,10 +588,8 @@ function innerConnectorX(bounds: BoxBounds, preferredX: number): number {
 }
 
 function addVerticalElbowTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, transition, targetIsChoice, hasReverse, offsetConnector } = builder.route as Extract<
-    StateTransitionRoutePlan,
-    { kind: "vertical-elbow" }
-  >
+  const { from, to, transition, targetIsChoice, targetIsHiddenMarker, hasReverse, offsetConnector } =
+    builder.route as Extract<StateTransitionRoutePlan, { kind: "vertical-elbow" }>
   const topToBottom = from.centerY < to.centerY
   const offset = offsetConnector ? (topToBottom ? -2 : 2) : 0
   const startX = innerConnectorX(from, from.centerX + offset)
@@ -594,13 +623,19 @@ function addVerticalElbowTransition(builder: StateTransitionRenderBuilder): void
       }
     }
   }
-  const targetChar = targetIsChoice ? (hasTargetApproach || startX === endX ? "│" : topToBottom ? "┬" : "┴") : undefined
+  const targetChar = targetIsHiddenMarker
+    ? hasTargetApproach || startX === endX
+      ? "│"
+      : topToBottom
+        ? "┬"
+        : "┴"
+    : undefined
   addCell(builder, {
     x: endX,
     y: endY,
     ...(targetChar ? { char: targetChar } : { arrowDirection: topToBottom ? "down" : "up" }),
   })
-  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, to.top)
   if (!transition.label) return
   const metrics = measureStateTransitionLabel(transition.label)
   if (topToBottom) {
@@ -624,7 +659,7 @@ function addVerticalElbowTransition(builder: StateTransitionRenderBuilder): void
 }
 
 function addVerticalTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, transition, targetIsChoice } = builder.route
+  const { from, to, transition, targetIsChoice, targetIsHiddenMarker } = builder.route
   const topToBottom = from.centerY <= to.centerY
   const x = from.centerX
   const startY = topToBottom ? from.top + from.height : from.top - 1
@@ -636,9 +671,9 @@ function addVerticalTransition(builder: StateTransitionRenderBuilder): void {
   addCell(builder, {
     x,
     y: endY,
-    ...(targetIsChoice ? { char: "│" } : { arrowDirection: topToBottom ? "down" : "up" }),
+    ...(targetIsHiddenMarker ? { char: "│" } : { arrowDirection: topToBottom ? "down" : "up" }),
   })
-  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  if (targetIsChoice || targetIsHiddenMarker) addPathPoint(builder, to.left, to.top)
   if (transition.label) addLabel(builder, x + 2, Math.min(startY, endY) + 1, transition.label)
 }
 

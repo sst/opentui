@@ -384,7 +384,7 @@ stateDiagram-v2
 
     expect(output).toMatchInlineSnapshot(`
       "              ╭─────────╮   submit          ok      ╭───────╮
-      ●────────────▶│ Editing ├─────────────┼────────────▶│ Saved │
+      ●────────────▶│ Editing ├────────────▶◆────────────▶│ Saved │
                     ╰──┬──────╯             │             ╰───────╯
                      ▲ │    ▲ type          │ fail
                      │ ╰────╯               │
@@ -411,7 +411,7 @@ stateDiagram-v2
   Decision --> Done
   Done --> [*]`)
 
-    expect(output).toContain("Upper ├─────────────┼────────────▶│ Done")
+    expect(output).toContain("Upper ├────────────▶◆────────────▶│ Done")
   })
 
   test("renders self transitions as loops in vertical diagrams", () => {
@@ -468,7 +468,7 @@ stateDiagram-v2
   Two --> Three: clockwise
   Three --> One: clockwise`)
 
-    expect(output.match(/┼/g)).toHaveLength(3)
+    expect(output.match(/◆/g)).toHaveLength(3)
   })
 
   test("routes dense horizontal transitions around unrelated states", () => {
@@ -690,7 +690,8 @@ stateDiagram-v2
   state Decision <<choice>>
   Decision --> [*]`)
 
-    expect(output).toContain("╰─────────────┬\n")
+    expect(output).toContain("╰─────────────▼")
+    expect(output).toContain("◆────────────▶◎")
   })
 
   test("keeps vertical branch labels from overwriting state labels", () => {

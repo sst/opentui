@@ -43,10 +43,10 @@ sequenceDiagram
       │ Browser │       │ Server │
       ╰────┬────╯       ╰────┬───╯
            │                 │
-           │ GET /           │
+           │     GET /       │
            ├─────────────────►
            │                 │
-           │ 401 WWW-Auth    │
+           │  401 WWW-Auth   │
            ◄─────────────────┤
            │                 │
     `)
@@ -71,13 +71,13 @@ sequenceDiagram
     expectDiagram(output).toEqualDiagram(`
       leaf tool                       LocationMutation             FileMutation
           │                                   │                          │
-          ├─ resolve(path) ───────────────────►                          │
+          ├───────── resolve(path) ───────────►                          │
           │                                   │                          │
           ◄─ Plan(target, authority anchor) ──┤                          │
           │                                   │                          │
-          ├─ commit(plan) ───────────────────────────────────────────────►
+          ├─────────────────────── commit(plan) ─────────────────────────►
           │                                   │                          │
-          │                                   ◄─ revalidate(plan) ───────┤
+          │                                   ◄─── revalidate(plan) ─────┤
           │                                   │                          │
           │                                   ├─ same target or reject ──►
           │                                   │                          │
@@ -306,22 +306,22 @@ sequenceDiagram
       │ A │              │ B │
       ╰─┬─╯              ╰─┬─╯
         │                  │
-        │ open solid       │
+        │   open solid     │
         ├─────────────────>│
         │                  │
-        │ open dashed      │
+        │   open dashed    │
         │<─────────────────┤
         │                  │
-        │ failed solid     │
+        │  failed solid    │
         ├─────────────────✕│
         │                  │
-        │ failed dashed    │
+        │  failed dashed   │
         │✕─────────────────┤
         │                  │
-        │ async solid      │
+        │   async solid    │
         ├─────────────────)│
         │                  │
-        │ async dashed     │
+        │  async dashed    │
         │(─────────────────┤
         │                  │"
     `)
@@ -545,7 +545,7 @@ sequenceDiagram
     const fragmentMessageRow = fragment.split("\n").find((line) => line.includes("this non adjacent message"))!
     expect(groupMessageRow.trimEnd().endsWith("│")).toBe(true)
     expect(fragmentMessageRow).toContain("this non adjacent message is deliberately much wider than the frame")
-    expect(fragmentMessageRow.match(/│/g)?.length).toBe(3)
+    expect(fragmentMessageRow.match(/│/g)?.length).toBe(2)
   })
 
   test("keeps long notes inside groups and nested fragment frames intact", () => {
@@ -648,10 +648,10 @@ sequenceDiagram
       │ Browser │        │ │ API │          │ Cache │          │ DB │ │
       ╰────┬────╯        │ ╰──┬──╯          ╰───┬───╯          ╰──┬─╯ │
            │             │    │                 │                 │   │
-           │ GET /users/42    │                 │                 │   │
+           │  GET /users/42   │                 │                 │   │
            ├──────────────────►                 │                 │   │
            │             │    │                 │                 │   │
-           │             │    │ get user:42     │                 │   │
+           │             │    │  get user:42    │                 │   │
            │             │    ├─────────────────►                 │   │
            │             │    │                 │                 │   │
                          ╰────────────────────────────────────────────╯"

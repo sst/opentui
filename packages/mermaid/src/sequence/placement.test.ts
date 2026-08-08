@@ -205,4 +205,17 @@ ${Array.from(
 
     expect(explicit.activations).toEqual(shorthand.activations)
   })
+
+  test("centers message label blocks over their arrow span", () => {
+    const plan = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  A->>B: short<br/>a much longer line`),
+    )
+    const message = plan.steps.find((step) => step.type === "message")!
+    const labelWidth = Math.max(...message.labelLines.map(diagramTextWidth))
+
+    expect(message.labelX * 2 + labelWidth).toBe(message.leftX + message.rightX)
+  })
 })

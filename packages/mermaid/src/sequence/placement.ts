@@ -246,7 +246,9 @@ function getStepContentBounds(
     if (fromIndex === toIndex) return { leftX: fromX, rightX: fromX + selfMessageLoopWidth(step.message) }
     const leftX = Math.min(fromX, toX)
     const rightX = Math.max(fromX, toX)
-    return { leftX, rightX: Math.max(rightX, leftX + 2 + messageWidth(step.message) - 1) }
+    const labelWidth = messageWidth(step.message)
+    const labelLeftX = Math.floor((leftX + rightX - labelWidth) / 2)
+    return { leftX: Math.min(leftX, labelLeftX), rightX: Math.max(rightX, labelLeftX + labelWidth - 1) }
   }
   if (step.type !== "note") return undefined
   const indexes = getParticipantIndexes(participantIndexes, step.note.over)
@@ -647,11 +649,13 @@ export function createSequencePlacementPlan(
       const rightX = Math.max(fromX, toX)
       const inlineLabel = inlineMessageLabel(step.message, labelLines, fromX, toX, compact)
       const arrowY = inlineLabel ? stepY : stepY + labelLines.length
+      const renderedLabelWidth = inlineLabel ? visualLength(inlineLabel) : labelLinesWidth(labelLines)
+      const labelX = Math.floor((leftX + rightX - renderedLabelWidth) / 2)
       steps.push({
         type: "message",
         message: step.message,
         labelLines,
-        labelX: leftX + 2,
+        labelX,
         labelY: stepY,
         arrowY,
         fromX,
