@@ -19,7 +19,7 @@ import { buildDocsIndex } from "../src/lib/docs-index"
 const REPO_ROOT = join(import.meta.dir, "../../..")
 const DOCS_DIR = join(import.meta.dir, "../src/content/docs")
 const TEST_DIR = "/tmp/opentui-doc-verify"
-const WORKSPACE_PACKAGE_DIRS = ["core", "keymap", "qrcode", "react", "solid", "ssh", "three"] as const
+const WORKSPACE_PACKAGE_DIRS = ["core", "keymap", "mermaid", "qrcode", "react", "solid", "ssh", "three"] as const
 const TYPESCRIPT_CLI = join(import.meta.dir, "../node_modules/typescript/bin/tsc")
 const KNOWN_WORKSPACE_DIAGNOSTICS = [
   /packages\/react\/src\/reconciler\/(?:host-config|reconciler)\.ts.*error TS2307: Cannot find module 'react-reconciler\/constants'/,

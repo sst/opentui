@@ -24,6 +24,7 @@ This monorepo contains the following packages:
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
 - [`@opentui/keymap`](packages/keymap) - Shared command, keybinding, and sequence engine.
 - [`@opentui/qrcode`](packages/qrcode) - QR encoder and terminal renderable integrations.
+- [`@opentui/mermaid`](packages/mermaid) - Mermaid-flavored flowchart, sequence, and state diagrams for terminals.
 - [`@opentui/ssh`](packages/ssh) - Serve imperative, React, and Solid OpenTUI applications over SSH.
 - [`@opentui/examples`](packages/examples) - Example browser and standalone examples executable build.
 - [`@opentui/web`](packages/web) - Private documentation website and installable AI agent skill source.

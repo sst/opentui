@@ -1,0 +1,73 @@
+---
+title: Mermaid Diagrams
+description: Render Mermaid-flavored diagrams in Markdown and terminal text
+order: 20
+---
+
+# Mermaid Diagrams
+
+`@opentui/mermaid` renders flowchart, sequence, and state diagrams as styled OpenTUI Markdown blocks or plain terminal text.
+
+Install the package separately:
+
+```bash
+bun install @opentui/mermaid
+```
+
+## Markdown
+
+Pass the Mermaid Markdown renderer when constructing a `MarkdownRenderable`:
+
+````typescript
+import { createCliRenderer, MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core"
+import { createMermaidMarkdownRenderer } from "@opentui/mermaid"
+
+const renderer = await createCliRenderer()
+const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromHex("#e6edf3") } })
+const markdown = new MarkdownRenderable(renderer, {
+  content: "```mermaid\nflowchart LR\n  Parse --> Layout --> Render\n```",
+  syntaxStyle,
+  renderNode: createMermaidMarkdownRenderer(renderer),
+})
+
+renderer.root.add(markdown)
+````
+
+The renderer preserves the last valid diagram while a fenced block is streaming, falls back to an ordinary code block for unsupported syntax, and provides horizontal scrolling for diagrams wider than their viewport.
+
+Use `createMermaidCodeBlockRenderer` to register Mermaid support in an existing Markdown code-block renderer map.
+
+## Colors
+
+Supply semantic colors directly or from your application's live theme:
+
+```typescript
+const renderNode = createMermaidMarkdownRenderer(renderer, () => ({
+  colors: {
+    text: theme.text,
+    primary: theme.primary,
+    secondary: theme.secondary,
+    muted: theme.muted,
+    warning: theme.warning,
+    background: theme.background,
+  },
+}))
+```
+
+The options callback runs when the Markdown block renders, so theme changes do not require rebuilding the renderer.
+
+## Plain Text
+
+Each supported family has a parser and a plain-text renderer:
+
+```typescript
+import { renderFlowchartDiagram, renderSequenceDiagram, renderStateDiagram } from "@opentui/mermaid"
+
+console.log(renderFlowchartDiagram("flowchart LR\n  Parse --> Layout --> Render"))
+```
+
+## Diagnostics
+
+Unsupported otherwise-valid syntax throws `MermaidSyntaxError`. The error includes the diagram family, source line, and line number so applications can present useful diagnostics or fall back to source code.
+
+This package implements a practical Mermaid syntax subset and is not affiliated with the Mermaid project.

@@ -71,6 +71,11 @@ jobs:
             echo "Copied qrcode dist"
           fi
 
+          if [ -d "npm-packages/mermaid-dist" ]; then
+            cp -r npm-packages/mermaid-dist packages/mermaid/dist
+            echo "Copied mermaid dist"
+          fi
+
           # Copy native packages to core's node_modules
           if [ -d "npm-packages/core-native-packages" ]; then
             mkdir -p packages/core/node_modules/@opentui
@@ -116,6 +121,8 @@ jobs:
         run: |
           cd packages/core
           bun run test:dist --skip-build
+          cd ../mermaid
+          bun run test:dist --skip-build
           cd ../solid
           bun run test:dist --skip-build
           cd ../keymap
@@ -147,6 +154,10 @@ jobs:
           echo ""
           echo "📦 Checking @opentui/qrcode..."
           cd ../../qrcode/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/mermaid..."
+          cd ../../mermaid/dist && npm pack --dry-run
 
           echo ""
           echo "📦 Checking @opentui/react..."
