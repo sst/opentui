@@ -122,7 +122,7 @@ const indexData = [
       </section>
 
       <p class="editorial-intro">
-        Build a tree of boxes, text, inputs, and images. OpenTUI resolves its layout, routes input through it, composes it into terminal cells, and writes the resulting updates. Use the core API directly, or let React and Solid drive the same renderables.
+        Build a tree of boxes, text, inputs, and images. OpenTUI resolves the tree's layout, routes input through it, composes it into terminal cells, and writes only the cells that changed. Use the core API directly, or let React and Solid drive the same renderables.
       </p>
 
       <!-- FIG_01: The interface you write -->
@@ -144,7 +144,7 @@ const indexData = [
         </div>
 
         <div class="figure-caption-text">
-          <code>renderer.root.add(...)</code> attaches this tree; the renderer resolves it into the frame above. <code>@opentui/react</code> and <code>@opentui/solid</code> render the same tree over the same renderer.
+          <code>renderer.root.add(...)</code> attaches this tree; the renderer resolves it into the frame above. <code>@opentui/react</code> and <code>@opentui/solid</code> build the same renderables from JSX over the same renderer.
         </div>
       </figure>
 
@@ -156,7 +156,7 @@ const indexData = [
       <div class="editorial-flow">
 
         <p>
-          For ordinary layout, you position nothing by hand. You set <code>flexDirection</code>, <code>flexGrow</code>, <code>padding</code>, and percentage sizes on containers, and Yoga resolves the tree against the terminal's current width and height; absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved against the new constraints; your components do not change.
+          For ordinary layout, you position nothing by hand. You set <code>flexDirection</code>, <code>flexGrow</code>, <code>padding</code>, and percentage sizes on containers, and Yoga, the Flexbox layout engine, resolves the tree against the terminal's current width and height; absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved against the new constraints; your components do not change.
         </p>
 
         <p>
@@ -193,7 +193,7 @@ const indexData = [
           </div>
 
           <div class="figure-caption-text">
-            Yoga resolves Flexbox-like constraints &mdash; direction, grow, shrink, padding, percentage widths &mdash; against the terminal's available rows and columns; OpenTUI uses the resulting bounds to place renderables on the cell grid.
+            A percentage width is continuous until it is resolved; here it becomes a fixed span of whole columns. Resize the terminal and the same tree resolves again against the new constraints &mdash; the components themselves do not change.
           </div>
           <span class="fig-tag-bottom-left">YOGA LAYOUT</span>
           <span class="fig-tag-bottom-right">PROPS &rarr; CELLS</span>
@@ -204,7 +204,7 @@ const indexData = [
         </p>
 
         <p>
-          Rendering also establishes where interaction can happen. Focus a component and keyboard events route to it; <code>renderer.keyInput</code> emits structured key events with the parsed key name, modifiers, and the original terminal sequence, and paste arrives as its own event. Mouse events follow the resolved bounds of whatever is beneath the pointer. Input handling belongs to OpenTUI as a whole &mdash; parsing, focus, and routing are part of the same renderer that draws the frame.
+          Layout also establishes where interaction can happen. When a component has focus, keyboard events route to it; <code>renderer.keyInput</code> emits structured key events with the parsed key name, modifiers, and the original terminal sequence, and paste arrives as its own event. Mouse events follow the resolved bounds of whatever is beneath the pointer. Parsing, focus, and routing happen inside the same renderer that draws the frame, not a separate input layer.
         </p>
 
         <p class="flow-refs">
@@ -254,7 +254,7 @@ const indexData = [
           </div>
 
           <div class="figure-caption-text">
-            The native buffer represents a terminal frame through parallel character, color, and attribute data. A logical cell combines character or grapheme information with foreground color, background color, and style attributes; tagged values also represent image and continuation cells.
+            The three tilted planes above are not physically stacked; they represent the parallel arrays inside the native buffer &mdash; tagged characters, then color, then attributes &mdash; that combine at each position into one logical cell. The same tagged field also marks image and continuation cells.
           </div>
           <span class="fig-tag-bottom-left">OPENTUI CORE</span>
           <span class="fig-tag-bottom-right">CHAR &middot; FG &middot; BG &middot; ATTRS</span>
@@ -303,7 +303,7 @@ const indexData = [
           </div>
 
           <div class="figure-caption-text">
-            For ordinary updates, the renderer compares the current cell frame with the previous one and builds terminal output for the cells and terminal state that changed.
+            The highlighted run above is the only part of the frame that changed; the bytes written to the terminal move the cursor to it and re-encode just its text and color, leaving the rest of the previous frame untouched.
           </div>
           <span class="fig-tag-bottom-left">FRAME COMPARISON</span>
           <span class="fig-tag-bottom-right">CHANGED CELLS</span>
@@ -314,7 +314,7 @@ const indexData = [
         </p>
 
         <p>
-          Changed runs carry the cursor movement, color and attribute state, and encoded text needed to update those positions. An unchanged render can produce no cell updates; a resize or screen-mode transition can require more work than a small cell diff. The useful property is not an absolute promise of "no redraws." It is that the frame and its update are both explicit objects you can inspect: tests capture frames with <code>createTestRenderer</code>, and frame-buffer operations such as 4&times;4 color-matrix transforms act on the frame directly without touching your component tree.
+          Changed runs carry the cursor movement, color and attribute state, and encoded text needed to update those positions. An unchanged render can produce no cell updates; a resize or screen-mode transition can require more work than a small cell diff. The useful property is not an absolute promise of &ldquo;no redraws.&rdquo; It is that the frame and its update are both explicit objects you can inspect: tests capture frames with <code>createTestRenderer</code>, and frame-buffer operations such as 4&times;4 color-matrix transforms act on the frame directly without touching your component tree.
         </p>
 
         <p class="flow-refs">
@@ -351,7 +351,7 @@ const indexData = [
           </div>
 
           <div class="figure-caption-text">
-            With image protocol selection set to <code>auto</code>, OpenTUI resolves the configured override and available terminal capabilities to Kitty graphics, Sixel, or Unicode quadrant blocks.
+            The fading tone above is priority order: with protocol selection set to <code>auto</code> and no override, OpenTUI tries Kitty first, Sixel next, and Unicode blocks last, chosen by whichever pixel-graphics support the terminal actually reports at startup.
           </div>
           <span class="fig-tag-bottom-left">PROTOCOL SELECTION</span>
           <span class="fig-tag-bottom-right">AUTO-DETECTED</span>
@@ -374,7 +374,7 @@ const indexData = [
         </p>
 
         <p>
-          You have already seen the whole surface area: <code>@opentui/core</code> for the imperative API and component primitives, <code>@opentui/react</code> and <code>@opentui/solid</code> for declarative APIs over the same renderer, and a native core with a C ABI underneath all three. The index below follows each part into the documentation.
+          You have now seen every layer of it: <code>@opentui/core</code> for the imperative API and component primitives, <code>@opentui/react</code> and <code>@opentui/solid</code> for declarative APIs over the same renderer, and a native core with a C ABI underneath all three. The index below follows each part into the documentation.
         </p>
 
       </div>
