@@ -21,6 +21,7 @@
   },
   "scripts": {
     "bench": "bun src/benchmark/pipeline-benchmark.ts",
+    "bench:streaming": "bun src/benchmark/streaming-markdown-benchmark.ts",
     "build": "bun scripts/build.ts",
     "publish": "bun scripts/publish.ts",
     "test": "bun test",
