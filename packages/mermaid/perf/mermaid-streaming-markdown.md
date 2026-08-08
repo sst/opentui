@@ -107,6 +107,14 @@ The individual update phases are diagnostic only. Keep an optimization only when
 - After: 762,564 ns/cycle.
 - Result: 12.3% lower median cycle latency with 1.3% RME. Kept.
 
+### Reuse custom renderables in place
+
+- Hypothesis: destroying and recreating the Mermaid `TextRenderable` on every revision adds avoidable Yoga, listener, and reconciliation work.
+- Change: expose the previous custom block renderable during reconciliation; update Mermaid content and height in place while retaining cache ownership and scroll state.
+- Before: 762,564 ns/cycle.
+- After: 675,101 ns/cycle.
+- Result: 11.5% lower median cycle latency with 0.73% RME. Invalid partial fallback dropped from 112,315 to 40,504 ns/update. Kept.
+
 ## Dead ends
 
 ### Share one empty cell object across the canvas

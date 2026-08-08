@@ -8,6 +8,7 @@ import {
   type MarkdownCodeBlockRenderer,
   type MouseEvent,
   type RenderContext,
+  type RenderNodeContext,
   type RGBA,
   type StyledText,
 } from "@opentui/core"
@@ -33,6 +34,11 @@ interface PreparedDiagram {
   readonly source: string
   readonly text: StyledText
   readonly height: number
+}
+
+interface LastGoodDiagram {
+  prepared: PreparedDiagram
+  owner: StaticDiagramRenderable
 }
 
 export interface MermaidMarkdownRendererOptions {
@@ -94,6 +100,11 @@ class StaticDiagramRenderable extends TextRenderable {
       event.preventDefault()
       event.stopPropagation()
     }
+  }
+
+  update(prepared: PreparedDiagram): void {
+    this.content = prepared.text
+    this.height = prepared.height
   }
 }
 
@@ -178,7 +189,7 @@ export function createMermaidCodeBlockRenderer(
   ctx: RenderContext,
   input: MermaidMarkdownRendererOptions | (() => MermaidMarkdownRendererOptions) = {},
 ): MarkdownCodeBlockRenderer {
-  const lastGood = new Map<string, PreparedDiagram>()
+  const lastGood = new Map<string, LastGoodDiagram>()
   return (token, context) => {
     const kind = detectMermaidDiagram(token.text)
     if (!kind) return undefined
@@ -187,14 +198,14 @@ export function createMermaidCodeBlockRenderer(
 
     try {
       const prepared = prepareDiagram(kind, token.text, options)
-      const diagram = new StaticDiagramRenderable(ctx, prepared)
+      const diagram = reuseDiagram(ctx, prepared, context.previous)
       if (key) claimLastGood(key, prepared, diagram, lastGood)
       return diagram
     } catch (error) {
       if (error instanceof MermaidSyntaxError) {
-        const previous = key ? lastGood.get(key) : undefined
+        const previous = key ? lastGood.get(key)?.prepared : undefined
         if (!previous || previous.kind !== kind || !isStreamingRevision(previous.source, token.text)) return undefined
-        const diagram = new StaticDiagramRenderable(ctx, previous)
+        const diagram = reuseDiagram(ctx, previous, context.previous)
         claimLastGood(key!, previous, diagram, lastGood)
         return diagram
       }
@@ -202,6 +213,16 @@ export function createMermaidCodeBlockRenderer(
       throw error
     }
   }
+}
+
+function reuseDiagram(
+  ctx: RenderContext,
+  prepared: PreparedDiagram,
+  previous: RenderNodeContext["previous"],
+): StaticDiagramRenderable {
+  if (!(previous instanceof StaticDiagramRenderable)) return new StaticDiagramRenderable(ctx, prepared)
+  previous.update(prepared)
+  return previous
 }
 
 function isStreamingRevision(previous: string, current: string): boolean {
@@ -214,9 +235,14 @@ function claimLastGood(
   key: string,
   value: PreparedDiagram,
   owner: StaticDiagramRenderable,
-  cache: Map<string, PreparedDiagram>,
+  cache: Map<string, LastGoodDiagram>,
 ): void {
-  const claim = { ...value }
+  const current = cache.get(key)
+  if (current?.owner === owner) {
+    current.prepared = value
+    return
+  }
+  const claim = { prepared: value, owner }
   cache.set(key, claim)
   owner.once(RenderableEvents.DESTROYED, () => {
     // Reconciliation destroys the old block before synchronously creating its replacement.

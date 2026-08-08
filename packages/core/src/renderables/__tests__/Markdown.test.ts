@@ -2186,6 +2186,7 @@ const x = 1;
 })
 
 test("custom code block renderable updates when fenced content changes", async () => {
+  let initial: TextRenderable | undefined
   const md = createMarkdownRenderable({
     id: "custom-code-update",
     content: "```widget\nfirst\n```",
@@ -2193,11 +2194,13 @@ test("custom code block renderable updates when fenced content changes", async (
     renderNode: (node, ctx) => {
       if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
 
-      return new TextRenderable(renderer, {
-        id: "custom-widget",
-        content: `WIDGET: ${node.text}`,
-        width: "100%",
-      })
+      const renderable =
+        ctx.previous instanceof TextRenderable
+          ? ctx.previous
+          : new TextRenderable(renderer, { id: "custom-widget", content: "", width: "100%" })
+      renderable.content = `WIDGET: ${node.text}`
+      initial ??= renderable
+      return renderable
     },
   })
 
@@ -2211,6 +2214,7 @@ test("custom code block renderable updates when fenced content changes", async (
   const frame = captureFrame()
   expect(frame).toContain("WIDGET: second")
   expect(frame).not.toContain("WIDGET: first")
+  expect(md.getRenderable("custom-widget")).toBe(initial)
 })
 
 test("createMarkdownCodeBlockRenderer dispatches fenced code by language", async () => {
