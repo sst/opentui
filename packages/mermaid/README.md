@@ -41,4 +41,12 @@ The package also exports parsers and plain renderers for sequence and state diag
 
 This package implements a practical Mermaid syntax subset for terminal rendering. Unsupported otherwise-valid syntax throws `MermaidSyntaxError` with the diagram kind, source line, and line number.
 
+- **Flowchart:** five directions, chained solid/dashed/thick/undirected edges, labels, nested subgraphs, local subgraph directions, and box/rounded/database/decision/subroutine nodes.
+- **Sequence:** participants and actors, message arrow variants, self messages, notes, `alt`/`else`, `loop`, participant boxes, autonumbering, and activations.
+- **State:** four directions, aliases, start/end/choice states, labeled/parallel/self transitions, composites, and left/right notes.
+
+All visible text supports quotes, Mermaid `<br>` line breaks, Unicode, and named or numeric HTML entities. Presentation-only flowchart directives are ignored because terminal colors come from the OpenTUI theme.
+
+Common Mermaid features outside this subset include additional flowchart shapes and `&` fan-out syntax; sequence `opt`, `par`, `critical`, `break`, `rect`, create/destroy, and bidirectional messages; and state fork/join, concurrent regions, descriptions, and composite-local directions.
+
 This project is not affiliated with the Mermaid project.

@@ -29,6 +29,7 @@ const DECISION_NODE_RE = new RegExp(`^(${ID_RE})\\{(.+)\\}$`)
 const BOX_NODE_RE = new RegExp(`^(${ID_RE})\\[(.+)\\]$`)
 const ID_ONLY_RE = new RegExp(`^${ID_RE}$`)
 const EXPLICIT_NODE_SHAPE_RE = new RegExp(`^${ID_RE}(?:\\[|\\(|\\{)`)
+const CIRCLE_NODE_RE = new RegExp(`^${ID_RE}\\(\\(.+\\)\\)$`)
 const EDGE_OPERATOR_RE =
   /(-\.(?!->)(.+?)\.->)|(--|==|-\.)\s+(.+?)\s+(-->|==>|\.->|-\.->)|(-->|==>|-\.->|---|~~~)\s*(?:\|([^|]*)\|\s*)?/g
 
@@ -78,6 +79,20 @@ function parseNodeToken(token: string): FlowchartNode {
   if (box) return { id: box[1]!, label: stripQuotes(box[2]!), shape: "box" }
 
   return { id: trimmed, label: trimmed, shape: "box" }
+}
+
+function isSupportedNodeToken(token: string): boolean {
+  const trimmed = stripNodeToken(token)
+  if (CIRCLE_NODE_RE.test(trimmed)) return false
+  return (
+    ID_ONLY_RE.test(trimmed) ||
+    DATABASE_NODE_RE.test(trimmed) ||
+    SUBROUTINE_NODE_RE.test(trimmed) ||
+    ROUNDED_BRACKET_NODE_RE.test(trimmed) ||
+    ROUNDED_NODE_RE.test(trimmed) ||
+    DECISION_NODE_RE.test(trimmed) ||
+    BOX_NODE_RE.test(trimmed)
+  )
 }
 
 function hasExplicitNodeShape(token: string): boolean {
@@ -139,7 +154,7 @@ interface ParsedEdgeOperator {
 }
 
 function parseEdgeOperators(line: string): ParsedEdgeOperator[] {
-  return [...line.matchAll(EDGE_OPERATOR_RE)].map((match) => {
+  return [...maskNodeLabelOperators(line).matchAll(EDGE_OPERATOR_RE)].map((match) => {
     const inlineDashedArrow = match[1]
     const startArrow = inlineDashedArrow ?? match[3] ?? match[6]!
     const endArrow = inlineDashedArrow ?? match[5] ?? match[6]!
@@ -152,6 +167,70 @@ function parseEdgeOperators(line: string): ParsedEdgeOperator[] {
       orderOnly: endArrow === "~~~",
     }
   })
+}
+
+function maskNodeLabelOperators(line: string): string {
+  const characters = line.split("")
+  const stack: string[] = []
+  let quote: '"' | "'" | undefined
+  const closes: Record<string, string> = { "[": "]", "(": ")", "{": "}" }
+
+  for (let index = 0; index < characters.length; index++) {
+    const character = characters[index]!
+    if (quote) {
+      if (character === quote && characters[index - 1] !== "\\") quote = undefined
+      else if (/[<>=.-]/.test(character)) characters[index] = " "
+      continue
+    }
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+    if (character in closes) {
+      stack.push(character)
+      continue
+    }
+    if (stack.length > 0 && character === closes[stack.at(-1)!]) {
+      stack.pop()
+      continue
+    }
+    if (stack.length > 0 && /[<>=.-]/.test(character)) characters[index] = " "
+  }
+  return characters.join("")
+}
+
+function hasInternalStatementSeparator(line: string): boolean {
+  const stack: string[] = []
+  let quote: '"' | "'" | undefined
+  let edgeLabel = false
+  const closes: Record<string, string> = { "[": "]", "(": ")", "{": "}" }
+  const finalIndex = line.trimEnd().length - 1
+
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index]!
+    if (quote) {
+      if (character === quote && line[index - 1] !== "\\") quote = undefined
+      continue
+    }
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+    if (character in closes) {
+      stack.push(character)
+      continue
+    }
+    if (stack.length > 0 && character === closes[stack.at(-1)!]) {
+      stack.pop()
+      continue
+    }
+    if (stack.length === 0 && character === "|") {
+      edgeLabel = !edgeLabel
+      continue
+    }
+    if (character === ";" && index < finalIndex && stack.length === 0 && !edgeLabel) return true
+  }
+  return false
 }
 
 export function isMermaidFlowchartDiagram(content: string): boolean {
@@ -167,6 +246,7 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
 
   for (const source of meaningfulNumberedMermaidLines(content)) {
     const line = source.text
+    if (hasInternalStatementSeparator(line)) throw new MermaidSyntaxError("flowchart", source.lineNumber, line)
     const header = line.match(FLOWCHART_HEADER_RE)
     if (header) {
       direction = normalizeDirection(header[2])
@@ -223,6 +303,15 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
       ]
 
       if (nodeTokens.every((token) => stripNodeToken(token).length > 0)) {
+        const unsupportedEndpoint = nodeTokens.find((token, index) => {
+          const stripped = stripNodeToken(token)
+          const orderOnlyEndpoint = edgeOperators[index - 1]?.orderOnly || edgeOperators[index]?.orderOnly
+          return (
+            !(orderOnlyEndpoint && subgraphs.some((subgraph) => subgraph.id === stripped)) &&
+            !isSupportedNodeToken(stripped)
+          )
+        })
+        if (unsupportedEndpoint) throw new MermaidSyntaxError("flowchart", source.lineNumber, line)
         const chainNodeIds = nodeTokens.map((token, index) => {
           const stripped = stripNodeToken(token)
           const orderOnlyEndpoint = edgeOperators[index - 1]?.orderOnly || edgeOperators[index]?.orderOnly
@@ -247,7 +336,7 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
       }
     }
 
-    if (hasExplicitNodeShape(line) || ID_ONLY_RE.test(stripNodeToken(line))) {
+    if (isSupportedNodeToken(line)) {
       const node = ensureNode(nodes, line)
       addNodeToSubgraph(currentSubgraph, node.id)
       continue

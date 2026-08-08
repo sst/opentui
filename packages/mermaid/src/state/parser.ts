@@ -119,6 +119,9 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
 
     const directionMatch = line.match(DIRECTION_RE)
     if (directionMatch) {
+      if (parentStack.length > 0) {
+        throw new MermaidSyntaxError("state", source.lineNumber, line, "Composite-local direction is not supported")
+      }
       direction = normalizeDirection(directionMatch[1])
       continue
     }
