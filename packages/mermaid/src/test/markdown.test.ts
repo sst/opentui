@@ -76,6 +76,7 @@ flowchart LR
   expect(frame).toContain("Done")
   expect(frame).not.toContain("flowchart LR")
   expect(markdown.getChildren()[0]?.marginTop).toBe(1)
+  expect(markdown.getChildren()[0]?.marginBottom).toBe(1)
 })
 
 test("recognizes normalized Mermaid fence info strings", async () => {

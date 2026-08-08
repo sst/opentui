@@ -1020,6 +1020,14 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public get marginBottom(): number | "auto" | `${number}%` {
+    const margin = this.yogaNode.getMargin(Edge.Bottom) as unknown
+    if (typeof margin === "number") return margin
+    if (typeof margin === "object" && margin && "value" in margin && typeof margin.value === "number")
+      return margin.value
+    return 0
+  }
+
   public set marginBottom(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Bottom, margin)

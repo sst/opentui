@@ -81,7 +81,9 @@ class StaticDiagramRenderable extends TextRenderable {
       wrapMode: "none",
       selectable: false,
       marginTop: 1,
+      marginBottom: 1,
     })
+    this.marginBottom = 1
     this.prepared = prepared
     let dragX: number | undefined
     this.onMouseDown = (event: MouseEvent) => {

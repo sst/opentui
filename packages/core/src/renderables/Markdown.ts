@@ -259,6 +259,10 @@ function colorsEqual(left?: RGBA, right?: RGBA): boolean {
   return left.equals(right)
 }
 
+function numericMargin(value: unknown): number {
+  return typeof value === "number" ? value : 0
+}
+
 export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
@@ -1560,7 +1564,7 @@ export class MarkdownRenderable extends Renderable {
       typeof custom.renderable.marginTop === "number"
         ? Math.max(custom.renderable.marginTop, block.marginTop)
         : block.marginTop
-    this.applyMargins(custom.renderable, marginTop, 0)
+    this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
 
     return {
       renderable: custom.renderable,
@@ -1840,7 +1844,7 @@ export class MarkdownRenderable extends Renderable {
               typeof custom.renderable.marginTop === "number"
                 ? Math.max(custom.renderable.marginTop, block.marginTop)
                 : block.marginTop
-            this.applyMargins(custom.renderable, marginTop, 0)
+            this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
             if (custom.renderable !== existing.renderable) {
               existing.renderable.destroyRecursively()
               this.add(custom.renderable, blockIndex)
@@ -1860,9 +1864,12 @@ export class MarkdownRenderable extends Renderable {
         }
 
         this.updateBlockRenderable(existing, block.token, blockIndex, blocks[i + 1]?.token)
-        existing.renderable.marginBottom = 0
         if (existing.marginTop !== block.marginTop) {
-          this.applyMargins(existing.renderable, block.marginTop, 0)
+          this.applyMargins(
+            existing.renderable,
+            Math.max(numericMargin(existing.renderable.marginTop), block.marginTop),
+            numericMargin(existing.renderable.marginBottom),
+          )
         }
         this.syncTopLevelBlockState(existing, block)
         blockIndex++
@@ -1880,7 +1887,7 @@ export class MarkdownRenderable extends Renderable {
           typeof custom.renderable.marginTop === "number"
             ? Math.max(custom.renderable.marginTop, block.marginTop)
             : block.marginTop
-        this.applyMargins(custom.renderable, marginTop, 0)
+        this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
       }
 
       const next = custom?.renderable
