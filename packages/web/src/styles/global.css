@@ -281,6 +281,7 @@ h4,
 .editorial-hero {
   margin-top: 20px;
   margin-bottom: 8px;
+  position: relative;
 }
 
 @media (min-width: 768px) {
@@ -322,6 +323,8 @@ h4,
   display: grid;
   grid-template-columns: 1fr;
   gap: 36px;
+  position: relative;
+  z-index: 1;
 }
 
 @media (min-width: 900px) {
@@ -404,63 +407,32 @@ h4,
   min-width: 0;
 }
 
-/* Hero Terminal Preview Window */
-.hero-terminal {
-  background: #0d0f14;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.1);
-}
-
-.hero-terminal-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px;
-  background: #14161f;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.hero-terminal-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  opacity: 0.8;
-}
-
-.hero-terminal-dot.dot-red {
-  background: #ff5f56;
-}
-
-.hero-terminal-dot.dot-yellow {
-  background: #ffbd2e;
-}
-
-.hero-terminal-dot.dot-green {
-  background: #27c93f;
-}
-
-.hero-terminal-name {
-  margin-left: 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.hero-terminal-body {
-  margin: 0;
-  padding: 18px 18px;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: #7dd3fc;
-  overflow-x: auto;
-}
-
-.hero-figure-caption {
+/* Hero Illustration: a chrome-free, borderless animated recording bled
+   against the right side of the hero, masked so it fades into the copy
+   column instead of sitting in a boxed "window." Contained on narrow
+   viewports; bled full-height on desktop, behind the headline/CTA. */
+.hero-illustration-bleed {
   display: none;
+  pointer-events: none;
+}
+
+@media (min-width: 900px) {
+  .hero-illustration-bleed {
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 42%;
+    right: -20px;
+    z-index: 0;
+    mask-image: linear-gradient(to right, transparent 0%, black 32%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 32%);
+  }
+}
+
+.hero-illustration {
+  height: 100%;
+  width: 100%;
 }
 
 /* Illustrated Introduction Front Matter */

@@ -1,0 +1,47 @@
+---
+interface Props {
+  source?: string
+  label: string
+  fit?: "contain" | "cover"
+  fontSize?: number
+  gamma?: number
+  minAlpha?: number
+  maxAlpha?: number
+  // Left undefined by default so the player falls back to this element's own
+  // computed `color` (the --illustration-ink / --cobalt-600 custom property),
+  // which already tracks light/dark mode. Pass explicit hex values here only
+  // to override that with a fixed duotone.
+  inkShadow?: string
+  inkHighlight?: string
+  class?: string
+}
+
+const {
+  source = "/recordings/terminal-story.json",
+  label,
+  fit = "contain",
+  fontSize = 14,
+  gamma = 2.2,
+  minAlpha = 0.02,
+  maxAlpha = 1,
+  inkShadow,
+  inkHighlight,
+  class: className,
+} = Astro.props
+---
+
+<div
+  class={`terminal-illustration ${className ?? ""}`}
+  data-terminal-illustration={source}
+  data-illustration-fit={fit}
+  data-illustration-font-size={fontSize}
+  data-illustration-gamma={gamma}
+  data-illustration-min-alpha={minAlpha}
+  data-illustration-max-alpha={maxAlpha}
+  data-illustration-ink-shadow={inkShadow}
+  data-illustration-ink-highlight={inkHighlight}
+  role="img"
+  aria-label={label}
+>
+  <pre class="terminal-illustration__screen" data-illustration-screen aria-hidden="true"></pre>
+</div>

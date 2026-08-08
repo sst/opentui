@@ -1,0 +1,33 @@
+.terminal-illustration {
+  --illustration-ink: var(--cobalt-600);
+  align-items: center;
+  color: var(--illustration-ink);
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-illustration__screen {
+  color: inherit;
+  flex: none;
+  font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-ligatures: none;
+  margin: 0;
+  transition: opacity 0.4s ease;
+  white-space: pre;
+}
+
+.terminal-illustration__row {
+  display: block;
+  height: 1.5em;
+  line-height: 1.5em;
+}
+
+.terminal-illustration__row span {
+  display: inline-block;
+  height: 100%;
+  line-height: inherit;
+  vertical-align: top;
+}

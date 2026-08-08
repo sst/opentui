@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro"
 import OpenTUILogo from "../components/OpenTUILogo.astro"
+import TerminalIllustration from "../components/TerminalIllustration.astro"
 
 // All listings are adapted from the docs pages they cite; they use only API
 // shown on those pages and must be re-verified when those pages change.
@@ -169,6 +170,10 @@ const indexData = [
       <header class="editorial-hero">
         <div class="hero-logo-slot" id="hero-logo-slot" aria-hidden="true"></div>
 
+        <div class="hero-illustration-bleed" aria-hidden="true">
+          <TerminalIllustration label="OpenTUI terminal recording, animated" fit="cover" fontSize={16} class="hero-illustration" />
+        </div>
+
         <div class="hero-grid">
           <div class="hero-copy">
             <h1 class="hero-headline">
@@ -183,17 +188,7 @@ const indexData = [
             </div>
           </div>
 
-          <div class="hero-preview">
-            <div class="hero-terminal">
-              <div class="hero-terminal-bar">
-                <span class="hero-terminal-dot dot-red"></span>
-                <span class="hero-terminal-dot dot-yellow"></span>
-                <span class="hero-terminal-dot dot-green"></span>
-                <span class="hero-terminal-name">hello.ts</span>
-              </div>
-              <pre class="hero-terminal-body"><code>{capturedFrame}</code></pre>
-            </div>
-          </div>
+          <div class="hero-preview" aria-hidden="true"></div>
         </div>
       </header>
 
@@ -529,4 +524,10 @@ const indexData = [
     updateMetrics()
     updateNav()
   </script>
+
+  <script src="../scripts/terminal-illustration.js"></script>
 </Base>
+
+<style is:global>
+  @import "../styles/terminal-illustration.css";
+</style>

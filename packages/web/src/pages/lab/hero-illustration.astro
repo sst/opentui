@@ -1,0 +1,269 @@
+---
+import Base from "../../layouts/Base.astro"
+import TerminalIllustration from "../../components/TerminalIllustration.astro"
+---
+
+<Base title="Hero Illustration Lab - OpenTUI" description="Isolated illustration prototypes for the hero.">
+  <main class="illustration-lab">
+    <section class="illustration-lab__block">
+      <h2>A. Full-bleed ambient, contain</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--light">
+        <TerminalIllustration label="Ambient terminal recording" fit="contain" class="illustration-lab__fill" />
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>B. Full-bleed ambient, cover (cropped)</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--light">
+        <TerminalIllustration label="Ambient terminal recording" fit="cover" class="illustration-lab__fill" />
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>E. Bleed, weighted right &mdash; mono ink (single blue)</h2>
+      <div class="hero-bleed">
+        <div class="hero-bleed__illustration">
+          <TerminalIllustration
+            label="Ambient terminal recording"
+            fit="cover"
+            fontSize={16}
+            class="illustration-lab__fill"
+          />
+        </div>
+        <div class="hero-bleed__copy">
+          <h1>Terminal UIs on a native Zig core.</h1>
+          <p>
+            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
+            renderer. The core exposes a C ABI for any other language.
+          </p>
+          <div class="hero-mock__cta">
+            <code>$ bun create tui</code>
+            <a href="#">Read the docs &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>F. Bleed, weighted right &mdash; duo ink (indigo shadow &rarr; sky highlight)</h2>
+      <div class="hero-bleed">
+        <div class="hero-bleed__illustration">
+          <TerminalIllustration
+            label="Ambient terminal recording"
+            fit="cover"
+            fontSize={16}
+            inkShadow="#0b1b4d"
+            inkHighlight="#7dd3fc"
+            minAlpha={0.06}
+            maxAlpha={1}
+            class="illustration-lab__fill"
+          />
+        </div>
+        <div class="hero-bleed__copy">
+          <h1>Terminal UIs on a native Zig core.</h1>
+          <p>
+            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
+            renderer. The core exposes a C ABI for any other language.
+          </p>
+          <div class="hero-mock__cta">
+            <code>$ bun create tui</code>
+            <a href="#">Read the docs &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>G0. Bleed, weighted right &mdash; inverted duo (pale shadow &rarr; deep navy highlight, for light bg ink density)</h2>
+      <div class="hero-bleed">
+        <div class="hero-bleed__illustration">
+          <TerminalIllustration
+            label="Ambient terminal recording"
+            fit="cover"
+            fontSize={16}
+            inkShadow="#c7dbfb"
+            inkHighlight="#0b1a3d"
+            minAlpha={0.03}
+            maxAlpha={1}
+            class="illustration-lab__fill"
+          />
+        </div>
+        <div class="hero-bleed__copy">
+          <h1>Terminal UIs on a native Zig core.</h1>
+          <p>
+            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
+            renderer. The core exposes a C ABI for any other language.
+          </p>
+          <div class="hero-mock__cta">
+            <code>$ bun create tui</code>
+            <a href="#">Read the docs &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>G. Bleed, weighted right, dark surface &mdash; duo ink</h2>
+      <div class="hero-bleed hero-bleed--dark">
+        <div class="hero-bleed__illustration">
+          <TerminalIllustration
+            label="Ambient terminal recording"
+            fit="cover"
+            fontSize={16}
+            inkShadow="#13224f"
+            inkHighlight="#93c5fd"
+            minAlpha={0.08}
+            maxAlpha={1}
+            class="illustration-lab__fill"
+          />
+        </div>
+        <div class="hero-bleed__copy">
+          <h1>Terminal UIs on a native Zig core.</h1>
+          <p>
+            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
+            renderer. The core exposes a C ABI for any other language.
+          </p>
+          <div class="hero-mock__cta">
+            <code>$ bun create tui</code>
+            <a href="#">Read the docs &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<style is:global>
+  @import "../../styles/terminal-illustration.css";
+
+  .illustration-lab {
+    background: var(--background);
+    color: var(--foreground);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+    gap: 64px;
+    padding: 48px;
+  }
+
+  .illustration-lab__block h2 {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    margin: 0 0 16px;
+    text-transform: uppercase;
+  }
+
+  .illustration-lab__stage {
+    border: 1px dashed var(--border-color);
+    height: 60vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .illustration-lab__stage--light {
+    background: var(--background);
+  }
+
+  .illustration-lab__fill {
+    height: 100%;
+    width: 100%;
+  }
+
+  .hero-mock {
+    align-items: center;
+    background: #fbfbfb;
+    border: 1px solid var(--border-subtle);
+    display: grid;
+    gap: 40px;
+    grid-template-columns: 1fr 1fr;
+    padding: 64px;
+  }
+
+  .hero-mock--dark {
+    background: #0d0e12;
+    color: #f4f4f7;
+  }
+
+  .hero-mock__copy h1 {
+    font-family: var(--font-serif);
+    font-size: 40px;
+    line-height: 1.05;
+    margin: 0 0 20px;
+  }
+
+  .hero-mock__copy p {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 46ch;
+    opacity: 0.75;
+  }
+
+  .hero-mock__cta {
+    align-items: center;
+    display: flex;
+    gap: 20px;
+    margin-top: 24px;
+  }
+
+  .hero-mock__cta code {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+
+  .hero-mock__preview {
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+  }
+
+  .hero-bleed {
+    background: #fbfbfb;
+    border: 1px solid var(--border-subtle);
+    height: 70vh;
+    position: relative;
+  }
+
+  .hero-bleed--dark {
+    background: #0d0e12;
+    color: #f4f4f7;
+  }
+
+  .hero-bleed__illustration {
+    bottom: 0;
+    left: 28%;
+    mask-image: linear-gradient(to right, transparent 0%, black 38%);
+    position: absolute;
+    right: 0;
+    top: 0;
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 38%);
+  }
+
+  .hero-bleed__copy {
+    max-width: 46ch;
+    padding: 64px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-bleed__copy h1 {
+    font-family: var(--font-serif);
+    font-size: 40px;
+    line-height: 1.05;
+    margin: 0 0 20px;
+  }
+
+  .hero-bleed__copy p {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.6;
+    opacity: 0.75;
+  }
+</style>
+
+<script src="../../scripts/terminal-illustration.js"></script>
