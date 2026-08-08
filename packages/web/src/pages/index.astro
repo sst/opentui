@@ -23,6 +23,56 @@ const capturedFrame = `╭──────────────────
 │                       │
 ╰───────────────────────╯`
 
+// FIG_02-05 are short fragments that continue an existing "renderer" in
+// scope (imports omitted) so lines stay narrow enough for the 3-column flow.
+const layoutListing = `Box(
+  { flexDirection: "row", width: "100%" },
+  Box(
+    { width: 24, border: true },
+    Text({ content: "Sidebar" }),
+  ),
+  Box(
+    { flexGrow: 1, padding: 1 },
+    Text({ content: "Content" }),
+  ),
+)`
+
+const codeComponentListing = `new CodeRenderable(renderer, {
+  content: "const answer = 42",
+  filetype: "typescript",
+  width: 34,
+  syntaxStyle: SyntaxStyle.fromStyles({
+    keyword: { fg: RGBA.fromHex("#ff7b72") },
+    number: { fg: RGBA.fromHex("#79c0ff") },
+  }),
+})`
+
+const tableListing = `new TextTableRenderable(renderer, {
+  width: "100%",
+  borderStyle: "rounded",
+  content: [
+    [[bold("Service")], [bold("Status")]],
+    [[fg("#999")("api")], [fg("#2c5")("OK")]],
+    [[fg("#999")("job")], [fg("#f90")("BUSY")]],
+  ],
+})`
+
+const imageListing = `const panel = new BoxRenderable(renderer, {
+  flexDirection: "column",
+  gap: 1,
+})
+panel.add(new ImageRenderable(renderer, {
+  source: "./cover.webp",
+  width: 40,
+  height: 15,
+  fit: "cover",
+}))
+panel.add(new TextRenderable(renderer, {
+  content: "Now playing",
+  fg: "#38bdf8",
+}))
+renderer.root.add(panel)`
+
 const indexData = [
   {
     part: "PART I: FIRST FRAME",
@@ -115,14 +165,14 @@ const indexData = [
 
       <!-- Illustrated Introduction: Front Matter -->
       <section class="editorial-frontmatter">
-        <h2 class="frontmatter-title">Between your code and the screen.</h2>
+        <h2 class="frontmatter-title">Let's build a terminal app.</h2>
         <p class="frontmatter-subtitle">
-          What you write, what OpenTUI does, and where to go next.
+          You'll start with one component and end with something you could ship.
         </p>
       </section>
 
       <p class="editorial-intro">
-        Build a tree of boxes, text, inputs, and images. OpenTUI resolves the tree's layout, routes input through it, composes it into terminal cells, and writes only the cells that changed. Use the core API directly, or let React and Solid drive the same renderables.
+        Build a tree of boxes, text, tables, and images. Lay it out with the Flexbox you already know, wire up keyboard and mouse input, and OpenTUI turns the result into terminal output &mdash; on your machine, over SSH, or compiled into a single binary. Here's the smallest version of that tree.
       </p>
 
       <!-- FIG_01: The interface you write -->
@@ -156,225 +206,137 @@ const indexData = [
       <div class="editorial-flow">
 
         <p>
-          For ordinary layout, you position nothing by hand. You set <code>flexDirection</code>, <code>flexGrow</code>, <code>padding</code>, and percentage sizes on containers, and Yoga, the Flexbox layout engine, resolves the tree against the terminal's current width and height; absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved against the new constraints; your components do not change.
+          One component is not an app. Nest boxes, set <code>flexDirection</code>, <code>flexGrow</code>, and <code>gap</code>, and OpenTUI lays out the tree the way CSS Flexbox would: a sidebar beside a scrolling pane, a header pinned above a body, a status line pinned below. You describe relationships between elements, not pixel offsets, and OpenTUI resolves them against however many rows and columns the terminal actually has.
         </p>
 
         <p>
-          The resolved bounds determine more than where a border is drawn. They determine where text wraps, how much of a scrollable region is visible, and where mouse interaction lands. Layout is continuous while it is being described and discrete when it reaches the terminal: the result must occupy whole columns and rows.
+          Resize the terminal and the same tree resolves again against the new size; nothing you wrote changes. That property &mdash; a layout that survives a resize without a rewrite &mdash; is what makes a terminal app feel like an app, not a script that happens to print boxes.
         </p>
 
-        <!-- FIG_02: The layout you declare -->
+        <!-- FIG_02: Layout & composition -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_02</span>
-          <span class="fig-tag-top-right">[ RESOLVED LAYOUT BOUNDS ]</span>
+          <span class="fig-tag-top-right">[ SIDEBAR + CONTENT ]</span>
 
-          <div class="figure-canvas-wrap">
-            <svg viewBox="0 0 380 170" width="380" height="170" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Flexible constraint box -->
-              <rect x="30" y="30" width="140" height="70" fill="rgba(29, 78, 216, 0.06)" stroke="var(--cobalt-600)" stroke-width="1.2" stroke-dasharray="3 3"/>
-              <text x="100" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">FLEXIBLE: width 33.3%</text>
+          <span class="figure-code-label">Source</span>
+          <pre class="figure-code"><code>{layoutListing}</code></pre>
 
-              <!-- Resolution arrow -->
-              <path d="M185 65 L215 65" stroke="var(--cobalt-600)" stroke-width="1.2"/>
-              <text x="200" y="55" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--cobalt-600)">RESOLVE</text>
-
-              <!-- Discrete integer cells -->
-              <g transform="translate(225, 30)">
-                <rect x="0" y="0" width="130" height="70" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-width="1.2"/>
-                <line x1="26" y1="0" x2="26" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
-                <line x1="52" y1="0" x2="52" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
-                <line x1="78" y1="0" x2="78" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
-                <line x1="104" y1="0" x2="104" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
-                <text x="65" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)">16 COLUMNS</text>
-              </g>
-
-              <text x="190" y="140" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--text-muted)">RESIZE: SAME TREE &middot; NEW CONSTRAINTS</text>
-            </svg>
-          </div>
+          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; rendered at 60&times;20, then resized live</div>
 
           <div class="figure-caption-text">
-            A percentage width is continuous until it is resolved; here it becomes a fixed span of whole columns. Resize the terminal and the same tree resolves again against the new constraints &mdash; the components themselves do not change.
+            A 24-column sidebar and a growing content pane, in four lines. Every measurement here is relative &mdash; resize the terminal and this tree resolves again on its own.
           </div>
-          <span class="fig-tag-bottom-left">YOGA LAYOUT</span>
-          <span class="fig-tag-bottom-right">PROPS &rarr; CELLS</span>
+          <span class="fig-tag-bottom-left">LAYOUT</span>
+          <span class="fig-tag-bottom-right">FLEX &rarr; CELLS</span>
         </figure>
 
         <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/layout">Layout</a> &middot; <a href="/docs/core-concepts/renderables">Renderables</a>
+          Continue reading: <a href="/docs/core-concepts/layout">Layout system</a> &middot; <a href="/docs/core-concepts/renderables">Renderables</a>
         </p>
 
         <p>
-          Layout also establishes where interaction can happen. When a component has focus, keyboard events route to it; <code>renderer.keyInput</code> emits structured key events with the parsed key name, modifiers, and the original terminal sequence, and paste arrives as its own event. Mouse events follow the resolved bounds of whatever is beneath the pointer. Parsing, focus, and routing happen inside the same renderer that draws the frame, not a separate input layer.
+          Layout gives you structure; components give you substance. Beyond <code>Box</code> and <code>Text</code>, the library includes <code>Select</code> for menus, <code>Input</code> and <code>TextArea</code> for entry, <code>TextTable</code> for tabular data with per-cell styling, <code>Markdown</code> and syntax-highlighted <code>Code</code> for prose and source, <code>Image</code> for real pictures, and more &mdash; scrollboxes, tabs, sliders, ASCII banners, QR codes &mdash; all built from the same renderables as the box in FIG_01.
         </p>
 
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/keyboard">Keyboard and input</a> &middot; <a href="/docs/components/input">Input component</a>
+        <p>
+          <code>Code</code> highlights source with Tree-sitter, the same parser technology editors use, so a log viewer or diff tool gets real syntax colors instead of a best-effort regex. None of this requires leaving the renderable tree: a table and a syntax-highlighted panel compose exactly like two boxes do.
         </p>
 
-        <!-- FIG_03: The text you set -->
+        <!-- FIG_03: The component library -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_03</span>
-          <span class="fig-tag-top-right">[ THE LOGICAL CELL ]</span>
+          <span class="fig-tag-top-right">[ TWO OF THE LIBRARY ]</span>
 
-          <div class="figure-canvas-wrap">
-            <svg viewBox="0 0 420 240" width="420" height="240" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Isometric Layer 1: tagged character field (furthest back, lightest tone) -->
-              <g transform="translate(50, 16)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.05)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.08)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.11)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
+          <span class="figure-code-label">Code</span>
+          <pre class="figure-code"><code>{codeComponentListing}</code></pre>
 
-                <line x1="120" y1="40" x2="260" y2="40" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="40" r="2" fill="var(--cobalt-600)" fill-opacity="0.55"/>
-                <text x="265" y="43" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)" fill-opacity="0.65">char: u32 (tagged)</text>
-              </g>
-
-              <!-- Isometric Layer 2: foreground and background color (mid tone) -->
-              <g transform="translate(50, 46)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.18)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.24)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
-
-                <line x1="120" y1="62" x2="260" y2="88" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="62" r="2" fill="var(--cobalt-600)" fill-opacity="0.75"/>
-                <text x="265" y="91" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)" fill-opacity="0.85">fg &middot; bg: RGBA</text>
-              </g>
-
-              <!-- Isometric Layer 3: style attributes (nearest, strongest tone) -->
-              <g transform="translate(50, 76)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.22)" stroke="var(--cobalt-600)" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.30)" stroke="var(--cobalt-600)" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.38)" stroke="var(--cobalt-600)" stroke-width="1"/>
-
-                <line x1="120" y1="62" x2="260" y2="136" stroke="var(--cobalt-600)" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="62" r="2" fill="var(--cobalt-600)"/>
-                <text x="265" y="139" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)">attributes: u32</text>
-              </g>
-            </svg>
-          </div>
+          <span class="figure-code-label">TextTable</span>
+          <pre class="figure-code"><code>{tableListing}</code></pre>
 
           <div class="figure-caption-text">
-            The three tilted planes above are not physically stacked; they represent the parallel arrays inside the native buffer &mdash; tagged characters, then color, then attributes &mdash; that combine at each position into one logical cell. The same tagged field also marks image and continuation cells.
+            Two of the library's components, declared the same way as the tree in FIG_01: accurately highlighted source above, a styled and bordered table below.
           </div>
           <span class="fig-tag-bottom-left">OPENTUI CORE</span>
-          <span class="fig-tag-bottom-right">CHAR &middot; FG &middot; BG &middot; ATTRS</span>
+          <span class="fig-tag-bottom-right">CODE &middot; TEXTTABLE</span>
         </figure>
 
-        <p>
-          You set <code>content</code> on a text renderable and move on. OpenTUI's job is to make that honest on a cell grid, because a cell is not the same thing as a character in a JavaScript string. A grapheme is not a byte, a code point, or a UTF-16 code unit: several code points can form one grapheme, and a wide grapheme can begin in one column and continue through another.
+        <p class="flow-refs">
+          Continue reading: <a href="/docs/components/code">Code</a> &middot; <a href="/docs/components/text-table">Text table</a> &middot; <a href="/docs/components/markdown">Markdown</a> &middot; <a href="/docs/components/select">Select</a>
         </p>
 
         <p>
-          OpenTUI keeps those distinctions in the frame. The character field can identify a direct scalar, a grapheme stored elsewhere, an image cell, or a continuation. Foreground and background colors and text attributes travel with it. This is why wrapping, truncation, and cursor movement stay correct when your strings contain emoji, CJK text, or combining marks &mdash; and why tests can capture the frame as plain text or inspect structured spans containing text, width, colors, and attributes.
+          Every one of those components can take focus, and focus is what makes a terminal app interactive rather than a poster. When a component has focus, keyboard events route to it; <code>renderer.keyInput</code> emits structured key events with the parsed key name, modifiers, and the original terminal sequence, and paste arrives as its own event. <code>Select</code> turns arrow keys and <code>Enter</code> into an <code>ITEM_SELECTED</code> event without you writing a key-matching switch statement yourself.
+        </p>
+
+        <p>
+          Mouse events follow the same resolved bounds layout already computed, and the whole interaction surface is testable: <code>createTestRenderer</code> drives real key and mouse events against a real render loop, so you can assert on behavior instead of eyeballing a terminal.
         </p>
 
         <p class="flow-refs">
-          Continue reading: <a href="/docs/components/text">Text</a> &middot; <a href="/docs/core-concepts/colors">Colors</a> &middot; <a href="/docs/core-concepts/testing">Testing</a>
+          Continue reading: <a href="/docs/core-concepts/keyboard">Keyboard and input</a> &middot; <a href="/docs/components/select">Select</a> &middot; <a href="/docs/core-concepts/testing">Testing</a>
         </p>
 
-        <!-- FIG_04: The updates you make -->
+        <p>
+          Terminals are not limited to sixteen colors and block characters anymore, and OpenTUI does not pretend otherwise. Every color is a full RGBA value, and <code>Image</code> decodes PNG, JPEG, WebP, and GIF into whatever the terminal actually supports &mdash; Kitty graphics, Sixel, or Unicode blocks &mdash; so a real photo, not an ASCII approximation, sits inside your layout next to ordinary text.
+        </p>
+
+        <p>
+          Color is not only for content: <code>colorMatrix</code> and <code>colorMatrixUniform</code> apply 4&times;4 RGBA transforms &mdash; invert, desaturate, sepia &mdash; directly to a frame buffer, the same primitive image editors use, running on your terminal's cells.
+        </p>
+
+        <!-- FIG_04: Color & real images -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_04</span>
-          <span class="fig-tag-top-right">[ CELL-BY-CELL DIFF ]</span>
+          <span class="fig-tag-top-right">[ IMAGE + TEXT, ONE TREE ]</span>
 
-          <div class="figure-canvas-wrap">
-            <svg viewBox="0 0 380 180" width="380" height="180" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Previous frame -->
-              <rect x="20" y="30" width="110" height="85" fill="var(--background)" stroke="currentColor" stroke-width="1"/>
-              <text x="75" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">PREVIOUS FRAME</text>
-              <line x1="20" y1="58" x2="130" y2="58" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
-              <line x1="20" y1="86" x2="130" y2="86" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
+          <span class="figure-code-label">Source</span>
+          <pre class="figure-code"><code>{imageListing}</code></pre>
 
-              <!-- Comparison arrow -->
-              <path d="M145 72 L185 72" stroke="var(--cobalt-600)" stroke-width="1.2"/>
-              <text x="165" y="64" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">CELL DIFF</text>
-
-              <!-- Current frame with changed run -->
-              <rect x="200" y="30" width="110" height="85" fill="var(--background)" stroke="currentColor" stroke-width="1"/>
-              <text x="255" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">CURRENT FRAME</text>
-              <rect x="213" y="45" width="64" height="30" fill="rgba(29, 78, 216, 0.14)" stroke="var(--cobalt-600)" stroke-width="1.5"/>
-              <text x="245" y="63" text-anchor="middle" font-family="var(--font-mono)" font-size="7.5" fill="var(--cobalt-600)">CHANGED RUN</text>
-
-              <!-- Update stream output -->
-              <rect x="20" y="130" width="340" height="32" fill="rgba(0,0,0,0.03)" stroke="currentColor" stroke-width="0.8"/>
-              <text x="32" y="150" font-family="var(--font-mono)" font-size="9.5" fill="currentColor">{"\\x1b[4;12H\\x1b[38;2;29;78;216mACTIVE\\x1b[0m"}</text>
-              <text x="345" y="150" text-anchor="end" font-family="var(--font-mono)" font-size="8.5" fill="var(--cobalt-600)">[UPDATE STREAM]</text>
-            </svg>
-          </div>
+          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; Kitty, Sixel, and block fallback, side by side</div>
 
           <div class="figure-caption-text">
-            The highlighted run above is the only part of the frame that changed; the bytes written to the terminal move the cursor to it and re-encode just its text and color, leaving the rest of the previous frame untouched.
+            A cover image and a status line, declared together. Which bytes actually reach your terminal &mdash; Kitty, Sixel, or blocks &mdash; depends on what the terminal reports, not on what you wrote.
           </div>
-          <span class="fig-tag-bottom-left">FRAME COMPARISON</span>
-          <span class="fig-tag-bottom-right">CHANGED CELLS</span>
+          <span class="fig-tag-bottom-left">IMAGERENDERABLE</span>
+          <span class="fig-tag-bottom-right">KITTY &middot; SIXEL &middot; BLOCKS</span>
         </figure>
 
-        <p>
-          You change state &mdash; a label, a cursor position, one row of results &mdash; and you are done. You do not schedule redraws, track damage, or decide what to repaint. OpenTUI composes the next frame as a complete surface, compares it with the previous one, and writes output only for what changed.
-        </p>
-
-        <p>
-          Changed runs carry the cursor movement, color and attribute state, and encoded text needed to update those positions. An unchanged render can produce no cell updates; a resize or screen-mode transition can require more work than a small cell diff. The useful property is not an absolute promise of &ldquo;no redraws.&rdquo; It is that the frame and its update are both explicit objects you can inspect: tests capture frames with <code>createTestRenderer</code>, and frame-buffer operations such as 4&times;4 color-matrix transforms act on the frame directly without touching your component tree.
-        </p>
-
         <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/renderer">Renderer</a> &middot; <a href="/docs/core-concepts/testing">Testing</a> &middot; <a href="/docs/reference/color-matrix">Color matrix</a>
+          Continue reading: <a href="/docs/components/image">Image component</a> &middot; <a href="/docs/core-concepts/colors">Colors</a> &middot; <a href="/docs/reference/color-matrix">Color matrix</a>
         </p>
 
-        <!-- FIG_05: The images you render -->
+        <p>
+          Everything above runs through <code>CliRenderer</code>, and <code>CliRenderer</code> is not tied to your machine. Use the imperative API directly, or let <code>@opentui/react</code> or <code>@opentui/solid</code> drive the identical renderables through JSX &mdash; same renderer, same components, different syntax. <code>@opentui/ssh</code> turns each accepted SSH connection into its own <code>CliRenderer</code>, so the app you just built can serve multiple remote users at once, in whichever of the three APIs you already wrote it in.
+        </p>
+
+        <p>
+          Bun can compile the whole thing &mdash; native library, parsers, and grammars included &mdash; into one executable with <code>bun build --compile</code>; Node.js single-executable applications work too. What you built as a script becomes something you can hand someone as a single file.
+        </p>
+
+        <!-- FIG_05: One renderer, everywhere it runs -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_05</span>
-          <span class="fig-tag-top-right">[ IMAGE PROTOCOL RESOLUTION ]</span>
+          <span class="fig-tag-top-right">[ ONE RENDERER, THREE WAYS OUT ]</span>
 
-          <div class="figure-canvas-wrap">
-            <svg viewBox="0 0 380 150" width="380" height="150" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Kitty: first choice, full-strength accent -->
-              <rect x="30" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-width="1.2"/>
-              <text x="77" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">AUTO &middot; 1</text>
-              <text x="77" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)">KITTY</text>
-              <text x="77" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">GRAPHICS PROTOCOL</text>
-
-              <!-- Sixel: second choice, dimmer accent denotes fallback order -->
-              <rect x="142" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.07)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1.2"/>
-              <text x="189" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)" fill-opacity="0.55">AUTO &middot; 2</text>
-              <text x="189" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)" fill-opacity="0.55">SIXEL</text>
-              <text x="189" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">NEEDS PIXEL GEOMETRY</text>
-
-              <!-- Unicode blocks: last resort, faintest accent -->
-              <rect x="254" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.04)" stroke="var(--cobalt-600)" stroke-opacity="0.3" stroke-width="1.2"/>
-              <text x="301" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)" fill-opacity="0.3">AUTO &middot; 3</text>
-              <text x="301" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)" fill-opacity="0.3">BLOCKS</text>
-              <text x="301" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">▀ ▄ █ QUADRANTS</text>
-
-              <text x="190" y="130" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--text-muted)">AUTO: GLOBAL OVERRIDE &rarr; KITTY &rarr; SIXEL &rarr; BLOCKS</text>
-            </svg>
-          </div>
+          <div class="figure-placeholder" aria-hidden="true">Diagram pending &mdash; CliRenderer branching to a local terminal, an SSH session, and a compiled binary</div>
 
           <div class="figure-caption-text">
-            The fading tone above is priority order: with protocol selection set to <code>auto</code> and no override, OpenTUI tries Kitty first, Sixel next, and Unicode blocks last, chosen by whichever pixel-graphics support the terminal actually reports at startup.
+            The same renderer sits underneath a local terminal session, a remote SSH session, and a compiled binary. Nothing about the component tree changes between them.
           </div>
-          <span class="fig-tag-bottom-left">PROTOCOL SELECTION</span>
-          <span class="fig-tag-bottom-right">AUTO-DETECTED</span>
+          <span class="fig-tag-bottom-left">CLIRENDERER</span>
+          <span class="fig-tag-bottom-right">LOCAL &middot; SSH &middot; BINARY</span>
         </figure>
 
-        <p>
-          You add an image component and point it at a file. Which bytes reach the terminal depends on the terminal: some emulators accept Kitty graphics, some accept Sixel, and every environment reports different capabilities during startup, resize, remote transport, or multiplexing.
-        </p>
-
-        <p>
-          OpenTUI keeps that decision at the image-rendering boundary so your component does not change per terminal. In automatic mode, the documented order is the global override, then Kitty, then Sixel, then Unicode blocks. Sixel requires terminal pixel geometry and temporarily falls back to blocks when that geometry is unavailable; tmux and overlapping images introduce additional constraints documented with the image component. The block path is not an error state &mdash; it maps sampled image colors into the same foreground, background, and cell grid used by the rest of the frame.
-        </p>
-
         <p class="flow-refs">
-          Continue reading: <a href="/docs/components/image">Image component</a> &middot; <a href="/docs/reference/native-image">Native image loading</a> &middot; <a href="/docs/reference/env-vars">Environment overrides</a>
+          Continue reading: <a href="/docs/bindings/react">React</a> &middot; <a href="/docs/bindings/solid">Solid</a> &middot; <a href="/docs/reference/ssh">SSH</a> &middot; <a href="/docs/reference/standalone-executables">Standalone executables</a>
         </p>
 
         <p>
-          These mechanisms meet at <code>CliRenderer</code>. It manages the terminal session, input events, the render loop, and the output boundary while loading the native Zig rendering library underneath. A renderer takes responsibility for the terminal, then gives it back: it enters the selected screen mode, configures terminal features, receives input, writes frames, and restores the terminal's state during cleanup. The details differ across local terminals, custom streams, and SSH sessions; the boundary remains explicit.
+          None of this is hypothetical: OpenTUI already powers OpenCode in production, and will power terminal.shop next.
         </p>
 
         <p>
-          You have now seen every layer of it: <code>@opentui/core</code> for the imperative API and component primitives, <code>@opentui/react</code> and <code>@opentui/solid</code> for declarative APIs over the same renderer, and a native core with a C ABI underneath all three. The index below follows each part into the documentation.
+          You have now seen the shape of it: components and layout, interaction and testing, color and images, and the reach to run anywhere from a laptop to an SSH session to a single compiled binary. The index below follows each piece into the documentation &mdash; including <a href="/docs/core-concepts/rendering-pipeline">how the renderer resolves all of it</a> beneath the tree you write.
         </p>
 
       </div>
@@ -412,7 +374,7 @@ const indexData = [
         <div class="footer-top">
           <div class="footer-identity">
             <OpenTUILogo class="footer-logo-mark" />
-            <span style="font-weight: 500; color: var(--foreground);">BETWEEN YOUR CODE AND THE SCREEN</span>
+            <span style="font-weight: 500; color: var(--foreground);">LET'S BUILD A TERMINAL APP</span>
           </div>
           <div class="footer-links">
             <a href="/docs/getting-started">Documentation</a>

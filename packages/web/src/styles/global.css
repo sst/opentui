@@ -606,6 +606,24 @@ h4,
   height: auto;
 }
 
+/* Placeholder for a pending real capture or diagram; deliberately plain so it
+   reads as unfinished rather than as a finished graphic. */
+.figure-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+  margin: 18px 0;
+  padding: 20px;
+  border: 1px dashed var(--border-color);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
 .figure-caption-text {
   font-family: var(--font-mono);
   font-size: 12px;
