@@ -7,7 +7,6 @@ import {
   fillDiagramFrameInterior,
   mergeDiagramLineGlyph,
 } from "../core/drawing.js"
-import { diagramTextWidth } from "../core/text.js"
 import {
   createStateDiagramLayout,
   expandCompositeBoundsForFeedback,
@@ -203,7 +202,6 @@ function drawTransitionJunctionPlans(
     const style = plan.kind === "choice" ? "choice" : "transition"
     const char = plan.kind === "choice" ? "◆" : diagramLineGlyph(plan.connections, "rounded")
     setCell(grid, plan.bounds.left, plan.bounds.top, char, style)
-    if (plan.kind === "choice") setText(grid, plan.bounds.left + 2, plan.bounds.top, ` ${plan.state.label} `, style)
   }
 }
 
@@ -263,13 +261,6 @@ export function drawStateDiagramGrid(sourceDiagram: StateDiagram, options: State
       ...(plan.label ? [plan.label.x + measureStateTransitionLabel(plan.route.transition.label).width] : []),
     ]),
   )
-  const choiceLabelRight = Math.max(
-    0,
-    ...diagram.states.flatMap((state) => {
-      const bound = bounds.get(state.id)
-      return state.kind === "choice" && bound ? [bound.left + 4 + diagramTextWidth(state.label)] : []
-    }),
-  )
   const transitionBottom = Math.max(
     maxY,
     ...transitionPlans.flatMap((plan) => [
@@ -278,7 +269,7 @@ export function drawStateDiagramGrid(sourceDiagram: StateDiagram, options: State
     ]),
   )
   const grid = makeGrid(
-    Math.max(maxX + Math.max(24, maxTransitionLabelWidth + 4), transitionRight + 2, choiceLabelRight + 2),
+    Math.max(maxX + Math.max(24, maxTransitionLabelWidth + 4), transitionRight + 2),
     Math.max(maxY + 8 + maxTransitionLabelLines, transitionBottom + 2),
   )
   for (const composite of diagram.composites) {

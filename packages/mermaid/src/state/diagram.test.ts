@@ -55,7 +55,7 @@ stateDiagram-v2
   Decision --> Accepted: yes
 `)
 
-    expect(diagram.states).toContainEqual({ id: "Decision", label: "Decision", kind: "choice" })
+    expect(diagram.states).toContainEqual({ id: "Decision", label: "", kind: "choice" })
   })
 
   test("parses composite states and notes", () => {
@@ -384,7 +384,7 @@ stateDiagram-v2
 
     expect(output).toMatchInlineSnapshot(`
       "              ╭─────────╮   submit          ok      ╭───────╮
-      ●────────────▶│ Editing ├────────────▶◆─ Decision ─▶│ Saved │
+      ●────────────▶│ Editing ├────────────▶◆────────────▶│ Saved │
                     ╰──┬──────╯             │             ╰───────╯
                      ▲ │    ▲ type          │ fail
                      │ ╰────╯               │
@@ -411,7 +411,7 @@ stateDiagram-v2
   Decision --> Done
   Done --> [*]`)
 
-    expect(output).toContain("Upper ├────────────▶◆─ Decision ─▶│ Done")
+    expect(output).toContain("Upper ├────────────▶◆────────────▶│ Done")
   })
 
   test("renders self transitions as loops in vertical diagrams", () => {
@@ -469,7 +469,6 @@ stateDiagram-v2
   Three --> One: clockwise`)
 
     expect(output.match(/◆/g)).toHaveLength(3)
-    for (const label of ["One", "Two", "Three"]) expect(output.match(new RegExp(label, "g"))).toHaveLength(1)
   })
 
   test("routes dense horizontal transitions around unrelated states", () => {
@@ -692,7 +691,7 @@ stateDiagram-v2
   Decision --> [*]`)
 
     expect(output).toContain("╰─────────────▼")
-    expect(output).toContain("◆─ Decision ─▶◎")
+    expect(output).toContain("◆────────────▶◎")
   })
 
   test("keeps vertical branch labels from overwriting state labels", () => {
