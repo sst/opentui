@@ -120,4 +120,13 @@ describe("DiagramCanvas", () => {
     expect(canvas.getTextHeight({ trimTop: true, trimBottom: true })).toBe(1)
     expect(measurements).toBe(0)
   })
+
+  test("updates tracked row extents when the last visible cell is cleared", () => {
+    const canvas = new DiagramCanvas(8, 1)
+    canvas.setText(1, 0, "abc")
+    canvas.setCell(3, 0, " ")
+
+    expect(canvas.toString()).toBe(" ab")
+    expect(canvas.getTextSize()).toEqual({ width: 3, height: 1 })
+  })
 })

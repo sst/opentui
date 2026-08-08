@@ -98,3 +98,11 @@ The individual update phases are diagnostic only. Keep an optimization only when
 - Before: 911,507 ns/cycle.
 - After: 869,267 ns/cycle.
 - Result: 4.6% lower median cycle latency with 1.2% RME. Kept.
+
+### Track visible row extents during drawing
+
+- Hypothesis: trimming and styled-run conversion repeatedly scan blank tails across the full canvas width.
+- Change: track each row's rightmost visible cell as cells are written or cleared.
+- Before: 869,267 ns/cycle.
+- After: 762,564 ns/cycle.
+- Result: 12.3% lower median cycle latency with 1.3% RME. Kept.

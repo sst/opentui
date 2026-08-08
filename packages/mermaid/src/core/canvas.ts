@@ -70,6 +70,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
 
   private readonly measure: (text: string) => number
   private readonly mergeCell?: DiagramCanvasOptions<Style, Metadata>["mergeCell"]
+  private readonly rowEnds: Uint32Array
 
   constructor(
     readonly width: number,
@@ -83,15 +84,10 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     this.measure = options.measure ?? stringWidth
     this.mergeCell = options.mergeCell
     this.rows = Array.from({ length: height }, () => Array.from({ length: width }, () => createEmptyCell()))
+    this.rowEnds = new Uint32Array(height)
   }
 
-  private rowTextEnd(row: Array<DiagramCanvasCell<Style, Metadata>>): number {
-    let rowEnd = row.length
-    while (rowEnd > 0 && row[rowEnd - 1]?.char === " ") rowEnd -= 1
-    return rowEnd
-  }
-
-  private rowText(row: Array<DiagramCanvasCell<Style, Metadata>>, rowEnd = this.rowTextEnd(row)): string {
+  private rowText(row: Array<DiagramCanvasCell<Style, Metadata>>, rowEnd: number): string {
     return row
       .slice(0, rowEnd)
       .map((cell) => cell.char)
@@ -101,8 +97,8 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
   private textRowRange(trimTop: boolean, trimBottom: boolean): { start: number; end: number } {
     let start = 0
     let end = this.rows.length
-    if (trimTop) while (start < end && this.rowTextEnd(this.rows[start]!) === 0) start += 1
-    if (trimBottom) while (end > start && this.rowTextEnd(this.rows[end - 1]!) === 0) end -= 1
+    if (trimTop) while (start < end && this.rowEnds[start] === 0) start += 1
+    if (trimBottom) while (end > start && this.rowEnds[end - 1] === 0) end -= 1
     return { start, end }
   }
 
@@ -110,7 +106,15 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     if (y < 0 || y >= this.rows.length || x < 0 || x >= this.rows[y]!.length) return
 
     const incoming = { char, style, ...metadata } as DiagramCanvasCell<Style, Metadata>
-    this.rows[y]![x] = this.mergeCell?.(this.rows[y]![x]!, incoming) ?? incoming
+    const cell = this.mergeCell?.(this.rows[y]![x]!, incoming) ?? incoming
+    this.rows[y]![x] = cell
+    if (cell.char !== " ") {
+      this.rowEnds[y] = Math.max(this.rowEnds[y]!, x + 1)
+    } else if (this.rowEnds[y] === x + 1) {
+      let end = x
+      while (end > 0 && this.rows[y]![end - 1]?.char === " ") end -= 1
+      this.rowEnds[y] = end
+    }
   }
 
   getCell(x: number, y: number): DiagramCanvasCell<Style, Metadata> | undefined {
@@ -134,7 +138,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     const lines: string[] = []
     const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
-      lines.push(this.rowText(this.rows[rowIndex]!))
+      lines.push(this.rowText(this.rows[rowIndex]!, this.rowEnds[rowIndex]!))
     }
     return lines.join("\n")
   }
@@ -144,7 +148,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     let width = 0
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
       const row = this.rows[rowIndex]!
-      const rowEnd = this.rowTextEnd(row)
+      const rowEnd = this.rowEnds[rowIndex]!
       if (rowEnd > 0) width = Math.max(width, this.measure(this.rowText(row, rowEnd)))
     }
     return { width, height: rows.end - rows.start }
@@ -165,7 +169,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
 
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
       const row = this.rows[rowIndex]!
-      const rowEnd = this.rowTextEnd(row)
+      const rowEnd = this.rowEnds[rowIndex]!
 
       let currentCell: DiagramCanvasCell<Style, Metadata> | undefined
       let currentKey: readonly unknown[] | undefined
