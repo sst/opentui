@@ -102,7 +102,6 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
   switch (kind) {
     case "flowchart": {
       const grid = drawFlowchartDiagramGrid(parseMermaidFlowchartDiagram(source), { compact: options.compact })
-      const size = grid.getTextSize({ trimTop: true, trimBottom: true })
       return {
         kind,
         source,
@@ -116,12 +115,11 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
             group: color(colors.muted),
           }),
         ),
-        height: size.height,
+        height: grid.getTextHeight({ trimTop: true, trimBottom: true }),
       }
     }
     case "sequence": {
       const grid = drawSequenceDiagramGrid(parseMermaidSequenceDiagram(source), { compact: options.compact })
-      const size = grid.getTextSize()
       return {
         kind,
         source,
@@ -139,12 +137,11 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
             noteBg: color(colors.background),
           }),
         ),
-        height: size.height,
+        height: grid.height,
       }
     }
     case "state": {
       const grid = drawStateDiagramGrid(parseMermaidStateDiagram(source))
-      const size = grid.getTextSize({ trimBottom: true })
       return {
         kind,
         source,
@@ -163,7 +160,7 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
             choice: color(colors.secondary),
           }),
         ),
-        height: size.height,
+        height: grid.getTextHeight({ trimBottom: true }),
       }
     }
   }

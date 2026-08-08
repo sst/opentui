@@ -105,4 +105,19 @@ describe("DiagramCanvas", () => {
     expect(canvas.toString({ trimTop: true })).toBe("end")
     expect(canvas.getTextSize({ trimTop: true })).toEqual({ width: 3, height: 1 })
   })
+
+  test("measures trim-aware text height without measuring row width", () => {
+    let measurements = 0
+    const canvas = new DiagramCanvas(8, 5, {
+      measure: (text) => {
+        measurements += 1
+        return stringWidth(text)
+      },
+    })
+    canvas.setText(1, 2, "middle")
+    measurements = 0
+
+    expect(canvas.getTextHeight({ trimTop: true, trimBottom: true })).toBe(1)
+    expect(measurements).toBe(0)
+  })
 })

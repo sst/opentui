@@ -90,3 +90,11 @@ The individual update phases are diagnostic only. Keep an optimization only when
 - Before: 948,453 ns/cycle.
 - After: 911,507 ns/cycle.
 - Result: 3.9% lower median cycle latency, with the invalid-fallback phase 7.8% lower. Kept because it also removes an allocation-heavy no-op path for every custom Markdown renderer.
+
+### Measure only the rendered height
+
+- Hypothesis: the Markdown adapter scans and measures every rendered row's width even though it only consumes the diagram height.
+- Change: add a trim-aware `getTextHeight()` canvas query; use direct canvas height for sequence diagrams.
+- Before: 911,507 ns/cycle.
+- After: 869,267 ns/cycle.
+- Result: 4.6% lower median cycle latency with 1.2% RME. Kept.

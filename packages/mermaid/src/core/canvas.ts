@@ -150,6 +150,11 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     return { width, height: rows.end - rows.start }
   }
 
+  getTextHeight(options: DiagramCanvasTextOptions = {}): number {
+    const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
+    return rows.end - rows.start
+  }
+
   forEachRun(
     onRun: (run: DiagramCanvasRun<Style, Metadata>) => void,
     onLineEnd: () => void,
