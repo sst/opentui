@@ -106,3 +106,17 @@ The individual update phases are diagnostic only. Keep an optimization only when
 - Before: 869,267 ns/cycle.
 - After: 762,564 ns/cycle.
 - Result: 12.3% lower median cycle latency with 1.3% RME. Kept.
+
+## Dead ends
+
+### Share one empty cell object across the canvas
+
+- Hypothesis: replacing one object allocation per empty cell with a shared sentinel would reduce construction and GC cost.
+- Result: regressed from 762,564 ns/cycle to 813,423 ns and 1,143,976 ns in two runs.
+- Decision: discarded. The aliased rows appear less optimization-friendly than independently allocated cells in Bun's JavaScript engine.
+
+### Avoid metadata spread when no metadata is present
+
+- Hypothesis: constructing a smaller incoming cell object would reduce write-path allocation cost.
+- Result: regressed from 762,564 ns/cycle to 779,613 ns/cycle with 1.9% RME.
+- Decision: discarded; the branch harms object-shape consistency more than it saves.
