@@ -732,32 +732,21 @@ h4,
 .editorial-footer {
   margin-top: 96px;
   border-top: 1px solid var(--border-color);
-  padding-top: 28px;
+  padding-top: 32px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 16px;
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-muted);
 }
 
-.footer-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.footer-identity,
-.footer-links {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 .footer-identity {
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .footer-logo-mark {
@@ -767,17 +756,19 @@ h4,
 }
 
 .footer-links {
-  gap: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px 20px;
 }
 
 .footer-bottom {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
+  gap: 8px;
   color: var(--text-faint);
 }
 
