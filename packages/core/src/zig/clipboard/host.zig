@@ -160,6 +160,7 @@ const Operation = struct {
     wayland_transfer_format: WaylandTransferFormat = .direct,
     wayland_core_focus_acquired: bool = false,
     wayland_conversion_started: bool = false,
+    wayland_connection_reset: bool = false,
     wayland_barrier_serial: u64 = 0,
     wayland_stale_retry_count: u8 = 0,
     max_bytes: u32 = 0,
@@ -237,6 +238,9 @@ const Operation = struct {
                 operation.rememberFailure(.out_of_memory, "Failed to convert Wayland BMP clipboard image");
                 operation.status = .failed;
             },
+        }
+        if (operation.status == .pending and operation.wayland_connection_reset) {
+            operation.resetWaylandRetryState();
         }
         operation.wayland_conversion_started = false;
     }
@@ -409,6 +413,24 @@ const Operation = struct {
         }
         if (operation.transfer_fd) |fd| posix_io.close(fd);
         operation.transfer_fd = null;
+    }
+
+    fn resetWaylandConnectionState(operation: *Operation) void {
+        operation.cleanupTransfer();
+        operation.transfer_data.clearRetainingCapacity();
+        if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);
+        operation.result_mime = &.{};
+        operation.resetWaylandRetryState();
+    }
+
+    fn resetWaylandRetryState(operation: *Operation) void {
+        operation.mechanism = null;
+        operation.preference_offset = 4;
+        operation.candidate_failed = false;
+        operation.implemented_candidate_attempted = false;
+        operation.wayland_connection_reset = false;
+        operation.wayland_barrier_serial = 0;
+        operation.wayland_stale_retry_count = 0;
     }
 
     fn releaseCoreFocus(operation: *Operation) void {
@@ -834,8 +856,20 @@ const Service = struct {
             .pending => .pending,
             .ready => service.driveWaylandOperation(operation),
             .unsupported => service.fallbackWayland(operation, libraries),
-            .failed => service.finishWaylandFailure(operation),
+            .failed => service.recoverWayland(operation, libraries),
         };
+    }
+
+    fn recoverWayland(
+        service: *Service,
+        operation: *Operation,
+        libraries: clipboard_linux.Libraries,
+    ) OperationStatus {
+        const failure = service.takeWaylandFailure();
+        service.resetWayland();
+        if (libraries.x11) return service.fallbackWayland(operation, libraries);
+        rememberWaylandFailure(operation, failure);
+        return service.finishOperation(operation, .failed);
     }
 
     fn fallbackWayland(
@@ -1348,15 +1382,43 @@ const Service = struct {
     }
 
     fn finishWaylandFailure(service: *Service, operation: *Operation) OperationStatus {
-        const failure = if (service.wayland) |wayland| wayland.takeFailure() else .protocol;
+        const failed_connection = if (service.wayland) |wayland| wayland.isFailed() else false;
+        const failure = service.takeWaylandFailure();
+        rememberWaylandFailure(operation, failure);
+        operation.cleanupTransfer();
+        if (failed_connection) service.resetWayland();
+        return service.finishOperation(operation, .failed);
+    }
+
+    fn takeWaylandFailure(service: *Service) clipboard_wayland.Failure {
+        return if (service.wayland) |wayland| wayland.takeFailure() else .protocol;
+    }
+
+    fn resetWayland(service: *Service) void {
+        const wayland = service.wayland orelse return;
+        for (service.operations.items) |operation| {
+            operation.mutex.lock();
+            defer operation.mutex.unlock();
+            if (operation.status != .pending or operation.mechanism != .wayland) continue;
+            if (operation.wayland_conversion_started) {
+                operation.wayland_connection_reset = true;
+                continue;
+            }
+            operation.resetWaylandConnectionState();
+        }
+        wayland.deinit();
+        service.allocator.destroy(wayland);
+        service.wayland = null;
+        service.wayland_drain_provider = false;
+    }
+
+    fn rememberWaylandFailure(operation: *Operation, failure: clipboard_wayland.Failure) void {
         switch (failure) {
             .none, .protocol => operation.rememberFailure(.wayland_protocol, "Wayland clipboard protocol failed"),
             .dispatch => operation.rememberFailure(.wayland_dispatch, "Wayland clipboard event dispatch failed"),
             .flush => operation.rememberFailure(.wayland_flush, "Wayland clipboard output flush failed"),
             .provider => operation.rememberFailure(.wayland_provider, "Wayland clipboard provider publication failed"),
         }
-        operation.cleanupTransfer();
-        return service.finishOperation(operation, .failed);
     }
 };
 
@@ -1932,6 +1994,36 @@ test "clipboard Wayland transfer format uses canonical offered essence" {
         WaylandTransferFormat.direct,
         waylandTransferFormat("image/png", "image/png; version=3"),
     );
+}
+
+test "clipboard Wayland connection reset clears connection-scoped read state" {
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = undefined,
+        .kind = .read,
+        .mechanism = .wayland,
+        .preference_offset = 17,
+        .candidate_failed = true,
+        .implemented_candidate_attempted = true,
+        .wayland_barrier_serial = 9,
+        .wayland_stale_retry_count = 1,
+        .wayland_connection_reset = true,
+    };
+    defer operation.transfer_data.deinit(std.testing.allocator);
+    try operation.transfer_data.appendSlice(std.testing.allocator, "partial");
+    operation.result_mime = try std.testing.allocator.dupe(u8, "text/plain");
+
+    operation.resetWaylandConnectionState();
+
+    try std.testing.expectEqual(@as(?clipboard_linux.Mechanism, null), operation.mechanism);
+    try std.testing.expectEqual(@as(usize, 0), operation.transfer_data.items.len);
+    try std.testing.expectEqual(@as(usize, 0), operation.result_mime.len);
+    try std.testing.expectEqual(@as(u32, 4), operation.preference_offset);
+    try std.testing.expect(!operation.candidate_failed);
+    try std.testing.expect(!operation.implemented_candidate_attempted);
+    try std.testing.expect(!operation.wayland_connection_reset);
+    try std.testing.expectEqual(@as(u64, 0), operation.wayland_barrier_serial);
+    try std.testing.expectEqual(@as(u8, 0), operation.wayland_stale_retry_count);
 }
 
 test "clipboard zero-byte final image candidate exhausts as empty" {

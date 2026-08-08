@@ -24,7 +24,7 @@ export interface ClipboardReadOptions {
   readonly preferredTypes: readonly [string, ...string[]]
   // Selects the standard clipboard by default. Reads always use the process host.
   readonly selection?: ClipboardSelection
-  // Cancels the read when aborted.
+  // Requests cancellation when aborted. A synchronous platform call may finish before cancellation is observed.
   readonly signal?: AbortSignal
 }
 
@@ -78,7 +78,7 @@ export interface ClipboardWriteOptions {
   readonly selection?: ClipboardSelection
   // Allows a host write when the process runs through a remote terminal session.
   readonly allowRemoteHost?: boolean
-  // Cancels unfinished work when aborted.
+  // Requests cancellation when aborted. A synchronous host call may finish before cancellation is observed.
   readonly signal?: AbortSignal
 }
 
@@ -106,11 +106,13 @@ export interface ClipboardService {
   writeText(text: string, options: ClipboardWriteOptions): Promise<ClipboardWriteResult>
   // Clears the selected destinations without treating empty text as a clear request.
   clear(options: ClipboardWriteOptions): Promise<ClipboardClearResult>
+  // Waits for cooperative cancellation and native resource release; a blocked platform call can delay completion.
   dispose(): Promise<void>
 }
 
 export interface HostClipboardOperationOptions {
   readonly selection?: ClipboardSelection
+  // Requests cancellation; it cannot interrupt a synchronous platform call already in progress.
   readonly signal?: AbortSignal
 }
 
@@ -119,10 +121,12 @@ export interface HostClipboardService {
   read(options: ClipboardReadOptions): Promise<ClipboardReadResult>
   writeText(text: string, options?: HostClipboardOperationOptions): Promise<HostClipboardWriteResult>
   clear(options?: HostClipboardOperationOptions): Promise<HostClipboardClearResult>
+  // Waits for cooperative cancellation and native resource release; a blocked platform call can delay completion.
   dispose(): Promise<void>
 }
 
 export interface HostClipboardOptions {
+  // Cooperative deadline for platform work, not a hard interruption bound for synchronous OS calls.
   readonly timeoutMs?: number
   readonly maxReadBytes?: number
   readonly maxWriteBytes?: number

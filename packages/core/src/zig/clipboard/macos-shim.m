@@ -23,12 +23,36 @@ enum {
 
 typedef int32_t (*ot_clipboard_macos_stop_callback)(const void *context);
 
+typedef struct {
+    CFMutableDataRef data;
+    size_t length;
+    size_t limit;
+    BOOL limit_exceeded;
+} ot_clipboard_macos_output;
+
+static size_t ot_clipboard_macos_put_png_bytes(void *context, const void *bytes, size_t count) {
+    ot_clipboard_macos_output *output = context;
+    if (output->limit_exceeded || count > output->limit - output->length) {
+        output->limit_exceeded = YES;
+        return 0;
+    }
+    CFDataAppendBytes(output->data, bytes, (CFIndex)count);
+    output->length += count;
+    return count;
+}
+
+static const CGDataConsumerCallbacks ot_clipboard_macos_output_callbacks = {
+    .putBytes = ot_clipboard_macos_put_png_bytes,
+    .releaseConsumer = NULL,
+};
+
 static int32_t ot_clipboard_macos_check_stop(ot_clipboard_macos_stop_callback stop_callback,
                                              const void *stop_context) {
     return stop_callback == NULL ? OT_CLIPBOARD_MACOS_STATUS_OK : stop_callback(stop_context);
 }
 
-static int32_t ot_clipboard_macos_read_png(NSPasteboard *pasteboard, uint32_t max_image_pixels,
+static int32_t ot_clipboard_macos_read_png(NSPasteboard *pasteboard, uint32_t max_bytes,
+                                           uint32_t max_image_pixels,
                                            uint32_t max_conversion_bytes,
                                            ot_clipboard_macos_stop_callback stop_callback,
                                            const void *stop_context, NSData **out_data) {
@@ -138,8 +162,19 @@ static int32_t ot_clipboard_macos_read_png(NSPasteboard *pasteboard, uint32_t ma
     }
 
     NSMutableData *png = [NSMutableData data];
-    id destination_owner = CFBridgingRelease(CGImageDestinationCreateWithData(
-        (__bridge CFMutableDataRef)png, CFSTR("public.png"), 1, NULL));
+    ot_clipboard_macos_output output = {
+        .data = (__bridge CFMutableDataRef)png,
+        .length = 0,
+        .limit = max_bytes,
+        .limit_exceeded = NO,
+    };
+    id consumer_owner = CFBridgingRelease(CGDataConsumerCreate(
+        &output, &ot_clipboard_macos_output_callbacks));
+    if (consumer_owner == nil) {
+        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+    }
+    id destination_owner = CFBridgingRelease(CGImageDestinationCreateWithDataConsumer(
+        (__bridge CGDataConsumerRef)consumer_owner, CFSTR("public.png"), 1, NULL));
     if (destination_owner == nil) {
         return OT_CLIPBOARD_MACOS_STATUS_FAILED;
     }
@@ -153,7 +188,10 @@ static int32_t ot_clipboard_macos_read_png(NSPasteboard *pasteboard, uint32_t ma
     if (status != OT_CLIPBOARD_MACOS_STATUS_OK) {
         return status;
     }
-    if (!finalized || [png length] == 0) {
+    if (output.limit_exceeded) {
+        return OT_CLIPBOARD_MACOS_STATUS_LIMIT_EXCEEDED;
+    }
+    if (!finalized || output.length == 0 || [png length] != output.length) {
         return OT_CLIPBOARD_MACOS_STATUS_FAILED;
     }
     *out_data = png;
@@ -198,8 +236,8 @@ int32_t ot_clipboard_macos_read(uint32_t mime, uint32_t max_bytes, uint32_t max_
                 length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
                 source = [text UTF8String];
             } else if (mime == OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG) {
-                status = ot_clipboard_macos_read_png(pasteboard, max_image_pixels,
-                                                     max_conversion_bytes, stop_callback,
+                status = ot_clipboard_macos_read_png(pasteboard, max_bytes, max_image_pixels,
+                                                      max_conversion_bytes, stop_callback,
                                                      stop_context, &data);
                 if (status != OT_CLIPBOARD_MACOS_STATUS_OK) {
                     return status;
@@ -263,15 +301,49 @@ int32_t ot_clipboard_macos_write_text(const uint8_t *bytes, uint32_t length) {
     }
 }
 
+static int32_t ot_clipboard_macos_clear_pasteboard(NSPasteboard *pasteboard) {
+    if (pasteboard == nil) {
+        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+    }
+    [pasteboard clearContents];
+    return OT_CLIPBOARD_MACOS_STATUS_OK;
+}
+
 int32_t ot_clipboard_macos_clear(void) {
     @autoreleasepool {
         @try {
-            [[NSPasteboard generalPasteboard] clearContents];
-            return OT_CLIPBOARD_MACOS_STATUS_OK;
+            return ot_clipboard_macos_clear_pasteboard([NSPasteboard generalPasteboard]);
         } @catch (__unused NSException *exception) {
             return OT_CLIPBOARD_MACOS_STATUS_FAILED;
         }
     }
+}
+
+__attribute__((visibility("hidden"))) int32_t
+ot_clipboard_macos_test_bounded_output(uint32_t limit, uint32_t first_count,
+                                       uint32_t second_count, uint32_t *out_length) {
+    if (first_count > 16 || second_count > 16 || out_length == NULL) {
+        return OT_CLIPBOARD_MACOS_STATUS_INVALID_ARGUMENT;
+    }
+    @autoreleasepool {
+        uint8_t bytes[16] = {0};
+        NSMutableData *data = [NSMutableData data];
+        ot_clipboard_macos_output output = {
+            .data = (__bridge CFMutableDataRef)data,
+            .length = 0,
+            .limit = limit,
+            .limit_exceeded = NO,
+        };
+        (void)ot_clipboard_macos_put_png_bytes(&output, bytes, first_count);
+        (void)ot_clipboard_macos_put_png_bytes(&output, bytes, second_count);
+        *out_length = (uint32_t)[data length];
+        return output.limit_exceeded ? OT_CLIPBOARD_MACOS_STATUS_LIMIT_EXCEEDED
+                                     : OT_CLIPBOARD_MACOS_STATUS_OK;
+    }
+}
+
+__attribute__((visibility("hidden"))) int32_t ot_clipboard_macos_test_clear_null(void) {
+    return ot_clipboard_macos_clear_pasteboard(nil);
 }
 
 void ot_clipboard_macos_free_bytes(uint8_t *bytes) {

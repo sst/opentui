@@ -105,6 +105,13 @@ extern fn ot_clipboard_macos_read(
 extern fn ot_clipboard_macos_write_text(bytes: ?[*]const u8, length: u32) i32;
 extern fn ot_clipboard_macos_clear() i32;
 extern fn ot_clipboard_macos_free_bytes(bytes: ?[*]u8) void;
+extern fn ot_clipboard_macos_test_bounded_output(
+    limit: u32,
+    first_count: u32,
+    second_count: u32,
+    out_length: *u32,
+) i32;
+extern fn ot_clipboard_macos_test_clear_null() i32;
 
 comptime {
     std.debug.assert(@sizeOf(MimeType) == @sizeOf(u32));
@@ -339,6 +346,28 @@ test "macOS clipboard shim initializes absent output" {
     try std.testing.expectEqual(ShimStatus.empty, status);
     try std.testing.expect(bytes == null);
     try std.testing.expectEqual(@as(u32, 0), length);
+}
+
+test "macOS clipboard image output stops at the configured byte limit" {
+    if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
+
+    var length: u32 = 0;
+    try std.testing.expectEqual(
+        ShimStatus.ok,
+        shimStatus(ot_clipboard_macos_test_bounded_output(8, 4, 4, &length)),
+    );
+    try std.testing.expectEqual(@as(u32, 8), length);
+
+    try std.testing.expectEqual(
+        ShimStatus.limit_exceeded,
+        shimStatus(ot_clipboard_macos_test_bounded_output(7, 4, 4, &length)),
+    );
+    try std.testing.expectEqual(@as(u32, 4), length);
+}
+
+test "macOS clipboard clear rejects a missing pasteboard" {
+    if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
+    try std.testing.expectEqual(ShimStatus.failed, shimStatus(ot_clipboard_macos_test_clear_null()));
 }
 
 test "macOS clipboard MIME request parsing preserves order" {

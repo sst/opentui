@@ -353,6 +353,10 @@ pub const Connection = struct {
         return failure;
     }
 
+    pub fn isFailed(self: *const Connection) bool {
+        return self.phase == .failed;
+    }
+
     pub fn receive(self: *Connection, offer: *const Offer, mime: []const u8, fd: std.posix.fd_t) bool {
         if (mime.len > MAX_MIME_BYTES) return false;
         var mime_z: [MAX_MIME_BYTES:0]u8 = undefined;
@@ -954,6 +958,7 @@ pub const Connection = struct {
             const manager = self.manager;
             self.manager = null;
             self.bound_manager_global = null;
+            _ = self.fail(.protocol);
             return manager;
         }
 
@@ -2150,11 +2155,28 @@ test "Wayland registry removal invalidates the bound manager" {
     connection.wlr_global = null;
     connection.manager = manager;
     connection.bound_manager_global = 20;
+    connection.failure = .none;
+    connection.phase = .ready;
+    connection.barrier_callback = null;
 
     try std.testing.expectEqual(manager, connection.removeGlobal(20).?);
     try std.testing.expect(connection.ext_global == null);
     try std.testing.expect(connection.manager == null);
     try std.testing.expect(connection.bound_manager_global == null);
+    try std.testing.expectEqual(Phase.failed, connection.phase);
+    try std.testing.expectEqual(Failure.protocol, connection.failure);
+}
+
+test "Wayland finished device invalidates the connection" {
+    var connection: Connection = undefined;
+    connection.failure = .none;
+    connection.phase = .ready;
+    connection.barrier_callback = null;
+
+    Connection.deviceFinished(&connection, null);
+
+    try std.testing.expect(connection.isFailed());
+    try std.testing.expectEqual(Failure.protocol, connection.failure);
 }
 
 test "Wayland selection failures do not leak across operations" {
