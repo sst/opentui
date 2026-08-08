@@ -81,16 +81,37 @@ const indexData = [
       <!-- Product Hero -->
       <header class="editorial-hero">
         <OpenTUILogo class="hero-logo-mark" title="OpenTUI" />
-        <h1 class="hero-headline">
-          Terminal UIs on a native Zig core.
-        </h1>
-        <p class="editorial-lead-desc">
-          OpenTUI is a TypeScript library for building interactive terminal applications. Write components with the imperative API, or with React and Solid over the same renderer. Yoga resolves Flexbox layout, and a native Zig core turns each frame into terminal output.
-        </p>
-        <div class="hero-start">
-          <code class="hero-start-cmd">$ bun create tui</code>
+
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <h1 class="hero-headline">
+              Terminal UIs on a native Zig core.
+            </h1>
+            <p class="editorial-lead-desc">
+              OpenTUI is a TypeScript library for building interactive terminal applications. Write components with the imperative API, or with React and Solid over the same renderer. Yoga resolves Flexbox layout, and a native Zig core turns each frame into terminal output.
+            </p>
+            <div class="hero-start">
+              <code class="hero-start-cmd">$ bun create tui</code>
+              <a class="hero-start-link" href="/docs/getting-started">Read the docs &rarr;</a>
+            </div>
+          </div>
+
+          <figure class="hero-figure">
+            <div class="hero-terminal">
+              <div class="hero-terminal-bar">
+                <span class="hero-terminal-dot"></span>
+                <span class="hero-terminal-dot"></span>
+                <span class="hero-terminal-dot"></span>
+                <span class="hero-terminal-name">hello.ts</span>
+              </div>
+              <pre class="hero-terminal-body"><code>{capturedFrame}</code></pre>
+            </div>
+            <figcaption class="hero-figure-caption">Output of the four lines in <a href="#fig-01">FIG_01</a>.</figcaption>
+          </figure>
         </div>
       </header>
+
+      <div class="section-rule" aria-hidden="true"></div>
 
       <!-- Illustrated Introduction: Front Matter -->
       <section class="editorial-frontmatter">
@@ -105,7 +126,7 @@ const indexData = [
       </p>
 
       <!-- FIG_01: The interface you write -->
-      <figure class="editorial-figure editorial-lead-figure">
+      <figure class="editorial-figure editorial-lead-figure" id="fig-01">
         <span class="fig-tag-top-left">FIG_01</span>
         <span class="fig-tag-top-right">[ ONE RENDERABLE TREE ]</span>
 
@@ -134,6 +155,14 @@ const indexData = [
       <!-- Editorial Multi-Column Flow -->
       <div class="editorial-flow">
 
+        <p>
+          For ordinary layout, you position nothing by hand. You set <code>flexDirection</code>, <code>flexGrow</code>, <code>padding</code>, and percentage sizes on containers, and Yoga resolves the tree against the terminal's current width and height; absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved against the new constraints; your components do not change.
+        </p>
+
+        <p>
+          The resolved bounds determine more than where a border is drawn. They determine where text wraps, how much of a scrollable region is visible, and where mouse interaction lands. Layout is continuous while it is being described and discrete when it reaches the terminal: the result must occupy whole columns and rows.
+        </p>
+
         <!-- FIG_02: The layout you declare -->
         <figure class="editorial-figure">
           <span class="fig-tag-top-left">FIG_02</span>
@@ -142,21 +171,21 @@ const indexData = [
           <div class="figure-canvas-wrap">
             <svg viewBox="0 0 380 170" width="380" height="170" fill="none" xmlns="http://www.w3.org/2000/svg">
               <!-- Flexible constraint box -->
-              <rect x="30" y="30" width="140" height="70" fill="rgba(14, 165, 233, 0.08)" stroke="var(--cobalt-600)" stroke-width="1.2" stroke-dasharray="3 3"/>
+              <rect x="30" y="30" width="140" height="70" fill="rgba(29, 78, 216, 0.06)" stroke="var(--cobalt-600)" stroke-width="1.2" stroke-dasharray="3 3"/>
               <text x="100" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">FLEXIBLE: width 33.3%</text>
 
               <!-- Resolution arrow -->
-              <path d="M185 65 L215 65" stroke="currentColor" stroke-width="1.2"/>
-              <text x="200" y="55" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="currentColor">RESOLVE</text>
+              <path d="M185 65 L215 65" stroke="var(--cobalt-600)" stroke-width="1.2"/>
+              <text x="200" y="55" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--cobalt-600)">RESOLVE</text>
 
               <!-- Discrete integer cells -->
               <g transform="translate(225, 30)">
-                <rect x="0" y="0" width="130" height="70" fill="rgba(14, 165, 233, 0.15)" stroke="currentColor" stroke-width="1.2"/>
-                <line x1="26" y1="0" x2="26" y2="70" stroke="currentColor" stroke-width="0.5"/>
-                <line x1="52" y1="0" x2="52" y2="70" stroke="currentColor" stroke-width="0.5"/>
-                <line x1="78" y1="0" x2="78" y2="70" stroke="currentColor" stroke-width="0.5"/>
-                <line x1="104" y1="0" x2="104" y2="70" stroke="currentColor" stroke-width="0.5"/>
-                <text x="65" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="currentColor">16 COLUMNS</text>
+                <rect x="0" y="0" width="130" height="70" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-width="1.2"/>
+                <line x1="26" y1="0" x2="26" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
+                <line x1="52" y1="0" x2="52" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
+                <line x1="78" y1="0" x2="78" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
+                <line x1="104" y1="0" x2="104" y2="70" stroke="var(--cobalt-600)" stroke-width="0.5"/>
+                <text x="65" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)">16 COLUMNS</text>
               </g>
 
               <text x="190" y="140" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--text-muted)">RESIZE: SAME TREE &middot; NEW CONSTRAINTS</text>
@@ -169,14 +198,6 @@ const indexData = [
           <span class="fig-tag-bottom-left">YOGA LAYOUT</span>
           <span class="fig-tag-bottom-right">PROPS &rarr; CELLS</span>
         </figure>
-
-        <p>
-          For ordinary layout, you position nothing by hand. You set <code>flexDirection</code>, <code>flexGrow</code>, <code>padding</code>, and percentage sizes on containers, and Yoga resolves the tree against the terminal's current width and height; absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved against the new constraints; your components do not change.
-        </p>
-
-        <p>
-          The resolved bounds determine more than where a border is drawn. They determine where text wraps, how much of a scrollable region is visible, and where mouse interaction lands. Layout is continuous while it is being described and discrete when it reaches the terminal: the result must occupy whole columns and rows.
-        </p>
 
         <p class="flow-refs">
           Continue reading: <a href="/docs/core-concepts/layout">Layout</a> &middot; <a href="/docs/core-concepts/renderables">Renderables</a>
@@ -197,37 +218,37 @@ const indexData = [
 
           <div class="figure-canvas-wrap">
             <svg viewBox="0 0 420 240" width="420" height="240" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Isometric Layer 1: tagged character field -->
+              <!-- Isometric Layer 1: tagged character field (furthest back, lightest tone) -->
               <g transform="translate(50, 16)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(14, 165, 233, 0.08)" stroke="currentColor" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(14, 165, 233, 0.14)" stroke="currentColor" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(14, 165, 233, 0.20)" stroke="currentColor" stroke-width="1"/>
+                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.05)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
+                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.08)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
+                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.11)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1"/>
 
-                <line x1="120" y1="40" x2="260" y2="40" stroke="var(--cobalt-600)" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="40" r="2" fill="var(--cobalt-600)"/>
-                <text x="265" y="43" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)">char: u32 (tagged)</text>
+                <line x1="120" y1="40" x2="260" y2="40" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="0.8" stroke-dasharray="2 2"/>
+                <circle cx="120" cy="40" r="2" fill="var(--cobalt-600)" fill-opacity="0.55"/>
+                <text x="265" y="43" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)" fill-opacity="0.65">char: u32 (tagged)</text>
               </g>
 
-              <!-- Isometric Layer 2: foreground and background color -->
+              <!-- Isometric Layer 2: foreground and background color (mid tone) -->
               <g transform="translate(50, 46)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(16, 185, 129, 0.08)" stroke="currentColor" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(16, 185, 129, 0.14)" stroke="currentColor" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(16, 185, 129, 0.20)" stroke="currentColor" stroke-width="1"/>
+                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
+                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.18)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
+                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.24)" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="1"/>
 
-                <line x1="120" y1="62" x2="260" y2="88" stroke="var(--emerald-600)" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="62" r="2" fill="var(--emerald-600)"/>
-                <text x="265" y="91" font-family="var(--font-mono)" font-size="10" fill="var(--emerald-600)">fg &middot; bg: RGBA</text>
+                <line x1="120" y1="62" x2="260" y2="88" stroke="var(--cobalt-600)" stroke-opacity="0.75" stroke-width="0.8" stroke-dasharray="2 2"/>
+                <circle cx="120" cy="62" r="2" fill="var(--cobalt-600)" fill-opacity="0.75"/>
+                <text x="265" y="91" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)" fill-opacity="0.85">fg &middot; bg: RGBA</text>
               </g>
 
-              <!-- Isometric Layer 3: style attributes -->
+              <!-- Isometric Layer 3: style attributes (nearest, strongest tone) -->
               <g transform="translate(50, 76)">
-                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(217, 119, 6, 0.08)" stroke="currentColor" stroke-width="1"/>
-                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(217, 119, 6, 0.14)" stroke="currentColor" stroke-width="1"/>
-                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(217, 119, 6, 0.20)" stroke="currentColor" stroke-width="1"/>
+                <path d="M120 10 L220 62 L120 114 L20 62 Z" fill="rgba(29, 78, 216, 0.22)" stroke="var(--cobalt-600)" stroke-width="1"/>
+                <path d="M20 62 L20 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.30)" stroke="var(--cobalt-600)" stroke-width="1"/>
+                <path d="M220 62 L220 78 L120 130 L120 114 Z" fill="rgba(29, 78, 216, 0.38)" stroke="var(--cobalt-600)" stroke-width="1"/>
 
-                <line x1="120" y1="62" x2="260" y2="136" stroke="var(--amber-600)" stroke-width="0.8" stroke-dasharray="2 2"/>
-                <circle cx="120" cy="62" r="2" fill="var(--amber-600)"/>
-                <text x="265" y="139" font-family="var(--font-mono)" font-size="10" fill="var(--amber-600)">attributes: u32</text>
+                <line x1="120" y1="62" x2="260" y2="136" stroke="var(--cobalt-600)" stroke-width="0.8" stroke-dasharray="2 2"/>
+                <circle cx="120" cy="62" r="2" fill="var(--cobalt-600)"/>
+                <text x="265" y="139" font-family="var(--font-mono)" font-size="10" fill="var(--cobalt-600)">attributes: u32</text>
               </g>
             </svg>
           </div>
@@ -265,19 +286,19 @@ const indexData = [
               <line x1="20" y1="86" x2="130" y2="86" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/>
 
               <!-- Comparison arrow -->
-              <path d="M145 72 L185 72" stroke="var(--emerald-600)" stroke-width="1.2"/>
-              <text x="165" y="64" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--emerald-600)">CELL DIFF</text>
+              <path d="M145 72 L185 72" stroke="var(--cobalt-600)" stroke-width="1.2"/>
+              <text x="165" y="64" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">CELL DIFF</text>
 
               <!-- Current frame with changed run -->
               <rect x="200" y="30" width="110" height="85" fill="var(--background)" stroke="currentColor" stroke-width="1"/>
               <text x="255" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">CURRENT FRAME</text>
-              <rect x="220" y="45" width="50" height="30" fill="rgba(16, 185, 129, 0.15)" stroke="var(--emerald-600)" stroke-width="1.5"/>
-              <text x="245" y="63" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--emerald-600)">CHANGED RUN</text>
+              <rect x="213" y="45" width="64" height="30" fill="rgba(29, 78, 216, 0.14)" stroke="var(--cobalt-600)" stroke-width="1.5"/>
+              <text x="245" y="63" text-anchor="middle" font-family="var(--font-mono)" font-size="7.5" fill="var(--cobalt-600)">CHANGED RUN</text>
 
               <!-- Update stream output -->
               <rect x="20" y="130" width="340" height="32" fill="rgba(0,0,0,0.03)" stroke="currentColor" stroke-width="0.8"/>
-              <text x="32" y="150" font-family="var(--font-mono)" font-size="9.5" fill="currentColor">{"\\x1b[4;12H\\x1b[38;2;16;185;129mACTIVE\\x1b[0m"}</text>
-              <text x="345" y="150" text-anchor="end" font-family="var(--font-mono)" font-size="8.5" fill="var(--emerald-600)">[UPDATE STREAM]</text>
+              <text x="32" y="150" font-family="var(--font-mono)" font-size="9.5" fill="currentColor">{"\\x1b[4;12H\\x1b[38;2;29;78;216mACTIVE\\x1b[0m"}</text>
+              <text x="345" y="150" text-anchor="end" font-family="var(--font-mono)" font-size="8.5" fill="var(--cobalt-600)">[UPDATE STREAM]</text>
             </svg>
           </div>
 
@@ -307,22 +328,22 @@ const indexData = [
 
           <div class="figure-canvas-wrap">
             <svg viewBox="0 0 380 150" width="380" height="150" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Kitty -->
-              <rect x="30" y="20" width="95" height="85" fill="rgba(14, 165, 233, 0.1)" stroke="var(--cobalt-600)" stroke-width="1"/>
-              <text x="77" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">AUTO &middot; 1</text>
+              <!-- Kitty: first choice, full-strength accent -->
+              <rect x="30" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.12)" stroke="var(--cobalt-600)" stroke-width="1.2"/>
+              <text x="77" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)">AUTO &middot; 1</text>
               <text x="77" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)">KITTY</text>
               <text x="77" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">GRAPHICS PROTOCOL</text>
 
-              <!-- Sixel -->
-              <rect x="142" y="20" width="95" height="85" fill="rgba(217, 119, 6, 0.1)" stroke="var(--amber-600)" stroke-width="1"/>
-              <text x="189" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">AUTO &middot; 2</text>
-              <text x="189" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--amber-600)">SIXEL</text>
+              <!-- Sixel: second choice, dimmer accent denotes fallback order -->
+              <rect x="142" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.07)" stroke="var(--cobalt-600)" stroke-opacity="0.55" stroke-width="1.2"/>
+              <text x="189" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)" fill-opacity="0.55">AUTO &middot; 2</text>
+              <text x="189" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)" fill-opacity="0.55">SIXEL</text>
               <text x="189" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">NEEDS PIXEL GEOMETRY</text>
 
-              <!-- Unicode blocks -->
-              <rect x="254" y="20" width="95" height="85" fill="rgba(16, 185, 129, 0.1)" stroke="var(--emerald-600)" stroke-width="1"/>
-              <text x="301" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="currentColor">AUTO &middot; 3</text>
-              <text x="301" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--emerald-600)">BLOCKS</text>
+              <!-- Unicode blocks: last resort, faintest accent -->
+              <rect x="254" y="20" width="95" height="85" fill="rgba(29, 78, 216, 0.04)" stroke="var(--cobalt-600)" stroke-opacity="0.3" stroke-width="1.2"/>
+              <text x="301" y="40" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--cobalt-600)" fill-opacity="0.3">AUTO &middot; 3</text>
+              <text x="301" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="10" font-weight="bold" fill="var(--cobalt-600)" fill-opacity="0.3">BLOCKS</text>
               <text x="301" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="var(--text-muted)">▀ ▄ █ QUADRANTS</text>
 
               <text x="190" y="130" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--text-muted)">AUTO: GLOBAL OVERRIDE &rarr; KITTY &rarr; SIXEL &rarr; BLOCKS</text>
@@ -358,6 +379,8 @@ const indexData = [
 
       </div>
 
+      <div class="section-rule" aria-hidden="true"></div>
+
       <!-- Reading Index -->
       <section class="toc-section" id="index">
         <div class="toc-header">
@@ -388,7 +411,7 @@ const indexData = [
       <footer class="editorial-footer">
         <div class="footer-top">
           <div class="footer-identity">
-            <OpenTUILogo class="manual-logo-mark" style="width: 72px; height: 16px;" />
+            <OpenTUILogo class="footer-logo-mark" />
             <span style="font-weight: 500; color: var(--foreground);">BETWEEN YOUR CODE AND THE SCREEN</span>
           </div>
           <div class="footer-links">
