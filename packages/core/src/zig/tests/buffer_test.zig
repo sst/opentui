@@ -2559,6 +2559,36 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     try std.testing.expectEqual(@as(u32, 0), cell.attributes);
 }
 
+test "OptimizedBuffer - drawBox respects scissor clipping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        4,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const background = ansi.rgbColor(1, 2, 3, 255);
+    const border = ansi.rgbColor(4, 5, 6, 255);
+    const transparent_background = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
+    const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    buf.clear(background, null);
+    try buf.pushScissorRect(1, 0, 4, 4);
+    defer buf.popScissorRect();
+
+    try buf.drawBox(0, 0, 6, 4, &border_chars, .{ .top = true, .right = true, .bottom = true, .left = true }, border, transparent_background, border, false, null, 0, null, 0);
+
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(5, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(0, 1).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(5, 1).?.char);
+    try std.testing.expectEqual(@as(u32, 0x2500), buf.get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 0x2500), buf.get(4, 3).?.char);
+}
+
 test "OptimizedBuffer - drawBox transparent border foreground blends against box background" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
