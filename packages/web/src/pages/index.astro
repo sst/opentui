@@ -148,20 +148,26 @@ const indexData = [
   title="OpenTUI - Terminal UIs on a native Zig core"
   description="Build interactive terminal applications with TypeScript, React, or Solid on OpenTUI's native Zig core."
 >
+  <!-- Fixed Top Nav -->
+  <header class="fixed-top-nav" id="top-nav">
+    <div class="fixed-top-nav-backdrop"></div>
+    <div class="fixed-top-nav-inner">
+      <a href="/" class="fixed-nav-logo-link" aria-label="OpenTUI">
+        <OpenTUILogo class="brand-logo" id="brand-logo" title="OpenTUI" />
+      </a>
+      <nav class="fixed-nav-links">
+        <a href="/docs/getting-started">Documentation</a>
+        <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
   <div class="editorial-wrapper">
     <div class="editorial-container">
 
-      <!-- Quiet Editorial Masthead: no brand mark here, the logo below is the page's one brand occurrence -->
-      <div class="editorial-masthead">
-        <div class="editorial-masthead-nav">
-          <a href="/docs/getting-started">Documentation</a>
-          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-      </div>
-
       <!-- Product Hero -->
       <header class="editorial-hero">
-        <OpenTUILogo class="hero-logo-mark" title="OpenTUI" />
+        <div class="hero-logo-slot" id="hero-logo-slot" aria-hidden="true"></div>
 
         <div class="hero-grid">
           <div class="hero-copy">
@@ -437,4 +443,78 @@ const indexData = [
 
     </div>
   </div>
+
+  <script>
+    const topNav = document.getElementById("top-nav")
+    const brandLogo = document.getElementById("brand-logo")
+    const heroSlot = document.getElementById("hero-logo-slot")
+    let ticking = false
+
+    let metrics = { deltaX: 0, deltaY: 48, scale: 2.8 }
+
+    function updateMetrics() {
+      if (brandLogo && heroSlot) {
+        const logoParent = brandLogo.parentElement
+        const logoParentRect = logoParent?.getBoundingClientRect()
+        const slotRect = heroSlot.getBoundingClientRect()
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0
+
+        const maxAvailableWidth = window.innerWidth - (window.innerWidth < 768 ? 40 : 72)
+        const targetScale = Math.min(2.8, Math.max(1.6, maxAvailableWidth / 135))
+
+        if (logoParentRect) {
+          const deltaX = slotRect.left - logoParentRect.left
+          const deltaY = slotRect.top + scrollY - logoParentRect.top
+          metrics = { deltaX, deltaY, scale: targetScale }
+        }
+      }
+    }
+
+    function updateNav() {
+      const scrollY = window.scrollY || document.documentElement.scrollTop || 0
+      const threshold = 120
+      const progress = Math.min(1, Math.max(0, scrollY / threshold))
+
+      const currentX = (1 - progress) * metrics.deltaX
+      const currentY = (1 - progress) * metrics.deltaY
+      const currentScale = 1 + (1 - progress) * (metrics.scale - 1)
+
+      topNav?.style.setProperty("--logo-translate-x", `${currentX.toFixed(2)}px`)
+      topNav?.style.setProperty("--logo-translate-y", `${currentY.toFixed(2)}px`)
+      topNav?.style.setProperty("--logo-scale", `${currentScale.toFixed(3)}`)
+      topNav?.style.setProperty("--nav-bg-opacity", `${progress.toFixed(3)}`)
+
+      if (progress > 0.15) {
+        topNav?.classList.add("is-scrolled")
+      } else {
+        topNav?.classList.remove("is-scrolled")
+      }
+
+      if (progress >= 1) {
+        topNav?.classList.add("is-docked")
+      } else {
+        topNav?.classList.remove("is-docked")
+      }
+
+      ticking = false
+    }
+
+    function onScroll() {
+      if (!ticking) {
+        window.requestAnimationFrame(updateNav)
+        ticking = true
+      }
+    }
+
+    function onResize() {
+      updateMetrics()
+      updateNav()
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onResize, { passive: true })
+
+    updateMetrics()
+    updateNav()
+  </script>
 </Base>
