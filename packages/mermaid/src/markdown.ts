@@ -131,11 +131,11 @@ function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMerm
   switch (kind) {
     case "flowchart": {
       const grid = drawFlowchartDiagramGrid(parseMermaidFlowchartDiagram(source), { compact: options.compact })
-      return {
+      return preparedDiagram(
         kind,
         source,
-        optionsKey: options.key,
-        text: renderGridStyledText(
+        options.key,
+        renderGridStyledText(
           grid,
           resolveFlowchartStyleColors({
             node: colors.primary,
@@ -145,16 +145,16 @@ function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMerm
             group: colors.muted,
           }),
         ),
-        height: grid.getTextHeight({ trimTop: true, trimBottom: true }),
-      }
+        grid.getTextHeight({ trimTop: true, trimBottom: true }),
+      )
     }
     case "sequence": {
       const grid = drawSequenceDiagramGrid(parseMermaidSequenceDiagram(source), { compact: options.compact })
-      return {
+      return preparedDiagram(
         kind,
         source,
-        optionsKey: options.key,
-        text: renderSequenceGridStyledText(
+        options.key,
+        renderSequenceGridStyledText(
           grid,
           resolveSequenceStyleColors({
             participant: colors.primary,
@@ -168,16 +168,16 @@ function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMerm
             noteBg: colors.background,
           }),
         ),
-        height: grid.height,
-      }
+        grid.height,
+      )
     }
     case "state": {
       const grid = drawStateDiagramGrid(parseMermaidStateDiagram(source))
-      return {
+      return preparedDiagram(
         kind,
         source,
-        optionsKey: options.key,
-        text: renderStateGridStyledText(
+        options.key,
+        renderStateGridStyledText(
           grid,
           resolveStateStyleColors({
             state: colors.primary,
@@ -192,10 +192,20 @@ function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMerm
             choice: colors.secondary,
           }),
         ),
-        height: grid.getTextHeight({ trimBottom: true }),
-      }
+        grid.getTextHeight({ trimBottom: true }),
+      )
     }
   }
+}
+
+function preparedDiagram(
+  kind: DiagramKind,
+  source: string,
+  optionsKey: string,
+  text: StyledText,
+  height: number,
+): PreparedDiagram {
+  return { kind, source, optionsKey, text, height }
 }
 
 /** Create an OpenTUI Markdown node renderer for fenced Mermaid diagrams. */
@@ -210,10 +220,12 @@ export function createMermaidCodeBlockRenderer(
   ctx: RenderContext,
   input: MermaidMarkdownRendererOptions | (() => MermaidMarkdownRendererOptions) = {},
 ): MarkdownCodeBlockRenderer {
+  const staticOptions = typeof input === "function" ? undefined : resolveOptions(input)
+  const dynamicInput = typeof input === "function" ? input : undefined
   return (token, context) => {
     const kind = detectMermaidDiagram(token.text)
     if (!kind) return undefined
-    const options = resolveOptions(typeof input === "function" ? input() : input)
+    const options = staticOptions ?? resolveOptions(dynamicInput!())
     const previous = context.previous instanceof StaticDiagramRenderable ? context.previous.prepared : undefined
     if (previous?.source === token.text && previous.optionsKey === options.key) return context.previous
 
@@ -223,6 +235,7 @@ export function createMermaidCodeBlockRenderer(
       return diagram
     } catch (error) {
       if (error instanceof MermaidSyntaxError) {
+        if (!context.streaming) return undefined
         if (!previous || previous.kind !== kind || !isStreamingRevision(previous.source, token.text)) return undefined
         return context.previous
       }
@@ -243,7 +256,21 @@ function reuseDiagram(
 }
 
 function isStreamingRevision(previous: string, current: string): boolean {
-  const left = previous.trimEnd()
-  const right = current.trimEnd()
-  return left.startsWith(right) || right.startsWith(left)
+  const leftLength = trailingContentLength(previous)
+  const rightLength = trailingContentLength(current)
+  const length = Math.min(leftLength, rightLength)
+  for (let index = 0; index < length; index++) {
+    if (previous.charCodeAt(index) !== current.charCodeAt(index)) return false
+  }
+  return true
+}
+
+function trailingContentLength(value: string): number {
+  let end = value.length
+  while (end > 0) {
+    const code = value.charCodeAt(end - 1)
+    if (code !== 9 && code !== 10 && code !== 11 && code !== 12 && code !== 13 && code !== 32) break
+    end -= 1
+  }
+  return end
 }

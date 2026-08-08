@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { parseColor } from "@opentui/core"
 import stringWidth from "string-width"
-import { colorsEqual } from "../core/color/style.js"
 import { expectDiagram } from "../test/diagram.js"
 import { drawFlowchartDiagramGrid as drawParsedFlowchartDiagramGrid } from "./drawing.js"
 import {
@@ -1311,6 +1310,6 @@ flowchart LR
     const node = parseColor("#ff0000")
     const styled = renderGridStyledText(grid, resolveFlowchartStyleColors({ node }))
 
-    expect(styled.chunks.some((chunk) => chunk.text.includes("Alpha") && colorsEqual(chunk.fg, node))).toBe(true)
+    expect(styled.chunks.some((chunk) => chunk.text.includes("Alpha") && chunk.fg?.equals(node))).toBe(true)
   })
 })

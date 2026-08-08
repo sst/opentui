@@ -188,6 +188,28 @@ flowchart LR
   expect(testRenderer.captureCharFrame()).toContain("Current")
 })
 
+test("falls back to source for invalid edits outside streaming mode", async () => {
+  const testRenderer = await createTestRenderer({ width: 80, height: 12 })
+  renderer = testRenderer.renderer
+  const markdown = new MarkdownRenderable(renderer, {
+    id: "markdown-invalid-edit",
+    content: "```mermaid\nflowchart LR\n  A[Previous] --> B[Valid]\n```",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: createMermaidMarkdownRenderer(renderer),
+  })
+
+  renderer.root.add(markdown)
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+
+  markdown.content = "```mermaid\nflowchart LR\n  A[Previous] --> B[Valid]\n  B -->\n```"
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+
+  const frame = testRenderer.captureCharFrame()
+  expect(frame).toContain("B -->")
+  expect(frame.match(/Previous/g)).toHaveLength(1)
+})
+
 test("reuses prepared output when only the closing fence changes", async () => {
   const testRenderer = await createTestRenderer({ width: 80, height: 12 })
   renderer = testRenderer.renderer

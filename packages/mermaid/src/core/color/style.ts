@@ -30,11 +30,6 @@ export function blendColor(from: RGBA | undefined, to: RGBA | undefined, amount:
   return RGBA.fromInts(mix(fromR, toR), mix(fromG, toG), mix(fromB, toB), mix(fromA, toA))
 }
 
-export function colorsEqual(left?: RGBA, right?: RGBA): boolean {
-  if (!left || !right) return left === right
-  return left.equals(right)
-}
-
 export function createColorRampTheme<Style extends string>(
   styles: readonly Style[],
   from: RGBA,

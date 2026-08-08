@@ -90,21 +90,21 @@ The final benchmark script was run against the untouched benchmark commit and th
 
 | Measurement                      |  Baseline ns | Optimized ns | Change |
 | -------------------------------- | -----------: | -----------: | -----: |
-| `streaming_cycle`                | 1,212,847.22 |   555,285.68 | -54.2% |
-| `phase_reset_valid`              |   190,365.25 |   103,460.06 | -45.7% |
-| `phase_valid_growth`             |   256,658.88 |   161,268.69 | -37.2% |
-| `phase_invalid_partial_fallback` |   112,158.71 |    25,086.63 | -77.6% |
-| `phase_final_completion`         |   331,982.03 |   205,766.45 | -38.0% |
-| `phase_close_fence`              |   332,260.79 |    53,450.91 | -83.9% |
+| `streaming_cycle`                | 1,212,847.22 |   573,459.32 | -52.7% |
+| `phase_reset_valid`              |   190,365.25 |   105,559.47 | -44.5% |
+| `phase_valid_growth`             |   256,658.88 |   168,183.06 | -34.5% |
+| `phase_invalid_partial_fallback` |   112,158.71 |    26,373.18 | -76.5% |
+| `phase_final_completion`         |   331,982.03 |   209,093.63 | -37.0% |
+| `phase_close_fence`              |   332,260.79 |    57,996.26 | -82.5% |
 
-The baseline cycle had 3.16% RME; the optimized cycle had 1.38% RME. This paired prefix-append result supersedes the exact aggregate percentage from the historical four-phase experiment sequence while confirming the same direction and scale of improvement.
+The baseline cycle had 3.16% RME; the final optimized cycle had 1.78% RME. This paired prefix-append result supersedes the exact aggregate percentage from the historical four-phase experiment sequence while confirming the same direction and scale of improvement.
 
 ## Experiments
 
-### Pass block identity without constructing the default renderable
+### Stop constructing a default renderable for cache identity
 
 - Hypothesis: creating and immediately destroying a default `CodeRenderable` only to read its ID adds avoidable work to every custom Mermaid update.
-- Change: expose the assigned block ID on `RenderNodeContext` and consume it directly in the Mermaid adapter.
+- Change: the first experiment exposed block identity directly; the final implementation instead reuses `RenderNodeContext.previous` as the last-good owner and stores prepared output on that renderable. No positional block-ID API remains.
 - Before: 948,453 ns/cycle.
 - After: 911,507 ns/cycle.
 - Result: 3.9% lower median cycle latency, with the invalid-fallback phase 7.8% lower. Kept because it also removes an allocation-heavy no-op path for every custom Markdown renderer.

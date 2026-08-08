@@ -124,8 +124,10 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 }
 
 export interface RenderNodeContext {
-  /** Previous custom renderable for this block, when it can be reused during reconciliation. */
+  /** Previous custom renderable for the same block, when it may be updated and returned in place. */
   previous?: Renderable
+  /** Whether this Markdown renderable currently treats its trailing blocks as streaming content. */
+  streaming: boolean
   syntaxStyle: SyntaxStyle
   conceal: boolean
   concealCode: boolean
@@ -145,6 +147,29 @@ export type MarkdownCodeBlockRendererMap =
 
 type MarkdownRenderNode = NonNullable<MarkdownOptions["renderNode"]> & {
   codeBlockOnly?: boolean
+}
+
+type RemainingBlockCounts = Map<string, Map<string, number>>
+
+function countRemainingBlocks(tokens: readonly MarkedToken[]): RemainingBlockCounts {
+  const counts: RemainingBlockCounts = new Map()
+  for (const token of tokens) {
+    const byRaw = counts.get(token.type) ?? new Map<string, number>()
+    byRaw.set(token.raw, (byRaw.get(token.raw) ?? 0) + 1)
+    counts.set(token.type, byRaw)
+  }
+  return counts
+}
+
+function consumeRemainingBlock(counts: RemainingBlockCounts, token: MarkedToken): void {
+  const byRaw = counts.get(token.type)
+  const count = byRaw?.get(token.raw) ?? 0
+  if (count <= 1) byRaw?.delete(token.raw)
+  else byRaw!.set(token.raw, count - 1)
+}
+
+function hasRemainingBlock(counts: RemainingBlockCounts, token: MarkedToken): boolean {
+  return (counts.get(token.type)?.get(token.raw) ?? 0) > 0
 }
 
 function normalizeMarkdownCodeBlockRenderers(
@@ -1640,6 +1665,7 @@ export class MarkdownRenderable extends Renderable {
     let defaultResult: CustomRenderDefaultResult | undefined
     const custom = this._renderNode(token, {
       previous,
+      streaming: this._streaming,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
       concealCode: this._concealCode,
@@ -1768,11 +1794,13 @@ export class MarkdownRenderable extends Renderable {
 
   private updateTopLevelBlocks(tokens: MarkedToken[], forceTableRefresh: boolean): void {
     const blocks = this.buildTopLevelRenderBlocks(tokens)
+    const remaining = countRemainingBlocks(blocks.map((block) => block.token))
     this._stableBlockCount = this.getStableBlockCount(blocks, this._parseState?.stableTokenCount ?? 0)
 
     let blockIndex = 0
     for (let i = 0; i < blocks.length; i += 1) {
       const block = blocks[i]
+      consumeRemainingBlock(remaining, block.token)
       const existing = this._blockStates[blockIndex]
 
       if (existing && existing.token === block.token && !forceTableRefresh) {
@@ -1841,13 +1869,7 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
-      const existingMoved = existing
-        ? blocks
-            .slice(i + 1)
-            .some(
-              (candidate) => candidate.token.type === existing.token.type && candidate.token.raw === existing.tokenRaw,
-            )
-        : false
+      const existingMoved = existing ? hasRemainingBlock(remaining, existing.token) : false
       const custom = this._renderNode
         ? this.createTopLevelCustomRenderable(block, blockIndex, existingMoved ? undefined : existing?.renderable)
         : undefined
@@ -1939,9 +1961,11 @@ export class MarkdownRenderable extends Renderable {
 
     this._stableBlockCount = 0
     const blockTokens = this.buildRenderableTokens(tokens)
+    const remaining = countRemainingBlocks(blockTokens)
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
+      consumeRemainingBlock(remaining, token)
       const nextToken = blockTokens[i + 1]
       const existing = this._blockStates[blockIndex]
 
@@ -2002,11 +2026,7 @@ export class MarkdownRenderable extends Renderable {
       let tracksInterBlockMargin = true
       let canUpdateInPlace = true
 
-      const existingMoved = existing
-        ? tokens
-            .slice(i + 1)
-            .some((candidate) => candidate.type === existing.token.type && candidate.raw === existing.tokenRaw)
-        : false
+      const existingMoved = existing ? hasRemainingBlock(remaining, existing.token) : false
       const custom = this.createCustomRenderable(
         token,
         blockIndex,
