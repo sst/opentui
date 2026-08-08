@@ -178,23 +178,22 @@ const indexData = [
               OpenTUI is a TypeScript library for building interactive terminal applications. Write components with the imperative API, or with React and Solid over the same renderer. Yoga resolves Flexbox layout, and a native Zig core turns each frame into terminal output.
             </p>
             <div class="hero-start">
-              <code class="hero-start-cmd">$ bun create tui</code>
+              <code class="hero-start-cmd" id="copy-cmd">$ bun create tui</code>
               <a class="hero-start-link" href="/docs/getting-started">Read the docs &rarr;</a>
             </div>
           </div>
 
-          <figure class="hero-figure">
+          <div class="hero-preview">
             <div class="hero-terminal">
               <div class="hero-terminal-bar">
-                <span class="hero-terminal-dot"></span>
-                <span class="hero-terminal-dot"></span>
-                <span class="hero-terminal-dot"></span>
+                <span class="hero-terminal-dot dot-red"></span>
+                <span class="hero-terminal-dot dot-yellow"></span>
+                <span class="hero-terminal-dot dot-green"></span>
                 <span class="hero-terminal-name">hello.ts</span>
               </div>
               <pre class="hero-terminal-body"><code>{capturedFrame}</code></pre>
             </div>
-            <figcaption class="hero-figure-caption">Output of the four lines in <a href="#fig-01">FIG_01</a>.</figcaption>
-          </figure>
+          </div>
         </div>
       </header>
 
@@ -450,7 +449,7 @@ const indexData = [
     const heroSlot = document.getElementById("hero-logo-slot")
     let ticking = false
 
-    let metrics = { deltaX: 0, deltaY: 48, scale: 2.8 }
+    let metrics = { deltaX: 0, deltaY: 48, scale: 2.133 }
 
     function updateMetrics() {
       if (brandLogo && heroSlot) {
@@ -460,7 +459,7 @@ const indexData = [
         const scrollY = window.scrollY || document.documentElement.scrollTop || 0
 
         const maxAvailableWidth = window.innerWidth - (window.innerWidth < 768 ? 40 : 72)
-        const targetScale = Math.min(2.8, Math.max(1.6, maxAvailableWidth / 135))
+        const targetScale = Math.min(2.133, Math.max(1.5, maxAvailableWidth / 125))
 
         if (logoParentRect) {
           const deltaX = slotRect.left - logoParentRect.left
@@ -510,6 +509,19 @@ const indexData = [
       updateMetrics()
       updateNav()
     }
+
+    const copyCmd = document.getElementById("copy-cmd")
+    let copyTimer
+    copyCmd?.addEventListener("click", () => {
+      navigator.clipboard?.writeText("bun create tui")
+      if (copyTimer) clearTimeout(copyTimer)
+      copyCmd.textContent = "$ bun create tui (copied)"
+      copyCmd.classList.add("is-copied")
+      copyTimer = setTimeout(() => {
+        copyCmd.textContent = "$ bun create tui"
+        copyCmd.classList.remove("is-copied")
+      }, 1800)
+    })
 
     window.addEventListener("scroll", onScroll, { passive: true })
     window.addEventListener("resize", onResize, { passive: true })

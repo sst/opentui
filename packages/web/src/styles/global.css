@@ -198,10 +198,17 @@ h4,
   right: 0;
   z-index: 100;
   pointer-events: none;
+  padding: 16px 20px;
   --logo-translate-x: 0px;
   --logo-translate-y: 48px;
-  --logo-scale: 2.8;
+  --logo-scale: 2.133;
   --nav-bg-opacity: 0;
+}
+
+@media (min-width: 768px) {
+  .fixed-top-nav {
+    padding: 24px 36px;
+  }
 }
 
 .fixed-top-nav-backdrop {
@@ -220,7 +227,6 @@ h4,
   position: relative;
   max-width: var(--container-max-width);
   margin: 0 auto;
-  padding: 20px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -228,12 +234,6 @@ h4,
   font-size: 11.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-@media (min-width: 768px) {
-  .fixed-top-nav-inner {
-    padding: 24px 36px;
-  }
 }
 
 .fixed-nav-logo-link {
@@ -290,8 +290,8 @@ h4,
 }
 
 .hero-logo-slot {
-  height: 84px;
-  margin-bottom: 32px;
+  height: 64px;
+  margin-bottom: 28px;
 }
 
 .sr-only {
@@ -318,28 +318,24 @@ h4,
   opacity: 0.7;
 }
 
-.hero-logo-mark {
-  width: 100%;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 27 / 6;
-  max-height: clamp(140px, 24vh, 260px);
-  color: var(--cobalt-600);
-  display: block;
-  margin: 0 0 44px;
-}
-
 .hero-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 40px;
+  gap: 36px;
 }
 
-@media (min-width: 860px) {
+@media (min-width: 900px) {
   .hero-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-    gap: 56px;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 48px;
     align-items: start;
+  }
+}
+
+@media (min-width: 1100px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr) 350px;
+    gap: 64px;
   }
 }
 
@@ -349,20 +345,20 @@ h4,
 
 .hero-headline {
   font-family: var(--font-serif);
-  font-size: clamp(32px, 4.6vw, 56px);
+  font-size: clamp(34px, 4.2vw, 50px);
   font-weight: 500;
-  line-height: 1.1;
+  line-height: 1.15;
   letter-spacing: -0.015em;
   color: var(--foreground);
-  margin: 0 0 20px;
+  margin: 0 0 18px;
 }
 
 .editorial-lead-desc {
   font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.68;
   color: var(--text-muted);
-  max-width: 860px;
+  max-width: 680px;
   margin: 0 0 28px;
 }
 
@@ -381,69 +377,90 @@ h4,
   background: var(--bg-subtle);
   padding: 9px 16px;
   color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s;
+}
+
+.hero-start-cmd.is-copied {
+  border-color: var(--border-strong);
 }
 
 .hero-start-link {
   color: var(--cobalt-600);
   text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  transition: color 0.15s;
 }
 
 .hero-start-link:hover {
-  text-decoration: underline;
+  color: var(--foreground);
 }
 
-/* Hero figure: a small terminal preview sitting beside the pitch */
+.hero-preview {
+  min-width: 0;
+}
+
+/* Hero Terminal Preview Window */
 .hero-terminal {
-  background: #101116;
-  border-radius: 6px;
+  background: #0d0f14;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 24px 48px -28px rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .hero-terminal-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px;
-  background: #16171d;
+  padding: 10px 14px;
+  background: #14161f;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .hero-terminal-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
+  opacity: 0.8;
+}
+
+.hero-terminal-dot.dot-red {
+  background: #ff5f56;
+}
+
+.hero-terminal-dot.dot-yellow {
+  background: #ffbd2e;
+}
+
+.hero-terminal-dot.dot-green {
+  background: #27c93f;
 }
 
 .hero-terminal-name {
-  margin-left: 6px;
+  margin-left: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.32);
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .hero-terminal-body {
   margin: 0;
-  padding: 20px 18px;
+  padding: 18px 18px;
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 1.5;
-  color: #cfe0ff;
+  line-height: 1.45;
+  color: #7dd3fc;
   overflow-x: auto;
 }
 
 .hero-figure-caption {
-  margin: 12px 2px 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-faint);
-  text-align: right;
-}
-
-.hero-figure-caption a {
-  color: var(--text-muted);
+  display: none;
 }
 
 /* Illustrated Introduction Front Matter */
