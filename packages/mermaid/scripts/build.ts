@@ -179,10 +179,6 @@ if (existsSync(readmePath)) {
 if (existsSync(licensePath)) {
   copyFileSync(licensePath, join(distDir, "LICENSE"))
 }
-const noticesPath = join(rootDir, "THIRD_PARTY_NOTICES.md")
-if (existsSync(noticesPath)) {
-  copyFileSync(noticesPath, join(distDir, "THIRD_PARTY_NOTICES.md"))
-}
 
 console.log("Library built at:", distDir)
 
