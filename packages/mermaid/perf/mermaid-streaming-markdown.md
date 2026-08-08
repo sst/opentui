@@ -4,16 +4,17 @@
 
 ## Workload
 
-One cycle applies four revisions to the same streaming Markdown renderable:
+One cycle applies five revisions to the same streaming Markdown renderable:
 
-1. `reset_valid` replaces the fence with a small valid flowchart.
+1. `reset_valid` replaces the previous completed cycle with a small valid open fence.
 2. `valid_growth` appends a valid node and edge.
 3. `invalid_partial_fallback` appends an incomplete edge and must retain the last valid rendered diagram.
-4. `final_completion` completes that edge and renders the new diagram.
+4. `final_completion` appends the missing target and renders the new diagram.
+5. `close_fence` appends the closing fence and trailing prose.
 
 Before timing, a correctness preflight captures every phase's frame. It verifies that valid labels appear, Mermaid source does not leak into valid output, the incomplete revision retains the previous diagram rather than falling back to code, and the completed label appears in the final phase.
 
-The primary result is median nanoseconds per complete four-update cycle. Per-phase nanoseconds per update are diagnostics collected inside the same cycles, preserving the state and cache behavior of actual streaming. Phase values need not sum exactly to the cycle result because the outer measurement includes loop and promise bookkeeping.
+The primary result is median nanoseconds per complete five-update cycle. The four transitions after reset are true string-prefix appends; reset is deliberately reported separately because it prepares the next bounded cycle rather than representing natural token streaming. Per-phase nanoseconds per update are diagnostics collected inside the same cycles. Phase values need not sum exactly to the cycle result because the outer measurement includes loop and promise bookkeeping.
 
 ## Protocol
 
@@ -55,6 +56,8 @@ Each phase also emits a `METRIC mermaid_streaming_markdown_phase_<phase>_ns_per_
 
 Quick-mode numbers are smoke-test references. They use three short measured rounds and are intentionally less stable than the default protocol.
 
+The introduction measurements below use the original four-phase closed-fence cycle. They remain the historical comparison for the recorded experiments; current runs use the more representative five-phase prefix-append workload described above.
+
 Local introduction run on 2026-08-07 with Bun 1.3.14 on macOS arm64:
 
 | Measurement                      |    Median ns | Spread |    RME |
@@ -80,6 +83,21 @@ Default protocol on 2026-08-07 with Bun 1.3.14 on macOS arm64:
 | `phase_final_completion`         | 339,424.63 | 52.44% | 16.56% |
 
 The individual update phases are diagnostic only. Keep an optimization only when the complete-cycle improvement is comfortably larger than the observed process-level noise and repeats in a fresh run.
+
+## Paired prefix-workload result
+
+The final benchmark script was run against the untouched benchmark commit and the optimized branch in separate worktrees on the same machine:
+
+| Measurement                      |  Baseline ns | Optimized ns | Change |
+| -------------------------------- | -----------: | -----------: | -----: |
+| `streaming_cycle`                | 1,212,847.22 |   555,285.68 | -54.2% |
+| `phase_reset_valid`              |   190,365.25 |   103,460.06 | -45.7% |
+| `phase_valid_growth`             |   256,658.88 |   161,268.69 | -37.2% |
+| `phase_invalid_partial_fallback` |   112,158.71 |    25,086.63 | -77.6% |
+| `phase_final_completion`         |   331,982.03 |   205,766.45 | -38.0% |
+| `phase_close_fence`              |   332,260.79 |    53,450.91 | -83.9% |
+
+The baseline cycle had 3.16% RME; the optimized cycle had 1.38% RME. This paired prefix-append result supersedes the exact aggregate percentage from the historical four-phase experiment sequence while confirming the same direction and scale of improvement.
 
 ## Experiments
 
@@ -114,6 +132,22 @@ The individual update phases are diagnostic only. Keep an optimization only when
 - Before: 762,564 ns/cycle.
 - After: 675,101 ns/cycle.
 - Result: 11.5% lower median cycle latency with 0.73% RME. Invalid partial fallback dropped from 112,315 to 40,504 ns/update. Kept.
+
+### Reuse prepared output for identical source and options
+
+- Hypothesis: appending the closing fence leaves Mermaid source unchanged but still reruns parsing, layout, drawing, and styled conversion.
+- Change: normalize geometry and semantic color options once, retain them with prepared output, and return the existing renderable when source and options match exactly.
+- Before: 930,840 ns/cycle on the true-prefix workload.
+- After: 704,979 ns/cycle.
+- Result: 24.3% lower median cycle latency. Closing-fence updates dropped from 287,781 to 55,662 ns/update. Kept.
+
+### Fast-path default-width ASCII labels
+
+- Hypothesis: most diagram labels are ASCII, but each character currently passes through `Intl.Segmenter` and `string-width` independently.
+- Change: place printable ASCII directly when the canvas uses the default terminal-width measurer; preserve grapheme segmentation and custom measurement for every other case.
+- Before: 704,979 ns/cycle.
+- After: 555,286 ns/cycle.
+- Result: 21.2% lower median cycle latency with 1.38% RME. The broader three-family pipeline fell from the introduction baseline of 1.411 ms/diagram to 1.050 ms/diagram. Kept.
 
 ## Dead ends
 

@@ -2081,24 +2081,6 @@ Visit [GitHub](https://github.com) for more.
 
 // Custom renderNode tests
 
-test("custom renderNode receives the stable block ID without creating the default renderable", async () => {
-  let blockId: string | undefined
-  const md = createMarkdownRenderable({
-    id: "custom-context-id",
-    content: "```mermaid\nflowchart LR\n  A --> B\n```",
-    syntaxStyle,
-    renderNode: (_node, ctx) => {
-      blockId = ctx.id
-      return null
-    },
-  })
-
-  renderer.root.add(md)
-  await renderMarkdownRenderable(md)
-
-  expect(blockId).toBe("custom-context-id-block-0")
-})
-
 test("custom renderNode can override heading rendering", async () => {
   const { TextRenderable } = await import("../Text.js")
   const { StyledText } = await import("../../lib/styled-text.js")
@@ -2417,11 +2399,14 @@ test("custom renderNode output survives top-level spacing updates", async () => 
     internalBlockMode: "top-level",
     renderNode: (node, ctx) => {
       if (node.type === "heading") {
-        return new TextRenderable(renderer, {
-          id: "custom-text-spacing",
-          content: "CUSTOM",
-          width: "100%",
-        })
+        return ctx.previous instanceof TextRenderable
+          ? ctx.previous
+          : new TextRenderable(renderer, {
+              id: "custom-text-spacing",
+              content: "CUSTOM",
+              width: "100%",
+              marginTop: 0,
+            })
       }
 
       return ctx.defaultRender()
@@ -2443,6 +2428,7 @@ test("custom renderNode output survives top-level spacing updates", async () => 
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Paragraph
+
     CUSTOM"
   `)
 })

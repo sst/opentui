@@ -249,12 +249,16 @@ function drawSourceConnectors(
     if (routeDirection && connectorDirection) {
       const cell = grid.getCell(sourcePoint.x, sourcePoint.y)
       if (cell) {
-        cell.char = diagramLineGlyph(
-          new Set([routeDirection, connectorDirection]),
-          "rounded",
-          route.edge.style === "thick" ? "heavy" : "single",
+        grid.replaceCell(
+          sourcePoint.x,
+          sourcePoint.y,
+          diagramLineGlyph(
+            new Set([routeDirection, connectorDirection]),
+            "rounded",
+            route.edge.style === "thick" ? "heavy" : "single",
+          ),
+          "edge",
         )
-        cell.style = "edge"
       }
     }
     fadeSourcePath(grid, connector, route.points, styles, occupancy)

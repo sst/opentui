@@ -66,8 +66,7 @@ function sameKey(left: readonly unknown[] | undefined, right: readonly unknown[]
 }
 
 export class DiagramCanvas<Style extends string, Metadata extends object = object> {
-  readonly rows: Array<Array<DiagramCanvasCell<Style, Metadata>>>
-
+  private readonly cells: Array<Array<DiagramCanvasCell<Style, Metadata>>>
   private readonly measure: (text: string) => number
   private readonly mergeCell?: DiagramCanvasOptions<Style, Metadata>["mergeCell"]
   private readonly rowEnds: Uint32Array
@@ -83,8 +82,12 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     if (width * height > MAX_DIAGRAM_CELLS) throw new DiagramCanvasSizeError(width, height)
     this.measure = options.measure ?? stringWidth
     this.mergeCell = options.mergeCell
-    this.rows = Array.from({ length: height }, () => Array.from({ length: width }, () => createEmptyCell()))
+    this.cells = Array.from({ length: height }, () => Array.from({ length: width }, () => createEmptyCell()))
     this.rowEnds = new Uint32Array(height)
+  }
+
+  get rows(): ReadonlyArray<ReadonlyArray<Readonly<DiagramCanvasCell<Style, Metadata>>>> {
+    return this.cells
   }
 
   private rowText(row: Array<DiagramCanvasCell<Style, Metadata>>, rowEnd: number): string {
@@ -96,36 +99,58 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
 
   private textRowRange(trimTop: boolean, trimBottom: boolean): { start: number; end: number } {
     let start = 0
-    let end = this.rows.length
+    let end = this.cells.length
     if (trimTop) while (start < end && this.rowEnds[start] === 0) start += 1
     if (trimBottom) while (end > start && this.rowEnds[end - 1] === 0) end -= 1
     return { start, end }
   }
 
   setCell(x: number, y: number, char: string, style?: Style, metadata?: Partial<Metadata>): void {
-    if (y < 0 || y >= this.rows.length || x < 0 || x >= this.rows[y]!.length) return
+    this.writeCell(x, y, char, style, metadata, true)
+  }
+
+  replaceCell(x: number, y: number, char: string, style?: Style, metadata?: Partial<Metadata>): void {
+    this.writeCell(x, y, char, style, metadata, false)
+  }
+
+  private writeCell(
+    x: number,
+    y: number,
+    char: string,
+    style: Style | undefined,
+    metadata: Partial<Metadata> | undefined,
+    merge: boolean,
+  ): void {
+    if (y < 0 || y >= this.cells.length || x < 0 || x >= this.cells[y]!.length) return
 
     const incoming = { char, style, ...metadata } as DiagramCanvasCell<Style, Metadata>
-    const cell = this.mergeCell?.(this.rows[y]![x]!, incoming) ?? incoming
-    this.rows[y]![x] = cell
+    const cell = merge ? (this.mergeCell?.(this.cells[y]![x]!, incoming) ?? incoming) : incoming
+    this.cells[y]![x] = cell
     if (cell.char !== " ") {
       this.rowEnds[y] = Math.max(this.rowEnds[y]!, x + 1)
     } else if (this.rowEnds[y] === x + 1) {
       let end = x
-      while (end > 0 && this.rows[y]![end - 1]?.char === " ") end -= 1
+      while (end > 0 && this.cells[y]![end - 1]?.char === " ") end -= 1
       this.rowEnds[y] = end
     }
   }
 
-  getCell(x: number, y: number): DiagramCanvasCell<Style, Metadata> | undefined {
-    return this.rows[y]?.[x]
+  getCell(x: number, y: number): Readonly<DiagramCanvasCell<Style, Metadata>> | undefined {
+    return this.cells[y]?.[x]
   }
 
   setText(x: number, y: number, text: string, style?: Style, metadata?: DiagramCanvasTextMetadata<Metadata>): void {
+    const metadataAt = (cellX: number) => (typeof metadata === "function" ? metadata(cellX, y) : metadata)
+    if (this.measure === stringWidth && /^[\x20-\x7e]*$/.test(text)) {
+      for (let index = 0; index < text.length; index++) {
+        this.setCell(x + index, y, text[index]!, style, metadataAt(x + index))
+      }
+      return
+    }
+
     let offset = 0
     for (const grapheme of diagramTextGraphemes(text)) {
       const width = Math.max(1, this.measure(grapheme))
-      const metadataAt = (cellX: number) => (typeof metadata === "function" ? metadata(cellX, y) : metadata)
       this.setCell(x + offset, y, grapheme, style, metadataAt(x + offset))
       for (let continuation = 1; continuation < width; continuation++) {
         this.setCell(x + offset + continuation, y, "", style, metadataAt(x + offset + continuation))
@@ -138,7 +163,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     const lines: string[] = []
     const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
-      lines.push(this.rowText(this.rows[rowIndex]!, this.rowEnds[rowIndex]!))
+      lines.push(this.rowText(this.cells[rowIndex]!, this.rowEnds[rowIndex]!))
     }
     return lines.join("\n")
   }
@@ -147,7 +172,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
     let width = 0
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
-      const row = this.rows[rowIndex]!
+      const row = this.cells[rowIndex]!
       const rowEnd = this.rowEnds[rowIndex]!
       if (rowEnd > 0) width = Math.max(width, this.measure(this.rowText(row, rowEnd)))
     }
@@ -168,7 +193,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
 
     for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
-      const row = this.rows[rowIndex]!
+      const row = this.cells[rowIndex]!
       const rowEnd = this.rowEnds[rowIndex]!
 
       let currentCell: DiagramCanvasCell<Style, Metadata> | undefined

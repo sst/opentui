@@ -38,6 +38,21 @@ describe("DiagramCanvas", () => {
     expect(stringWidth(canvas.toString())).toBe(4)
   })
 
+  test("keeps custom measurement for ASCII text", () => {
+    let measurements = 0
+    const canvas = new DiagramCanvas<"label">(5, 1, {
+      measure: () => {
+        measurements += 1
+        return 2
+      },
+    })
+
+    canvas.setText(0, 0, "ab", "label")
+
+    expect(measurements).toBe(2)
+    expect(canvas.getCell(2, 0)?.char).toBe("b")
+  })
+
   test("preserves combined graphemes while placing later text", () => {
     const canvas = new DiagramCanvas<"label">(4, 1)
 
@@ -60,6 +75,9 @@ describe("DiagramCanvas", () => {
     canvas.setCell(1, 0, "│", "line")
 
     expect(canvas.toString()).toBe(" ┼")
+
+    canvas.replaceCell(1, 0, "│", "line")
+    expect(canvas.toString()).toBe(" │")
   })
 
   test("iterates style and metadata runs", () => {
@@ -128,5 +146,38 @@ describe("DiagramCanvas", () => {
 
     expect(canvas.toString()).toBe(" ab")
     expect(canvas.getTextSize()).toEqual({ width: 3, height: 1 })
+  })
+
+  test("keeps tracked extents equivalent to scanning after mixed writes", () => {
+    const canvas = new DiagramCanvas<"line">(20, 10, {
+      mergeCell: (_existing, incoming) => incoming,
+    })
+    let seed = 42
+    const next = (limit: number) => {
+      seed = (seed * 1_664_525 + 1_013_904_223) >>> 0
+      return seed % limit
+    }
+
+    for (let index = 0; index < 200; index++) {
+      const x = next(canvas.width)
+      const y = next(canvas.height)
+      const char = [" ", "x", "─"][next(3)]!
+      if (next(2) === 0) canvas.setCell(x, y, char, "line")
+      else canvas.replaceCell(x, y, char, "line")
+    }
+
+    const scanned = canvas.rows.map((row) => {
+      let end = row.length
+      while (end > 0 && row[end - 1]?.char === " ") end -= 1
+      return row
+        .slice(0, end)
+        .map((cell) => cell.char)
+        .join("")
+    })
+    const first = scanned.findIndex((line) => line.length > 0)
+    const last = scanned.findLastIndex((line) => line.length > 0)
+
+    expect(canvas.toString()).toBe(scanned.join("\n"))
+    expect(canvas.getTextHeight({ trimTop: true, trimBottom: true })).toBe(first < 0 ? 0 : last - first + 1)
   })
 })

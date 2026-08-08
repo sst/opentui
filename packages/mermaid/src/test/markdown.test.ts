@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test"
 import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CodeRenderable, MarkdownRenderable, RGBA, SyntaxStyle, TreeSitterClient } from "@opentui/core"
+import { CodeRenderable, MarkdownRenderable, RGBA, SyntaxStyle, TextRenderable, TreeSitterClient } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createMermaidMarkdownRenderer } from "../markdown.js"
 
@@ -188,6 +188,56 @@ flowchart LR
   expect(testRenderer.captureCharFrame()).toContain("Current")
 })
 
+test("reuses prepared output when only the closing fence changes", async () => {
+  const testRenderer = await createTestRenderer({ width: 80, height: 12 })
+  renderer = testRenderer.renderer
+  const markdown = new MarkdownRenderable(renderer, {
+    id: "markdown-closing-fence",
+    content: "```mermaid\nflowchart LR\n  A --> B",
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+    renderNode: createMermaidMarkdownRenderer(renderer),
+  })
+
+  renderer.root.add(markdown)
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+  const diagram = markdown.getChildren()[0] as TextRenderable
+  const prepared = diagram.content
+
+  markdown.content = `${markdown.content}\n\`\`\``
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+
+  expect(markdown.getChildren()[0]).toBe(diagram)
+  expect(diagram.content).toBe(prepared)
+})
+
+test("rerenders identical source when semantic colors change", async () => {
+  const testRenderer = await createTestRenderer({ width: 80, height: 12 })
+  renderer = testRenderer.renderer
+  let primary = "#ff0000"
+  const markdown = new MarkdownRenderable(renderer, {
+    id: "markdown-live-colors",
+    content: "```mermaid\nflowchart LR\n  A --> B\n```",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: createMermaidMarkdownRenderer(renderer, () => ({ colors: { primary } })),
+  })
+
+  renderer.root.add(markdown)
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+  const diagram = markdown.getChildren()[0] as TextRenderable
+  const prepared = diagram.content
+
+  primary = "#0000ff"
+  markdown.refreshStyles()
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+
+  expect(markdown.getChildren()[0]).toBe(diagram)
+  expect(diagram.content).not.toBe(prepared)
+  expect(diagram.chunks.some((chunk) => chunk.fg?.equals(RGBA.fromHex(primary)))).toBe(true)
+})
+
 test("does not reuse another fence's cached diagram after insertion", async () => {
   const testRenderer = await createTestRenderer({ width: 80, height: 24 })
   renderer = testRenderer.renderer
@@ -213,15 +263,16 @@ flowchart LR
 
   markdown.content = `\`\`\`mermaid
 flowchart LR
-  X -->
+  A[First] --> B[Diagram]
+  B -->
 \`\`\`
 
 ${markdown.content}`
   await renderMarkdown(markdown, testRenderer.renderOnce)
 
   const frame = testRenderer.captureCharFrame()
-  expect(frame).toContain("X -->")
-  expect(frame.match(/First/g)).toHaveLength(1)
+  expect(frame).toContain("B -->")
+  expect(frame.match(/First/g)).toHaveLength(2)
   expect(frame.match(/Second/g)).toHaveLength(1)
 })
 
@@ -285,6 +336,17 @@ sequenceDiagram
   await testRenderer.mockMouse.scroll(diagram.x + 20, diagram.y + 2, "right")
   await testRenderer.renderOnce()
   expect(diagram.scrollX).toBeGreaterThan(0)
+
+  markdown.content = `\`\`\`mermaid
+flowchart LR
+  A --> B
+\`\`\``
+  await renderMarkdown(markdown, testRenderer.renderOnce)
+
+  const narrowed = markdown.getChildren()[0] as CodeRenderable
+  expect(narrowed).toBe(diagram)
+  expect(narrowed.scrollX).toBe(0)
+  expect(testRenderer.captureCharFrame()).toContain("A")
 })
 
 test("renders a Mermaid state fence inside MarkdownRenderable", async () => {

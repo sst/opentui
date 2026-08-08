@@ -1,6 +1,5 @@
 import {
   TextRenderable,
-  RenderableEvents,
   createMarkdownCodeBlockRenderer,
   parseColor,
   type ColorInput,
@@ -32,13 +31,15 @@ type DiagramKind = NonNullable<ReturnType<typeof detectMermaidDiagram>>
 interface PreparedDiagram {
   readonly kind: DiagramKind
   readonly source: string
+  readonly optionsKey: string
   readonly text: StyledText
   readonly height: number
 }
 
-interface LastGoodDiagram {
-  prepared: PreparedDiagram
-  owner: StaticDiagramRenderable
+interface ResolvedMermaidOptions {
+  compact: boolean
+  key: string
+  colors: Record<keyof NonNullable<MermaidMarkdownRendererOptions["colors"]>, RGBA | undefined>
 }
 
 export interface MermaidMarkdownRendererOptions {
@@ -53,11 +54,25 @@ export interface MermaidMarkdownRendererOptions {
   }
 }
 
-function color(value: ColorInput | undefined): RGBA | undefined {
-  return value === undefined ? undefined : parseColor(value)
+function resolveOptions(options: MermaidMarkdownRendererOptions): ResolvedMermaidOptions {
+  const input = options.colors ?? {}
+  const colors = {
+    text: input.text === undefined ? undefined : parseColor(input.text),
+    primary: input.primary === undefined ? undefined : parseColor(input.primary),
+    secondary: input.secondary === undefined ? undefined : parseColor(input.secondary),
+    muted: input.muted === undefined ? undefined : parseColor(input.muted),
+    warning: input.warning === undefined ? undefined : parseColor(input.warning),
+    background: input.background === undefined ? undefined : parseColor(input.background),
+  }
+  const key = `${options.compact === true ? 1 : 0}:${Object.values(colors)
+    .map((value) => value?.toInts().join(",") ?? "")
+    .join(":")}`
+  return { compact: options.compact === true, key, colors }
 }
 
 class StaticDiagramRenderable extends TextRenderable {
+  prepared: PreparedDiagram
+
   constructor(ctx: RenderContext, prepared: PreparedDiagram) {
     super(ctx, {
       content: prepared.text,
@@ -67,6 +82,7 @@ class StaticDiagramRenderable extends TextRenderable {
       selectable: false,
       marginTop: 1,
     })
+    this.prepared = prepared
     let dragX: number | undefined
     this.onMouseDown = (event: MouseEvent) => {
       if (event.button !== 0) return
@@ -103,27 +119,30 @@ class StaticDiagramRenderable extends TextRenderable {
   }
 
   update(prepared: PreparedDiagram): void {
+    this.prepared = prepared
     this.content = prepared.text
     this.height = prepared.height
+    this.scrollX = this.scrollX
   }
 }
 
-function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkdownRendererOptions): PreparedDiagram {
-  const colors = options.colors ?? {}
+function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMermaidOptions): PreparedDiagram {
+  const colors = options.colors
   switch (kind) {
     case "flowchart": {
       const grid = drawFlowchartDiagramGrid(parseMermaidFlowchartDiagram(source), { compact: options.compact })
       return {
         kind,
         source,
+        optionsKey: options.key,
         text: renderGridStyledText(
           grid,
           resolveFlowchartStyleColors({
-            node: color(colors.primary),
-            database: color(colors.primary),
-            edge: color(colors.secondary),
-            label: color(colors.text),
-            group: color(colors.muted),
+            node: colors.primary,
+            database: colors.primary,
+            edge: colors.secondary,
+            label: colors.text,
+            group: colors.muted,
           }),
         ),
         height: grid.getTextHeight({ trimTop: true, trimBottom: true }),
@@ -134,18 +153,19 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
       return {
         kind,
         source,
+        optionsKey: options.key,
         text: renderSequenceGridStyledText(
           grid,
           resolveSequenceStyleColors({
-            participant: color(colors.primary),
-            lifeline: color(colors.muted),
-            group: color(colors.secondary),
-            request: color(colors.primary),
-            response: color(colors.primary),
-            fragment: color(colors.secondary),
-            fragmentLabelBg: color(colors.background),
-            note: color(colors.warning),
-            noteBg: color(colors.background),
+            participant: colors.primary,
+            lifeline: colors.muted,
+            group: colors.secondary,
+            request: colors.primary,
+            response: colors.primary,
+            fragment: colors.secondary,
+            fragmentLabelBg: colors.background,
+            note: colors.warning,
+            noteBg: colors.background,
           }),
         ),
         height: grid.height,
@@ -156,19 +176,20 @@ function prepareDiagram(kind: DiagramKind, source: string, options: MermaidMarkd
       return {
         kind,
         source,
+        optionsKey: options.key,
         text: renderStateGridStyledText(
           grid,
           resolveStateStyleColors({
-            state: color(colors.primary),
-            composite: color(colors.muted),
-            transition: color(colors.secondary),
-            label: color(colors.text),
-            noteBorder: color(colors.warning),
-            noteText: color(colors.warning),
-            noteConnector: color(colors.muted),
-            start: color(colors.muted),
-            end: color(colors.muted),
-            choice: color(colors.secondary),
+            state: colors.primary,
+            composite: colors.muted,
+            transition: colors.secondary,
+            label: colors.text,
+            noteBorder: colors.warning,
+            noteText: colors.warning,
+            noteConnector: colors.muted,
+            start: colors.muted,
+            end: colors.muted,
+            choice: colors.secondary,
           }),
         ),
         height: grid.getTextHeight({ trimBottom: true }),
@@ -189,25 +210,21 @@ export function createMermaidCodeBlockRenderer(
   ctx: RenderContext,
   input: MermaidMarkdownRendererOptions | (() => MermaidMarkdownRendererOptions) = {},
 ): MarkdownCodeBlockRenderer {
-  const lastGood = new Map<string, LastGoodDiagram>()
   return (token, context) => {
     const kind = detectMermaidDiagram(token.text)
     if (!kind) return undefined
-    const key = context.id
-    const options = typeof input === "function" ? input() : input
+    const options = resolveOptions(typeof input === "function" ? input() : input)
+    const previous = context.previous instanceof StaticDiagramRenderable ? context.previous.prepared : undefined
+    if (previous?.source === token.text && previous.optionsKey === options.key) return context.previous
 
     try {
       const prepared = prepareDiagram(kind, token.text, options)
       const diagram = reuseDiagram(ctx, prepared, context.previous)
-      if (key) claimLastGood(key, prepared, diagram, lastGood)
       return diagram
     } catch (error) {
       if (error instanceof MermaidSyntaxError) {
-        const previous = key ? lastGood.get(key)?.prepared : undefined
         if (!previous || previous.kind !== kind || !isStreamingRevision(previous.source, token.text)) return undefined
-        const diagram = reuseDiagram(ctx, previous, context.previous)
-        claimLastGood(key!, previous, diagram, lastGood)
-        return diagram
+        return context.previous
       }
       if (error instanceof DiagramCanvasSizeError) return undefined
       throw error
@@ -229,25 +246,4 @@ function isStreamingRevision(previous: string, current: string): boolean {
   const left = previous.trimEnd()
   const right = current.trimEnd()
   return left.startsWith(right) || right.startsWith(left)
-}
-
-function claimLastGood(
-  key: string,
-  value: PreparedDiagram,
-  owner: StaticDiagramRenderable,
-  cache: Map<string, LastGoodDiagram>,
-): void {
-  const current = cache.get(key)
-  if (current?.owner === owner) {
-    current.prepared = value
-    return
-  }
-  const claim = { prepared: value, owner }
-  cache.set(key, claim)
-  owner.once(RenderableEvents.DESTROYED, () => {
-    // Reconciliation destroys the old block before synchronously creating its replacement.
-    queueMicrotask(() => {
-      if (cache.get(key) === claim) cache.delete(key)
-    })
-  })
 }

@@ -7,7 +7,7 @@ import { MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createMermaidMarkdownRenderer } from "../markdown.js"
 
-type PhaseName = "reset_valid" | "valid_growth" | "invalid_partial_fallback" | "final_completion"
+type PhaseName = "reset_valid" | "valid_growth" | "invalid_partial_fallback" | "final_completion" | "close_fence"
 
 interface CycleMeasurement {
   elapsedNs: bigint
@@ -35,22 +35,27 @@ interface BenchmarkResult extends Statistics {
   samplesNs: number[]
 }
 
-const PHASES: readonly PhaseName[] = ["reset_valid", "valid_growth", "invalid_partial_fallback", "final_completion"]
+const PHASES: readonly PhaseName[] = [
+  "reset_valid",
+  "valid_growth",
+  "invalid_partial_fallback",
+  "final_completion",
+  "close_fence",
+]
 
-const source = (body: string) => `Streaming benchmark
+const source = (body: string, closed = false) => `Streaming benchmark
 
 \`\`\`mermaid
 flowchart LR
   A[Stable reset] --> B[Baseline]
-${body}\`\`\`
-
-Rendered output`
+${body}${closed ? "```\n\nRendered output" : ""}`
 
 const CONTENT: Record<PhaseName, string> = {
   reset_valid: source(""),
   valid_growth: source("  B --> C[Growth applied]\n"),
   invalid_partial_fallback: source("  B --> C[Growth applied]\n  C -->\n"),
   final_completion: source("  B --> C[Growth applied]\n  C --> D[Final complete]\n"),
+  close_fence: source("  B --> C[Growth applied]\n  C --> D[Final complete]\n", true),
 }
 
 const suite = enumArg("suite", ["quick", "default", "long"] as const, "default")
@@ -166,6 +171,9 @@ async function correctnessPreflight(): Promise<void> {
 
   await update(CONTENT.final_completion)
   assertFrame("final_completion", ["Final complete"], ["flowchart LR"])
+
+  await update(CONTENT.close_fence)
+  assertFrame("close_fence", ["Final complete", "Rendered output"], ["flowchart LR"])
 }
 
 function assertFrame(phase: PhaseName, included: readonly string[], excluded: readonly string[]): void {
@@ -211,7 +219,13 @@ async function runBatch(iterations: number): Promise<BatchMeasurement> {
 }
 
 function emptyPhaseTimings(): Record<PhaseName, bigint> {
-  return { reset_valid: 0n, valid_growth: 0n, invalid_partial_fallback: 0n, final_completion: 0n }
+  return {
+    reset_valid: 0n,
+    valid_growth: 0n,
+    invalid_partial_fallback: 0n,
+    final_completion: 0n,
+    close_fence: 0n,
+  }
 }
 
 function result(

@@ -124,8 +124,6 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 }
 
 export interface RenderNodeContext {
-  /** Stable renderable ID assigned to this top-level block. */
-  id: string
   /** Previous custom renderable for this block, when it can be reused during reconciliation. */
   previous?: Renderable
   syntaxStyle: SyntaxStyle
@@ -1594,7 +1592,7 @@ export class MarkdownRenderable extends Renderable {
     nextToken: MarkedToken | undefined,
     previous?: Renderable,
   ): CustomRenderableResult {
-    const custom = this.renderCustomNode(token, `${this.id}-block-${index}`, previous, () => {
+    const custom = this.renderCustomNode(token, previous, () => {
       return { renderable: this.createDefaultRenderable(token, index, nextToken) }
     })
     if (!custom.renderable) {
@@ -1615,7 +1613,7 @@ export class MarkdownRenderable extends Renderable {
     index: number,
     previous?: Renderable,
   ): CustomRenderableResult {
-    const custom = this.renderCustomNode(block.token, `${this.id}-block-${index}`, previous, () => {
+    const custom = this.renderCustomNode(block.token, previous, () => {
       return this.createTopLevelDefaultRenderable(block, index)
     })
     if (!custom.renderable) {
@@ -1634,7 +1632,6 @@ export class MarkdownRenderable extends Renderable {
 
   private renderCustomNode(
     token: MarkedToken,
-    id: string,
     previous: Renderable | undefined,
     createDefault: () => CustomRenderDefaultResult,
   ): RenderNodeResult {
@@ -1642,7 +1639,6 @@ export class MarkdownRenderable extends Renderable {
 
     let defaultResult: CustomRenderDefaultResult | undefined
     const custom = this._renderNode(token, {
-      id,
       previous,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
@@ -1845,10 +1841,25 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
+      const existingMoved = existing
+        ? blocks
+            .slice(i + 1)
+            .some(
+              (candidate) => candidate.token.type === existing.token.type && candidate.token.raw === existing.tokenRaw,
+            )
+        : false
       const custom = this._renderNode
-        ? this.createTopLevelCustomRenderable(block, blockIndex, existing?.renderable)
+        ? this.createTopLevelCustomRenderable(block, blockIndex, existingMoved ? undefined : existing?.renderable)
         : undefined
       if (existing && custom?.renderable !== existing.renderable) existing.renderable.destroyRecursively()
+
+      if (custom?.renderable) {
+        const marginTop =
+          typeof custom.renderable.marginTop === "number"
+            ? Math.max(custom.renderable.marginTop, block.marginTop)
+            : block.marginTop
+        this.applyMargins(custom.renderable, marginTop, 0)
+      }
 
       const next = custom?.renderable
         ? {
@@ -1991,7 +2002,17 @@ export class MarkdownRenderable extends Renderable {
       let tracksInterBlockMargin = true
       let canUpdateInPlace = true
 
-      const custom = this.createCustomRenderable(token, blockIndex, nextToken, existing?.renderable)
+      const existingMoved = existing
+        ? tokens
+            .slice(i + 1)
+            .some((candidate) => candidate.type === existing.token.type && candidate.raw === existing.tokenRaw)
+        : false
+      const custom = this.createCustomRenderable(
+        token,
+        blockIndex,
+        nextToken,
+        existingMoved ? undefined : existing?.renderable,
+      )
       if (custom.renderable) {
         renderable = custom.renderable
         tracksInterBlockMargin = custom.tracksInterBlockMargin
