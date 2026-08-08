@@ -92,6 +92,19 @@
         "solid-js",
       ],
     },
+    "packages/mermaid": {
+      "name": "@opentui/mermaid",
+      "version": "0.5.1",
+      "dependencies": {
+        "@opentui/core": "workspace:*",
+        "string-width": "7.2.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "^24.0.0",
+        "typescript": "^5",
+      },
+    },
     "packages/qrcode": {
       "name": "@opentui/qrcode",
       "version": "0.5.1",
@@ -554,6 +567,8 @@
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
+
+    "@opentui/mermaid": ["@opentui/mermaid@workspace:packages/mermaid"],
 
     "@opentui/qrcode": ["@opentui/qrcode@workspace:packages/qrcode"],
 
