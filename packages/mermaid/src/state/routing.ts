@@ -192,6 +192,28 @@ function hasOpposingTopConnector(
   })
 }
 
+function verticalCorridorCrossesUnrelatedState(
+  diagram: StateVisibleDiagram,
+  transition: StateVisibleTransition,
+  from: BoxBounds,
+  to: BoxBounds,
+  bounds: ReadonlyMap<string, BoxBounds>,
+): boolean {
+  const top = Math.min(from.top + from.height, to.top + to.height)
+  const bottom = Math.max(from.top - 1, to.top - 1)
+  return diagram.states.some((state) => {
+    if (state.id === transition.from || state.id === transition.to || isHiddenCompositeMarker(state)) return false
+    const bound = bounds.get(state.id)
+    return Boolean(
+      bound &&
+      from.centerX >= bound.left &&
+      from.centerX < bound.left + bound.width &&
+      top < bound.top + bound.height &&
+      bottom >= bound.top,
+    )
+  })
+}
+
 export function createStateTransitionRoutePlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
@@ -210,6 +232,8 @@ export function createStateTransitionRoutePlans(
   )
   const sideLaneX = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + maxLabelWidth + 3
   const feedbackAllocations = createFeedbackAllocations(diagram, bounds, feedbackLaneY, parallelLaneGap, feedbackTopY)
+  let sideLane = 0
+  const allocateSideRail = (): number => sideLaneX + sideLane++ * parallelLaneGap
 
   return diagram.transitions.flatMap((transition): StateTransitionRoutePlan[] => {
     const from = bounds.get(transition.from)
@@ -236,7 +260,7 @@ export function createStateTransitionRoutePlans(
       ]
     }
     if (parallelIndex > 0) {
-      if (diagram.direction === "LR" || diagram.direction === "RL") {
+      if ((diagram.direction === "LR" || diagram.direction === "RL") && from.centerY === to.centerY) {
         return [
           {
             ...base,
@@ -245,9 +269,22 @@ export function createStateTransitionRoutePlans(
           },
         ]
       }
-      return [{ ...base, kind: "side-parallel", railX: sideLaneX + (parallelIndex - 1) * parallelLaneGap }]
+      return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
     }
-    if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
+    if (diagram.direction !== "LR" && diagram.direction !== "RL") {
+      const fromParent = statesById.get(transition.from)?.parentId
+      const toParent = statesById.get(transition.to)?.parentId
+      if (fromParent && toParent && fromParent !== toParent) {
+        return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
+      }
+      if (verticalCorridorCrossesUnrelatedState(diagram, transition, from, to, bounds)) {
+        return [{ ...base, kind: "side-parallel", railX: allocateSideRail() }]
+      }
+      if (from.centerX !== to.centerX) {
+        return [{ ...base, kind: "vertical-elbow", hasReverse: false, offsetConnector: false }]
+      }
+      return [{ ...base, kind: "vertical" }]
+    }
 
     if (from.centerY !== to.centerY) {
       if (from.centerY > to.centerY && feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
@@ -627,11 +664,7 @@ function placeStateTransitionLabels(
   return plans.map((plan) => {
     if (!plan.label) return plan
     const width = Math.max(...plan.label.lines.map(diagramTextWidth))
-    if (plan.label.lines.length === 1) {
-      placedLabels.push(labelRect(plan.label, width))
-      return plan
-    }
-    const statePadding = 1
+    const statePadding = plan.label.lines.length === 1 ? 0 : 1
     const isClear = (x: number, y: number): boolean => {
       if (x < 0 || y < 0) return false
       const rect = labelRect({ ...plan.label!, x, y }, width)

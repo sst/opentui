@@ -28,7 +28,7 @@ function arrowHeadChar(head: SequenceArrowHead | undefined, direction: 1 | -1): 
     case "async":
       return direction === 1 ? ")" : "("
     default:
-      return direction === 1 ? "▶" : "◀"
+      return direction === 1 ? "►" : "◄"
   }
 }
 

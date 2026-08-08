@@ -116,7 +116,12 @@ function computeMainPath(diagram: StateDiagram): string[] {
     const next =
       candidates.find((transition) => diagram.states.find((state) => state.id === transition.to)?.kind === "end") ??
       candidates.find((transition) => !reaches(diagram, transition.to, current)) ??
-      candidates.find((transition) => !hasReverseTransition(diagram, transition))
+      candidates.find((transition) => !hasReverseTransition(diagram, transition)) ??
+      candidates.find((transition) => {
+        const fromParent = diagram.states.find((state) => state.id === current)?.parentId
+        const toParent = diagram.states.find((state) => state.id === transition.to)?.parentId
+        return Boolean(fromParent && toParent && fromParent !== toParent)
+      })
     if (!next) break
     path.push(next.to)
     visited.add(next.to)
@@ -499,7 +504,10 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
     const adjacentLabelWidth = diagram.transitions
       .filter((transition) => transition.from === id && transition.to === nextId)
       .reduce((width, transition) => Math.max(width, measureStateTransitionLabel(transition.label).width), 0)
-    x += size.width + Math.max(defaultGap, adjacentLabelWidth + 2)
+    const crossesCompositeBoundary = Boolean(
+      nextId && statesById.get(id)?.parentId !== statesById.get(nextId)?.parentId,
+    )
+    x += size.width + Math.max(defaultGap, adjacentLabelWidth + (crossesCompositeBoundary ? 6 : 2))
   }
 
   const branchesByParent = new Map<string, string[]>()

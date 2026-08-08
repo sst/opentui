@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { diagramTextWidth } from "../core/text.js"
 import { expectDiagram } from "../test/diagram.js"
 import { renderSequenceDiagram } from "./diagram.js"
 import { drawSequenceDiagramGrid } from "./drawing.js"
@@ -43,10 +44,10 @@ sequenceDiagram
       ╰────┬────╯       ╰────┬───╯
            │                 │
            │ GET /           │
-           ├─────────────────▶
+           ├─────────────────►
            │                 │
            │ 401 WWW-Auth    │
-           ◀─────────────────┤
+           ◄─────────────────┤
            │                 │
     `)
   })
@@ -70,15 +71,15 @@ sequenceDiagram
     expectDiagram(output).toEqualDiagram(`
       leaf tool                       LocationMutation             FileMutation
           │                                   │                          │
-          ├─ resolve(path) ───────────────────▶                          │
+          ├─ resolve(path) ───────────────────►                          │
           │                                   │                          │
-          ◀─ Plan(target, authority anchor) ──┤                          │
+          ◄─ Plan(target, authority anchor) ──┤                          │
           │                                   │                          │
-          ├─ commit(plan) ───────────────────────────────────────────────▶
+          ├─ commit(plan) ───────────────────────────────────────────────►
           │                                   │                          │
-          │                                   ◀─ revalidate(plan) ───────┤
+          │                                   ◄─ revalidate(plan) ───────┤
           │                                   │                          │
-          │                                   ├─ same target or reject ──▶
+          │                                   ├─ same target or reject ──►
           │                                   │                          │
     `)
   })
@@ -109,7 +110,7 @@ sequenceDiagram
     const lines = output.split("\n")
 
     expect(lines.findIndex((line) => line.includes("deliberately"))).toBeLessThan(
-      lines.findIndex((line) => line.includes("▶")),
+      lines.findIndex((line) => line.includes("►")),
     )
   })
 
@@ -581,6 +582,42 @@ sequenceDiagram
     expect(externalHeaderLeft).toBeGreaterThan(groupBorderRight)
   })
 
+  test("keeps adjacent wide participant group frames separate", () => {
+    const output = renderSequenceDiagram(
+      `sequenceDiagram
+  box First very wide group heading
+    participant A
+  end
+  box Second very wide group heading
+    participant B
+  end
+  A->>B: hi`,
+      { compact: true },
+    )
+    const topRow = output.split("\n")[0]!
+
+    expect(topRow).toContain("First very wide group heading")
+    expect(topRow).toContain("Second very wide group heading")
+    expect(topRow.indexOf("╮")).toBeLessThan(topRow.lastIndexOf("╭"))
+  })
+
+  test("renders many adjacent wide participant groups without excessive canvas growth", () => {
+    const groupCount = 16
+    const output = renderSequenceDiagram(
+      `sequenceDiagram
+${Array.from(
+  { length: groupCount },
+  (_, index) => `  box Group ${index} has a deliberately wide heading
+    participant P${index}
+  end`,
+).join("\n")}
+  P0->>P15: hi`,
+      { compact: true },
+    )
+
+    expect(Math.max(...output.split("\n").map(diagramTextWidth))).toBeLessThan(groupCount * 60)
+  })
+
   test("renders full-height participant group boxes", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
@@ -601,10 +638,10 @@ sequenceDiagram
       ╰────┬────╯        │ ╰──┬──╯          ╰───┬───╯          ╰──┬─╯ │
            │             │    │                 │                 │   │
            │ GET /users/42    │                 │                 │   │
-           ├──────────────────▶                 │                 │   │
+           ├──────────────────►                 │                 │   │
            │             │    │                 │                 │   │
            │             │    │ get user:42     │                 │   │
-           │             │    ├─────────────────▶                 │   │
+           │             │    ├─────────────────►                 │   │
            │             │    │                 │                 │   │
                          ╰────────────────────────────────────────────╯"
     `)
@@ -619,10 +656,23 @@ sequenceDiagram
   end
   Browser->>API: GET /users/42
 `)
-    const arrowLine = output.split("\n").find((line) => line.includes("▶"))!
+    const arrowLine = output.split("\n").find((line) => line.includes("►"))!
 
-    expect(arrowLine).toContain("───────────────▶")
+    expect(arrowLine).toContain("───────────────►")
     expect(arrowLine).not.toContain("┼")
+  })
+
+  test("keeps filled arrowheads to one terminal column", () => {
+    const output = renderSequenceDiagram(`sequenceDiagram
+  box Backend
+    participant A
+    participant B
+    A->>B: request
+  end`)
+    const lines = output.split("\n")
+    const frameWidth = diagramTextWidth(lines.at(-1)!)
+
+    expect(Math.max(...lines.map(diagramTextWidth))).toBe(frameWidth)
   })
 
   test("renders self messages as loopback arrows", () => {
@@ -639,7 +689,7 @@ sequenceDiagram
            │
            ├────────────────────╮
            │ Check Permissions  │
-           ◀────────────────────╯
+           ◄────────────────────╯
            │"
     `)
   })

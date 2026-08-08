@@ -49,7 +49,9 @@ function translateTransitionPlans(
 function makeGrid(width: number, height: number): StateGrid {
   return new DiagramCanvas(width, height, {
     mergeCell: (existing, incoming): StateCell => {
-      const shouldMerge = existing.style === "transition" && incoming.style === "transition"
+      const existingIsTransition = existing.style === "transition" || existing.style?.startsWith("stateDepartureRamp")
+      const incomingIsTransition = incoming.style === "transition" || incoming.style?.startsWith("stateDepartureRamp")
+      const shouldMerge = incomingIsTransition && (existingIsTransition || existing.style === "composite")
       return {
         ...incoming,
         char: shouldMerge

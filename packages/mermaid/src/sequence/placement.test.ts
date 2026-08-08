@@ -90,6 +90,25 @@ describe("createSequencePlacementPlan", () => {
     expect(external.headerLeftX).toBeGreaterThan(group.rightX)
   })
 
+  test("keeps many adjacent wide groups at a linear width", () => {
+    const groupCount = 16
+    const source = `sequenceDiagram
+${Array.from(
+  { length: groupCount },
+  (_, index) => `  box Group ${index} has a deliberately wide heading
+    participant P${index}
+  end`,
+).join("\n")}
+  P0->>P15: hi`
+    const plan = createSequencePlacementPlan(parseMermaidSequenceDiagram(source), { compact: true })
+
+    expect(plan.groups).toHaveLength(groupCount)
+    for (let index = 1; index < plan.groups.length; index++) {
+      expect(plan.groups[index]!.leftX).toBeGreaterThan(plan.groups[index - 1]!.rightX)
+    }
+    expect(plan.width).toBeLessThan(groupCount * 60)
+  })
+
   test("expands group and fragment frames around contained long content", () => {
     const groupPlan = createSequencePlacementPlan(
       parseMermaidSequenceDiagram(`sequenceDiagram

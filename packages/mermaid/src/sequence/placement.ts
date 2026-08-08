@@ -423,37 +423,31 @@ function separateExpandedGroupsFromExternalParticipants(
   compact: boolean,
 ): number[] {
   const adjusted = [...centers]
-  for (let pass = 0; pass < Math.max(1, ranges.length * 2); pass++) {
-    let changed = false
+  for (let boundary = 0; boundary < adjusted.length - 1; boundary++) {
     const groups = resolveGroupBounds(diagram, adjusted, participantIndexes, ranges, compact)
+    const leftWidth = participantHeaderWidth(diagram.participants[boundary]!.label, compact)
+    const rightWidth = participantHeaderWidth(diagram.participants[boundary + 1]!.label, compact)
+    let leftRight = adjusted[boundary]! - Math.floor(leftWidth / 2) + leftWidth - 1
+    let rightLeft = adjusted[boundary + 1]! - Math.floor(rightWidth / 2)
+    let bordersGroup = false
+
     for (const [index, range] of ranges.entries()) {
-      const group = groups[index]!
-      if (range.startIndex > 0) {
-        const previousIndex = range.startIndex - 1
-        const previousWidth = participantHeaderWidth(diagram.participants[previousIndex]!.label, compact)
-        const previousRight = adjusted[previousIndex]! - Math.floor(previousWidth / 2) + previousWidth - 1
-        const shift = previousRight + GROUP_HORIZONTAL_PADDING + 1 - group.leftX
-        if (shift > 0) {
-          for (let participantIndex = range.startIndex; participantIndex < adjusted.length; participantIndex++) {
-            adjusted[participantIndex]! += shift
-          }
-          changed = true
-        }
+      if (range.endIndex === boundary) {
+        leftRight = Math.max(leftRight, groups[index]!.rightX)
+        bordersGroup = true
       }
-      if (range.endIndex < diagram.participants.length - 1) {
-        const nextIndex = range.endIndex + 1
-        const nextWidth = participantHeaderWidth(diagram.participants[nextIndex]!.label, compact)
-        const nextLeft = adjusted[nextIndex]! - Math.floor(nextWidth / 2)
-        const shift = group.rightX + GROUP_HORIZONTAL_PADDING + 1 - nextLeft
-        if (shift > 0) {
-          for (let participantIndex = nextIndex; participantIndex < adjusted.length; participantIndex++) {
-            adjusted[participantIndex]! += shift
-          }
-          changed = true
-        }
+      if (range.startIndex === boundary + 1) {
+        rightLeft = Math.min(rightLeft, groups[index]!.leftX)
+        bordersGroup = true
       }
     }
-    if (!changed) return adjusted
+
+    if (!bordersGroup) continue
+    const shift = leftRight + GROUP_HORIZONTAL_PADDING + 1 - rightLeft
+    if (shift <= 0) continue
+    for (let participantIndex = boundary + 1; participantIndex < adjusted.length; participantIndex++) {
+      adjusted[participantIndex]! += shift
+    }
   }
   return adjusted
 }
