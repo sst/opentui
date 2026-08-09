@@ -294,6 +294,7 @@ pub const CliRenderer = struct {
     palette_epoch: u32,
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
+    preserve_next_buffer: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .empty,
     sixelCache: std.AutoHashMapUnmanaged(SixelCacheKey, SixelCacheEntry) = .empty,
     sixelCacheBytes: usize = 0,
@@ -316,6 +317,7 @@ pub const CliRenderer = struct {
         clearOnShutdown: bool = true,
         // Borrowed: when provided, both frame buffers share this caller-owned pool.
         link_pool: ?*link.LinkPool = null,
+        preserve_next_buffer: bool = false,
         // Optional override for terminal environment lookups. Borrowed: the
         // caller owns the map and must keep it alive for the renderer's lifetime.
         env_map: ?*const std.process.Environ.Map = null,
@@ -406,6 +408,7 @@ pub const CliRenderer = struct {
             .renderOffset = 0,
             .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode, .env_map = opts.env_map }),
             .clearOnShutdown = opts.clearOnShutdown,
+            .preserve_next_buffer = opts.preserve_next_buffer,
             .backend = backend,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
@@ -849,6 +852,10 @@ pub const CliRenderer = struct {
         self.renderOffset = offset;
     }
 
+    pub fn setPreserveNextBuffer(self: *CliRenderer, enabled: bool) void {
+        self.preserve_next_buffer = enabled;
+    }
+
     fn renderStatusFromWrite(status: output.WriteStatus) RenderStatus {
         return switch (status) {
             .ok => .rendered,
@@ -858,7 +865,7 @@ pub const CliRenderer = struct {
     }
 
     fn clearSkippedFrameState(self: *CliRenderer) void {
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.preserve_next_buffer) self.nextRenderBuffer.clear(self.backgroundColor, null);
         @memset(self.nextHitGrid, 0);
     }
 
@@ -888,6 +895,11 @@ pub const CliRenderer = struct {
         self.currentHitGrid = self.nextHitGrid;
         self.nextHitGrid = previous;
         @memset(self.nextHitGrid, 0);
+    }
+
+    pub fn preserveHitGridForNextFrame(self: *CliRenderer) void {
+        @memcpy(self.nextHitGrid, self.currentHitGrid);
+        self.hitGridClearScissorRects();
     }
 
     fn renderResult(self: *CliRenderer, status: RenderStatus) RenderResult {
@@ -2784,7 +2796,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.preserve_next_buffer) self.nextRenderBuffer.clear(self.backgroundColor, null);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {

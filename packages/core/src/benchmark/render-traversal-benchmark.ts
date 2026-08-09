@@ -9,13 +9,23 @@ import { existsSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Command } from "commander"
-import { BoxRenderable, RGBA, ScrollBarRenderable, ScrollBoxRenderable, TextRenderable } from "../index.js"
+import {
+  BoxRenderable,
+  type OptimizedBuffer,
+  Renderable,
+  RGBA,
+  ScrollBarRenderable,
+  ScrollBoxRenderable,
+  TextRenderable,
+  type RenderContext,
+} from "../index.js"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
 
 type ScenarioRuntime = {
   renderablesPerIteration: number
   layoutOnlyBoxesPerIteration: number
   runIteration: (iteration: number) => Promise<void>
+  validate?: () => void | Promise<void>
   teardown?: () => void | Promise<void>
 }
 
@@ -78,6 +88,21 @@ type LayoutTreeState = {
   stats: TreeStats
 }
 
+type SpinnerScenarioKind = "noop" | "bottom" | "history-one" | "mixed-three" | "history-all" | "all" | "text"
+
+type SpinnerTreeState = {
+  root: BoxRenderable
+  historySpinners: BenchmarkSpinnerRenderable[]
+  bottomSpinner: BenchmarkSpinnerRenderable
+  textSpinner: TextRenderable
+  stats: TreeStats
+  nextFrame: number
+}
+
+type LayoutReader = {
+  getComputedLayout: () => { left: number; top: number; width: number; height: number }
+}
+
 const SUITES = {
   quick: { iterations: 300, warmupIterations: 40 },
   default: { iterations: 1800, warmupIterations: 120 },
@@ -92,6 +117,27 @@ const COLORS = {
   accent: RGBA.fromInts(84, 171, 224),
   warning: RGBA.fromInts(219, 186, 96),
 } as const
+
+const SPINNER_FRAMES = ["|", "/", "-", "\\"] as const
+
+class BenchmarkSpinnerRenderable extends Renderable {
+  private frameIndex = 0
+
+  constructor(ctx: RenderContext, id: string) {
+    super(ctx, { id, width: 1, height: 1, flexShrink: 0 })
+  }
+
+  public setFrame(frameIndex: number): void {
+    const normalized = frameIndex % SPINNER_FRAMES.length
+    if (this.frameIndex === normalized) return
+    this.frameIndex = normalized
+    this.requestRender()
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    buffer.drawText(SPINNER_FRAMES[this.frameIndex], this._screenX, this._screenY, COLORS.warning)
+  }
+}
 
 let benchmarkChecksum = 0
 
@@ -178,6 +224,10 @@ const { renderer, renderOnce } = await createTestRenderer({
   consoleMode: "disabled",
   useMouse: false,
 })
+
+// Benchmarks drive frames explicitly. Prevent property mutations from racing
+// the measured renderOnce() call through the asynchronous frame scheduler.
+renderer.requestRender = (renderable) => renderer.root.invalidate(renderable)
 
 const ctx: BenchmarkContext = { renderer, renderOnce, width, height }
 const results: ScenarioResult[] = []
@@ -315,6 +365,13 @@ function createScenarios(): ScenarioDefinition[] {
         }
       },
     },
+    createSpinnerScenario("noop"),
+    createSpinnerScenario("bottom"),
+    createSpinnerScenario("history-one"),
+    createSpinnerScenario("mixed-three"),
+    createSpinnerScenario("history-all"),
+    createSpinnerScenario("all"),
+    createSpinnerScenario("text"),
     {
       name: "scrollbox_viewport_culling",
       description: "Viewport-culling content tree with many hidden children",
@@ -540,17 +597,30 @@ function createYogaLayoutReadScenario(nodeCount: number): ScenarioDefinition {
         renderablesPerIteration: nodeCount,
         layoutOnlyBoxesPerIteration: nodeCount,
         runIteration: async () => {
-          let checksum = 0
-          for (let index = 0; index < nodes.length; index++) {
-            const layout = nodes[index]!.getComputedLayout()
-            checksum += layout.left + layout.top + layout.width + layout.height + index
-          }
-          benchmarkChecksum = (benchmarkChecksum + checksum) >>> 0
+          benchmarkChecksum = (benchmarkChecksum + readLayoutChecksum(nodes)) >>> 0
         },
         teardown: () => root.destroyRecursively(),
       }
     },
   }
+}
+
+function readLayoutChecksum(nodes: readonly LayoutReader[]): number {
+  let checksum = 0
+  for (let chunkStart = 0; chunkStart < nodes.length; chunkStart += 1000) {
+    const chunkEnd = Math.min(chunkStart + 1000, nodes.length)
+    checksum += readLayoutChunk(nodes, chunkStart, chunkEnd)
+  }
+  return checksum
+}
+
+function readLayoutChunk(nodes: readonly LayoutReader[], start: number, end: number): number {
+  let checksum = 0
+  for (let index = start; index < end; index++) {
+    const layout = nodes[index]!.getComputedLayout()
+    checksum += layout.left + layout.top + layout.width + layout.height + index
+  }
+  return checksum
 }
 
 // Frame-time scaling with total child count under viewport culling, at a
@@ -627,6 +697,368 @@ function createCullingScalingScenario(childCount: number): ScenarioDefinition {
       }
     },
   }
+}
+
+function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
+  const names: Record<SpinnerScenarioKind, string> = {
+    noop: "spinner_complex_noop",
+    bottom: "spinner_bottom_tick",
+    "history-one": "spinner_history_one_tick",
+    "mixed-three": "spinner_mixed_three_tick",
+    "history-all": "spinner_history_all_tick",
+    all: "spinner_all_tick",
+    text: "spinner_text_tick",
+  }
+  const descriptions: Record<SpinnerScenarioKind, string> = {
+    noop: "Unchanged OpenCode-like screen containing nine paint spinners and one text spinner",
+    bottom: "One-cell bottom spinner tick in an otherwise unchanged OpenCode-like screen",
+    "history-one": "One of eight one-cell history spinners ticks in an unchanged message list",
+    "mixed-three": "Bottom spinner and two one-cell history spinners tick together",
+    "history-all": "Eight one-cell history spinners on separate rows tick together",
+    all: "Eight history spinners and the bottom spinner tick together",
+    text: "Same-width one-cell TextRenderable spinner tick that dirties Yoga",
+  }
+
+  return {
+    name: names[kind],
+    description: descriptions[kind],
+    setup: async (ctx) => {
+      const state = await buildSpinnerTree(ctx)
+      const expectedCells =
+        kind === "noop"
+          ? 0
+          : kind === "mixed-three"
+            ? 3
+            : kind === "history-all"
+              ? state.historySpinners.length
+              : kind === "all"
+                ? 9
+                : 1
+
+      const mutate = () => {
+        state.nextFrame = (state.nextFrame + 1) % SPINNER_FRAMES.length
+        switch (kind) {
+          case "noop":
+            return
+          case "bottom":
+            state.bottomSpinner.setFrame(state.nextFrame)
+            return
+          case "history-one":
+            state.historySpinners[3]!.setFrame(state.nextFrame)
+            return
+          case "mixed-three":
+            state.historySpinners[2]!.setFrame(state.nextFrame)
+            state.historySpinners[5]!.setFrame(state.nextFrame)
+            state.bottomSpinner.setFrame(state.nextFrame)
+            return
+          case "history-all":
+            for (const spinner of state.historySpinners) spinner.setFrame(state.nextFrame)
+            return
+          case "all":
+            for (const spinner of state.historySpinners) spinner.setFrame(state.nextFrame)
+            state.bottomSpinner.setFrame(state.nextFrame)
+            return
+          case "text":
+            state.textSpinner.content = SPINNER_FRAMES[state.nextFrame]
+        }
+      }
+
+      const validate = async () => {
+        if (Boolean(ctx.renderer.root.getLayoutNode().isDirty())) {
+          throw new Error(`${names[kind]} started validation with dirty Yoga`)
+        }
+
+        mutate()
+        const layoutDirty = Boolean(ctx.renderer.root.getLayoutNode().isDirty())
+        if (layoutDirty !== (kind === "text")) {
+          throw new Error(`${names[kind]} Yoga dirtiness mismatch: ${layoutDirty}`)
+        }
+
+        await ctx.renderOnce()
+        const cellsUpdated = ctx.renderer.getNativeStats().cellsUpdated
+        if (cellsUpdated !== expectedCells) {
+          throw new Error(`${names[kind]} expected ${expectedCells} changed cells, got ${cellsUpdated}`)
+        }
+        if (Boolean(ctx.renderer.root.getLayoutNode().isDirty())) {
+          throw new Error(`${names[kind]} left Yoga dirty after rendering`)
+        }
+        benchmarkChecksum = (benchmarkChecksum ^ hashBuffer(ctx.renderer.currentRenderBuffer)) >>> 0
+      }
+
+      return {
+        renderablesPerIteration: state.stats.renderables,
+        layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+        runIteration: async () => {
+          mutate()
+          await ctx.renderOnce()
+        },
+        validate,
+        teardown: () => state.root.destroyRecursively(),
+      }
+    },
+  }
+}
+
+async function buildSpinnerTree(ctx: BenchmarkContext): Promise<SpinnerTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  let renderables = 0
+  let layoutOnlyBoxes = 0
+  const historySpinners: BenchmarkSpinnerRenderable[] = []
+
+  const layoutBox = (options: ConstructorParameters<typeof BoxRenderable>[1]): BoxRenderable => {
+    renderables += 1
+    layoutOnlyBoxes += 1
+    return new BoxRenderable(ctx.renderer, options)
+  }
+  const visualBox = (options: ConstructorParameters<typeof BoxRenderable>[1]): BoxRenderable => {
+    renderables += 1
+    return new BoxRenderable(ctx.renderer, options)
+  }
+  const text = (options: ConstructorParameters<typeof TextRenderable>[1]): TextRenderable => {
+    renderables += 1
+    return new TextRenderable(ctx.renderer, options)
+  }
+  const spinner = (id: string): BenchmarkSpinnerRenderable => {
+    renderables += 1
+    return new BenchmarkSpinnerRenderable(ctx.renderer, id)
+  }
+
+  const root = visualBox({
+    id: "bench-spinner-root",
+    width: "100%",
+    height: "100%",
+    flexDirection: "column",
+    backgroundColor: COLORS.panel,
+  })
+  ctx.renderer.root.add(root)
+
+  const header = visualBox({
+    id: "bench-spinner-header",
+    width: "100%",
+    height: 3,
+    flexShrink: 0,
+    flexDirection: "row",
+    gap: 1,
+    paddingLeft: 1,
+    paddingRight: 1,
+    backgroundColor: COLORS.menu,
+  })
+  root.add(header)
+  header.add(text({ id: "bench-spinner-title", content: "OpenCode session", width: 18, height: 1 }))
+  for (let index = 0; index < 7; index += 1) {
+    const chip = layoutBox({
+      id: `bench-spinner-header-chip-${index}`,
+      width: 10,
+      height: 1,
+      flexShrink: 0,
+      paddingLeft: 1,
+      paddingRight: 1,
+    })
+    chip.add(text({ id: `bench-spinner-header-chip-text-${index}`, content: `chip-${index}`, width: 8, height: 1 }))
+    header.add(chip)
+  }
+
+  const body = layoutBox({
+    id: "bench-spinner-body",
+    width: "100%",
+    flexGrow: 1,
+    flexDirection: "row",
+  })
+  root.add(body)
+
+  const sidebar = visualBox({
+    id: "bench-spinner-sidebar",
+    width: 22,
+    minWidth: 22,
+    maxWidth: 22,
+    flexShrink: 0,
+    flexDirection: "column",
+    backgroundColor: COLORS.menu,
+    paddingLeft: 1,
+    paddingRight: 1,
+  })
+  body.add(sidebar)
+  for (let index = 0; index < 14; index += 1) {
+    const row = layoutBox({ id: `bench-spinner-sidebar-row-${index}`, width: "100%", height: 2, flexShrink: 0 })
+    row.add(text({ id: `bench-spinner-sidebar-text-${index}`, content: `session-${index}`, width: 18, height: 1 }))
+    sidebar.add(row)
+  }
+
+  const main = layoutBox({
+    id: "bench-spinner-main",
+    flexGrow: 1,
+    flexDirection: "column",
+    paddingLeft: 1,
+    paddingRight: 1,
+  })
+  body.add(main)
+
+  for (let index = 0; index < 8; index += 1) {
+    const message = visualBox({
+      id: `bench-spinner-message-${index}`,
+      width: "100%",
+      height: 4,
+      flexShrink: 0,
+      flexDirection: "row",
+      backgroundColor: index % 2 === 0 ? COLORS.element : COLORS.panel,
+    })
+    const rail = visualBox({
+      id: `bench-spinner-message-rail-${index}`,
+      width: 2,
+      minWidth: 2,
+      maxWidth: 2,
+      flexShrink: 0,
+      backgroundColor: index % 2 === 0 ? COLORS.accent : COLORS.warning,
+    })
+    const content = layoutBox({
+      id: `bench-spinner-message-content-${index}`,
+      flexGrow: 1,
+      flexDirection: "column",
+      paddingLeft: 1,
+      paddingRight: 1,
+    })
+    const meta = layoutBox({
+      id: `bench-spinner-message-meta-${index}`,
+      width: "100%",
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+      justifyContent: "space-between",
+    })
+    const badges = layoutBox({
+      id: `bench-spinner-message-badges-${index}`,
+      width: 32,
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+      gap: 1,
+    })
+    badges.add(
+      text({
+        id: `bench-spinner-role-${index}`,
+        content: index % 2 === 0 ? "assistant" : "tool",
+        width: 10,
+        height: 1,
+      }),
+    )
+    badges.add(text({ id: `bench-spinner-time-${index}`, content: `${index + 1}ms`, width: 8, height: 1 }))
+
+    const actions = layoutBox({
+      id: `bench-spinner-message-actions-${index}`,
+      width: 8,
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 1,
+    })
+    const historySpinner = spinner(`bench-spinner-history-${index}`)
+    historySpinners.push(historySpinner)
+    actions.add(historySpinner)
+    actions.add(text({ id: `bench-spinner-action-${index}`, content: "ok", width: 2, height: 1 }))
+    meta.add(badges)
+    meta.add(actions)
+
+    const messageBody = layoutBox({
+      id: `bench-spinner-message-body-${index}`,
+      width: "100%",
+      height: 2,
+      flexShrink: 0,
+      flexDirection: "column",
+    })
+    messageBody.add(
+      text({
+        id: `bench-spinner-message-text-${index}`,
+        content: `Message ${index}: cached markdown, tool output, and session history remain unchanged.`,
+        width: "100%",
+        height: 1,
+      }),
+    )
+    const detail = layoutBox({
+      id: `bench-spinner-message-detail-${index}`,
+      width: "100%",
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+      gap: 1,
+    })
+    for (let detailIndex = 0; detailIndex < 4; detailIndex += 1) {
+      detail.add(
+        text({
+          id: `bench-spinner-message-detail-${index}-${detailIndex}`,
+          content: `d${detailIndex}`,
+          width: 3,
+          height: 1,
+        }),
+      )
+    }
+    messageBody.add(detail)
+    content.add(meta)
+    content.add(messageBody)
+    message.add(rail)
+    message.add(content)
+    main.add(message)
+  }
+
+  const footer = visualBox({
+    id: "bench-spinner-footer",
+    width: "100%",
+    height: 4,
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 1,
+    paddingLeft: 1,
+    paddingRight: 1,
+    backgroundColor: COLORS.element,
+  })
+  root.add(footer)
+  const bottomSpinner = spinner("bench-spinner-bottom")
+  footer.add(bottomSpinner)
+  footer.add(text({ id: "bench-spinner-footer-status", content: "Working", width: 10, height: 1 }))
+  const textSpinner = text({ id: "bench-spinner-text", content: SPINNER_FRAMES[0], width: 1, height: 1 })
+  footer.add(textSpinner)
+  for (let index = 0; index < 6; index += 1) {
+    const item = layoutBox({
+      id: `bench-spinner-footer-item-${index}`,
+      width: 10,
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+    })
+    item.add(text({ id: `bench-spinner-footer-item-text-${index}`, content: `item-${index}`, width: 8, height: 1 }))
+    footer.add(item)
+  }
+
+  await ctx.renderOnce()
+  await ctx.renderOnce()
+  if (ctx.renderer.getNativeStats().cellsUpdated !== 0) {
+    throw new Error("spinner benchmark fixture did not settle to a no-op frame")
+  }
+
+  return {
+    root,
+    historySpinners,
+    bottomSpinner,
+    textSpinner,
+    stats: { renderables, layoutOnlyBoxes },
+    nextFrame: 0,
+  }
+}
+
+function hashBuffer(buffer: OptimizedBuffer): number {
+  const { char, fg, bg, attributes } = buffer.buffers
+  let hash = 2166136261
+  const update = (value: number) => {
+    hash = Math.imul(hash ^ value, 16777619)
+  }
+  for (const value of char) update(value)
+  for (const value of fg) update(value)
+  for (const value of bg) update(value)
+  for (const value of attributes) update(value)
+  return hash >>> 0
 }
 
 async function buildOpencodeLayoutTree(ctx: BenchmarkContext, options: LayoutTreeOptions): Promise<LayoutTreeState> {
@@ -872,6 +1304,8 @@ async function runScenario(
   const runtime = await scenario.setup(ctx)
 
   try {
+    await runtime.validate?.()
+
     for (let i = 0; i < warmupIterations; i += 1) {
       await runtime.runIteration(i)
     }
@@ -887,6 +1321,8 @@ async function runScenario(
 
     const elapsedMs = performance.now() - elapsedStart
     const stats = calculateStats(samples)
+
+    await runtime.validate?.()
 
     return {
       name: scenario.name,

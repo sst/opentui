@@ -1,5 +1,6 @@
 // Core exports without 3D dependencies
 export * from "./Renderable.js"
+export * from "./RootRenderable.js"
 export * from "./types.js"
 export * from "./utils.js"
 export * from "./buffer.js"
