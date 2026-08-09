@@ -188,12 +188,24 @@ const indexData = [
               {
                 src: "/recordings/terminal-story-trimmed.json",
                 title: "Ambient render",
+                tone: "recorded",
+                fadeLeft: 0,
                 caption: "Color and motion composited live, not a video.",
               },
               {
                 src: "/recordings/ot-proportional-terminal.json",
-                tone: "recorded",
-                background: "recorded",
+                // No horizontal fade for this one: a per-cell left/right
+                // fade is computed per run, and real prose has one long run
+                // per line, so a short line (the ragged end of a wrapped
+                // paragraph) has a midpoint that's still inside the fade
+                // zone even though a long line starting at the same column
+                // isn't — reading as random-looking gray text with no
+                // relation to the actual edge. Column position just isn't a
+                // meaningful "distance from the edge" for variable-length
+                // text lines the way it is for the other, abstract stories.
+                // Row-based (top/bottom) fade has no such problem, since
+                // it's tied to a fixed grid position, not content length.
+                fadeLeft: 0,
                 title: "Long-form documents",
                 caption: "Justified, proportional text rendered as terminal cells.",
               },

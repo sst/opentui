@@ -21,6 +21,9 @@ const mixedStories = [
     src: "/recordings/ot-proportional-terminal.json",
     tone: "recorded" as const,
     background: "recorded" as const,
+    // See the matching comment in index.astro: per-run column fade doesn't
+    // apply meaningfully to variable-length prose lines.
+    fadeLeft: 0,
     title: "Long-form documents",
     caption: "Justified, proportional text rendered as terminal cells.",
   },
@@ -79,6 +82,7 @@ const mixedStories = [
               src: "/recordings/ot-proportional-terminal.json",
               tone: "recorded",
               background: "recorded",
+              fadeLeft: 0,
               title: "Long-form documents",
               caption: "Justified, proportional text rendered as terminal cells.",
             },
