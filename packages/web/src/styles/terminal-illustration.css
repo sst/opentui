@@ -1,7 +1,13 @@
+/* `color` (read by the player script as the default mono ink, and inherited
+   by the controls panel) defaults to `--cobalt-600` but resolves `
+   --illustration-ink` first if some ancestor defines it — e.g. a section
+   that's dark regardless of light/dark mode. Do not redeclare
+   `--illustration-ink` here: doing so would always win over such an
+   ancestor's value (an element's own declaration beats an inherited one),
+   silently defeating the override. */
 .terminal-illustration {
-  --illustration-ink: var(--cobalt-600);
   align-items: center;
-  color: var(--illustration-ink);
+  color: var(--illustration-ink, var(--cobalt-600));
   display: flex;
   justify-content: center;
   min-width: 0;
@@ -30,4 +36,146 @@
   height: 100%;
   line-height: inherit;
   vertical-align: top;
+}
+
+/* Controls: a small pill-shaped panel (progress segments, a play/pause
+   toggle, a caption) overlaid in a corner, never a full window frame/footer
+   bar. Always present in the DOM so keyboard focus can reach it; visibility
+   is purely a CSS concern driven by `data-illustration-controls`. */
+.terminal-illustration__controls {
+  align-items: flex-end;
+  color: var(--illustration-ink);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  gap: 8px;
+  pointer-events: auto;
+  position: absolute;
+  right: 14px;
+  top: 28px;
+  z-index: 1;
+}
+
+.terminal-illustration__buttons {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.terminal-illustration[data-illustration-controls="hidden"] .terminal-illustration__controls {
+  display: none;
+}
+
+.terminal-illustration[data-illustration-controls="hover"] .terminal-illustration__controls {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.terminal-illustration[data-illustration-controls="hover"]:hover .terminal-illustration__controls,
+.terminal-illustration[data-illustration-controls="hover"]:focus-within .terminal-illustration__controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-illustration[data-illustration-controls="hover"] .terminal-illustration__controls {
+    transition: none;
+  }
+}
+
+.terminal-illustration__segments {
+  align-items: center;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  display: flex;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+}
+
+.terminal-illustration__segment {
+  --progress: 0;
+  appearance: none;
+  background: color-mix(in srgb, currentColor 30%, transparent);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 5px;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: width 0.24s ease;
+  width: 5px;
+}
+
+.terminal-illustration__segment::after {
+  background: currentColor;
+  content: "";
+  inset: 0;
+  position: absolute;
+  transform: scaleX(var(--progress));
+  transform-origin: left;
+}
+
+.terminal-illustration__segment[aria-current="step"] {
+  width: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-illustration__segment {
+    transition: none;
+  }
+}
+
+.terminal-illustration__toggle {
+  align-items: center;
+  appearance: none;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 22px;
+  justify-content: center;
+  padding: 0;
+  width: 22px;
+}
+
+.terminal-illustration__toggle:hover {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.terminal-illustration__toggle .icon {
+  fill: currentColor;
+  height: 10px;
+  width: 10px;
+}
+
+.terminal-illustration__toggle .icon-play,
+.terminal-illustration__toggle .icon-pause {
+  display: none;
+}
+
+.terminal-illustration__toggle:not([data-state]) .icon-play,
+.terminal-illustration__toggle[data-state="play"] .icon-play,
+.terminal-illustration__toggle[data-state="pause"] .icon-pause {
+  display: block;
+}
+
+.terminal-illustration__caption {
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  opacity: 0.85;
+  text-align: right;
+  width: 26ch;
+}
+
+.terminal-illustration__caption:empty {
+  display: none;
 }

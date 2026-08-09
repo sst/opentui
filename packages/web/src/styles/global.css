@@ -317,6 +317,8 @@ h4,
   background-repeat: repeat-x;
   background-position: left center;
   opacity: 0.7;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-grid {
@@ -408,12 +410,25 @@ h4,
 }
 
 /* Hero Illustration: a chrome-free, borderless animated recording bled
-   against the right side of the hero, masked so it fades into the copy
-   column instead of sitting in a boxed "window." Contained on narrow
-   viewports; bled full-height on desktop, behind the headline/CTA. */
+   against the right side of the hero, fading into the copy column instead of
+   sitting in a boxed "window." It also bleeds past the hero's own bottom edge
+   into the section rule and next heading, so the hero visually trails into
+   the next section rather than cutting off. Hidden on narrow viewports, where
+   the two-column layout it depends on collapses to one.
+
+   The fade is computed per cell (the `fadeLeft`/`fadeBottom` props below),
+   not CSS. Two earlier approaches were tried and rejected: an absolutely
+   positioned scrim div with background-color gradients painted a translucent
+   wash *over* later content instead of dissolving into it (a foggy smear,
+   worsened by a stacking-order bug); and `mask-image` (which reads correctly
+   and avoids that bug) still forces the browser to composite the whole
+   illustration through an offscreen layer to apply the mask, which visibly
+   softens/blurs the monospace glyphs even where the mask itself is fully
+   opaque. Per-cell opacity has neither problem: it's baked into the same
+   inline styles already used for the mono luminance recolor. */
 .hero-illustration-bleed {
   display: none;
-  pointer-events: none;
+  overflow: hidden;
 }
 
 @media (min-width: 900px) {
@@ -421,12 +436,10 @@ h4,
     display: block;
     position: absolute;
     top: 0;
-    bottom: 0;
     left: 42%;
     right: -20px;
+    height: clamp(480px, 46vw, 680px);
     z-index: 0;
-    mask-image: linear-gradient(to right, transparent 0%, black 32%);
-    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 32%);
   }
 }
 
@@ -438,6 +451,8 @@ h4,
 /* Illustrated Introduction Front Matter */
 .editorial-frontmatter {
   margin: 0 0 24px;
+  position: relative;
+  z-index: 1;
 }
 
 .frontmatter-title {
@@ -466,6 +481,8 @@ h4,
   font-size: 14px;
   line-height: 1.65;
   color: var(--text-muted);
+  position: relative;
+  z-index: 1;
 }
 
 .editorial-lead-figure {

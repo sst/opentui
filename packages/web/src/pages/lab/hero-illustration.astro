@@ -1,33 +1,118 @@
 ---
 import Base from "../../layouts/Base.astro"
 import TerminalIllustration from "../../components/TerminalIllustration.astro"
+
+const abstractStories = [
+  {
+    src: "/recordings/noise-sanctuary.json",
+    title: "Pixel buffers",
+    caption: "A FrameBufferRenderable, animated pixel by pixel every frame.",
+  },
+  {
+    src: "/recordings/terminal-story-trimmed.json",
+    title: "Ambient render",
+    caption: "Color and motion composited live, not a video.",
+  },
+]
+
+const mixedStories = [
+  ...abstractStories,
+  {
+    src: "/recordings/ot-proportional-terminal.json",
+    tone: "recorded" as const,
+    background: "recorded" as const,
+    title: "Long-form documents",
+    caption: "Justified, proportional text rendered as terminal cells.",
+  },
+]
 ---
 
 <Base title="Hero Illustration Lab - OpenTUI" description="Isolated illustration prototypes for the hero.">
   <main class="illustration-lab">
     <section class="illustration-lab__block">
-      <h2>A. Full-bleed ambient, contain</h2>
-      <div class="illustration-lab__stage illustration-lab__stage--light">
-        <TerminalIllustration label="Ambient terminal recording" fit="contain" class="illustration-lab__fill" />
+      <h2>A. contain &mdash; whole grid visible, both directions, controls hidden</h2>
+      <div class="illustration-lab__stage">
+        <TerminalIllustration
+          label="Ambient terminal recording"
+          fit="contain"
+          class="illustration-lab__fill"
+          stories={[abstractStories[0]]}
+        />
       </div>
     </section>
 
     <section class="illustration-lab__block">
-      <h2>B. Full-bleed ambient, cover (cropped)</h2>
-      <div class="illustration-lab__stage illustration-lab__stage--light">
-        <TerminalIllustration label="Ambient terminal recording" fit="cover" class="illustration-lab__fill" />
+      <h2>B. cover &mdash; full height, width crops or bleeds off the edge</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--narrow">
+        <TerminalIllustration
+          label="Ambient terminal recording"
+          fit="cover"
+          class="illustration-lab__fill"
+          stories={[abstractStories[0]]}
+        />
       </div>
     </section>
 
     <section class="illustration-lab__block">
-      <h2>E. Bleed, weighted right &mdash; mono ink (single blue)</h2>
+      <h2>C. cover &mdash; abstract mono stories cycling, controls on hover (move your mouse over it)</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--narrow">
+        <TerminalIllustration
+          label="Cycling terminal recordings"
+          fit="cover"
+          controls="hover"
+          class="illustration-lab__fill"
+          stories={abstractStories}
+        />
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>D. tone=&quot;recorded&quot;, background=&quot;recorded&quot; &mdash; a real document, own colors, controls always visible</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--narrow illustration-lab__stage--dark">
+        <TerminalIllustration
+          label="Proportional terminal document, smooth scroll"
+          fit="cover"
+          controls="visible"
+          class="illustration-lab__fill"
+          stories={[
+            {
+              src: "/recordings/ot-proportional-terminal.json",
+              tone: "recorded",
+              background: "recorded",
+              title: "Long-form documents",
+              caption: "Justified, proportional text rendered as terminal cells.",
+            },
+          ]}
+        />
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>E. All three stories cycling, mixed tone/background, controls on hover</h2>
+      <div class="illustration-lab__stage illustration-lab__stage--narrow">
+        <TerminalIllustration
+          label="Cycling terminal recordings"
+          fit="cover"
+          controls="hover"
+          class="illustration-lab__fill"
+          stories={mixedStories}
+        />
+      </div>
+    </section>
+
+    <section class="illustration-lab__block">
+      <h2>F. Real hero bleed geometry, standalone (light)</h2>
       <div class="hero-bleed">
-        <div class="hero-bleed__illustration">
+        <div class="hero-illustration-bleed hero-illustration-bleed--lab">
           <TerminalIllustration
-            label="Ambient terminal recording"
+            label="Cycling terminal recordings"
             fit="cover"
-            fontSize={16}
-            class="illustration-lab__fill"
+            controls="hover"
+            holdMs={600}
+            fadeLeft={0.3}
+            fadeBottom={0.35}
+            class="hero-illustration"
+            stories={mixedStories}
           />
         </div>
         <div class="hero-bleed__copy">
@@ -41,80 +126,23 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
             <a href="#">Read the docs &rarr;</a>
           </div>
         </div>
+        <p class="hero-bleed__next">Building a terminal app.</p>
       </div>
     </section>
 
     <section class="illustration-lab__block">
-      <h2>F. Bleed, weighted right &mdash; duo ink (indigo shadow &rarr; sky highlight)</h2>
-      <div class="hero-bleed">
-        <div class="hero-bleed__illustration">
-          <TerminalIllustration
-            label="Ambient terminal recording"
-            fit="cover"
-            fontSize={16}
-            inkShadow="#0b1b4d"
-            inkHighlight="#7dd3fc"
-            minAlpha={0.06}
-            maxAlpha={1}
-            class="illustration-lab__fill"
-          />
-        </div>
-        <div class="hero-bleed__copy">
-          <h1>Terminal UIs on a native Zig core.</h1>
-          <p>
-            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
-            renderer. The core exposes a C ABI for any other language.
-          </p>
-          <div class="hero-mock__cta">
-            <code>$ bun create tui</code>
-            <a href="#">Read the docs &rarr;</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="illustration-lab__block">
-      <h2>G0. Bleed, weighted right &mdash; inverted duo (pale shadow &rarr; deep navy highlight, for light bg ink density)</h2>
-      <div class="hero-bleed">
-        <div class="hero-bleed__illustration">
-          <TerminalIllustration
-            label="Ambient terminal recording"
-            fit="cover"
-            fontSize={16}
-            inkShadow="#c7dbfb"
-            inkHighlight="#0b1a3d"
-            minAlpha={0.03}
-            maxAlpha={1}
-            class="illustration-lab__fill"
-          />
-        </div>
-        <div class="hero-bleed__copy">
-          <h1>Terminal UIs on a native Zig core.</h1>
-          <p>
-            Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same
-            renderer. The core exposes a C ABI for any other language.
-          </p>
-          <div class="hero-mock__cta">
-            <code>$ bun create tui</code>
-            <a href="#">Read the docs &rarr;</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="illustration-lab__block">
-      <h2>G. Bleed, weighted right, dark surface &mdash; duo ink</h2>
+      <h2>G. Real hero bleed geometry, standalone (dark)</h2>
       <div class="hero-bleed hero-bleed--dark">
-        <div class="hero-bleed__illustration">
+        <div class="hero-illustration-bleed hero-illustration-bleed--lab">
           <TerminalIllustration
-            label="Ambient terminal recording"
+            label="Cycling terminal recordings"
             fit="cover"
-            fontSize={16}
-            inkShadow="#13224f"
-            inkHighlight="#93c5fd"
-            minAlpha={0.08}
-            maxAlpha={1}
-            class="illustration-lab__fill"
+            controls="hover"
+            holdMs={600}
+            fadeLeft={0.3}
+            fadeBottom={0.35}
+            class="hero-illustration"
+            stories={mixedStories}
           />
         </div>
         <div class="hero-bleed__copy">
@@ -128,6 +156,7 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
             <a href="#">Read the docs &rarr;</a>
           </div>
         </div>
+        <p class="hero-bleed__next">Building a terminal app.</p>
       </div>
     </section>
   </main>
@@ -155,14 +184,20 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
   }
 
   .illustration-lab__stage {
+    background: var(--background);
     border: 1px dashed var(--border-color);
     height: 60vh;
     overflow: hidden;
     position: relative;
   }
 
-  .illustration-lab__stage--light {
-    background: var(--background);
+  .illustration-lab__stage--narrow {
+    height: 40vh;
+  }
+
+  .illustration-lab__stage--dark {
+    background: #0d0e12;
+    color: #f4f4f7;
   }
 
   .illustration-lab__fill {
@@ -170,62 +205,11 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
     width: 100%;
   }
 
-  .hero-mock {
-    align-items: center;
-    background: #fbfbfb;
-    border: 1px solid var(--border-subtle);
-    display: grid;
-    gap: 40px;
-    grid-template-columns: 1fr 1fr;
-    padding: 64px;
-  }
-
-  .hero-mock--dark {
-    background: #0d0e12;
-    color: #f4f4f7;
-  }
-
-  .hero-mock__copy h1 {
-    font-family: var(--font-serif);
-    font-size: 40px;
-    line-height: 1.05;
-    margin: 0 0 20px;
-  }
-
-  .hero-mock__copy p {
-    font-family: var(--font-mono);
-    font-size: 14px;
-    line-height: 1.6;
-    max-width: 46ch;
-    opacity: 0.75;
-  }
-
-  .hero-mock__cta {
-    align-items: center;
-    display: flex;
-    gap: 20px;
-    margin-top: 24px;
-  }
-
-  .hero-mock__cta code {
-    background: var(--bg-subtle);
-    border: 1px solid var(--border-color);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 8px 14px;
-  }
-
-  .hero-mock__preview {
-    aspect-ratio: 4 / 3;
-    overflow: hidden;
-    position: relative;
-    width: 100%;
-  }
-
   .hero-bleed {
     background: #fbfbfb;
     border: 1px solid var(--border-subtle);
-    height: 70vh;
+    height: 900px;
+    overflow: hidden;
     position: relative;
   }
 
@@ -234,14 +218,14 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
     color: #f4f4f7;
   }
 
-  .hero-bleed__illustration {
-    bottom: 0;
-    left: 28%;
-    mask-image: linear-gradient(to right, transparent 0%, black 38%);
+  .hero-illustration-bleed--lab {
+    display: block;
+    height: clamp(480px, 46vw, 680px);
+    left: 42%;
     position: absolute;
-    right: 0;
+    right: -20px;
     top: 0;
-    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 38%);
+    z-index: 0;
   }
 
   .hero-bleed__copy {
@@ -263,6 +247,31 @@ import TerminalIllustration from "../../components/TerminalIllustration.astro"
     font-size: 14px;
     line-height: 1.6;
     opacity: 0.75;
+  }
+
+  .hero-mock__cta {
+    align-items: center;
+    display: flex;
+    gap: 20px;
+    margin-top: 24px;
+  }
+
+  .hero-mock__cta code {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+
+  .hero-bleed__next {
+    bottom: 60px;
+    font-family: var(--font-serif);
+    font-size: 32px;
+    left: 64px;
+    margin: 0;
+    position: absolute;
+    z-index: 1;
   }
 </style>
 

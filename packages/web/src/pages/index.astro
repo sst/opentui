@@ -170,8 +170,35 @@ const indexData = [
       <header class="editorial-hero">
         <div class="hero-logo-slot" id="hero-logo-slot" aria-hidden="true"></div>
 
-        <div class="hero-illustration-bleed" aria-hidden="true">
-          <TerminalIllustration label="OpenTUI terminal recording, animated" fit="cover" fontSize={16} class="hero-illustration" />
+        <div class="hero-illustration-bleed">
+          <TerminalIllustration
+            label="OpenTUI terminal recordings, animated"
+            controls="hover"
+            fit="cover"
+            holdMs={600}
+            fadeLeft={0.3}
+            fadeBottom={0.35}
+            class="hero-illustration"
+            stories={[
+              {
+                src: "/recordings/noise-sanctuary.json",
+                title: "Pixel buffers",
+                caption: "A FrameBufferRenderable, animated pixel by pixel every frame.",
+              },
+              {
+                src: "/recordings/terminal-story-trimmed.json",
+                title: "Ambient render",
+                caption: "Color and motion composited live, not a video.",
+              },
+              {
+                src: "/recordings/ot-proportional-terminal.json",
+                tone: "recorded",
+                background: "recorded",
+                title: "Long-form documents",
+                caption: "Justified, proportional text rendered as terminal cells.",
+              },
+            ]}
+          />
         </div>
 
         <div class="hero-grid">
