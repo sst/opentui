@@ -502,6 +502,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "buffer"],
       returns: "void",
     },
+    rendererPreserveHitGrid: {
+      args: ["u32"],
+      returns: "void",
+    },
     setRenderOffset: {
       args: ["u32", "u32"],
       returns: "void",
@@ -603,6 +607,10 @@ function getOpenTUILib(libPath?: string) {
     bufferClear: {
       args: ["u32", "buffer"],
       returns: "void",
+    },
+    bufferClearRows: {
+      args: ["u32", "u32", "u32", "ptr"],
+      returns: "u8",
     },
     bufferGetCharPtr: {
       args: ["u32"],
@@ -2314,6 +2322,7 @@ export interface NativeRendererCreateOptions {
   remote?: boolean
   feedPtr?: Pointer | null
   bufferedOutput?: NativeBufferedOutput
+  preserveNextBuffer?: boolean
 }
 
 export interface NativeRenderOperationResult {
@@ -3674,7 +3683,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public createRenderer(width: number, height: number, options: NativeRendererCreateOptions = {}) {
-    const bufferedOutputKind = options.bufferedOutput === "memory" ? 1 : 0
+    const bufferedOutputKind = (options.bufferedOutput === "memory" ? 1 : 0) | (options.preserveNextBuffer ? 0x80 : 0)
     const remoteMode = options.remote === undefined ? 0 : options.remote ? 2 : 1
     // `feedPtr` is an internal wiring detail: non-null selects the feed backend
     // used for custom Writable output. When null, `bufferedOutput` selects the
@@ -6731,6 +6740,29 @@ class FFIRenderLib implements RenderLib {
   public onAnyNativeEvent(handler: (name: string, data: ArrayBuffer) => void): void {
     this._anyEventHandlers.push(handler)
   }
+}
+
+type IncrementalRenderSymbols = {
+  rendererPreserveHitGrid: (renderer: RendererHandle) => void
+  bufferClearRows: (buffer: OptimizedBufferHandle, startY: number, rowCount: number, color: Pointer) => number
+}
+
+function incrementalRenderSymbols(lib: RenderLib): IncrementalRenderSymbols {
+  return (lib as unknown as { opentui: { symbols: IncrementalRenderSymbols } }).opentui.symbols
+}
+
+export function rendererPreserveHitGrid(lib: RenderLib, renderer: RendererHandle): void {
+  incrementalRenderSymbols(lib).rendererPreserveHitGrid(renderer)
+}
+
+export function bufferClearRows(
+  lib: RenderLib,
+  buffer: OptimizedBufferHandle,
+  startY: number,
+  rowCount: number,
+  color: RGBA,
+): boolean {
+  return incrementalRenderSymbols(lib).bufferClearRows(buffer, startY, rowCount, rgbaPtr(color)) !== 0
 }
 
 let opentuiLibPath: string | undefined

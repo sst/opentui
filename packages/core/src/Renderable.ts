@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
+import Yoga, { Display, Edge, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
@@ -202,18 +202,18 @@ interface LayoutGenerationContext extends RenderContext {
   __otuiRenderListRevision?: number
 }
 
-function getLayoutGeneration(ctx: RenderContext): number {
+export function getLayoutGeneration(ctx: RenderContext): number {
   return (ctx as LayoutGenerationContext).__otuiLayoutGeneration ?? 0
 }
 
-function bumpLayoutGeneration(ctx: RenderContext): number {
+export function bumpLayoutGeneration(ctx: RenderContext): number {
   const next = getLayoutGeneration(ctx) + 1
   const generationContext = ctx as LayoutGenerationContext
   generationContext.__otuiLayoutGeneration = next
   return next
 }
 
-function getRenderListRevision(ctx: RenderContext): number {
+export function getRenderListRevision(ctx: RenderContext): number {
   return (ctx as LayoutGenerationContext).__otuiRenderListRevision ?? 0
 }
 
@@ -511,7 +511,7 @@ export abstract class Renderable extends BaseRenderable {
 
   public requestRender() {
     this.markDirty()
-    this._ctx.requestRender()
+    this._ctx.requestRender(this)
   }
 
   public get translateX(): number {
@@ -1508,6 +1508,8 @@ export abstract class Renderable extends BaseRenderable {
   public canReuseRenderCommandList(): boolean {
     return (
       this.onUpdate === Renderable.prototype.onUpdate &&
+      this.renderBefore === undefined &&
+      this.renderAfter === undefined &&
       (this._overflow === "visible" || this.getScissorRect === Renderable.prototype.getScissorRect) &&
       !this._hasVisibleChildFilter()
     )
@@ -1737,157 +1739,3 @@ export type RenderCommand =
   | RenderCommandRender
   | RenderCommandPushOpacity
   | RenderCommandPopOpacity
-
-export class RootRenderable extends Renderable {
-  private renderList: RenderCommand[] = []
-  private _currentRenderable: Renderable | undefined
-  private appliedLayoutGeneration: number = -1
-  private appliedRenderListRevision: number = -1
-  private renderListReusable: boolean = false
-
-  constructor(ctx: RenderContext) {
-    super(ctx, {
-      id: "__root__",
-      zIndex: 0,
-      visible: true,
-      width: ctx.width,
-      height: ctx.height,
-      enableLayout: true,
-    })
-
-    if (this.yogaNode) {
-      this.yogaNode.free()
-    }
-
-    this.yogaNode = Yoga.Node.createForOpenTUI()
-    this.yogaNode.setWidth(ctx.width)
-    this.yogaNode.setHeight(ctx.height)
-    this.yogaNode.setFlexDirection(FlexDirection.Column)
-
-    this.calculateLayout()
-  }
-
-  public get currentRenderable(): Renderable | undefined {
-    return this._currentRenderable
-  }
-
-  public takeCurrentRenderable(): Renderable | undefined {
-    const renderable = this._currentRenderable
-    this._currentRenderable = undefined
-    return renderable
-  }
-
-  public render(buffer: OptimizedBuffer, deltaTime: number): void {
-    this._currentRenderable = undefined
-    if (!this.visible) return
-
-    // 0. Run lifecycle pass
-    for (const renderable of this._ctx.getLifecyclePasses()) {
-      if (!renderable.isDestroyed) {
-        renderable.onLifecyclePass?.call(renderable)
-      }
-    }
-
-    // NOTE: Strictly speaking, this is a 3-pass rendering process:
-    // 1. Calculate layout from root
-    // 2. Update layout throughout the tree and collect render list
-    // 3. Render all collected renderables
-    // Should be 2-pass by hooking into the calculateLayout phase,
-    // but that's only possible if we move the layout tree to native.
-
-    // 1. Calculate layout from root
-    if (this.yogaNode.isDirty()) {
-      this.calculateLayout()
-    } else {
-      this.syncExternalLayoutGeneration()
-    }
-
-    // 2. Update layout throughout the tree and collect render list
-    const layoutGeneration = getLayoutGeneration(this._ctx)
-    const renderListRevision = getRenderListRevision(this._ctx)
-    const canReuseRenderList =
-      this.renderListReusable &&
-      this.appliedLayoutGeneration === layoutGeneration &&
-      this.appliedRenderListRevision === renderListRevision
-
-    if (!canReuseRenderList) {
-      this.renderList.length = 0
-      super.updateLayout(deltaTime, this.renderList)
-      this.appliedLayoutGeneration = layoutGeneration
-      this.appliedRenderListRevision = getRenderListRevision(this._ctx)
-      this.renderListReusable = this.canReuseCurrentRenderList()
-    }
-
-    // 3. Render all collected renderables
-    this._ctx.clearHitGridScissorRects()
-    for (let i = 1; i < this.renderList.length; i++) {
-      const command = this.renderList[i]
-      switch (command.action) {
-        case "render":
-          // Skip if renderable was destroyed during a previous render callback
-          if (!command.renderable.isDestroyed) {
-            this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
-            this._currentRenderable = undefined
-          }
-          break
-        case "pushScissorRect":
-          buffer.pushScissorRect(command.x, command.y, command.width, command.height)
-          this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
-          break
-        case "popScissorRect":
-          buffer.popScissorRect()
-          this._ctx.popHitGridScissorRect()
-          break
-        case "pushOpacity":
-          buffer.pushOpacity(command.opacity)
-          break
-        case "popOpacity":
-          buffer.popOpacity()
-          break
-      }
-    }
-  }
-
-  protected propagateLiveCount(delta: number): void {
-    const oldCount = this._liveCount
-    this._liveCount += delta
-
-    if (oldCount === 0 && this._liveCount > 0) {
-      this._ctx.requestLive()
-    } else if (oldCount > 0 && this._liveCount === 0) {
-      this._ctx.dropLive()
-    }
-  }
-
-  public calculateLayout(): void {
-    this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
-    bumpLayoutGeneration(this._ctx)
-    this.yogaNode.markLayoutSeen()
-    this.emit(LayoutEvents.LAYOUT_CHANGED)
-  }
-
-  private syncExternalLayoutGeneration(): void {
-    if (!this.yogaNode.hasNewLayout()) return
-    bumpLayoutGeneration(this._ctx)
-    this.yogaNode.markLayoutSeen()
-  }
-
-  private canReuseCurrentRenderList(): boolean {
-    if (this._liveCount > 0) return false
-
-    for (const command of this.renderList) {
-      if (command.action !== "render") continue
-      if (!command.renderable.canReuseRenderCommandList()) return false
-    }
-
-    return true
-  }
-
-  public resize(width: number, height: number): void {
-    this.width = width
-    this.height = height
-
-    this.emit(LayoutEvents.RESIZED, { width, height })
-  }
-}

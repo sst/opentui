@@ -361,7 +361,7 @@ const renderer = await createCliRenderer({
   useMouse: false,
 })
 
-renderer.requestRender = () => {}
+renderer.requestRender = (renderable) => renderer.root.invalidate(renderable)
 
 const syntaxStyleA = SyntaxStyle.fromStyles({
   default: { fg: parseColor("#E6EDF3") },

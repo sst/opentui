@@ -463,6 +463,36 @@ pub const OptimizedBuffer = struct {
         @memset(self.buffer.bg, bg);
     }
 
+    /// Source-clear complete rows while preserving content outside them.
+    /// Images are frame-level placements today, so callers must fall back to a
+    /// complete composition while any placement is present.
+    pub fn clearRows(self: *OptimizedBuffer, start_y: u32, row_count: u32, bg: RGBA) bool {
+        if (row_count == 0 or start_y >= self.height) return true;
+        if (self.image_placements.items.len != 0) return false;
+
+        const end_y = @min(self.height, start_y +| row_count);
+        if (!self.grapheme_tracker.hasAny() and !self.link_tracker.hasAny()) {
+            var y = start_y;
+            while (y < end_y) : (y += 1) {
+                const start = @as(usize, y) * self.width;
+                const end = start + self.width;
+                @memset(self.buffer.char[start..end], DEFAULT_SPACE_CHAR);
+                @memset(self.buffer.attributes[start..end], 0);
+                @memset(self.buffer.fg[start..end], ansi.rgbColor(255, 255, 255, 255));
+                @memset(self.buffer.bg[start..end], bg);
+            }
+            return true;
+        }
+
+        const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+        var y = start_y;
+        while (y < end_y) : (y += 1) {
+            var x: u32 = 0;
+            while (x < self.width) : (x += 1) self.set(x, y, cell);
+        }
+        return true;
+    }
+
     fn clearImagePlacements(self: *OptimizedBuffer) void {
         for (self.image_placements.items) |placement| placement.image.deinit();
         self.image_placements.clearRetainingCapacity();

@@ -119,6 +119,8 @@ export interface RenderContext extends EventEmitter {
   pushHitGridScissorRect: (x: number, y: number, width: number, height: number) => void
   popHitGridScissorRect: () => void
   clearHitGridScissorRects: () => void
+  preserveHitGrid: () => void
+  setHitGridWritesEnabled: (enabled: boolean) => void
   width: number
   height: number
   terminalWidth?: number
@@ -126,7 +128,7 @@ export interface RenderContext extends EventEmitter {
   resolution?: { width: number; height: number } | null
   /** Monotonic, bumped once per `loop()` iteration. Lets renderables dedupe per-frame work. */
   frameId: number
-  requestRender: () => void
+  requestRender: (renderable?: Renderable) => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
   setCursorStyle: (options: CursorStyleOptions) => void
   setCursorColor: (color: RGBA) => void

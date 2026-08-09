@@ -277,7 +277,7 @@ const { renderer, renderOnce } = await createTestRenderer({
   consoleMode: "disabled",
 })
 
-renderer.requestRender = () => {}
+renderer.requestRender = (renderable) => renderer.root.invalidate(renderable)
 
 const table = new TextTableRenderable(renderer, {
   id: "text-table-bench",

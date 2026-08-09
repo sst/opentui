@@ -3403,6 +3403,30 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     try std.testing.expectEqual(@as(usize, 0), output.len);
 }
 
+test "renderer - preserved desired buffer survives a no-op frame without repainting" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_cli_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+    cli_renderer.setPreserveNextBuffer(true);
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try cli_renderer.getNextBuffer().drawText("A", 1, 0, fg, bg, 0);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    try std.testing.expectEqual(@as(u32, 'A'), cli_renderer.getNextBuffer().get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'A'), cli_renderer.getCurrentBuffer().get(1, 0).?.char);
+
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    try std.testing.expectEqual(@as(usize, 0), test_cli_renderer.lastOutput().len);
+    try std.testing.expectEqual(@as(u32, 'A'), cli_renderer.getNextBuffer().get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'A'), cli_renderer.getCurrentBuffer().get(1, 0).?.char);
+}
+
 test "renderer - buffered debug dump includes non-threaded last render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
