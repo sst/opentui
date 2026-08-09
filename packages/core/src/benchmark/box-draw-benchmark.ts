@@ -241,7 +241,7 @@ const { renderer, renderOnce } = await createTestRenderer({
   useMouse: false,
 })
 
-renderer.requestRender = () => {}
+renderer.requestRender = (renderable) => renderer.root.invalidate(renderable)
 
 const ctx: BenchmarkContext = {
   renderer,

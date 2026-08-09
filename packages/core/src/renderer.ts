@@ -1,6 +1,7 @@
 import { appendFileSync, writeFileSync } from "node:fs"
 import { ANSI } from "./ansi.js"
-import { Renderable, RootRenderable } from "./Renderable.js"
+import { Renderable } from "./Renderable.js"
+import { RootRenderable } from "./RootRenderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
 import { CodeRenderable } from "./renderables/Code.js"
 import { TextRenderable } from "./renderables/Text.js"
@@ -18,6 +19,7 @@ import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import { sleep } from "./platform/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
 import {
+  rendererPreserveHitGrid,
   resolveRenderLib,
   type NativeBufferedOutput,
   type NativeRenderStats,
@@ -483,6 +485,8 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
   public popHitGridScissorRect(): void {}
   public clearHitGridScissorRects(): void {}
+  public preserveHitGrid(): void {}
+  public setHitGridWritesEnabled(_enabled: boolean): void {}
   public requestRender(): void {}
   public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
   public setCursorStyle(_options: CursorStyleOptions): void {}
@@ -803,6 +807,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private rendering: boolean = false
   private renderingNative: boolean = false
+  private hitGridWritesEnabled: boolean = true
   private renderTimeout: TimerHandle | null = null
   private lastTime: number = 0
   private frameCount: number = 0
@@ -1083,6 +1088,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         remote: remoteMode,
         feedPtr: feed?.streamPtr ?? null,
         bufferedOutput: config.bufferedOutput,
+        preserveNextBuffer: true,
       })
     } catch (error) {
       feed?.close()
@@ -1406,7 +1412,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
-    if (!this._useMouse) return
+    if (!this._useMouse || !this.hitGridWritesEnabled) return
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
@@ -1422,6 +1428,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public clearHitGridScissorRects(): void {
     this.lib.hitGridClearScissorRects(this.rendererPtr)
+  }
+
+  public preserveHitGrid(): void {
+    rendererPreserveHitGrid(this.lib, this.rendererPtr)
+  }
+
+  public setHitGridWritesEnabled(enabled: boolean): void {
+    this.hitGridWritesEnabled = enabled
   }
 
   public get widthMethod(): WidthMethod {
@@ -1524,7 +1538,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.scheduleRenderTimer()
   }
 
-  public requestRender() {
+  public requestRender(renderable?: Renderable) {
+    this.root?.invalidate(renderable)
+
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -2081,7 +2097,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         backingBuffer.resize(width, height)
         backingBuffer.clear(TRANSPARENT_RGBA)
         snapshotContext.frameId += 1
-        internalRoot.render(backingBuffer, 0)
+        internalRoot.render(backingBuffer, 0, TRANSPARENT_RGBA, true, false)
       }
 
       let targetHeight = Math.max(1, surfaceHeight)
@@ -2405,7 +2421,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private getSnapshotRowWidths(snapshot: OptimizedBuffer, rowColumns: number): number[] {
     const widths: number[] = []
     const limit = Math.min(Math.max(Math.trunc(rowColumns), 0), snapshot.width)
-    const chars = snapshot.buffers.char
+    const { char: chars, attributes } = snapshot.buffers
 
     for (let y = 0; y < snapshot.height; y += 1) {
       let x = limit
@@ -2413,6 +2429,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       while (x > 0) {
         const cp = chars[y * snapshot.width + x - 1]
         if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION) {
+          x -= 1
+          continue
+        }
+        const index = y * snapshot.width + x - 1
+        if (cp === 32 && attributes[index] === 0) {
           x -= 1
           continue
         }
@@ -4038,14 +4059,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
+    this.root.forceFullComposition()
+    this.requestRender()
   }
 
   public removePostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns = this.postProcessFns.filter((fn) => fn !== processFn)
+    this.root.forceFullComposition()
+    this.requestRender()
   }
 
   public clearPostProcessFns(): void {
     this.postProcessFns = []
+    this.root.forceFullComposition()
+    this.requestRender()
   }
 
   public setFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
@@ -4539,7 +4566,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const end = performance.now()
       this.renderStats.frameCallbackTime = end - start
 
-      this.root.render(this.nextRenderBuffer, deltaTime)
+      this.root.render(
+        this.nextRenderBuffer,
+        deltaTime,
+        this.backgroundColor,
+        this.postProcessFns.length > 0 || this._console.visible || this.debugOverlay.enabled,
+      )
 
       for (const postProcessFn of this.postProcessFns) {
         postProcessFn(this.nextRenderBuffer, deltaTime)

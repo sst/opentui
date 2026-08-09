@@ -14,6 +14,30 @@ const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+test "OptimizedBuffer clearRows preserves surrounding rows and clears wide graphemes" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 8, 3, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+
+    const fg = ansi.rgbColor(255, 255, 255, 255);
+    const old_bg = ansi.rgbColor(10, 20, 30, 255);
+    const new_bg = ansi.rgbColor(40, 50, 60, 255);
+    try target.drawText("top", 0, 0, fg, old_bg, 0);
+    try target.drawText("A界B", 0, 1, fg, old_bg, 0);
+    try target.drawText("bottom", 0, 2, fg, old_bg, 0);
+
+    try std.testing.expect(target.clearRows(1, 1, new_bg));
+    try std.testing.expectEqual(@as(u32, 't'), target.get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), target.get(0, 1).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), target.get(1, 1).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), target.get(2, 1).?.char);
+    try std.testing.expect(buffer_mod.rgbaEqual(new_bg, target.get(0, 1).?.bg));
+    try std.testing.expectEqual(@as(u32, 'b'), target.get(0, 2).?.char);
+}
+
 test "OptimizedBuffer draws image reservation markers" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();

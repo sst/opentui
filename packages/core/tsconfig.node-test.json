@@ -81,6 +81,7 @@
     "src/lib/tree-sitter-styled-text.test.ts",
     "src/lib/yoga.options.test.ts",
     "src/tests/renderer.idle.test.ts",
+    "src/tests/renderer.incremental-paint.test.ts",
     "src/tests/renderer.notifications.test.ts",
     "src/tests/renderer.selection.test.ts",
     "src/renderables/__tests__/markdown-parser.test.ts",

@@ -171,6 +171,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -182,6 +183,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -193,6 +195,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._conceal !== value) {
       this._conceal = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -204,6 +207,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -215,6 +219,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._initialStyledText !== value) {
       this._initialStyledText = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -224,6 +229,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._hadInitialContent = false
       this._lastHighlights = []
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -235,6 +241,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._treeSitterClient !== value) {
       this._treeSitterClient = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -250,6 +257,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -257,6 +265,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._onHighlight !== value) {
       this._onHighlight = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 
@@ -268,6 +277,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._onChunks !== value) {
       this._onChunks = value
       this._highlightsDirty = true
+      this.requestRender()
     }
   }
 

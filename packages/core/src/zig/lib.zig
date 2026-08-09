@@ -666,9 +666,11 @@ export fn createRenderer(
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
+    const preserve_next_buffer = bufferedDestinationKind & 0x80 != 0;
+    const destination_kind = bufferedDestinationKind & 0x7f;
     const output_target: renderer.CliRenderer.OutputTarget = if (feedPtr) |feed|
         .{ .feed = feed }
-    else switch (bufferedDestinationKind) {
+    else switch (destination_kind) {
         0 => .stdout,
         1 => .memory,
         else => {
@@ -680,6 +682,7 @@ export fn createRenderer(
     const rendererPtr = renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
         .remote_mode = remote_mode,
         .output = output_target,
+        .preserve_next_buffer = preserve_next_buffer,
     }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return INVALID_HANDLE;
@@ -728,6 +731,11 @@ export fn destroyRenderer(renderer_handle: NativeHandle) void {
 export fn setBackgroundColor(renderer_handle: NativeHandle, color: [*]const u16) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.setBackgroundColor(ptrToRGBA(color));
+}
+
+export fn rendererPreserveHitGrid(renderer_handle: NativeHandle) void {
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.preserveHitGridForNextFrame();
 }
 
 export fn setRenderOffset(renderer_handle: NativeHandle, offset: u32) void {
@@ -1168,6 +1176,11 @@ export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]cons
 export fn bufferClear(buffer_handle: NativeHandle, bg: [*]const u16) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.clear(ptrToRGBA(bg), null);
+}
+
+export fn bufferClearRows(buffer_handle: NativeHandle, start_y: u32, row_count: u32, bg: [*]const u16) u8 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return @intFromBool(object_ptr.clearRows(start_y, row_count, ptrToRGBA(bg)));
 }
 
 export fn bufferGetCharPtr(buffer_handle: NativeHandle) ?[*]u32 {
