@@ -2284,16 +2284,25 @@ pub const OptimizedBuffer = struct {
         title_visible: bool,
         opacity: f32,
     ) !void {
-        const startX = @max(0, x);
-        const startY = @max(0, y);
-        const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
-        const endY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
+        const bufferStartX = @max(0, x);
+        const bufferStartY = @max(0, y);
+        const bufferEndX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
+        const bufferEndY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
 
-        if (startX > endX or startY > endY) return;
+        if (bufferStartX > bufferEndX or bufferStartY > bufferEndY) return;
 
-        const boxWidth = @as(u32, @intCast(endX - startX + 1));
-        const boxHeight = @as(u32, @intCast(endY - startY + 1));
-        if (!self.isRectInScissor(startX, startY, boxWidth, boxHeight)) return;
+        const visible = self.clipRectToScissor(
+            bufferStartX,
+            bufferStartY,
+            @intCast(bufferEndX - bufferStartX + 1),
+            @intCast(bufferEndY - bufferStartY + 1),
+        ) orelse return;
+        const startX = visible.x;
+        const startY = visible.y;
+        const endX = visible.x + @as(i32, @intCast(visible.width)) - 1;
+        const endY = visible.y + @as(i32, @intCast(visible.height)) - 1;
+        const boxWidth = visible.width;
+        const boxHeight = visible.height;
         if (border_bg_transparent and !title_visible and !self.rectOverlapsImagePlacement(startX, startY, boxWidth, boxHeight)) return;
 
         const isAtActualLeft = startX == x;

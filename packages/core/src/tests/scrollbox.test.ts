@@ -174,6 +174,45 @@ describe("ScrollBoxRenderable - culled content layout freshness", () => {
 })
 
 describe("ScrollBoxRenderable - clipping", () => {
+  test("clips a transparent child border before later siblings", async () => {
+    const root = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      width: 12,
+      height: 8,
+      gap: 1,
+    })
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      width: 12,
+      height: 4,
+      flexShrink: 0,
+    })
+    const message = new BoxRenderable(testRenderer, {
+      width: 12,
+      height: 8,
+      flexShrink: 0,
+      border: ["left"],
+      borderColor: "#0080ff",
+      backgroundColor: "transparent",
+    })
+    const composer = new BoxRenderable(testRenderer, {
+      width: 12,
+      height: 3,
+      flexShrink: 0,
+    })
+    composer.add(new TextRenderable(testRenderer, { content: "composer" }))
+    scrollbox.add(message)
+    root.add(scrollbox)
+    root.add(composer)
+    testRenderer.root.add(root)
+
+    await renderOnce()
+
+    const lines = captureCharFrame().split("\n")
+    expect(lines.slice(0, 4).every((line) => line.startsWith("│"))).toBe(true)
+    expect(lines[4]?.startsWith("│")).toBe(false)
+    expect(lines[5]?.startsWith("composer")).toBe(true)
+  })
+
   test("clips nested scrollbox content to inner viewport (see issue #388)", async () => {
     const root = new BoxRenderable(testRenderer, {
       flexDirection: "column",
