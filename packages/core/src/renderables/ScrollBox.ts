@@ -11,16 +11,65 @@ import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./S
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
   private _viewportCulling: boolean
+  private onLayout: () => void
+  private beforeMutation: () => boolean
+  private cancelMutation: () => void
 
   constructor(
     ctx: RenderContext,
     viewport: BoxRenderable,
     viewportCulling: boolean,
+    onLayout: () => void,
+    beforeMutation: () => boolean,
+    cancelMutation: () => void,
     options: RenderableOptions<BoxRenderable>,
   ) {
     super(ctx, options)
     this.viewport = viewport
     this._viewportCulling = viewportCulling
+    this.onLayout = onLayout
+    this.beforeMutation = beforeMutation
+    this.cancelMutation = cancelMutation
+  }
+
+  public override updateFromLayout(): void {
+    super.updateFromLayout()
+    this.onLayout()
+  }
+
+  public override add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
+    const captured = this.beforeMutation()
+    const inserted = super.add(obj, index)
+    if (captured && inserted === -1) this.cancelMutation()
+    return inserted
+  }
+
+  public override insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    const captured = this.beforeMutation()
+    const inserted = super.insertBefore(obj, anchor)
+    if (captured && inserted === -1) this.cancelMutation()
+    return inserted
+  }
+
+  public override remove(child: BaseRenderable): void {
+    if (child.parent !== this) return super.remove(child)
+    this.beforeMutation()
+    super.remove(child)
+  }
+
+  public getVisibleAnchorChildren(): Renderable[] {
+    return getObjectsInViewport(
+      {
+        x: this.viewport.screenX,
+        y: this.viewport.screenY,
+        width: this.viewport.width,
+        height: this.viewport.height,
+      },
+      this.getChildrenSortedByPrimaryAxis(),
+      this.primaryAxis,
+      0,
+      0,
+    )
   }
 
   get viewportCulling(): boolean {
@@ -69,6 +118,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollY?: boolean
   scrollAcceleration?: ScrollAcceleration
   viewportCulling?: boolean
+  preserveScrollAnchor?: boolean
 }
 
 const SCROLLBOX_PADDING_KEYS = [
@@ -141,6 +191,12 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
   private _isApplyingStickyScroll: boolean = false
+  private _preserveScrollAnchor: boolean
+  private pendingScrollAnchor?: {
+    scrollLeft: number
+    scrollTop: number
+    children: { child: Renderable; left: number; top: number }[]
+  }
   private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
@@ -159,6 +215,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set stickyStart(value: "bottom" | "top" | "left" | "right" | undefined) {
     this._stickyStart = value
     this.updateStickyState()
+  }
+
+  get preserveScrollAnchor(): boolean {
+    return this._preserveScrollAnchor
+  }
+
+  set preserveScrollAnchor(value: boolean) {
+    this._preserveScrollAnchor = value
+    if (!value) this.pendingScrollAnchor = undefined
   }
 
   get scrollTop(): number {
@@ -287,6 +352,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollY = true,
       scrollAcceleration,
       viewportCulling = true,
+      preserveScrollAnchor = false,
       ...rootBoxOptions
     } = options
 
@@ -313,6 +379,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
+    this._preserveScrollAnchor = preserveScrollAnchor
     this.scrollAccel = scrollAcceleration ?? new LinearScrollAccel()
 
     this.wrapper = new BoxRenderable(ctx, {
@@ -337,17 +404,27 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new ContentRenderable(ctx, this.viewport, viewportCulling, {
-      alignSelf: "flex-start",
-      flexShrink: 0,
-      ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
-      ...(scrollY ? { minHeight: "100%" } : { minHeight: "100%", maxHeight: "100%" }),
-      onSizeChange: () => {
-        this.recalculateBarProps()
+    this.content = new ContentRenderable(
+      ctx,
+      this.viewport,
+      viewportCulling,
+      () => this.restoreScrollAnchor(),
+      () => this.captureScrollAnchor(),
+      () => {
+        this.pendingScrollAnchor = undefined
       },
-      ...mergedContentOptions,
-      id: `scroll-box-content-${this.internalId}`,
-    })
+      {
+        alignSelf: "flex-start",
+        flexShrink: 0,
+        ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
+        ...(scrollY ? { minHeight: "100%" } : { minHeight: "100%", maxHeight: "100%" }),
+        onSizeChange: () => {
+          this.recalculateBarProps()
+        },
+        ...mergedContentOptions,
+        id: `scroll-box-content-${this.internalId}`,
+      },
+    )
     this.viewport.add(this.content)
 
     this.verticalScrollBar = new ScrollBarRenderable(ctx, {
@@ -517,6 +594,40 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   public insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
     return this.content.insertBefore(obj, anchor)
+  }
+
+  private captureScrollAnchor(): boolean {
+    if (!this._preserveScrollAnchor || this.pendingScrollAnchor) return false
+
+    const scrollLeft = this.scrollLeft
+    const scrollTop = this.scrollTop
+    if (scrollLeft <= 0 && scrollTop <= 0) return false
+    const visible = this.content.getVisibleAnchorChildren()
+    if (visible.length === 0) return false
+
+    this.pendingScrollAnchor = {
+      scrollLeft,
+      scrollTop,
+      children: visible.map((child) => ({
+        child,
+        left: child.getLayoutNode().getComputedLayout().left,
+        top: child.getLayoutNode().getComputedLayout().top,
+      })),
+    }
+    return true
+  }
+
+  private restoreScrollAnchor(): void {
+    const anchor = this.pendingScrollAnchor
+    if (!anchor) return
+    this.pendingScrollAnchor = undefined
+
+    const target = anchor.children.find(({ child }) => !child.isDestroyed && child.parent === this.content)
+    if (!target) return
+
+    const layout = target.child.getLayoutNode().getComputedLayout()
+    if (this.scrollTop === anchor.scrollTop) this.scrollTop += layout.top - target.top
+    if (this.scrollLeft === anchor.scrollLeft) this.scrollLeft += layout.left - target.left
   }
 
   public remove(child: BaseRenderable): void {
