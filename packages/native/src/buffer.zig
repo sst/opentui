@@ -464,14 +464,35 @@ pub const OptimizedBuffer = struct {
     }
 
     /// Source-clear complete rows while preserving content outside them.
-    /// Images are frame-level placements today, so callers must fall back to a
-    /// complete composition while any placement is present.
+    /// Intersecting image placements require complete composition because
+    /// placement removal is not row-local yet.
     pub fn clearRows(self: *OptimizedBuffer, start_y: u32, row_count: u32, bg: RGBA) bool {
         if (row_count == 0 or start_y >= self.height) return true;
-        if (self.image_placements.items.len != 0) return false;
-
         const end_y = @min(self.height, start_y +| row_count);
-        if (!self.grapheme_tracker.hasAny() and !self.link_tracker.hasAny()) {
+        const dirty_start: i64 = @intCast(start_y);
+        const dirty_end: i64 = @intCast(end_y);
+        for (self.image_placements.items) |placement| {
+            const placement_start = placement.y;
+            const placement_end = placement.y + @as(i64, @intCast(placement.height));
+            if (placement_end > dirty_start and placement_start < dirty_end) return false;
+        }
+
+        var tracked_cells_in_rows = false;
+        if (self.grapheme_tracker.hasAny() or self.link_tracker.hasAny()) {
+            var scan_y = start_y;
+            scan: while (scan_y < end_y) : (scan_y += 1) {
+                const start = @as(usize, scan_y) * self.width;
+                const end = start + self.width;
+                for (start..end) |index| {
+                    if (gp.isGraphemeChar(self.buffer.char[index]) or ansi.TextAttributes.getLinkId(self.buffer.attributes[index]) != 0) {
+                        tracked_cells_in_rows = true;
+                        break :scan;
+                    }
+                }
+            }
+        }
+
+        if (!tracked_cells_in_rows) {
             var y = start_y;
             while (y < end_y) : (y += 1) {
                 const start = @as(usize, y) * self.width;

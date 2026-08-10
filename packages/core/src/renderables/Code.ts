@@ -112,6 +112,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private invalidateHighlights(): void {
     this._highlightsDirty = true
     this._highlightSnapshotId++
+    this.requestRender()
   }
 
   set content(value: string) {
@@ -177,8 +178,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -189,8 +189,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -201,8 +200,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -213,8 +211,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set drawUnstyledText(value: boolean) {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -225,8 +222,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set initialStyledText(value: StyledText | undefined) {
     if (this._initialStyledText !== value) {
       this._initialStyledText = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -235,8 +231,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._streaming = value
       this._hadInitialContent = false
       this._lastHighlights = []
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -247,8 +242,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set treeSitterClient(value: TreeSitterClient) {
     if (this._treeSitterClient !== value) {
       this._treeSitterClient = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -263,16 +257,14 @@ export class CodeRenderable extends TextBufferRenderable {
   set baseHighlight(value: string | undefined) {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
   set onHighlight(value: OnHighlightCallback | undefined) {
     if (this._onHighlight !== value) {
       this._onHighlight = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 
@@ -283,8 +275,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set onChunks(value: OnChunksCallback | undefined) {
     if (this._onChunks !== value) {
       this._onChunks = value
-      this._highlightsDirty = true
-      this.requestRender()
+      this.invalidateHighlights()
     }
   }
 

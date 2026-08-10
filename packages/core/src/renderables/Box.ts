@@ -252,6 +252,14 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  public override canRenderMultipleDamageRegions(): boolean {
+    return this.renderBefore === undefined && this.renderAfter === undefined
+  }
+
+  public override canReuseRenderCommandList(): boolean {
+    return this.hasStableRenderListInputs() && !this._hasVisibleChildFilter()
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
     const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0

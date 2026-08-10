@@ -88,7 +88,15 @@ type LayoutTreeState = {
   stats: TreeStats
 }
 
-type SpinnerScenarioKind = "noop" | "bottom" | "history-one" | "mixed-three" | "history-all" | "all" | "text"
+type SpinnerScenarioKind =
+  | "noop"
+  | "bottom"
+  | "history-one"
+  | "mixed-three"
+  | "history-four"
+  | "history-all"
+  | "all"
+  | "text"
 
 type SpinnerTreeState = {
   root: BoxRenderable
@@ -97,10 +105,6 @@ type SpinnerTreeState = {
   textSpinner: TextRenderable
   stats: TreeStats
   nextFrame: number
-}
-
-type LayoutReader = {
-  getComputedLayout: () => { left: number; top: number; width: number; height: number }
 }
 
 const SUITES = {
@@ -151,6 +155,7 @@ program
   .option("--width <count>", "test renderer width", "140")
   .option("--height <count>", "test renderer height", "44")
   .option("--scenario <name>", "run only one scenario")
+  .option("--force-full-composition", "force complete composition for spinner scenario controls")
   .option("--list-scenarios", "list scenario names and exit")
   .option("--json [path]", "write benchmark results to JSON")
   .option("--no-output", "suppress stdout output")
@@ -171,6 +176,7 @@ const width = Math.max(40, Math.floor(toNumber(options.width, 140)))
 const height = Math.max(20, Math.floor(toNumber(options.height, 44)))
 const scenarioFilter = options.scenario ? String(options.scenario) : null
 const outputEnabled = options.output !== false
+const forceFullComposition = options.forceFullComposition === true
 
 const jsonArg = options.json
 const jsonPath =
@@ -223,11 +229,12 @@ const { renderer, renderOnce } = await createTestRenderer({
   externalOutputMode: "passthrough",
   consoleMode: "disabled",
   useMouse: false,
+  useThread: false,
 })
 
 // Benchmarks drive frames explicitly. Prevent property mutations from racing
 // the measured renderOnce() call through the asynchronous frame scheduler.
-renderer.requestRender = (renderable) => renderer.root.invalidate(renderable)
+renderer.requestRender = (renderable) => invalidateRoot(renderer.root, renderable)
 
 const ctx: BenchmarkContext = { renderer, renderOnce, width, height }
 const results: ScenarioResult[] = []
@@ -369,6 +376,7 @@ function createScenarios(): ScenarioDefinition[] {
     createSpinnerScenario("bottom"),
     createSpinnerScenario("history-one"),
     createSpinnerScenario("mixed-three"),
+    createSpinnerScenario("history-four"),
     createSpinnerScenario("history-all"),
     createSpinnerScenario("all"),
     createSpinnerScenario("text"),
@@ -605,11 +613,14 @@ function createYogaLayoutReadScenario(nodeCount: number): ScenarioDefinition {
   }
 }
 
+type LayoutReader = { getComputedLayout: () => { left: number; top: number; width: number; height: number } }
+
 function readLayoutChecksum(nodes: readonly LayoutReader[]): number {
   let checksum = 0
+  // Keep the hot call site bounded so Node optimizes the same loop regardless
+  // of the total fixture size or unrelated bundle-shape changes.
   for (let chunkStart = 0; chunkStart < nodes.length; chunkStart += 1000) {
-    const chunkEnd = Math.min(chunkStart + 1000, nodes.length)
-    checksum += readLayoutChunk(nodes, chunkStart, chunkEnd)
+    checksum += readLayoutChunk(nodes, chunkStart, Math.min(chunkStart + 1000, nodes.length))
   }
   return checksum
 }
@@ -705,6 +716,7 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
     bottom: "spinner_bottom_tick",
     "history-one": "spinner_history_one_tick",
     "mixed-three": "spinner_mixed_three_tick",
+    "history-four": "spinner_history_four_tick",
     "history-all": "spinner_history_all_tick",
     all: "spinner_all_tick",
     text: "spinner_text_tick",
@@ -714,9 +726,10 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
     bottom: "One-cell bottom spinner tick in an otherwise unchanged OpenCode-like screen",
     "history-one": "One of eight one-cell history spinners ticks in an unchanged message list",
     "mixed-three": "Bottom spinner and two one-cell history spinners tick together",
+    "history-four": "Four one-cell history spinners on separate rows tick together",
     "history-all": "Eight one-cell history spinners on separate rows tick together",
     all: "Eight history spinners and the bottom spinner tick together",
-    text: "Same-width one-cell TextRenderable spinner tick that dirties Yoga",
+    text: "Same-width fixed one-cell TextRenderable spinner tick without layout invalidation",
   }
 
   return {
@@ -729,11 +742,13 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
           ? 0
           : kind === "mixed-three"
             ? 3
-            : kind === "history-all"
-              ? state.historySpinners.length
-              : kind === "all"
-                ? 9
-                : 1
+            : kind === "history-four"
+              ? 4
+              : kind === "history-all"
+                ? state.historySpinners.length
+                : kind === "all"
+                  ? 9
+                  : 1
 
       const mutate = () => {
         state.nextFrame = (state.nextFrame + 1) % SPINNER_FRAMES.length
@@ -750,6 +765,9 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
             state.historySpinners[2]!.setFrame(state.nextFrame)
             state.historySpinners[5]!.setFrame(state.nextFrame)
             state.bottomSpinner.setFrame(state.nextFrame)
+            return
+          case "history-four":
+            for (const index of [1, 3, 5, 7]) state.historySpinners[index]!.setFrame(state.nextFrame)
             return
           case "history-all":
             for (const spinner of state.historySpinners) spinner.setFrame(state.nextFrame)
@@ -770,7 +788,7 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
 
         mutate()
         const layoutDirty = Boolean(ctx.renderer.root.getLayoutNode().isDirty())
-        if (layoutDirty !== (kind === "text")) {
+        if (layoutDirty) {
           throw new Error(`${names[kind]} Yoga dirtiness mismatch: ${layoutDirty}`)
         }
 
@@ -782,7 +800,12 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
         if (Boolean(ctx.renderer.root.getLayoutNode().isDirty())) {
           throw new Error(`${names[kind]} left Yoga dirty after rendering`)
         }
-        benchmarkChecksum = (benchmarkChecksum ^ hashBuffer(ctx.renderer.currentRenderBuffer)) >>> 0
+        const incrementalFrame = copyBuffer(ctx.renderer.currentRenderBuffer)
+        benchmarkChecksum = (benchmarkChecksum ^ hashCopiedBuffer(incrementalFrame)) >>> 0
+
+        invalidateRoot(ctx.renderer.root)
+        await ctx.renderOnce()
+        assertBufferEquals(names[kind], incrementalFrame, ctx.renderer.currentRenderBuffer)
       }
 
       return {
@@ -790,6 +813,7 @@ function createSpinnerScenario(kind: SpinnerScenarioKind): ScenarioDefinition {
         layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
         runIteration: async () => {
           mutate()
+          if (forceFullComposition) invalidateRoot(ctx.renderer.root)
           await ctx.renderOnce()
         },
         validate,
@@ -895,6 +919,18 @@ async function buildSpinnerTree(ctx: BenchmarkContext): Promise<SpinnerTreeState
   })
   body.add(main)
 
+  const messages = new ScrollBoxRenderable(ctx.renderer, {
+    id: "bench-spinner-messages",
+    width: "100%",
+    flexGrow: 1,
+    viewportCulling: true,
+    scrollY: true,
+    backgroundColor: COLORS.transparent,
+  })
+  renderables += 6
+  layoutOnlyBoxes += 6
+  main.add(messages)
+
   for (let index = 0; index < 8; index += 1) {
     const message = visualBox({
       id: `bench-spinner-message-${index}`,
@@ -999,7 +1035,7 @@ async function buildSpinnerTree(ctx: BenchmarkContext): Promise<SpinnerTreeState
     content.add(messageBody)
     message.add(rail)
     message.add(content)
-    main.add(message)
+    messages.add(message)
   }
 
   const footer = visualBox({
@@ -1032,11 +1068,15 @@ async function buildSpinnerTree(ctx: BenchmarkContext): Promise<SpinnerTreeState
     footer.add(item)
   }
 
-  await ctx.renderOnce()
-  await ctx.renderOnce()
-  if (ctx.renderer.getNativeStats().cellsUpdated !== 0) {
-    throw new Error("spinner benchmark fixture did not settle to a no-op frame")
+  let settled = false
+  for (let pass = 0; pass < 8; pass += 1) {
+    await ctx.renderOnce()
+    if (!Boolean(ctx.renderer.root.getLayoutNode().isDirty()) && ctx.renderer.getNativeStats().cellsUpdated === 0) {
+      settled = true
+      break
+    }
   }
+  if (!settled) throw new Error("spinner benchmark fixture did not settle to a no-op frame")
 
   return {
     root,
@@ -1048,17 +1088,53 @@ async function buildSpinnerTree(ctx: BenchmarkContext): Promise<SpinnerTreeState
   }
 }
 
-function hashBuffer(buffer: OptimizedBuffer): number {
+type CopiedBuffer = {
+  char: Uint32Array
+  fg: Uint16Array
+  bg: Uint16Array
+  attributes: Uint32Array
+}
+
+function copyBuffer(buffer: OptimizedBuffer): CopiedBuffer {
   const { char, fg, bg, attributes } = buffer.buffers
+  return {
+    char: char.slice(),
+    fg: fg.slice(),
+    bg: bg.slice(),
+    attributes: attributes.slice(),
+  }
+}
+
+function hashCopiedBuffer(buffer: CopiedBuffer): number {
   let hash = 2166136261
   const update = (value: number) => {
     hash = Math.imul(hash ^ value, 16777619)
   }
-  for (const value of char) update(value)
-  for (const value of fg) update(value)
-  for (const value of bg) update(value)
-  for (const value of attributes) update(value)
+  for (const value of buffer.char) update(value)
+  for (const value of buffer.fg) update(value)
+  for (const value of buffer.bg) update(value)
+  for (const value of buffer.attributes) update(value)
   return hash >>> 0
+}
+
+function assertBufferEquals(name: string, expected: CopiedBuffer, actualBuffer: OptimizedBuffer): void {
+  const actual = actualBuffer.buffers
+  for (const channel of ["char", "fg", "bg", "attributes"] as const) {
+    const expectedValues = expected[channel]
+    const actualValues = actual[channel]
+    if (expectedValues.length !== actualValues.length) {
+      throw new Error(`${name} ${channel} length mismatch: ${expectedValues.length} !== ${actualValues.length}`)
+    }
+    for (let index = 0; index < expectedValues.length; index++) {
+      if (expectedValues[index] !== actualValues[index]) {
+        throw new Error(`${name} ${channel} mismatch at ${index}: ${expectedValues[index]} !== ${actualValues[index]}`)
+      }
+    }
+  }
+}
+
+function invalidateRoot(root: TestRenderer["root"], renderable?: Renderable): void {
+  ;(root as unknown as { invalidate?: (source?: Renderable) => void }).invalidate?.(renderable)
 }
 
 async function buildOpencodeLayoutTree(ctx: BenchmarkContext, options: LayoutTreeOptions): Promise<LayoutTreeState> {

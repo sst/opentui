@@ -3427,6 +3427,26 @@ test "renderer - preserved desired buffer survives a no-op frame without repaint
     try std.testing.expectEqual(@as(u32, 'A'), cli_renderer.getCurrentBuffer().get(1, 0).?.char);
 }
 
+test "renderer - reuses the committed hit grid without swapping buffers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_cli_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+    cli_renderer.addToHitGrid(1, 0, 1, 1, 42);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    try std.testing.expectEqual(@as(u32, 42), cli_renderer.checkHit(1, 0));
+    _ = cli_renderer.getHitGridDirty();
+
+    cli_renderer.preserveHitGridForNextFrame();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    try std.testing.expectEqual(@as(u32, 42), cli_renderer.checkHit(1, 0));
+    try std.testing.expect(!cli_renderer.getHitGridDirty());
+}
+
 test "renderer - buffered debug dump includes non-threaded last render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
