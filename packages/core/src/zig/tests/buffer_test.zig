@@ -38,6 +38,27 @@ test "OptimizedBuffer clearRows preserves surrounding rows and clears wide graph
     try std.testing.expectEqual(@as(u32, 'b'), target.get(0, 2).?.char);
 }
 
+test "OptimizedBuffer clearRows ignores tracked cells and images outside the damaged rows" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 4, 3, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+
+    const fg = ansi.rgbColor(255, 255, 255, 255);
+    const bg = ansi.rgbColor(10, 20, 30, 255);
+    try target.drawText("界", 0, 0, fg, bg, 0);
+    const source = try image.createFromRgba(std.testing.allocator, &([_]u8{ 255, 0, 0, 255 } ** 4), 2, 2, 8);
+    defer source.deinit();
+    try std.testing.expect(try target.drawImage(source, 1, 2, 0, 1, 1, 0, 0, 0, 0, 2, 2, .kitty));
+
+    try std.testing.expect(target.clearRows(2, 1, bg));
+    try std.testing.expect(gp.isGraphemeChar(target.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
+    try std.testing.expect(!target.clearRows(0, 1, bg));
+}
+
 test "OptimizedBuffer draws image reservation markers" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();

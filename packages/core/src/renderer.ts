@@ -1,7 +1,6 @@
 import { appendFileSync, writeFileSync } from "node:fs"
 import { ANSI } from "./ansi.js"
-import { Renderable } from "./Renderable.js"
-import { RootRenderable } from "./RootRenderable.js"
+import { Renderable, RootRenderable } from "./Renderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
 import { CodeRenderable } from "./renderables/Code.js"
 import { TextRenderable } from "./renderables/Text.js"
@@ -19,7 +18,6 @@ import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import { sleep } from "./platform/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
 import {
-  rendererPreserveHitGrid,
   resolveRenderLib,
   type NativeBufferedOutput,
   type NativeRenderStats,
@@ -1088,7 +1086,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         remote: remoteMode,
         feedPtr: feed?.streamPtr ?? null,
         bufferedOutput: config.bufferedOutput,
-        preserveNextBuffer: true,
       })
     } catch (error) {
       feed?.close()
@@ -1098,6 +1095,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       feed?.close()
       throw new Error("Failed to create renderer")
     }
+    lib.rendererSetPreserveNextBuffer(rendererPtr, true)
 
     // Threading defaults (on everywhere except linux, where it currently
     // crashes — likely a missing build dep).
@@ -1409,6 +1407,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
     this.capturedRenderable = renderable
+    this.requestRender()
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
@@ -1431,7 +1430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public preserveHitGrid(): void {
-    rendererPreserveHitGrid(this.lib, this.rendererPtr)
+    this.lib.rendererPreserveHitGrid(this.rendererPtr)
   }
 
   public setHitGridWritesEnabled(enabled: boolean): void {
@@ -2330,7 +2329,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // Render through normal renderables so split scrollback output uses the same
       // text shaping/styling pipeline as the rest of the renderer.
       snapshotRoot.add(rootRenderable)
-      snapshotRoot.render(snapshotBuffer, 0)
+      snapshotRoot.render(snapshotBuffer, 0, undefined, true, false)
       this.enqueueRenderedScrollbackCommit({
         snapshot: snapshotBuffer,
         rowColumns: snapshot.rowColumns,
@@ -2421,7 +2420,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private getSnapshotRowWidths(snapshot: OptimizedBuffer, rowColumns: number): number[] {
     const widths: number[] = []
     const limit = Math.min(Math.max(Math.trunc(rowColumns), 0), snapshot.width)
-    const { char: chars, attributes } = snapshot.buffers
+    const chars = snapshot.buffers.char
 
     for (let y = 0; y < snapshot.height; y += 1) {
       let x = limit
@@ -2432,12 +2431,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           x -= 1
           continue
         }
-        const index = y * snapshot.width + x - 1
-        if (cp === 32 && attributes[index] === 0) {
-          x -= 1
-          continue
-        }
-
         break
       }
 
@@ -4059,19 +4052,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
-    this.root.forceFullComposition()
     this.requestRender()
   }
 
   public removePostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns = this.postProcessFns.filter((fn) => fn !== processFn)
-    this.root.forceFullComposition()
     this.requestRender()
   }
 
   public clearPostProcessFns(): void {
     this.postProcessFns = []
-    this.root.forceFullComposition()
     this.requestRender()
   }
 
@@ -4571,6 +4561,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         deltaTime,
         this.backgroundColor,
         this.postProcessFns.length > 0 || this._console.visible || this.debugOverlay.enabled,
+        true,
       )
 
       for (const postProcessFn of this.postProcessFns) {

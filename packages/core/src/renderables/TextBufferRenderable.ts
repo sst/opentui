@@ -368,9 +368,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this.updateLocalSelection(this.lastLocalSelection)
     }
 
-    this.yogaNode.markDirty()
+    this.invalidateTextLayout()
     this.requestRender()
     this.emit("line-info-change")
+  }
+
+  protected invalidateTextLayout(): void {
+    if (typeof this._width !== "number" || typeof this._height !== "number") this.yogaNode.markDirty()
   }
 
   private setupNativeRenderable(): void {
@@ -451,6 +455,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   getSelection(): { start: number; end: number } | null {
     return this.textBufferView.getSelection()
+  }
+
+  public override canRenderMultipleDamageRegions(): boolean {
+    return !this.buffered && this.renderBefore === undefined && this.renderAfter === undefined
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {

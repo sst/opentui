@@ -3,12 +3,12 @@ import { decodePasteBytes } from "../lib/paste.js"
 import {
   Renderable,
   BaseRenderable,
+  RootRenderable,
   RenderableEvents,
   isRenderable,
   type BaseRenderableOptions,
   type RenderableOptions,
 } from "../Renderable.js"
-import { RootRenderable } from "../RootRenderable.js"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer.js"
 import type { RenderContext } from "../types.js"
 import { TextNodeRenderable } from "../renderables/TextNode.js"

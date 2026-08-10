@@ -666,11 +666,9 @@ export fn createRenderer(
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    const preserve_next_buffer = bufferedDestinationKind & 0x80 != 0;
-    const destination_kind = bufferedDestinationKind & 0x7f;
     const output_target: renderer.CliRenderer.OutputTarget = if (feedPtr) |feed|
         .{ .feed = feed }
-    else switch (destination_kind) {
+    else switch (bufferedDestinationKind) {
         0 => .stdout,
         1 => .memory,
         else => {
@@ -682,7 +680,6 @@ export fn createRenderer(
     const rendererPtr = renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
         .remote_mode = remote_mode,
         .output = output_target,
-        .preserve_next_buffer = preserve_next_buffer,
     }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return INVALID_HANDLE;
@@ -731,6 +728,11 @@ export fn destroyRenderer(renderer_handle: NativeHandle) void {
 export fn setBackgroundColor(renderer_handle: NativeHandle, color: [*]const u16) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.setBackgroundColor(ptrToRGBA(color));
+}
+
+export fn rendererSetPreserveNextBuffer(renderer_handle: NativeHandle, enabled: u8) void {
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setPreserveNextBuffer(enabled != 0);
 }
 
 export fn rendererPreserveHitGrid(renderer_handle: NativeHandle) void {

@@ -92,7 +92,7 @@ export class TextRenderable extends TextBufferRenderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.refreshLocalSelection()
-      this.yogaNode.markDirty()
+      this.invalidateTextLayout()
     }
   }
 
@@ -126,6 +126,10 @@ export class TextRenderable extends TextBufferRenderable {
 
   public onLifecyclePass = () => {
     this.updateTextFromNodes()
+  }
+
+  public override lifecyclePassIsPaintStable(): boolean {
+    return true
   }
 
   protected onFgChanged(newColor: RGBA): void {

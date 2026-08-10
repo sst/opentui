@@ -31,6 +31,10 @@ class ContentRenderable extends BoxRenderable {
     this._viewportCulling = value
   }
 
+  public override canReuseRenderCommandList(): boolean {
+    return this.renderBefore === undefined && this.renderAfter === undefined
+  }
+
   protected _hasVisibleChildFilter(): boolean {
     return this._viewportCulling
   }
@@ -129,6 +133,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private cachedAutoScrollSpeed: number = 3
   private autoScrollAccumulatorX: number = 0
   private autoScrollAccumulatorY: number = 0
+  private lastUpdateFrame = -1
 
   private scrollAccumulatorX: number = 0
   private scrollAccumulatorY: number = 0
@@ -272,6 +277,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
+  public override canReuseRenderCommandList(): boolean {
+    return this.renderBefore === undefined && this.renderAfter === undefined
+  }
+
+  public override updateCachedRenderList(deltaTime: number): void {
+    this.onUpdate(deltaTime)
+  }
+
   constructor(ctx: RenderContext, options: ScrollBoxOptions) {
     const {
       wrapperOptions,
@@ -398,6 +411,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   protected onUpdate(deltaTime: number): void {
+    if (this.lastUpdateFrame === this._ctx.frameId) return
+    this.lastUpdateFrame = this._ctx.frameId
     this.handleAutoScroll(deltaTime)
   }
 

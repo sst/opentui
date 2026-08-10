@@ -1,5 +1,5 @@
 import { RGBA } from "./lib/index.js"
-import { bufferClearRows, resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
+import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import type { NativeImage } from "./image.js"
 import type { ImageRenderProtocol } from "./types.js"
@@ -240,7 +240,7 @@ export class OptimizedBuffer {
 
   public clearRows(startY: number, rowCount: number, bg: RGBA): boolean {
     this.guard()
-    return bufferClearRows(this.lib, this.bufferPtr, startY, rowCount, bg)
+    return this.lib.bufferClearRows(this.bufferPtr, startY, rowCount, bg)
   }
 
   public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes: number = 0): void {
