@@ -4,7 +4,6 @@ const atomic = std.atomic;
 const assert = std.debug.assert;
 const ansi = @import("ansi.zig");
 const utf8 = @import("utf8.zig");
-const logger = @import("logger.zig");
 
 const WidthMethod = utf8.WidthMethod;
 
@@ -136,8 +135,8 @@ pub const Options = struct {
     // Use 0b00111 (7) to also enable event types for key release detection
     kitty_keyboard_flags: u8 = 0b00101,
     remote_mode: RemoteMode = .local,
-    // Optional override for environment lookups. Caller owns the map.
-    env_map: ?*const std.process.EnvMap = null,
+    // Optional forwarded environment values. Caller owns the map.
+    env_map: ?*const std.process.Environ.Map = null,
 };
 
 pub const TerminalInfo = struct {
@@ -150,7 +149,7 @@ pub const TerminalInfo = struct {
 
 caps: Capabilities = .{},
 opts: Options = .{},
-host_env_map: ?std.process.EnvMap = null,
+host_env_map: ?std.process.Environ.Map = null,
 remote: bool = false,
 multiplexer: Multiplexer = .none,
 osc52_support: Osc52Support = .unknown,
@@ -219,7 +218,7 @@ pub fn deinit(self: *Terminal) void {
 
 pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
     if (self.host_env_map == null) {
-        self.host_env_map = std.process.EnvMap.init(allocator);
+        self.host_env_map = std.process.Environ.Map.init(allocator);
     }
 
     const env_map = &self.host_env_map.?;
@@ -536,8 +535,8 @@ fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
     // OSC 99 is explicitly documented by kitty and supported by foot. Prefer it
     // where the terminal family is known because it has the only real queryable
     // notification protocol and robust text encoding.
-    if (std.ascii.indexOfIgnoreCase(value, "kitty") != null or
-        std.ascii.indexOfIgnoreCase(value, "foot") != null)
+    if (std.ascii.findIgnoreCase(value, "kitty") != null or
+        std.ascii.findIgnoreCase(value, "foot") != null)
     {
         return .osc99;
     }
@@ -545,21 +544,21 @@ fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
     // OSC 777 is documented by WezTerm, Warp, hterm/Blink, and is the
     // rxvt/VTE-style title+body notification sequence. Use it where sources
     // document support, or where the terminal is clearly VTE/rxvt-derived.
-    if (std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
-        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "warp") != null or
-        std.ascii.indexOfIgnoreCase(value, "hterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "blink") != null or
-        std.ascii.indexOfIgnoreCase(value, "contour") != null or
-        std.ascii.indexOfIgnoreCase(value, "vte") != null or
-        std.ascii.indexOfIgnoreCase(value, "gnome") != null or
-        std.ascii.indexOfIgnoreCase(value, "tilix") != null or
-        std.ascii.indexOfIgnoreCase(value, "terminator") != null or
-        std.ascii.indexOfIgnoreCase(value, "xfce") != null or
-        std.ascii.indexOfIgnoreCase(value, "urxvt") != null or
-        std.ascii.indexOfIgnoreCase(value, "rxvt") != null or
-        std.ascii.indexOfIgnoreCase(value, "windows terminal") != null or
-        std.ascii.indexOfIgnoreCase(value, "windows_terminal") != null)
+    if (std.ascii.findIgnoreCase(value, "ghostty") != null or
+        std.ascii.findIgnoreCase(value, "wezterm") != null or
+        std.ascii.findIgnoreCase(value, "warp") != null or
+        std.ascii.findIgnoreCase(value, "hterm") != null or
+        std.ascii.findIgnoreCase(value, "blink") != null or
+        std.ascii.findIgnoreCase(value, "contour") != null or
+        std.ascii.findIgnoreCase(value, "vte") != null or
+        std.ascii.findIgnoreCase(value, "gnome") != null or
+        std.ascii.findIgnoreCase(value, "tilix") != null or
+        std.ascii.findIgnoreCase(value, "terminator") != null or
+        std.ascii.findIgnoreCase(value, "xfce") != null or
+        std.ascii.findIgnoreCase(value, "urxvt") != null or
+        std.ascii.findIgnoreCase(value, "rxvt") != null or
+        std.ascii.findIgnoreCase(value, "windows terminal") != null or
+        std.ascii.findIgnoreCase(value, "windows_terminal") != null)
     {
         return .osc777;
     }
@@ -567,10 +566,10 @@ fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
     // OSC 9 is the iTerm2 notification sequence. ConEmu also uses OSC 9 for
     // multiple extensions, so use it only for terminal families with documented
     // notification support rather than as a generic fallback.
-    if (std.ascii.indexOfIgnoreCase(value, "iterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "Apple_Terminal") != null or
-        std.ascii.indexOfIgnoreCase(value, "Terminal.app") != null or
-        std.ascii.indexOfIgnoreCase(value, "conemu") != null)
+    if (std.ascii.findIgnoreCase(value, "iterm") != null or
+        std.ascii.findIgnoreCase(value, "Apple_Terminal") != null or
+        std.ascii.findIgnoreCase(value, "Terminal.app") != null or
+        std.ascii.findIgnoreCase(value, "conemu") != null)
     {
         return .osc9;
     }
@@ -599,8 +598,8 @@ fn termFeaturesHasCode(features: []const u8, code: []const u8) bool {
 }
 
 fn findOscTerminator(payload: []const u8) usize {
-    const bel_end = std.mem.indexOfScalar(u8, payload, '\x07');
-    const st_end = std.mem.indexOf(u8, payload, "\x1b\\");
+    const bel_end = std.mem.findScalar(u8, payload, '\x07');
+    const st_end = std.mem.find(u8, payload, "\x1b\\");
 
     if (bel_end) |bel| {
         if (st_end) |st| return @min(bel, st);
@@ -614,7 +613,7 @@ fn findOscTerminator(payload: []const u8) usize {
 fn parseItermCapabilities(self: *Terminal, response: []const u8) void {
     var search_start: usize = 0;
     const prefix = "\x1b]1337;Capabilities=";
-    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+    while (std.mem.find(u8, response[search_start..], prefix)) |rel_pos| {
         const start = search_start + rel_pos + prefix.len;
         const end = start + findOscTerminator(response[start..]);
 
@@ -630,16 +629,16 @@ fn parseItermCapabilities(self: *Terminal, response: []const u8) void {
 fn parseOsc99NotificationQuery(self: *Terminal, response: []const u8) void {
     var search_start: usize = 0;
     const prefix = "\x1b]99;";
-    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+    while (std.mem.find(u8, response[search_start..], prefix)) |rel_pos| {
         const start = search_start + rel_pos;
         const payload_start = start + prefix.len;
         const end = payload_start + findOscTerminator(response[payload_start..]);
         const payload = response[payload_start..end];
 
-        if (std.mem.indexOf(u8, payload, "i=" ++ NOTIFICATION_QUERY_ID) != null and
-            std.mem.indexOf(u8, payload, "p=?") != null and
-            std.mem.indexOf(u8, payload, "p=") != null and
-            std.mem.indexOf(u8, payload, "title") != null)
+        if (std.mem.find(u8, payload, "i=" ++ NOTIFICATION_QUERY_ID) != null and
+            std.mem.find(u8, payload, "p=?") != null and
+            std.mem.find(u8, payload, "p=") != null and
+            std.mem.find(u8, payload, "title") != null)
         {
             self.setNotificationProtocol(.osc99, .query);
             return;
@@ -659,7 +658,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     } else {
         self.multiplexer = .none;
     }
-    self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
+    self.is_foot = self.term_info.from_xtversion and std.ascii.findIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
     self.graphics_enabled = true;
     self.image_protocol = .auto;
@@ -681,29 +680,15 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.caps.remote = false;
     }
 
-    var env_map_storage: ?std.process.EnvMap = null;
-    const maybe_env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
-        if (self.opts.remote_mode == .remote) break :blk null;
-        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
-            logger.err("Failed to get environment map: {}", .{err});
-            return;
-        };
-        break :blk &env_map_storage.?;
-    };
-    defer if (env_map_storage) |*map| map.deinit();
-
-    if (maybe_env_map == null) {
-        return;
-    }
-
-    const env_map = maybe_env_map.?;
+    const env_map = self.opts.env_map orelse return;
 
     if (self.opts.remote_mode == .auto) {
         self.remote = self.remote or isRemoteSessionEnv(env_map);
         self.caps.remote = self.remote;
     }
 
-    if (self.remote and self.opts.env_map == null) {
+    const env_is_forwarded = if (self.host_env_map) |*host_env_map| env_map == host_env_map else false;
+    if (self.opts.remote_mode == .auto and self.remote and env_is_forwarded) {
         return;
     }
 
@@ -735,18 +720,18 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             }
-            if (std.mem.indexOf(u8, term, "alacritty") != null) {
+            if (std.mem.find(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
             }
         }
     }
 
     if (env_map.get("TERM")) |term| {
-        if (std.ascii.indexOfIgnoreCase(term, "256color") != null) {
+        if (std.ascii.findIgnoreCase(term, "256color") != null) {
             self.caps.ansi256 = true;
         }
         self.applyNotificationHeuristic(term);
-        self.is_foot = self.is_foot or std.ascii.indexOfIgnoreCase(term, "foot") != null;
+        self.is_foot = self.is_foot or std.ascii.findIgnoreCase(term, "foot") != null;
     }
 
     if (env_map.get("TERM_FEATURES")) |features| {
@@ -929,7 +914,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
         if (!self.caps.osc52) {
             if (env_map.get("TERM")) |term| {
-                if (isOsc52Term(term) or std.mem.indexOf(u8, term, "256color") != null or std.mem.indexOf(u8, term, "xterm") != null) {
+                if (isOsc52Term(term) or std.mem.find(u8, term, "256color") != null or std.mem.find(u8, term, "xterm") != null) {
                     self.caps.osc52 = true;
                 }
             }
@@ -937,7 +922,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 }
 
-fn isRemoteSessionEnv(env_map: *const std.process.EnvMap) bool {
+fn isRemoteSessionEnv(env_map: *const std.process.Environ.Map) bool {
     return env_map.get("SSH_CONNECTION") != null or
         env_map.get("SSH_CLIENT") != null or
         env_map.get("SSH_TTY") != null or
@@ -1104,10 +1089,10 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
     if (!self.graphics_enabled) return;
     var offset: usize = 0;
-    while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
-        const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
+    while (std.mem.findPos(u8, response, offset, "\x1b_G")) |start| {
+        const end = std.mem.findPos(u8, response, start + 3, "\x1b\\") orelse return;
         const frame = response[start + 3 .. end];
-        const control_end = std.mem.indexOfScalar(u8, frame, ';') orelse frame.len;
+        const control_end = std.mem.findScalar(u8, frame, ';') orelse frame.len;
         var fields = std.mem.splitScalar(u8, frame[0..control_end], ',');
         while (fields.next()) |field| {
             if (std.mem.eql(u8, field, "i=31337")) {
@@ -1123,7 +1108,7 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
 fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
     if (!self.graphics_enabled) return;
     var offset: usize = 0;
-    while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
+    while (std.mem.findPos(u8, response, offset, "\x1b[?")) |start| {
         var end = start + 3;
         while (end < response.len and (std.ascii.isDigit(response[end]) or response[end] == ';')) : (end += 1) {}
         if (end >= response.len) return;
@@ -1144,7 +1129,7 @@ fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
 }
 
 fn semanticVersionAtLeast(version: []const u8, required_major: u32, required_minor: u32) bool {
-    const suffix_start = std.mem.indexOfScalar(u8, version, '-');
+    const suffix_start = std.mem.findScalar(u8, version, '-');
     const core = if (suffix_start) |index| version[0..index] else version;
     var parts = std.mem.splitScalar(u8, core, '.');
     const major_text = parts.next() orelse return false;
@@ -1222,22 +1207,22 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     self.parseSixelDeviceAttributes(response);
 
     // DECRPM responses
-    if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
+    if (std.mem.find(u8, response, "1016;2$y")) |_| {
         self.caps.sgr_pixels = true;
     }
-    if (std.mem.indexOf(u8, response, "2027;2$y")) |_| {
+    if (std.mem.find(u8, response, "2027;2$y")) |_| {
         self.caps.unicode = .unicode;
     }
-    if (std.mem.indexOf(u8, response, "2031;1$y") != null or std.mem.indexOf(u8, response, "2031;2$y") != null) {
+    if (std.mem.find(u8, response, "2031;1$y") != null or std.mem.find(u8, response, "2031;2$y") != null) {
         self.caps.color_scheme_updates = true;
     }
-    if (std.mem.indexOf(u8, response, "1004;1$y") != null or std.mem.indexOf(u8, response, "1004;2$y") != null) {
+    if (std.mem.find(u8, response, "1004;1$y") != null or std.mem.find(u8, response, "1004;2$y") != null) {
         self.caps.focus_tracking = true;
     }
-    if (std.mem.indexOf(u8, response, "2026;1$y") != null or std.mem.indexOf(u8, response, "2026;2$y") != null) {
+    if (std.mem.find(u8, response, "2026;1$y") != null or std.mem.find(u8, response, "2026;2$y") != null) {
         self.caps.sync = true;
     }
-    if (std.mem.indexOf(u8, response, "2004;1$y") != null or std.mem.indexOf(u8, response, "2004;2$y") != null) {
+    if (std.mem.find(u8, response, "2004;1$y") != null or std.mem.find(u8, response, "2004;2$y") != null) {
         self.caps.bracketed_paste = true;
     }
 
@@ -1245,7 +1230,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     // The first report after queryTerminalSend is the pre-home cursor position.
     var scan_pos: usize = 0;
     while (scan_pos < response.len) {
-        const esc_rel = std.mem.indexOf(u8, response[scan_pos..], "\x1b[") orelse break;
+        const esc_rel = std.mem.find(u8, response[scan_pos..], "\x1b[") orelse break;
         const esc = scan_pos + esc_rel;
         var pos = esc + 2;
 
@@ -1294,9 +1279,9 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     // Parse xtversion response: ESC P > | name version ESC \
     // Examples: "\x1BP>|kitty(0.40.1)\x1B\\" or "\x1BP>|ghostty 1.1.3\x1B\\" or "\x1BP>|tmux 3.5a\x1B\\"
-    if (std.mem.indexOf(u8, response, "\x1bP>|")) |pos| {
+    if (std.mem.find(u8, response, "\x1bP>|")) |pos| {
         const start = pos + 4; // Skip past "\x1BP>|"
-        if (std.mem.indexOf(u8, response[start..], "\x1b\\")) |end_offset| {
+        if (std.mem.find(u8, response[start..], "\x1b\\")) |end_offset| {
             const term_str = response[start .. start + end_offset];
             self.parseXtversion(term_str);
         }
@@ -1316,7 +1301,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     // Kitty keyboard protocol detection via CSI ? u response
     // Terminals supporting the protocol respond to CSI ? u with CSI ? <flags> u
     // Examples: \x1b[?0u (ghostty, alacritty), \x1b[?1u, etc.
-    if (std.mem.indexOf(u8, response, "\x1b[?") != null and std.mem.indexOf(u8, response, "u") != null) {
+    if (std.mem.find(u8, response, "\x1b[?") != null and std.mem.find(u8, response, "u") != null) {
         // Look for pattern \x1b[?Nu where N is 0-31
         var i: usize = 0;
         while (i + 4 < response.len) : (i += 1) {
@@ -1331,12 +1316,12 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    if (std.mem.indexOf(u8, response, "tmux")) |_| {
+    if (std.mem.find(u8, response, "tmux")) |_| {
         self.caps.unicode = .wcwidth;
         self.caps.explicit_cursor_positioning = true;
     }
 
-    if (std.mem.indexOf(u8, response, "alacritty")) |_| {
+    if (std.mem.find(u8, response, "alacritty")) |_| {
         self.caps.explicit_cursor_positioning = true;
     }
 
@@ -1352,9 +1337,9 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
     const prefix = "\x1bP";
     var scan_pos: usize = 0;
-    while (std.mem.indexOfPos(u8, response, scan_pos, prefix)) |start| {
+    while (std.mem.findPos(u8, response, scan_pos, prefix)) |start| {
         const body_start = start + prefix.len;
-        const end = std.mem.indexOfPos(u8, response, body_start, "\x1b\\") orelse return;
+        const end = std.mem.findPos(u8, response, body_start, "\x1b\\") orelse return;
         const body = response[body_start..end];
         scan_pos = end + 2;
 
@@ -1362,7 +1347,7 @@ fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
         if (!std.mem.eql(u8, body[1..3], "+r")) continue;
 
         const result = body[3..];
-        const separator = std.mem.indexOfScalar(u8, result, '=') orelse continue;
+        const separator = std.mem.findScalar(u8, result, '=') orelse continue;
         if (!std.ascii.eqlIgnoreCase(result[0..separator], "4d73")) continue;
 
         const value = result[separator + 1 ..];
@@ -1377,24 +1362,24 @@ fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
 }
 
 fn isOsc52Term(value: []const u8) bool {
-    return std.ascii.indexOfIgnoreCase(value, "iterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
-        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "contour") != null or
-        std.ascii.indexOfIgnoreCase(value, "foot") != null or
-        std.ascii.indexOfIgnoreCase(value, "rio") != null or
-        std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
-        std.ascii.indexOfIgnoreCase(value, "tmux") != null or
-        std.ascii.indexOfIgnoreCase(value, "screen") != null;
+    return std.ascii.findIgnoreCase(value, "iterm") != null or
+        std.ascii.findIgnoreCase(value, "kitty") != null or
+        std.ascii.findIgnoreCase(value, "alacritty") != null or
+        std.ascii.findIgnoreCase(value, "wezterm") != null or
+        std.ascii.findIgnoreCase(value, "contour") != null or
+        std.ascii.findIgnoreCase(value, "foot") != null or
+        std.ascii.findIgnoreCase(value, "rio") != null or
+        std.ascii.findIgnoreCase(value, "ghostty") != null or
+        std.ascii.findIgnoreCase(value, "tmux") != null or
+        std.ascii.findIgnoreCase(value, "screen") != null;
 }
 
 fn isHyperlinkTerm(value: []const u8) bool {
-    return std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
-        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
-        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "iterm") != null;
+    return std.ascii.findIgnoreCase(value, "ghostty") != null or
+        std.ascii.findIgnoreCase(value, "kitty") != null or
+        std.ascii.findIgnoreCase(value, "wezterm") != null or
+        std.ascii.findIgnoreCase(value, "alacritty") != null or
+        std.ascii.findIgnoreCase(value, "iterm") != null;
 }
 
 pub fn getCapabilities(self: *Terminal) Capabilities {
@@ -1470,14 +1455,7 @@ fn writePassthroughSequence(self: *Terminal, tty: anytype, sequence: []const u8)
     }
 
     if (!self.remote) {
-        var env_map_storage: ?std.process.EnvMap = null;
-        const env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch null;
-            break :blk if (env_map_storage) |*map| map else null;
-        };
-        defer if (env_map_storage) |*map| map.deinit();
-
-        if (env_map) |map| {
+        if (self.opts.env_map) |map| {
             if (map.get("STY") != null) {
                 try tty.writeAll(ansi.ANSI.screenDcsStart);
                 for (sequence) |c| {
@@ -1521,9 +1499,9 @@ pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: any
 
     self.notification_id_counter +%= 1;
 
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
-    defer buffer.deinit(allocator);
-    const writer = buffer.writer(allocator);
+    var buffer: std.Io.Writer.Allocating = .init(allocator);
+    defer buffer.deinit();
+    const writer = &buffer.writer;
 
     switch (self.notification_protocol) {
         .none => return false,
@@ -1567,7 +1545,7 @@ pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: any
         },
     }
 
-    try self.writePassthroughSequence(tty, buffer.items);
+    try self.writePassthroughSequence(tty, buffer.written());
     return true;
 }
 
@@ -1711,12 +1689,12 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     self.caps.kitty_graphics = self.kitty_graphics_queried;
     self.caps.sixel = self.sixel_queried;
 
-    if (std.mem.indexOf(u8, term_str, "(")) |paren_pos| {
+    if (std.mem.find(u8, term_str, "(")) |paren_pos| {
         const name_len = @min(paren_pos, self.term_info.name.len);
         @memcpy(self.term_info.name[0..name_len], term_str[0..name_len]);
         self.term_info.name_len = name_len;
 
-        if (std.mem.indexOf(u8, term_str[paren_pos..], ")")) |close_offset| {
+        if (std.mem.find(u8, term_str[paren_pos..], ")")) |close_offset| {
             const ver_start = paren_pos + 1;
             const ver_end = paren_pos + close_offset;
             const ver_len = @min(ver_end - ver_start, self.term_info.version.len);
@@ -1724,7 +1702,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
             self.term_info.version_len = ver_len;
         }
     } else {
-        if (std.mem.indexOf(u8, term_str, " ")) |space_pos| {
+        if (std.mem.find(u8, term_str, " ")) |space_pos| {
             const name_len = @min(space_pos, self.term_info.name.len);
             @memcpy(self.term_info.name[0..name_len], term_str[0..name_len]);
             self.term_info.name_len = name_len;
@@ -1742,7 +1720,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
-    self.is_foot = std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
+    self.is_foot = std.ascii.findIgnoreCase(self.getTerminalName(), "foot") != null;
     if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
         self.multiplexer = .tmux;
     } else if (std.ascii.eqlIgnoreCase(self.getTerminalName(), "Zellij")) {

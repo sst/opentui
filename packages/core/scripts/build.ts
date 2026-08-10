@@ -47,6 +47,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
 const licensePath = path.resolve(__dirname, "../../../LICENSE")
+const ghosttyLicensePath = path.resolve(rootDir, "THIRD_PARTY_LICENSES/GHOSTTY")
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 const args = process.argv.slice(2)
@@ -293,6 +294,7 @@ export default module.default
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
     for (const [source, destination] of [
+      [ghosttyLicensePath, "LICENSE-GHOSTTY"],
       [join(rootDir, "src", "zig", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
       [join(rootDir, "src", "zig", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
@@ -300,7 +302,7 @@ export default module.default
       [join(rootDir, "src", "zig", "vendor", "libwebp", "AUTHORS"), "AUTHORS-LIBWEBP"],
       [join(rootDir, "src", "zig", "vendor", "lcms2", "LICENSE"), "LICENSE-LCMS2"],
     ] as const) {
-      if (!existsSync(source)) throw new Error(`Required native image license file is missing: ${source}`)
+      if (!existsSync(source)) throw new Error(`Required native license file is missing: ${source}`)
       copyFileSync(source, join(nativeDir, destination))
     }
     console.log("Built:", nativeName)

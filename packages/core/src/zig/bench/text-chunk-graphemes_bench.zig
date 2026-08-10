@@ -15,7 +15,7 @@ pub const benchName = "TextChunk getGraphemes";
 const TextType = enum { ascii, mixed, heavy_unicode };
 
 fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]u8 {
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayList(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     switch (text_type) {
@@ -77,6 +77,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 }
 
 fn benchGetGraphemes(
+    io: std.Io,
     allocator: std.mem.Allocator,
     size: usize,
     text_type: TextType,
@@ -123,7 +124,7 @@ fn benchGetGraphemes(
         // Clear cached graphemes
         chunk.graphemes = null;
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         const graphemes = try chunk.getGraphemes(
             arena_alloc,
             &registry,
@@ -216,6 +217,7 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
@@ -223,7 +225,7 @@ pub fn run(
     // Global pool and unicode data are initialized once in bench.zig
     _ = gp.initGlobalPool(allocator);
 
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const iterations: usize = 100;
@@ -236,6 +238,7 @@ pub fn run(
         for (text_types) |text_type| {
             for (sizes) |size| {
                 const result = try benchGetGraphemes(
+                    io,
                     allocator,
                     size,
                     text_type,
@@ -255,6 +258,7 @@ pub fn run(
                 }
 
                 var result = try benchGetGraphemes(
+                    io,
                     allocator,
                     size,
                     text_type,

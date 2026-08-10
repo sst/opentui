@@ -44,11 +44,11 @@ pub const LinkPool = struct {
             .slot_capacity = slot_capacity,
             .slots_per_page = slots_per_page,
             .slot_size_bytes = slot_size_bytes,
-            .slots = .{},
-            .free_list = .{},
+            .slots = .empty,
+            .free_list = .empty,
             .num_slots = 0,
             .retired_slot_count = 0,
-            .interned_live_ids = .{},
+            .interned_live_ids = .empty,
         };
     }
 

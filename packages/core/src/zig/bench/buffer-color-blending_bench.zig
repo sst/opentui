@@ -68,13 +68,14 @@ fn setupTextBuffer(
 }
 
 fn runTranslucentBoxes(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_translucent_bg = "1k translucent boxes (bg alpha 0.5)";
@@ -97,7 +98,7 @@ fn runTranslucentBoxes(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -154,7 +155,7 @@ fn runTranslucentBoxes(
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var box_i: usize = 0;
             while (box_i < BOX_COUNT) : (box_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(box_i % BUFFER_WIDTH)));
@@ -204,13 +205,14 @@ fn runTranslucentBoxes(
 }
 
 fn runTranslucentTextBuffers(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     show_mem: bool,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name_translucent_bg = "1k translucent text buffer (bg alpha 0.5)";
@@ -242,7 +244,7 @@ fn runTranslucentTextBuffers(
                 try tbs[j].setText(TEXT_CONTENT);
             }
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var buf_i: usize = 0;
             while (buf_i < TEXT_COUNT) : (buf_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(buf_i % BUFFER_WIDTH)));
@@ -294,7 +296,7 @@ fn runTranslucentTextBuffers(
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             var buf_i: usize = 0;
             while (buf_i < TEXT_COUNT) : (buf_i += 1) {
                 const x: i32 = @intCast(@as(i32, @intCast(buf_i % BUFFER_WIDTH)));
@@ -330,6 +332,7 @@ fn runTranslucentTextBuffers(
 }
 
 fn runTranslucentFillOverImageMarkers(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
@@ -349,7 +352,7 @@ fn runTranslucentFillOverImageMarkers(
         buf.clear(CLEAR_BG, null);
         _ = try buf.drawImage(source, 1, 0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, 0, 0, 0, 0, 1, 1, .auto);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.fillRect(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, overlay);
         stats.record(timer.read());
     }
@@ -370,24 +373,25 @@ fn runTranslucentFillOverImageMarkers(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     const pool = gp.initGlobalPool(allocator);
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
-    const boxes_results = try runTranslucentBoxes(allocator, pool, show_mem, iterations, bench_filter);
+    const boxes_results = try runTranslucentBoxes(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, boxes_results);
 
-    const text_buffers_results = try runTranslucentTextBuffers(allocator, pool, show_mem, iterations, bench_filter);
+    const text_buffers_results = try runTranslucentTextBuffers(io, allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, text_buffers_results);
 
-    const image_marker_results = try runTranslucentFillOverImageMarkers(allocator, pool, iterations, bench_filter);
+    const image_marker_results = try runTranslucentFillOverImageMarkers(io, allocator, pool, iterations, bench_filter);
     try all_results.appendSlice(allocator, image_marker_results);
 
     return all_results.toOwnedSlice(allocator);

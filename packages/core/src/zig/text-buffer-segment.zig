@@ -92,7 +92,7 @@ pub const TextChunk = struct {
 
         const chunk_bytes = self.getBytes(mem_registry);
 
-        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .{};
+        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .empty;
         errdefer grapheme_list.deinit(allocator);
 
         try utf8.findGraphemeInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);

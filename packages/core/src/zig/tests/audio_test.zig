@@ -34,8 +34,7 @@ fn buildPcm16Wav(allocator: std.mem.Allocator, channels: u16, sample_rate: u32, 
     const total_size = 44 + data_size;
 
     const out = try allocator.alloc(u8, total_size);
-    var stream = std.io.fixedBufferStream(out);
-    const writer = stream.writer();
+    var writer = std.Io.Writer.fixed(out);
 
     const channels_u32: u32 = channels;
     const byte_rate: u32 = sample_rate * channels_u32 * 2;
@@ -109,7 +108,7 @@ fn writeAllStreamBytes(engine: *audio.Engine, stream_id: u32, bytes: []const u8)
         const written = audio.writeStream(engine, stream_id, bytes[offset..].ptr, @intCast(bytes.len - offset));
         try testing.expect(written >= 0);
         offset += @intCast(written);
-        if (written == 0) std.Thread.sleep(std.time.ns_per_ms);
+        if (written == 0) testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     try testing.expectEqual(bytes.len, offset);
 }
@@ -120,7 +119,7 @@ fn waitForBufferedFrames(engine: *audio.Engine, stream_id: u32, minimum: u32) !a
         try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
         if (stats.buffered_frames >= minimum) return stats;
         if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
-        std.Thread.sleep(std.time.ns_per_ms);
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     return error.TestUnexpectedResult;
 }
@@ -138,7 +137,7 @@ fn mixStreamToEnd(engine: *audio.Engine, stream_id: u32) !audio.StreamStats {
             return stats;
         }
         if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
-        std.Thread.sleep(std.time.ns_per_ms);
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     return error.TestUnexpectedResult;
 }
@@ -1048,7 +1047,7 @@ test "audio stream restart retains PCM and resumes decoding with the same id" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
     try expectStatusOk(audio.startMixer(engine));
-    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    const mp3 = try std.Io.Dir.cwd().readFileAlloc(testing.io, TEST_MP3_PATH, testing.allocator, .limited(16 * 1024));
     defer testing.allocator.free(mp3);
 
     var options = streamOptions();
@@ -1118,7 +1117,7 @@ test "audio stream restart retains PCM and resumes decoding with the same id" {
         try expectStatusOk(audio.getStreamStats(engine, stream_id, &final_stats));
         if (final_stats.state == audio.StreamState.ended) break;
         if (final_stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
-        std.Thread.sleep(std.time.ns_per_ms);
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
 
     try testing.expectEqual(audio.StreamState.ended, final_stats.state);
@@ -1132,7 +1131,7 @@ test "audio stream repeatedly restarts after clean EOF with one persistent voice
     const engine = try createEngine(null);
     defer audio.destroy(engine);
     try expectStatusOk(audio.startMixer(engine));
-    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    const mp3 = try std.Io.Dir.cwd().readFileAlloc(testing.io, TEST_MP3_PATH, testing.allocator, .limited(16 * 1024));
     defer testing.allocator.free(mp3);
 
     const first_group = try createGroup(engine, "session-a");
@@ -1226,7 +1225,7 @@ test "audio stream repeatedly restarts after clean EOF with one persistent voice
 test "audio stream ready generation wraps to one" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
-    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    const mp3 = try std.Io.Dir.cwd().readFileAlloc(testing.io, TEST_MP3_PATH, testing.allocator, .limited(16 * 1024));
     defer testing.allocator.free(mp3);
 
     const options = streamOptions();
@@ -1242,7 +1241,7 @@ test "audio stream ready generation wraps to one" {
         try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
         if (stats.ready_generation == 1) break;
         if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
-        std.Thread.sleep(std.time.ns_per_ms);
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     try testing.expectEqual(@as(u32, 1), stats.ready_generation);
 
@@ -1266,7 +1265,7 @@ test "audio stream restart rejects failed streams" {
     for (0..5_000) |_| {
         try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
         if (stats.state == audio.StreamState.failed) break;
-        std.Thread.sleep(std.time.ns_per_ms);
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     try testing.expectEqual(audio.StreamState.failed, stats.state);
     try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, stream_id, invalid_mp3, invalid_mp3.len));
@@ -1282,7 +1281,7 @@ test "audio stream restart rejects failed streams" {
 test "audio stream close wakes a restarted decoder waiting for bytes" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
-    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    const mp3 = try std.Io.Dir.cwd().readFileAlloc(testing.io, TEST_MP3_PATH, testing.allocator, .limited(16 * 1024));
     defer testing.allocator.free(mp3);
 
     var options = streamOptions();

@@ -840,7 +840,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     const chunk2 = tb.createChunk(mem_id, 14, 15); // "f"
     const chunk3 = tb.createChunk(mem_id, 15, 20); // "riend"
 
-    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    var segments: std.ArrayListUnmanaged(Segment) = .empty;
     defer segments.deinit(std.testing.allocator);
 
     try segments.append(std.testing.allocator, .{ .linestart = {} });
@@ -1645,7 +1645,7 @@ test "TextBufferView line info - lines with different widths" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    var text_builder: std.ArrayListUnmanaged(u8) = .empty;
     defer text_builder.deinit(std.testing.allocator);
     try text_builder.appendSlice(std.testing.allocator, "Short\n");
     try text_builder.appendNTimes(std.testing.allocator, 'A', 50);
@@ -1697,16 +1697,16 @@ test "TextBufferView line info - thousands of lines" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
-    defer text_builder.deinit(std.testing.allocator);
+    var text_builder: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer text_builder.deinit();
 
     var i: u32 = 0;
     while (i < 999) : (i += 1) {
-        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
+        try text_builder.writer.print("Line {}\n", .{i});
     }
-    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
+    try text_builder.writer.print("Line {}", .{i});
 
-    try tb.setText(text_builder.items);
+    try tb.setText(text_builder.written());
 
     const line_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1000), line_count);
@@ -3147,16 +3147,16 @@ test "TextBufferView line info - line starts monotonically increasing" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder: std.ArrayListUnmanaged(u8) = .{};
-    defer text_builder.deinit(std.testing.allocator);
+    var text_builder: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer text_builder.deinit();
 
     var i: u32 = 0;
     while (i < 99) : (i += 1) {
-        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
+        try text_builder.writer.print("Line {}\n", .{i});
     }
-    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
+    try text_builder.writer.print("Line {}", .{i});
 
-    try tb.setText(text_builder.items);
+    try tb.setText(text_builder.written());
 
     const line_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 100), line_count);
@@ -3587,7 +3587,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
 
     const Segment = seg_mod.Segment;
 
-    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    var segments: std.ArrayListUnmanaged(Segment) = .empty;
     defer segments.deinit(std.testing.allocator);
 
     try segments.append(std.testing.allocator, .{ .linestart = {} });

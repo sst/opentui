@@ -98,7 +98,7 @@ test "GraphemePool - defer cleanup on failure path" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    var allocated_ids: std.ArrayListUnmanaged(u32) = .{};
+    var allocated_ids: std.ArrayListUnmanaged(u32) = .empty;
     defer allocated_ids.deinit(std.testing.allocator);
 
     for (0..5) |i| {
@@ -128,7 +128,7 @@ test "GraphemePool - pending grapheme cleanup on failure" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    var result_graphemes: std.ArrayListUnmanaged(u32) = .{};
+    var result_graphemes: std.ArrayListUnmanaged(u32) = .empty;
     defer result_graphemes.deinit(std.testing.allocator);
 
     var pending_gid: ?u32 = null;

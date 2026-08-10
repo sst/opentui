@@ -65,7 +65,7 @@ test "walkLines - single text segment" {
         }
     };
 
-    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .empty, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
@@ -112,7 +112,7 @@ test "walkLines - text + break + text" {
         }
     };
 
-    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .empty, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
@@ -166,7 +166,7 @@ test "walkLines - exclude newlines in offset" {
         }
     };
 
-    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .empty, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, false);

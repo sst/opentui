@@ -200,7 +200,7 @@ test "wcwidth: mixed content with cursor movement" {
 }
 
 test "wcwidth: findGraphemeInfo with emoji" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
@@ -214,7 +214,7 @@ test "wcwidth: findGraphemeInfo with emoji" {
 }
 
 test "wcwidth: findGraphemeInfo with ZWJ sequence" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
@@ -228,7 +228,7 @@ test "wcwidth: findGraphemeInfo with ZWJ sequence" {
 }
 
 test "wcwidth: findGraphemeInfo with combining marks" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}"; // e + combining acute

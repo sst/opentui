@@ -48,10 +48,10 @@ pub const SyntaxStyle = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
-            .name_to_id = .{},
-            .id_to_style = .{},
+            .name_to_id = .empty,
+            .id_to_style = .empty,
             .next_id = 1, // Start from 1, 0 can be used as "invalid"
-            .merged_cache = .{},
+            .merged_cache = .empty,
             .emitter = events.EventEmitter(Event).init(internal_allocator),
         };
 
@@ -113,15 +113,14 @@ pub const SyntaxStyle = struct {
 
     pub fn mergeStyles(self: *SyntaxStyle, ids: []const u32) SyntaxStyleError!StyleDefinition {
         var cache_key_buffer: [512]u8 = undefined;
-        var cache_key_stream = std.io.fixedBufferStream(&cache_key_buffer);
-        const writer = cache_key_stream.writer();
+        var writer: std.Io.Writer = .fixed(&cache_key_buffer);
 
         for (ids, 0..) |id, i| {
             if (i > 0) writer.writeByte(':') catch return SyntaxStyleError.OutOfMemory;
             writer.print("{d}", .{id}) catch return SyntaxStyleError.OutOfMemory;
         }
 
-        const cache_key = cache_key_stream.getWritten();
+        const cache_key = writer.buffered();
 
         if (self.merged_cache.get(cache_key)) |cached| {
             return cached;

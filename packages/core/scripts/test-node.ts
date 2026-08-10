@@ -18,6 +18,7 @@ const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
 const imageTestDataPath = resolve(tmpdir(), "opentui-image-node-test")
+const bufferDumpPath = resolve(packageRoot, "buffer_dump")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -206,6 +207,8 @@ try {
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
+    // Node resolves permission paths before tests can create their output directory.
+    mkdirSync(bufferDumpPath, { recursive: true })
 
     exitCode = run(
       nodePath,
@@ -216,7 +219,7 @@ try {
         `--allow-fs-read=${workspaceRoot}`,
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-read=${path}`),
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-write=${path}`),
-        `--allow-fs-write=${resolve(packageRoot, "buffer_dump")}`,
+        `--allow-fs-write=${bufferDumpPath}`,
         "--allow-net=127.0.0.1",
         "--allow-child-process",
         "--allow-worker",

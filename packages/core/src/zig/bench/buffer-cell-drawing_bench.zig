@@ -91,7 +91,7 @@ fn runWorkload(target: *buffer.OptimizedBuffer, scenario: Scenario, text: []cons
     }
 }
 
-fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: Scenario) !bench_utils.BenchStats {
+fn runScenario(io: std.Io, allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: Scenario) !bench_utils.BenchStats {
     var link_pool = link.LinkPool.init(allocator);
     defer link_pool.deinit();
     const target = try buffer.OptimizedBuffer.init(allocator, WIDTH, HEIGHT, .{ .pool = pool, .link_pool = &link_pool });
@@ -103,7 +103,7 @@ fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: S
         var elapsed: u64 = 0;
         for (0..BATCH_SIZE) |_| {
             target.clear(ansi.rgbColor(0, 0, 0, 255), null);
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             try runWorkload(target, scenario, text);
             elapsed += timer.read();
         }
@@ -112,7 +112,7 @@ fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: S
     return stats;
 }
 
-fn runFrameBufferScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool) !bench_utils.BenchStats {
+fn runFrameBufferScenario(io: std.Io, allocator: std.mem.Allocator, pool: *gp.GraphemePool) !bench_utils.BenchStats {
     var link_pool = link.LinkPool.init(allocator);
     defer link_pool.deinit();
     const source = try buffer.OptimizedBuffer.init(allocator, WIDTH, HEIGHT, .{ .pool = pool, .link_pool = &link_pool });
@@ -134,7 +134,7 @@ fn runFrameBufferScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool) 
     for (0..WARMUP_SAMPLES + SAMPLES) |sample| {
         var elapsed: u64 = 0;
         for (0..BATCH_SIZE) |_| {
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             target.drawFrameBuffer(0, 0, source, null, null, null, null);
             elapsed += timer.read();
             target.clear(ansi.rgbColor(0, 0, 0, 255), null);
@@ -144,7 +144,7 @@ fn runFrameBufferScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool) 
     return stats;
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     _ = show_mem;
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -161,10 +161,10 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "1k translucent filled boxes no images", .kind = .translucent_boxes },
         .{ .name = "1k half-clipped filled boxes no images", .kind = .half_clipped_boxes },
     };
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        const stats = try runScenario(allocator, pool, scenario.kind);
+        const stats = try runScenario(io, allocator, pool, scenario.kind);
         try results.append(allocator, .{
             .name = scenario.name,
             .min_ns = stats.min_ns,
@@ -179,7 +179,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
     const framebuffer_name = "drawFrameBuffer 10k cells no images";
     if (bench_utils.matchesBenchFilter(framebuffer_name, bench_filter)) {
-        const stats = try runFrameBufferScenario(allocator, pool);
+        const stats = try runFrameBufferScenario(io, allocator, pool);
         try results.append(allocator, .{
             .name = framebuffer_name,
             .min_ns = stats.min_ns,
