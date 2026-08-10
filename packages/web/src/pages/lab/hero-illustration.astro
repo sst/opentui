@@ -2,30 +2,48 @@
 import Base from "../../layouts/Base.astro"
 import TerminalIllustration from "../../components/TerminalIllustration.astro"
 
-const abstractStories = [
+// Real color is the entire point of these two (dispersion into a spectrum;
+// chromaticity/volume/RGB-split diagrams) — recoloring by luminance would
+// throw away the one thing the recording exists to show, so both use
+// tone="recorded".
+const colorStories = [
   {
-    src: "/recordings/noise-sanctuary.json",
-    title: "Pixel buffers",
-    caption: "A FrameBufferRenderable, animated pixel by pixel every frame.",
+    src: "/recordings/dispersive-prism.json",
+    tone: "recorded" as const,
+    title: "Spectral dispersion",
+    caption: "White light, split into a spectrum by a virtual prism.",
   },
   {
-    src: "/recordings/terminal-story-trimmed.json",
-    title: "Ambient render",
-    caption: "Color and motion composited live, not a video.",
+    src: "/recordings/color-space-explorer.json",
+    tone: "recorded" as const,
+    title: "Color space",
+    caption: "Chromaticity, color volume, and channel separation, in motion.",
   },
 ]
 
+// The rubiks.json recording is pre-cropped to just the cube: its original
+// recording had a real instructional-text panel (step description,
+// algorithm notation) alongside it, which read as "a document, not
+// ambiance" — the same problem that got the old ot-proportional-terminal
+// recording dropped — under either tone. Luminance recoloring alone doesn't
+// fix this: the source text was captured in high-luminance white/blue, so
+// tone="inherit" maps it to high alpha too, just as legible as
+// tone="recorded" would be. See public/recordings/README.md ("Cropping out
+// UI chrome") for how the panel was actually removed. tone is left at its
+// "inherit" default here only because there's no color worth preserving
+// once the panel (and its notation) is gone — the bare cube's own sticker
+// colors are still real captured color, just deliberately not used live.
 const mixedStories = [
-  ...abstractStories,
+  ...colorStories,
   {
-    src: "/recordings/ot-proportional-terminal.json",
-    tone: "recorded" as const,
-    background: "recorded" as const,
-    // See the matching comment in index.astro: per-run column fade doesn't
-    // apply meaningfully to variable-length prose lines.
-    fadeLeft: 0,
-    title: "Long-form documents",
-    caption: "Justified, proportional text rendered as terminal cells.",
+    src: "/recordings/rubiks.json",
+    title: "Cube algorithms",
+    caption: "Every solving step's algorithm, turn by turn.",
+  },
+  {
+    src: "/recordings/anomaly.json",
+    title: "Wordmark cuts",
+    caption: "Thirty-one wordmark treatments, rapid-cut, non-neon.",
   },
 ]
 ---
@@ -39,7 +57,7 @@ const mixedStories = [
           label="Ambient terminal recording"
           fit="contain"
           class="illustration-lab__fill"
-          stories={[abstractStories[0]]}
+          stories={[colorStories[0]]}
         />
       </div>
     </section>
@@ -51,40 +69,39 @@ const mixedStories = [
           label="Ambient terminal recording"
           fit="cover"
           class="illustration-lab__fill"
-          stories={[abstractStories[0]]}
+          stories={[colorStories[0]]}
         />
       </div>
     </section>
 
     <section class="illustration-lab__block">
-      <h2>C. cover &mdash; abstract mono stories cycling, controls on hover (move your mouse over it)</h2>
+      <h2>C. cover &mdash; real-color stories cycling, controls on hover (move your mouse over it)</h2>
       <div class="illustration-lab__stage illustration-lab__stage--narrow">
         <TerminalIllustration
           label="Cycling terminal recordings"
           fit="cover"
           controls="hover"
           class="illustration-lab__fill"
-          stories={abstractStories}
+          stories={colorStories}
         />
       </div>
     </section>
 
     <section class="illustration-lab__block">
-      <h2>D. tone=&quot;recorded&quot;, background=&quot;recorded&quot; &mdash; a real document, own colors, controls always visible</h2>
+      <h2>D. tone=&quot;recorded&quot;, background=&quot;recorded&quot; &mdash; a real terminal window, own colors, controls always visible</h2>
       <div class="illustration-lab__stage illustration-lab__stage--narrow illustration-lab__stage--dark">
         <TerminalIllustration
-          label="Proportional terminal document, smooth scroll"
+          label="Rubik's cube solve guide"
           fit="cover"
           controls="visible"
           class="illustration-lab__fill"
           stories={[
             {
-              src: "/recordings/ot-proportional-terminal.json",
+              src: "/recordings/rubiks.json",
               tone: "recorded",
               background: "recorded",
-              fadeLeft: 0,
-              title: "Long-form documents",
-              caption: "Justified, proportional text rendered as terminal cells.",
+              title: "Cube algorithms",
+              caption: "Every solving step's algorithm, turn by turn.",
             },
           ]}
         />
@@ -92,7 +109,7 @@ const mixedStories = [
     </section>
 
     <section class="illustration-lab__block">
-      <h2>E. All three stories cycling, mixed tone/background, controls on hover</h2>
+      <h2>E. All four stories cycling, mixed tone/background, controls on hover</h2>
       <div class="illustration-lab__stage illustration-lab__stage--narrow">
         <TerminalIllustration
           label="Cycling terminal recordings"

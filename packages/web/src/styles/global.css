@@ -852,6 +852,97 @@ h4,
 }
 
 /* ==========================================================================
+   "IT'S NOT JUST BOXES AND TEXT" — FEATURE SHOWCASE
+   Deliberately not the figure-plate convention above (source|output grid,
+   corner tags, dense caption): this content sells what OpenTUI can build,
+   not how the renderer works, so it gets a plainer, single-column
+   treatment, and each feature's media differs in kind rather than reusing
+   one template three times.
+   ========================================================================== */
+
+.showcase-intro {
+  max-width: 860px;
+  margin: 0 0 44px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+.showcase-feature {
+  max-width: 720px;
+  margin: 0 0 60px;
+}
+
+.showcase-feature h3 {
+  font-family: var(--font-serif);
+  font-size: clamp(22px, 2.6vw, 27px);
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--foreground);
+}
+
+.showcase-feature p {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-body);
+  margin: 0 0 18px;
+  max-width: 640px;
+}
+
+.showcase-media {
+  margin: 20px 0;
+}
+
+.showcase-caption {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 10px 0 0;
+  max-width: 640px;
+}
+
+.showcase-links {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 18px 0 0;
+}
+
+.showcase-outro {
+  max-width: 860px;
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+/* A real, copy-pasteable terminal command in place of a screenshot we
+   couldn't honestly produce (WebGPU needs a real GPU). Visually related to
+   the hero's own command chip (.hero-start-cmd) but not the same element —
+   this one isn't wired to the hero's click-to-copy script. */
+.showcase-cta {
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-subtle);
+  padding: 14px 20px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+
+.showcase-cta-prompt {
+  color: var(--text-faint);
+  margin-right: 8px;
+}
+
+/* ==========================================================================
    DOCUMENTATION LAYOUT & PAGES
    ========================================================================== */
 

@@ -105,6 +105,39 @@ const sshListing = `createServer({
   )
 })`
 
+// ---------------------------------------------------------------------------
+// "It's not just boxes and text." DRAFT — what OpenTUI can actually build,
+// for someone deciding whether to use it, not for someone studying the
+// renderer. Placed right after the hero, before the "Building a terminal
+// app" walkthrough: excite first, then teach. Deliberately NOT using the
+// FIG_xx/plate convention below (source|output grid, corner tags, dense
+// caption) — that convention is for the walkthrough's tutorial content.
+// This is three short, different-shaped pitches:
+//   - Audio: real code + three REAL, playable .wav files (the exact
+//     synthesis from native-audio-demo.ts's own sound effects — see
+//     generate-landing-evidence.ts). Realizes the brief's own example
+//     ("a player showing + playing audio while showing it").
+//   - Images: real code + a REAL captured photograph (dragon.jpg through
+//     ImageRenderable's actual blocks-protocol fallback, captured with
+//     captureSpans() and redrawn as an SVG using those exact colors — not a
+//     filter, not a mockup). See generate-landing-evidence.ts.
+//   - 3D/graphics: no capture (WebGPU needs a real GPU; couldn't produce
+//     one honestly in the time available) — a real, copy-pasteable command
+//     to go see it yourself instead of a screenshot standing in for one.
+// See ../../LANDING_PAGE_PLAN.md for why these three and not others, and
+// for what changed after the first draft missed the brief (it leaned on
+// implementation internals like grapheme/UTF-16 counting and color-matrix
+// formulas — correct, but not something a prospective user weighs, and not
+// something to spend a landing page's attention on).
+const boxesAudioListing = `const audio = Audio.create()
+audio.start()
+audio.play(sound)`
+
+const boxesImageListing = `new ImageRenderable(renderer, {
+  source: "./dragon.jpg",
+  fit: "cover",
+})`
+
 const indexData = [
   {
     part: "PART I: FIRST FRAME",
@@ -141,6 +174,15 @@ const indexData = [
       { title: "SSH", meta: "REFERENCE", slug: "/docs/reference/ssh" },
       { title: "Package entrypoints", meta: "REFERENCE", slug: "/docs/reference/package-entrypoints" },
     ]
+  },
+  {
+    part: "PART V: SOUND, PIXELS, AND OTHER MACHINES",
+    entries: [
+      { title: "Native audio", meta: "CORE CONCEPT", slug: "/docs/core-concepts/audio" },
+      { title: "Three.js WebGPU", meta: "REFERENCE", slug: "/docs/reference/three" },
+      { title: "Keymap engine", meta: "REFERENCE", slug: "/docs/keymap/overview" },
+      { title: "QR code", meta: "COMPONENT", slug: "/docs/components/qr-code" },
+    ]
   }
 ]
 ---
@@ -174,40 +216,29 @@ const indexData = [
           <TerminalIllustration
             label="OpenTUI terminal recordings, animated"
             controls="hover"
-            fit="cover"
+            fit="contain"
             holdMs={600}
-            fadeLeft={0.3}
-            fadeBottom={0.35}
             class="hero-illustration"
             stories={[
               {
-                src: "/recordings/noise-sanctuary.json",
-                title: "Pixel buffers",
-                caption: "A FrameBufferRenderable, animated pixel by pixel every frame.",
-              },
-              {
-                src: "/recordings/terminal-story-trimmed.json",
-                title: "Ambient render",
-                tone: "recorded",
-                fadeLeft: 0,
-                caption: "Color and motion composited live, not a video.",
-              },
-              {
-                src: "/recordings/ot-proportional-terminal.json",
-                // No horizontal fade for this one: a per-cell left/right
-                // fade is computed per run, and real prose has one long run
-                // per line, so a short line (the ragged end of a wrapped
-                // paragraph) has a midpoint that's still inside the fade
-                // zone even though a long line starting at the same column
-                // isn't — reading as random-looking gray text with no
-                // relation to the actual edge. Column position just isn't a
-                // meaningful "distance from the edge" for variable-length
-                // text lines the way it is for the other, abstract stories.
-                // Row-based (top/bottom) fade has no such problem, since
-                // it's tied to a fixed grid position, not content length.
-                fadeLeft: 0,
-                title: "Long-form documents",
-                caption: "Justified, proportional text rendered as terminal cells.",
+                // "Original colors, not neon" is about the recording
+                // itself: press `N` in the app first to switch off its
+                // neon glow/bloom/scanline effects, *then* start it playing
+                // — captured colors are plain white text on black
+                // (confirmed directly against the raw recording; an earlier
+                // version of this file shipped with `N` never actually
+                // landing, still neon). tone="inherit" (the default) then
+                // recolors that by luminance into this element's own ink
+                // color, so it bleeds into the page and tracks light/dark
+                // mode instead of sitting in a literal black box — still
+                // clean and non-neon, just not literally white-on-black.
+                // For the literal look instead, tone="recorded" +
+                // background="recorded" paints the captured colors (and
+                // black background) verbatim.
+                src: "/recordings/anomaly.json",
+                tone: "inherit",
+                title: "Wordmark cuts",
+                caption: "Thirty-one wordmark treatments, rapid-cut, non-neon.",
               },
             ]}
           />
@@ -230,6 +261,106 @@ const indexData = [
           <div class="hero-preview" aria-hidden="true"></div>
         </div>
       </header>
+
+      <div class="section-rule" aria-hidden="true"></div>
+
+      <!-- "It's not just boxes and text." DRAFT. See LANDING_PAGE_PLAN.md
+           for why this exists and what it replaced: an earlier draft here
+           led with implementation internals (grapheme/UTF-16 counting,
+           color-matrix formulas) that a prospective user doesn't weigh —
+           correct, but not a reason to pick a terminal UI library. This
+           version leads with three things you'd actually build, each
+           proven a different way instead of the same figure template three
+           times: real playable audio, a real captured photograph, and (no
+           capture for this one — see caption) a real command to go run the
+           3D examples yourself. -->
+      <section class="editorial-frontmatter">
+        <h2 class="frontmatter-title">It's not just boxes and text.</h2>
+        <p class="frontmatter-subtitle">
+          Three things OpenTUI does today that most terminal UI libraries don't attempt at all.
+        </p>
+      </section>
+
+      <p class="showcase-intro">
+        A terminal window looks like it's good for monospace text and maybe a border. OpenTUI's native core does that, but it also plays real audio, decodes real photographs, and drives an actual GPU scene &mdash; all inside the same grid of character cells. Here's what that looks like.
+      </p>
+
+      <div class="showcase-feature">
+        <h3>It can make sound.</h3>
+        <p>
+          Most terminal UI libraries stop at a bell character. OpenTUI ships a real, native audio engine: play sound effects, stream a live internet radio station, or read from a microphone &mdash; cross-platform device output, not a browser trick.
+        </p>
+
+        <div class="showcase-media" style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start;">
+          <div>
+            <span class="figure-code-label">Jump &middot; 540Hz</span>
+            <audio controls preload="none" src="/audio/jump.wav" style="width: 200px; display: block;"></audio>
+          </div>
+          <div>
+            <span class="figure-code-label">Coin &middot; 980Hz</span>
+            <audio controls preload="none" src="/audio/coin.wav" style="width: 200px; display: block;"></audio>
+          </div>
+          <div>
+            <span class="figure-code-label">Thud &middot; 140Hz</span>
+            <audio controls preload="none" src="/audio/thud.wav" style="width: 200px; display: block;"></audio>
+          </div>
+        </div>
+        <p class="showcase-caption">
+          These three are OpenTUI's own demo sound effects &mdash; a sine wave shaped by an exponential decay, nothing fancier &mdash; rendered to real files so you can press play right here. In an app they'd come from <code>Audio.create()</code>:
+        </p>
+        <pre class="figure-code" style="max-width: 320px; margin-top: 10px;"><code>{boxesAudioListing}</code></pre>
+        <p class="showcase-links">
+          Continue reading: <a href="/docs/core-concepts/audio">Native audio</a>
+        </p>
+      </div>
+
+      <div class="showcase-feature">
+        <h3>It can show you a photograph.</h3>
+        <p>
+          Point an Image component at a file, a URL, or raw bytes. OpenTUI figures out how to draw it depending on what the terminal in front of it supports &mdash; down to plain Unicode characters if it has to.
+        </p>
+
+        <div class="showcase-media" style="text-align: center;">
+          <img
+            src="/images/dragon-mosaic.svg"
+            width="672"
+            height="336"
+            alt="A photograph of a dragon statue, rendered as a mosaic of colored terminal cells"
+            style="max-width: 100%; width: 480px; height: auto; border: 1px solid var(--border-subtle);"
+          />
+        </div>
+        <p class="showcase-caption">
+          A real photograph, run through that fallback path and captured cell for cell &mdash; not a filter, not a screenshot. 84&times;42 terminal cells, redrawn here at the exact colors OpenTUI's renderer computed.
+        </p>
+        <pre class="figure-code" style="max-width: 320px; margin-top: 10px;"><code>{boxesImageListing}</code></pre>
+        <p class="showcase-links">
+          Continue reading: <a href="/docs/components/image">Image component</a>
+        </p>
+      </div>
+
+      <div class="showcase-feature">
+        <h3>It can even do this.</h3>
+        <p>
+          <code>@opentui/three</code> drives an actual Three.js scene through WebGPU and downsamples the result into that same grid of cells. The example gallery has a live fractal shader, a couple of 2D physics sandboxes, and &mdash; the day this repository passed 5,000 stars on GitHub &mdash; a particle-swarm star that still runs today.
+        </p>
+
+        <div class="showcase-media">
+          <div class="showcase-cta">
+            <div><span class="showcase-cta-prompt">$</span>curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh</div>
+            <div><span class="showcase-cta-prompt">$</span>./opentui-examples</div>
+          </div>
+        </div>
+        <p class="showcase-caption">
+          No screenshot here on purpose: WebGPU needs a real GPU, which the process that builds this page doesn't have, and a static image would undersell something that moves. Run it instead &mdash; that command above is real and does exactly what it says.
+        </p>
+        <p class="showcase-links">
+          Continue reading: <a href="/docs/reference/three">Three.js WebGPU</a>
+        </p>
+      </div>
+
+      <p class="showcase-outro">
+        None of that replaces the basics: boxes, text, a menu that responds to arrow keys. That's where the rest of this page starts.
+      </p>
 
       <div class="section-rule" aria-hidden="true"></div>
 

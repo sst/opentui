@@ -205,6 +205,7 @@
     return {
       cols: story.cols,
       rows: story.rows,
+      background: story.background,
       frames: frames,
       startIndex: startIndex < 0 ? 0 : startIndex,
       settledIndex: settledIndex < 0 ? frames.length - 1 : settledIndex,
@@ -377,6 +378,15 @@
         activeOptions().fit,
         activeOptions().scale,
       )
+      // background: "recorded" only paints per-cell backgrounds (runHtml),
+      // which can leave a hairline seam of whatever's *behind* the screen
+      // element between rows — sub-pixel row heights don't always rasterize
+      // edge-to-edge, and unlike per-run color/opacity this isn't something
+      // per-cell painting can close on its own. Painting the recording's own
+      // captured background on the screen element itself as a base layer
+      // means any such seam shows that color instead of the host page's.
+      screen.style.backgroundColor =
+        activeOptions().background === "recorded" && timeline.background ? timeline.background : ""
     }
 
     function paint() {
@@ -465,7 +475,27 @@
           resumeAfterIntersection = false
           resumeAfterVisibility = false
           pause()
-        } else play()
+        } else {
+          // Before the very first play, `frameIndex` may still be sitting
+          // wherever `setupStory(0, reduceMotion)` left it at mount — the
+          // *settled* (last-content) frame when reduced motion froze it
+          // there, not the *start* one. `tick`'s frame-advance loop can
+          // only ever move `frameIndex` forward, so starting from the last
+          // frame means it can't move at all: `elapsed` would tick up with
+          // no visible change for this story's entire remaining duration
+          // before finally advancing to the next story, reading as the
+          // illustration being stuck rather than playing. Resetting to the
+          // story's actual start makes "Play" animate immediately. Once
+          // `hasStarted`, later pause/resume cycles leave `frameIndex`
+          // alone, since by then it's always wherever playback actually
+          // left off.
+          if (!hasStarted) {
+            setupStory(storyIndex)
+            paint()
+            renderProgress()
+          }
+          play()
+        }
       })
     }
 
