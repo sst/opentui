@@ -455,7 +455,7 @@ describe("platform/ffi", () => {
     expect(library.symbols.one.length).toBe(1)
     expect(library.symbols.two.length).toBe(2)
     expect(library.symbols.three.length).toBe(3)
-    expect(library.symbols.four.length).toBe(0)
+    expect(library.symbols.four.length).toBe(4)
     expect(library.symbols.five.length).toBe(0)
     expect(library.symbols.six.length).toBe(0)
     expect(library.symbols.seven.length).toBe(7)

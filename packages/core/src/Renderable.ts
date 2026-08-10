@@ -1,6 +1,7 @@
 import { EventEmitter } from "events"
-import Yoga, { Display, Edge, type Node as YogaNode } from "./yoga.js"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
+import type { RGBA } from "./lib/RGBA.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
 import type { Selection } from "./lib/selection.js"
@@ -102,6 +103,8 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   buffered?: boolean
   live?: boolean
   opacity?: number
+  /** Set to "unbounded" when renderSelf may draw outside this renderable's layout rectangle. */
+  paintBounds?: "layout" | "unbounded"
 
   // Draw-only hooks for custom rendering/decorations. They run after layout
   // and viewport culling, so do not mutate layout, children, or reactive state here.
@@ -202,18 +205,18 @@ interface LayoutGenerationContext extends RenderContext {
   __otuiRenderListRevision?: number
 }
 
-export function getLayoutGeneration(ctx: RenderContext): number {
+function getLayoutGeneration(ctx: RenderContext): number {
   return (ctx as LayoutGenerationContext).__otuiLayoutGeneration ?? 0
 }
 
-export function bumpLayoutGeneration(ctx: RenderContext): number {
+function bumpLayoutGeneration(ctx: RenderContext): number {
   const next = getLayoutGeneration(ctx) + 1
   const generationContext = ctx as LayoutGenerationContext
   generationContext.__otuiLayoutGeneration = next
   return next
 }
 
-export function getRenderListRevision(ctx: RenderContext): number {
+function getRenderListRevision(ctx: RenderContext): number {
   return (ctx as LayoutGenerationContext).__otuiRenderListRevision ?? 0
 }
 
@@ -252,6 +255,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private _live: boolean = false
   protected _liveCount: number = 0
+  private _paintBounds: "layout" | "unbounded"
 
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
@@ -309,6 +313,7 @@ export abstract class Renderable extends BaseRenderable {
     this.buffered = options.buffered ?? false
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
+    this._paintBounds = options.paintBounds ?? "layout"
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
     this.yogaNode = Yoga.Node.createForOpenTUI()
@@ -1515,6 +1520,34 @@ export abstract class Renderable extends BaseRenderable {
     )
   }
 
+  public getPaintBounds(): { x: number; y: number; width: number; height: number } | null {
+    if (this._paintBounds === "unbounded") return null
+    return { x: this._screenX, y: this._screenY, width: this.width, height: this.height }
+  }
+
+  protected hasStableRenderListInputs(): boolean {
+    return (
+      this.onUpdate === Renderable.prototype.onUpdate &&
+      this.renderBefore === undefined &&
+      this.renderAfter === undefined
+    )
+  }
+
+  public lifecyclePassIsPaintStable(): boolean {
+    return this.onLifecyclePass === null
+  }
+
+  public canRenderMultipleDamageRegions(): boolean {
+    return (
+      !this.buffered &&
+      this.renderBefore === undefined &&
+      this.renderAfter === undefined &&
+      this.renderSelf === Renderable.prototype.renderSelf
+    )
+  }
+
+  public updateCachedRenderList(_deltaTime: number): void {}
+
   protected onUpdate(deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
@@ -1535,8 +1568,8 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
-    // Default implementation: do nothing
-    // Override this method to provide custom rendering
+    // Override to draw within getPaintBounds(). Use paintBounds: "unbounded"
+    // when drawing outside the layout rectangle so composition stays correct.
   }
 
   public get isDestroyed(): boolean {
@@ -1739,3 +1772,376 @@ export type RenderCommand =
   | RenderCommandRender
   | RenderCommandPushOpacity
   | RenderCommandPopOpacity
+
+type DirtyRows = { start: number; end: number }
+const MAX_INCREMENTAL_DAMAGE_BANDS = 3
+const MAX_SEPARATE_DAMAGE_BANDS = 2
+
+export class RootRenderable extends Renderable {
+  private renderList: RenderCommand[] = []
+  private cachedUpdateRenderables: Renderable[] = []
+  private _currentRenderable: Renderable | undefined
+  private appliedLayoutGeneration = -1
+  private appliedRenderListRevision = -1
+  private renderListReusable = false
+  private lifecyclePaintStable = true
+  private dirtyRenderables = new Set<Renderable>()
+  private spareDirtyRenderables = new Set<Renderable>()
+  private fullCompositionRequired = true
+
+  constructor(ctx: RenderContext) {
+    super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
+    this.yogaNode.free()
+    this.yogaNode = Yoga.Node.createForOpenTUI()
+    this.yogaNode.setWidth(ctx.width)
+    this.yogaNode.setHeight(ctx.height)
+    this.yogaNode.setFlexDirection(FlexDirection.Column)
+    this.calculateLayout()
+  }
+
+  public get currentRenderable(): Renderable | undefined {
+    return this._currentRenderable
+  }
+
+  public takeCurrentRenderable(): Renderable | undefined {
+    const renderable = this._currentRenderable
+    this._currentRenderable = undefined
+    return renderable
+  }
+
+  public invalidate(renderable?: Renderable): void {
+    if (!renderable) {
+      this.dirtyRenderables.clear()
+      this.fullCompositionRequired = true
+    } else if (this.fullCompositionRequired) {
+      return
+    } else {
+      this.dirtyRenderables.add(renderable)
+      // Bound request-time bookkeeping; actual partial/full selection uses
+      // merged row damage later in the frame.
+      if (this.dirtyRenderables.size > 8) {
+        this.dirtyRenderables.clear()
+        this.fullCompositionRequired = true
+      }
+    }
+  }
+
+  public render(
+    buffer: OptimizedBuffer,
+    deltaTime: number,
+    backgroundColor?: RGBA,
+    forceFull = false,
+    clearBeforePaint = false,
+  ): void {
+    this._currentRenderable = undefined
+    if (!this.visible) {
+      if (backgroundColor) buffer.clear(backgroundColor)
+      else buffer.clear()
+      this._ctx.clearHitGridScissorRects()
+      this.dirtyRenderables.clear()
+      this.fullCompositionRequired = true
+      return
+    }
+
+    for (const renderable of this._ctx.getLifecyclePasses()) {
+      if (!renderable.isDestroyed) renderable.onLifecyclePass?.call(renderable)
+    }
+
+    if (this.renderListReusable) {
+      for (const renderable of this.cachedUpdateRenderables) {
+        if (!renderable.isDestroyed) renderable.updateCachedRenderList(deltaTime)
+      }
+    }
+
+    const layoutWasDirty = Boolean(this.yogaNode.isDirty())
+    if (layoutWasDirty) this.calculateLayout()
+    else this.syncExternalLayoutGeneration()
+
+    const layoutGeneration = getLayoutGeneration(this._ctx)
+    const renderListRevision = getRenderListRevision(this._ctx)
+    const layoutGenerationChanged = this.appliedLayoutGeneration !== layoutGeneration
+    const renderListRevisionChanged = this.appliedRenderListRevision !== renderListRevision
+    const renderListChanged = !this.renderListReusable || layoutGenerationChanged || renderListRevisionChanged
+    if (renderListChanged) {
+      this.renderList.length = 0
+      super.updateLayout(deltaTime, this.renderList)
+      this.appliedLayoutGeneration = layoutGeneration
+      this.appliedRenderListRevision = getRenderListRevision(this._ctx)
+      this.renderListReusable = this.canReuseCurrentRenderList()
+      this.collectCachedUpdateRenderables()
+      this.lifecyclePaintStable = this.lifecyclePassesArePaintStable()
+    }
+
+    const baseFullComposition =
+      forceFull ||
+      this.fullCompositionRequired ||
+      layoutWasDirty ||
+      renderListChanged ||
+      !this.lifecyclePaintStable ||
+      this._liveCount > 0 ||
+      !this._ctx.preserveHitGrid ||
+      !this._ctx.setHitGridWritesEnabled ||
+      (this.dirtyRenderables.size > 0 && backgroundColor === undefined)
+    if (baseFullComposition) {
+      this.renderCompleteFrame(buffer, deltaTime, backgroundColor, clearBeforePaint)
+      return
+    }
+
+    const dirtyRows = collectDirtyRows(this.dirtyRenderables, this._ctx.height, this)
+    const tooManyDamageBands = dirtyRows !== null && dirtyRows.length > MAX_INCREMENTAL_DAMAGE_BANDS
+    const dirtyBand = dirtyRows ? boundingRows(dirtyRows) : null
+    const damageBands =
+      !tooManyDamageBands &&
+      dirtyRows &&
+      dirtyRows.length > 1 &&
+      dirtyRows.length <= MAX_SEPARATE_DAMAGE_BANDS &&
+      this.canUseSeparateDamageBands(dirtyRows)
+        ? dirtyRows
+        : dirtyBand
+          ? [dirtyBand]
+          : []
+    const damageBandsRequireFull =
+      tooManyDamageBands || (damageBands.length > 0 && this.shouldUseFullComposition(damageBands))
+
+    const fullComposition = dirtyRows === null || damageBandsRequireFull
+
+    if (fullComposition) {
+      this.renderCompleteFrame(buffer, deltaTime, backgroundColor, clearBeforePaint)
+      return
+    }
+
+    const dirtyRenderables = this.dirtyRenderables
+    this.dirtyRenderables = this.spareDirtyRenderables
+    this.dirtyRenderables.clear()
+    this.fullCompositionRequired = false
+
+    try {
+      if (damageBands.length === 0) {
+        this._ctx.preserveHitGrid!()
+        return
+      }
+
+      for (const band of damageBands) {
+        if (!buffer.clearRows(band.start, band.end - band.start, backgroundColor!)) {
+          return this.renderFull(buffer, deltaTime, backgroundColor, true)
+        }
+      }
+
+      this._ctx.setHitGridWritesEnabled!(false)
+      try {
+        for (const band of damageBands) {
+          buffer.pushScissorRect(0, band.start, buffer.width, band.end - band.start)
+          try {
+            this.executeRenderList(buffer, deltaTime, false, band)
+          } finally {
+            buffer.clearScissorRects()
+            buffer.clearOpacity()
+          }
+        }
+      } finally {
+        this._ctx.setHitGridWritesEnabled!(true)
+      }
+      this._ctx.preserveHitGrid!()
+    } catch (error) {
+      this.fullCompositionRequired = true
+      for (const renderable of dirtyRenderables) this.dirtyRenderables.add(renderable)
+      buffer.clearScissorRects()
+      buffer.clearOpacity()
+      this._ctx.clearHitGridScissorRects()
+      this._ctx.setHitGridWritesEnabled?.(true)
+      throw error
+    } finally {
+      dirtyRenderables.clear()
+      this.spareDirtyRenderables = dirtyRenderables
+    }
+  }
+
+  private renderFull(buffer: OptimizedBuffer, deltaTime: number, backgroundColor?: RGBA, clear = true): void {
+    if (clear) {
+      if (backgroundColor) buffer.clear(backgroundColor)
+      else buffer.clear()
+    }
+    this._ctx.clearHitGridScissorRects()
+    this.executeRenderList(buffer, deltaTime, true)
+  }
+
+  private renderCompleteFrame(buffer: OptimizedBuffer, deltaTime: number, backgroundColor?: RGBA, clear = true): void {
+    this.dirtyRenderables.clear()
+    this.fullCompositionRequired = false
+    try {
+      this.renderFull(buffer, deltaTime, backgroundColor, clear)
+    } catch (error) {
+      this.fullCompositionRequired = true
+      buffer.clearScissorRects()
+      buffer.clearOpacity()
+      this._ctx.clearHitGridScissorRects()
+      this._ctx.setHitGridWritesEnabled?.(true)
+      throw error
+    }
+  }
+
+  private executeRenderList(
+    buffer: OptimizedBuffer,
+    deltaTime: number,
+    updateHitGrid: boolean,
+    dirtyRows?: DirtyRows,
+  ): void {
+    for (let i = 1; i < this.renderList.length; i++) {
+      const command = this.renderList[i]
+      switch (command.action) {
+        case "render":
+          if (!command.renderable.isDestroyed && (!dirtyRows || intersectsRows(command.renderable, dirtyRows))) {
+            this._currentRenderable = command.renderable
+            command.renderable.render(buffer, deltaTime)
+            this._currentRenderable = undefined
+          }
+          break
+        case "pushScissorRect":
+          buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          if (updateHitGrid)
+            this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
+          break
+        case "popScissorRect":
+          buffer.popScissorRect()
+          if (updateHitGrid) this._ctx.popHitGridScissorRect()
+          break
+        case "pushOpacity":
+          buffer.pushOpacity(command.opacity)
+          break
+        case "popOpacity":
+          buffer.popOpacity()
+          break
+      }
+    }
+  }
+
+  protected propagateLiveCount(delta: number): void {
+    const oldCount = this._liveCount
+    this._liveCount += delta
+    if (oldCount === 0 && this._liveCount > 0) this._ctx.requestLive()
+    else if (oldCount > 0 && this._liveCount === 0) this._ctx.dropLive()
+  }
+
+  public calculateLayout(): void {
+    this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
+    this.emit(LayoutEvents.LAYOUT_CHANGED)
+  }
+
+  private syncExternalLayoutGeneration(): void {
+    if (!this.yogaNode.hasNewLayout()) return
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
+  }
+
+  private canReuseCurrentRenderList(): boolean {
+    if (this._liveCount > 0) return false
+    for (const command of this.renderList) {
+      if (command.action === "render" && !command.renderable.canReuseRenderCommandList()) return false
+    }
+    return true
+  }
+
+  private collectCachedUpdateRenderables(): void {
+    this.cachedUpdateRenderables.length = 0
+    for (const command of this.renderList) {
+      if (
+        command.action === "render" &&
+        command.renderable.updateCachedRenderList !== Renderable.prototype.updateCachedRenderList
+      ) {
+        this.cachedUpdateRenderables.push(command.renderable)
+      }
+    }
+  }
+
+  private lifecyclePassesArePaintStable(): boolean {
+    for (const command of this.renderList) {
+      if (command.action === "render" && !command.renderable.lifecyclePassIsPaintStable()) return false
+    }
+    return true
+  }
+
+  private canUseSeparateDamageBands(rows: readonly DirtyRows[]): boolean {
+    for (const command of this.renderList) {
+      if (command.action !== "render") continue
+      let intersections = 0
+      for (const row of rows) {
+        if (intersectsRows(command.renderable, row)) intersections += 1
+      }
+      if (intersections > 1 && !command.renderable.canRenderMultipleDamageRegions()) return false
+    }
+    return true
+  }
+
+  private shouldUseFullComposition(rows: readonly DirtyRows[]): boolean {
+    // Each band replays the flat command list. Beyond three sparse bands, one
+    // full pass is cheaper in the measured complex-tree spinner workloads.
+    const damagedHeight = rows.reduce((total, row) => total + row.end - row.start, 0)
+    if (damagedHeight >= this._ctx.height * 0.9) return true
+
+    let totalRenderables = 0
+    let intersectingRenderables = 0
+    for (const command of this.renderList) {
+      if (command.action !== "render") continue
+      totalRenderables += 1
+      for (const row of rows) {
+        if (intersectsRows(command.renderable, row)) intersectingRenderables += 1
+      }
+    }
+    return totalRenderables > 0 && intersectingRenderables >= totalRenderables * 1.5
+  }
+
+  public resize(width: number, height: number): void {
+    this.width = width
+    this.height = height
+    this.emit(LayoutEvents.RESIZED, { width, height })
+  }
+}
+
+function intersectsRows(renderable: Renderable, rows: DirtyRows): boolean {
+  const bounds = renderable.getPaintBounds()
+  if (!bounds) return true
+  const start = bounds.y
+  const end = start + bounds.height
+  return end > rows.start && start < rows.end
+}
+
+function collectDirtyRows(
+  renderables: ReadonlySet<Renderable>,
+  height: number,
+  root: RootRenderable,
+): DirtyRows[] | null {
+  const rows: DirtyRows[] = []
+  const visited = new Set<Renderable>()
+  for (const source of renderables) {
+    let renderable: Renderable | null = source
+    while (renderable && renderable !== root) {
+      if (!visited.has(renderable) && (renderable === source || renderable.isDirty)) {
+        visited.add(renderable)
+        if (!renderable.isDestroyed && renderable.visible) {
+          const bounds = renderable.getPaintBounds()
+          if (!bounds) return null
+          const start = Math.max(0, Math.floor(bounds.y))
+          const end = Math.min(height, Math.ceil(bounds.y + bounds.height))
+          if (start < end) rows.push({ start, end })
+        }
+      }
+      renderable = renderable.parent
+    }
+  }
+  rows.sort((left, right) => left.start - right.start || left.end - right.end)
+
+  const merged: DirtyRows[] = []
+  for (const row of rows) {
+    const previous = merged[merged.length - 1]
+    if (previous && row.start <= previous.end) previous.end = Math.max(previous.end, row.end)
+    else merged.push({ ...row })
+  }
+  return merged
+}
+
+function boundingRows(rows: readonly DirtyRows[]): DirtyRows | null {
+  if (rows.length === 0) return null
+  return { start: rows[0].start, end: rows[rows.length - 1].end }
+}

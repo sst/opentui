@@ -277,6 +277,7 @@ pub const CliRenderer = struct {
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
     hitGridDirty: bool = false,
     hitGridResizeInvalidated: bool = false,
+    reuse_hit_grid_for_frame: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -408,7 +409,6 @@ pub const CliRenderer = struct {
             .renderOffset = 0,
             .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode, .env_map = opts.env_map }),
             .clearOnShutdown = opts.clearOnShutdown,
-            .preserve_next_buffer = opts.preserve_next_buffer,
             .backend = backend,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
@@ -867,6 +867,7 @@ pub const CliRenderer = struct {
     fn clearSkippedFrameState(self: *CliRenderer) void {
         if (!self.preserve_next_buffer) self.nextRenderBuffer.clear(self.backgroundColor, null);
         @memset(self.nextHitGrid, 0);
+        self.reuse_hit_grid_for_frame = false;
     }
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
@@ -878,6 +879,7 @@ pub const CliRenderer = struct {
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.pendingImages.clearRetainingCapacity();
         @memset(self.nextHitGrid, 0);
+        self.reuse_hit_grid_for_frame = false;
         self.force_full_repaint = true;
         self.lastCursorStyleTag = null;
         self.lastCursorBlinking = null;
@@ -890,6 +892,11 @@ pub const CliRenderer = struct {
     }
 
     fn commitPendingHitGrid(self: *CliRenderer) void {
+        if (self.reuse_hit_grid_for_frame) {
+            self.reuse_hit_grid_for_frame = false;
+            self.hitGridDirty = self.hitGridResizeInvalidated;
+            return;
+        }
         self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
         const previous = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;
@@ -898,7 +905,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn preserveHitGridForNextFrame(self: *CliRenderer) void {
-        @memcpy(self.nextHitGrid, self.currentHitGrid);
+        self.reuse_hit_grid_for_frame = true;
         self.hitGridClearScissorRects();
     }
 

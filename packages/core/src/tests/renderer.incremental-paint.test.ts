@@ -1,12 +1,25 @@
 import { describe, expect, test } from "bun:test"
-import { BoxRenderable, OptimizedBuffer, Renderable, RGBA, TextRenderable, type RenderContext } from "../index.js"
+import {
+  BoxRenderable,
+  OptimizedBuffer,
+  Renderable,
+  RGBA,
+  ScrollBoxRenderable,
+  TextRenderable,
+  type RenderContext,
+} from "../index.js"
 import { createTestRenderer } from "../testing.js"
 
 const fg = RGBA.fromInts(240, 240, 240, 255)
 const bg = RGBA.fromInts(20, 24, 30, 255)
 
+function cellFg(renderer: Awaited<ReturnType<typeof createTestRenderer>>["renderer"], x: number, y: number): number[] {
+  const index = y * renderer.width + x
+  return RGBA.fromArray(renderer.currentRenderBuffer.buffers.fg.slice(index * 4, index * 4 + 4)).toInts()
+}
+
 class PaintingRenderable extends Renderable {
-  private value: string
+  protected value: string
   public paintCount = 0
 
   constructor(ctx: RenderContext, id: string, value: string, x: number, y: number) {
@@ -23,6 +36,41 @@ class PaintingRenderable extends Renderable {
   protected renderSelf(buffer: OptimizedBuffer): void {
     this.paintCount += 1
     buffer.setCell(this._screenX, this._screenY, this.value, fg, bg)
+  }
+}
+
+class UnboundedPaintingRenderable extends Renderable {
+  private value: string
+
+  constructor(
+    ctx: RenderContext,
+    id: string,
+    value: string,
+    private drawY: number,
+  ) {
+    super(ctx, { id, width: 1, height: 1, position: "absolute", left: 2, top: 2, paintBounds: "unbounded" })
+    this.value = value
+  }
+
+  public setValue(value: string): void {
+    this.value = value
+    this.requestRender()
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    buffer.setCell(this._screenX, this.drawY, this.value, fg, bg)
+  }
+}
+
+class LifecyclePaintingRenderable extends PaintingRenderable {
+  private tick = 0
+
+  constructor(ctx: RenderContext) {
+    super(ctx, "lifecycle-paint", "A", 3, 3)
+    this.onLifecyclePass = () => {
+      this.tick += 1
+      this.value = this.tick % 2 === 0 ? "A" : "B"
+    }
   }
 }
 
@@ -73,7 +121,7 @@ describe("incremental paint", () => {
     renderer.destroy()
   })
 
-  test("repaints only rows containing independently changing spinners", async () => {
+  test("repaints one bounding band for independently changing spinners", async () => {
     const { renderer, renderOnce, root } = await setup()
     const staticNode = new PaintingRenderable(renderer, "static", "S", 20, 6)
     const spinners = [
@@ -89,8 +137,47 @@ describe("incremental paint", () => {
     await renderOnce()
 
     expect(renderer.getNativeStats().cellsUpdated).toBe(3)
+    expect(staticNode.paintCount).toBe(2)
+    for (const spinner of spinners) expect(spinner.paintCount).toBe(2)
+    renderer.destroy()
+  })
+
+  test("merges four dirty renderables on one row instead of forcing a full frame", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const staticNode = new PaintingRenderable(renderer, "same-row-static", "S", 20, 8)
+    const spinners = [2, 4, 6, 8].map(
+      (x, index) => new PaintingRenderable(renderer, `same-row-spinner-${index}`, "|", x, 3),
+    )
+    root.add(staticNode)
+    for (const spinner of spinners) root.add(spinner)
+
+    await renderOnce()
+    for (const spinner of spinners) spinner.setValue("/")
+    await renderOnce()
+
+    expect(renderer.getNativeStats().cellsUpdated).toBe(4)
     expect(staticNode.paintCount).toBe(1)
     for (const spinner of spinners) expect(spinner.paintCount).toBe(2)
+    renderer.destroy()
+  })
+
+  test("renders a clean spanning layer at most once for disjoint dirty rows", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const spanning = new PaintingRenderable(renderer, "spanning", "S", 15, 0)
+    spanning.height = 12
+    const spinners = [
+      new PaintingRenderable(renderer, "disjoint-1", "|", 2, 1),
+      new PaintingRenderable(renderer, "disjoint-2", "|", 4, 5),
+      new PaintingRenderable(renderer, "disjoint-3", "|", 6, 9),
+    ]
+    root.add(spanning)
+    for (const spinner of spinners) root.add(spinner)
+
+    await renderOnce()
+    for (const spinner of spinners) spinner.setValue("/")
+    await renderOnce()
+
+    expect(spanning.paintCount).toBe(2)
     renderer.destroy()
   })
 
@@ -113,6 +200,65 @@ describe("incremental paint", () => {
     expect(lower.paintCount).toBe(2)
     expect(upper.paintCount).toBe(2)
     expect(unrelated.paintCount).toBe(1)
+    renderer.destroy()
+  })
+
+  test("falls back to full composition for unbounded custom painting", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const unbounded = new UnboundedPaintingRenderable(renderer, "unbounded", "A", 8)
+    root.add(unbounded)
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+    unbounded.setValue("B")
+    await renderOnce()
+
+    expect(captureCharFrame()).not.toContain("A")
+    expect(captureCharFrame()).toContain("B")
+    renderer.destroy()
+  })
+
+  test("preserves lifecycle-driven visual updates", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const lifecycle = new LifecyclePaintingRenderable(renderer)
+    root.add(lifecycle)
+
+    await renderOnce()
+    const first = captureCharFrame()
+    await renderOnce()
+    const second = captureCharFrame()
+
+    expect(first).not.toBe(second)
+    renderer.destroy()
+  })
+
+  test("keeps row-local painting with an unchanged ScrollBox render list", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const scrollBox = new ScrollBoxRenderable(renderer, {
+      id: "incremental-scrollbox",
+      width: 20,
+      height: 5,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      viewportCulling: true,
+    })
+    const scrollContent = new PaintingRenderable(renderer, "scroll-content", "S", 1, 1)
+    scrollBox.add(scrollContent)
+    const spinner = new PaintingRenderable(renderer, "scrollbox-sibling-spinner", "|", 30, 9)
+    root.add(scrollBox)
+    root.add(spinner)
+
+    await renderOnce()
+    while (Boolean(renderer.root.getLayoutNode().isDirty())) await renderOnce()
+    const scrollPaintsBeforeTick = scrollContent.paintCount
+    const spinnerPaintsBeforeTick = spinner.paintCount
+    spinner.setValue("/")
+    await renderOnce()
+
+    expect(scrollContent.paintCount).toBe(scrollPaintsBeforeTick)
+    expect(spinner.paintCount).toBe(spinnerPaintsBeforeTick + 1)
+    expect(renderer.getNativeStats().cellsUpdated).toBe(1)
     renderer.destroy()
   })
 
@@ -164,6 +310,48 @@ describe("incremental paint", () => {
     await renderOnce()
     const restoredFg = [...renderer.currentRenderBuffer.buffers.fg.slice(index * 4, index * 4 + 4)]
     expect(restoredFg).not.toEqual(firstFg)
+    renderer.destroy()
+  })
+
+  test("repaints an ancestor border when descendant focus changes", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const normalBorder = RGBA.fromInts(180, 30, 30, 255)
+    const focusedBorder = RGBA.fromInts(30, 220, 80, 255)
+    const parent = new BoxRenderable(renderer, {
+      id: "focus-parent",
+      width: 12,
+      height: 6,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      border: true,
+      focusable: true,
+      borderColor: normalBorder,
+      focusedBorderColor: focusedBorder,
+    })
+    const child = new PaintingRenderable(renderer, "focus-child", "C", 1, 1)
+    child.focusable = true
+    parent.add(child)
+    root.add(parent)
+
+    await renderOnce()
+    expect(cellFg(renderer, 1, 1)).toEqual(normalBorder.toInts())
+
+    child.focus()
+    await renderOnce()
+    expect(cellFg(renderer, 1, 1)).toEqual(focusedBorder.toInts())
+    renderer.destroy()
+  })
+
+  test("clears the retained scene when the renderer root is hidden", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    root.add(new PaintingRenderable(renderer, "visible-before-root-hide", "V", 4, 3))
+    await renderOnce()
+    expect(captureCharFrame()).toContain("V")
+
+    renderer.root.visible = false
+    await renderOnce()
+    expect(captureCharFrame().trim()).toBe("")
     renderer.destroy()
   })
 })
