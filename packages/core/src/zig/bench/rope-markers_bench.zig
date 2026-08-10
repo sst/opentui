@@ -51,7 +51,7 @@ const RopeType = rope_mod.Rope(Token);
 /// Create a rope with specific marker density
 /// marker_every: insert a marker every N text tokens
 fn createRope(allocator: std.mem.Allocator, text_count: u32, marker_every: u32) !RopeType {
-    var tokens: std.ArrayListUnmanaged(Token) = .{};
+    var tokens: std.ArrayList(Token) = .empty;
     defer tokens.deinit(allocator);
 
     for (0..text_count) |i| {
@@ -65,11 +65,12 @@ fn createRope(allocator: std.mem.Allocator, text_count: u32, marker_every: u32) 
 }
 
 fn benchRebuildMarkerIndex(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Small rope, high marker density (every 10 tokens)
@@ -81,7 +82,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 1000, 10);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -108,7 +109,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 1000, 100);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -135,7 +136,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 10000, 10);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -162,7 +163,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 10000, 100);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -189,7 +190,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 50000, 50);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -216,7 +217,7 @@ fn benchRebuildMarkerIndex(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 100000, 200);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -238,11 +239,12 @@ fn benchRebuildMarkerIndex(
 }
 
 fn benchMarkerLookup(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // O(1) lookup in small rope
@@ -257,7 +259,7 @@ fn benchMarkerLookup(
                 var rope = try createRope(arena.allocator(), 1000, 10);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100) |i| {
                     _ = rope.getMarker(.marker, @intCast(i % rope.markerCount(.marker)));
                 }
@@ -288,7 +290,7 @@ fn benchMarkerLookup(
                 var rope = try createRope(arena.allocator(), 10000, 50);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..1000) |i| {
                     _ = rope.getMarker(.marker, @intCast(i % rope.markerCount(.marker)));
                 }
@@ -323,7 +325,7 @@ fn benchMarkerLookup(
                 var prng = std.Random.DefaultPrng.init(42);
                 const random = prng.random();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..10000) |_| {
                     const line = random.intRangeAtMost(u32, 0, marker_count - 1);
                     _ = rope.getMarker(.marker, line);
@@ -356,7 +358,7 @@ fn benchMarkerLookup(
                 // Markers are automatically indexed in the tree structure
                 const marker_count = rope.markerCount(.marker);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..marker_count) |i| {
                     _ = rope.getMarker(.marker, @intCast(i));
                 }
@@ -379,11 +381,12 @@ fn benchMarkerLookup(
 }
 
 fn benchMarkerCount(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Count markers - should be O(1) hash lookup
@@ -398,7 +401,7 @@ fn benchMarkerCount(
                 var rope = try createRope(arena.allocator(), 10000, 50);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..100000) |_| {
                     _ = rope.markerCount(.marker);
                 }
@@ -421,11 +424,12 @@ fn benchMarkerCount(
 }
 
 fn benchDepthVsPerformance(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Shallow tree (from_slice creates balanced tree)
@@ -437,7 +441,7 @@ fn benchDepthVsPerformance(
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 const rope = try createRope(arena.allocator(), 10000, 50);
                 _ = rope; // Markers are automatically indexed during rope creation
                 stats.record(timer.read());
@@ -473,7 +477,7 @@ fn benchDepthVsPerformance(
                     }
                 }
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Markers are automatically indexed in the tree structure
                 stats.record(timer.read());
             }
@@ -494,11 +498,12 @@ fn benchDepthVsPerformance(
 }
 
 fn benchEditThenRebuild(
+    io: std.Io,
     allocator: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Typical edit workflow: build, edit, rebuild
@@ -513,7 +518,7 @@ fn benchEditThenRebuild(
                 var rope = try createRope(arena.allocator(), 10000, 50);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Simulate typing at line 50
                 const line50_marker = rope.getMarker(.marker, 50).?;
                 const insert_pos = line50_marker.leaf_index + 1;
@@ -552,7 +557,7 @@ fn benchEditThenRebuild(
                 var rope = try createRope(arena.allocator(), 10000, 50);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Insert new line (marker) at position 100
                 try rope.insert(100, .{ .marker = {} });
                 // Markers are automatically indexed in the tree structure
@@ -583,7 +588,7 @@ fn benchEditThenRebuild(
                 var rope = try createRope(arena.allocator(), 10000, 50);
                 // Markers are automatically indexed in the tree structure
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Delete marker at position
                 const marker_pos = rope.getMarker(.marker, 50).?.leaf_index;
                 try rope.delete(marker_pos);
@@ -611,7 +616,7 @@ fn benchMemoryUsage(
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     // Memory comparison: with vs without marker index
@@ -674,35 +679,36 @@ fn benchMemoryUsage(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Rebuild index benchmarks
-    const rebuild_results = try benchRebuildMarkerIndex(allocator, iterations, bench_filter);
+    const rebuild_results = try benchRebuildMarkerIndex(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, rebuild_results);
 
     // Marker lookup benchmarks
-    const lookup_results = try benchMarkerLookup(allocator, iterations, bench_filter);
+    const lookup_results = try benchMarkerLookup(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, lookup_results);
 
     // Marker count benchmarks
-    const count_results = try benchMarkerCount(allocator, iterations, bench_filter);
+    const count_results = try benchMarkerCount(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, count_results);
 
     // Tree depth impact
-    const depth_results = try benchDepthVsPerformance(allocator, iterations, bench_filter);
+    const depth_results = try benchDepthVsPerformance(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, depth_results);
 
     // Edit workflows
-    const edit_results = try benchEditThenRebuild(allocator, iterations, bench_filter);
+    const edit_results = try benchEditThenRebuild(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, edit_results);
 
     // Memory usage comparison

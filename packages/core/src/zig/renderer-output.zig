@@ -17,11 +17,28 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const Allocator = std.mem.Allocator;
 const NativeSpanFeed = @import("native-span-feed.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
 const UTF16_BUFFER_SIZE = 4096;
+
+const WindowsConsole = struct {
+    extern "kernel32" fn GetConsoleMode(
+        handle: std.os.windows.HANDLE,
+        mode: *std.os.windows.DWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+    extern "kernel32" fn GetConsoleOutputCP() callconv(.winapi) std.os.windows.UINT;
+    extern "kernel32" fn SetConsoleOutputCP(code_page: std.os.windows.UINT) callconv(.winapi) std.os.windows.BOOL;
+    extern "kernel32" fn WriteConsoleW(
+        handle: std.os.windows.HANDLE,
+        buffer: [*]const u16,
+        chars_to_write: std.os.windows.DWORD,
+        chars_written: ?*std.os.windows.DWORD,
+        reserved: ?*anyopaque,
+    ) callconv(.winapi) std.os.windows.BOOL;
+};
 
 pub const WriteStatus = enum(u8) {
     ok = 0,
@@ -131,24 +148,24 @@ test "UTF-8 output rejects invalid and incomplete input" {
     try std.testing.expectError(error.InvalidUtf8, utf8ToUtf16Chunk(&output, "\xF0\x9F"));
 }
 
-fn isWindowsConsole(file: std.fs.File) bool {
+fn isWindowsConsole(file: std.Io.File) bool {
     if (builtin.os.tag != .windows) return false;
 
     var console_mode: std.os.windows.DWORD = 0;
-    return std.os.windows.kernel32.GetConsoleMode(file.handle, &console_mode) != 0;
+    return WindowsConsole.GetConsoleMode(file.handle, &console_mode).toBool();
 }
 
 pub const StdoutOutput = struct {
-    stdout: std.fs.File,
+    stdout: std.Io.File,
     stdoutBuffer: [4096]u8 = undefined,
     utf16Buffer: [UTF16_BUFFER_SIZE]u16 = undefined,
     windowsConsole: bool,
 
     pub fn init() StdoutOutput {
-        return initForFile(std.fs.File.stdout());
+        return initForFile(std.Io.File.stdout());
     }
 
-    fn initForFile(stdout: std.fs.File) StdoutOutput {
+    fn initForFile(stdout: std.Io.File) StdoutOutput {
         return .{
             .stdout = stdout,
             .windowsConsole = isWindowsConsole(stdout),
@@ -178,7 +195,7 @@ pub const StdoutOutput = struct {
     }
 
     fn writeBytes(self: *StdoutOutput, data: []const u8) void {
-        var stdoutWriter = self.stdout.writerStreaming(&self.stdoutBuffer);
+        var stdoutWriter = self.stdout.writerStreaming(io, &self.stdoutBuffer);
         const w = &stdoutWriter.interface;
         w.writeAll(data) catch {};
         w.flush() catch {};
@@ -202,13 +219,13 @@ pub const StdoutOutput = struct {
         var remaining = data;
         while (remaining.len > 0) {
             var written: std.os.windows.DWORD = 0;
-            if (std.os.windows.kernel32.WriteConsoleW(
+            if (!WindowsConsole.WriteConsoleW(
                 self.stdout.handle,
                 remaining.ptr,
                 @intCast(remaining.len),
                 &written,
                 null,
-            ) == 0 or written == 0) return false;
+            ).toBool() or written == 0) return false;
             remaining = remaining[@intCast(written)..];
         }
         return true;
@@ -217,24 +234,24 @@ pub const StdoutOutput = struct {
 
 test "StdoutOutput leaves the Windows console output code page unchanged" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
-    if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
+    if (!isWindowsConsole(std.Io.File.stdout())) return error.SkipZigTest;
 
-    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+    const original_code_page = WindowsConsole.GetConsoleOutputCP();
     if (original_code_page == 0) return error.SkipZigTest;
-    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
+    defer _ = WindowsConsole.SetConsoleOutputCP(original_code_page);
 
-    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
+    if (!WindowsConsole.SetConsoleOutputCP(437).toBool()) return error.SkipZigTest;
 
     const stdout_output = StdoutOutput.init();
     try std.testing.expect(stdout_output.windowsConsole);
-    try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
+    try std.testing.expectEqual(@as(u32, 437), WindowsConsole.GetConsoleOutputCP());
 }
 
 test "StdoutOutput preserves bytes for redirected output" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const file = try tmp.dir.createFile("stdout", .{ .read = true });
-    defer file.close();
+    const file = try tmp.dir.createFile(std.testing.io, "stdout", .{ .read = true });
+    defer file.close(std.testing.io);
     try std.testing.expect(!isWindowsConsole(file));
 
     var stdout_output = StdoutOutput.initForFile(file);
@@ -244,14 +261,14 @@ test "StdoutOutput preserves bytes for redirected output" {
     stdout_output.bufferedOutput().write(expected[split..]);
 
     var actual: [expected.len]u8 = undefined;
-    const actual_len = try file.preadAll(&actual, 0);
+    const actual_len = try file.readPositionalAll(std.testing.io, &actual, 0);
     try std.testing.expectEqual(expected.len, actual_len);
     try std.testing.expectEqualStrings(expected, &actual);
 }
 
 pub const MemoryOutput = struct {
     allocator: Allocator,
-    bytes: std.ArrayListUnmanaged(u8) = .{},
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
 
     pub fn init(allocator: Allocator) MemoryOutput {
         return .{ .allocator = allocator };
@@ -270,6 +287,65 @@ pub const MemoryOutput = struct {
         self.bytes.appendSlice(self.allocator, data) catch {};
     }
 };
+
+fn BackendWriter(
+    comptime Backend: type,
+    comptime append: fn (*Backend, []const u8) error{BufferFull}!void,
+) type {
+    return struct {
+        const Writer = @This();
+
+        backend: *Backend,
+        interface: std.Io.Writer,
+
+        fn init(backend: *Backend) Writer {
+            return .{
+                .backend = backend,
+                .interface = .{
+                    .vtable = &.{ .drain = drain },
+                    .buffer = &.{},
+                },
+            };
+        }
+
+        pub fn write(self: Writer, data: []const u8) error{BufferFull}!usize {
+            var copy = self;
+            return copy.interface.write(data) catch return error.BufferFull;
+        }
+
+        pub fn writeAll(self: Writer, data: []const u8) error{BufferFull}!void {
+            var copy = self;
+            return copy.interface.writeAll(data) catch return error.BufferFull;
+        }
+
+        pub fn writeByte(self: Writer, byte: u8) error{BufferFull}!void {
+            var copy = self;
+            return copy.interface.writeByte(byte) catch return error.BufferFull;
+        }
+
+        pub fn print(self: Writer, comptime format: []const u8, args: anytype) error{BufferFull}!void {
+            var copy = self;
+            return copy.interface.print(format, args) catch return error.BufferFull;
+        }
+
+        fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+            const self: *Writer = @alignCast(@fieldParentPtr("interface", w));
+            var written: usize = 0;
+
+            for (data[0 .. data.len - 1]) |slice| {
+                append(self.backend, slice) catch return error.WriteFailed;
+                written += slice.len;
+            }
+
+            const pattern = data[data.len - 1];
+            for (0..splat) |_| {
+                append(self.backend, pattern) catch return error.WriteFailed;
+                written += pattern.len;
+            }
+            return written;
+        }
+    };
+}
 
 /// Tagged union dispatching to BufferedBackend or FeedBackend.
 pub const OutputBackend = union(enum) {
@@ -382,8 +458,8 @@ pub const BufferedBackend = struct {
 
     useThread: bool = false,
     renderThread: ?std.Thread = null,
-    renderMutex: std.Thread.Mutex = .{},
-    renderCondition: std.Thread.Condition = .{},
+    renderMutex: std.Io.Mutex = .init,
+    renderCondition: std.Io.Condition = .init,
     renderRequested: bool = false,
     shouldTerminate: bool = false,
     renderInProgress: bool = false,
@@ -433,9 +509,9 @@ pub const BufferedBackend = struct {
     /// allocator would be undefined behavior.
     pub fn deinit(self: *BufferedBackend) void {
         if (self.renderThread) |thread| {
-            self.renderMutex.lock();
+            self.renderMutex.lockUncancelable(io);
             while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
+                self.renderCondition.waitUncancelable(io, &self.renderMutex);
             }
             self.shouldTerminate = true;
             // Do NOT set renderRequested — the thread should wake, see
@@ -443,8 +519,8 @@ pub const BufferedBackend = struct {
             // the stale last-frame buffer. Previously setting renderRequested
             // here caused a stale frame to be emitted AFTER the shutdown
             // ANSI sequence had already restored the terminal.
-            self.renderCondition.signal();
-            self.renderMutex.unlock();
+            self.renderCondition.signal(io);
+            self.renderMutex.unlock(io);
             thread.join();
             self.renderThread = null;
         }
@@ -469,7 +545,7 @@ pub const BufferedBackend = struct {
     pub fn prepareFrame(self: *BufferedBackend) WriteStatus {
         if (!self.useThread) return .ok;
         if (!self.renderMutex.tryLock()) return .skipped;
-        defer self.renderMutex.unlock();
+        defer self.renderMutex.unlock(io);
         if (self.renderInProgress) return .skipped;
         return .ok;
     }
@@ -496,15 +572,15 @@ pub const BufferedBackend = struct {
             }
         } else {
             if (self.renderThread) |thread| {
-                self.renderMutex.lock();
+                self.renderMutex.lockUncancelable(io);
                 while (self.renderInProgress) {
-                    self.renderCondition.wait(&self.renderMutex);
+                    self.renderCondition.waitUncancelable(io, &self.renderMutex);
                 }
                 self.shouldTerminate = true;
                 // Wake the thread with a terminate-only signal; do not set
                 // renderRequested (that would replay the stale buffer).
-                self.renderCondition.signal();
-                self.renderMutex.unlock();
+                self.renderCondition.signal(io);
+                self.renderMutex.unlock(io);
 
                 thread.join();
                 self.renderThread = null;
@@ -519,41 +595,35 @@ pub const BufferedBackend = struct {
         self.useThread = use_thread;
     }
 
-    /// Frame-time writer context. A pointer to the backend so writes know
-    /// which active buffer to append to.
-    pub const WriterCtx = struct {
-        backend: *BufferedBackend,
-    };
+    pub const Writer = BackendWriter(BufferedBackend, bufferWrite);
 
-    pub const Writer = std.io.GenericWriter(WriterCtx, error{BufferFull}, bufferWrite);
-
-    fn bufferWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
-        const self = ctx.backend;
-        const bufferLen = if (self.activeBuffer == .A)
+    fn bufferWrite(self: *BufferedBackend, data: []const u8) error{BufferFull}!void {
+        const buffer_len = if (self.activeBuffer == .A)
             &self.outputLenA
         else
             &self.outputLenB;
-        const required = bufferLen.* + data.len;
+        const required = std.math.add(usize, buffer_len.*, data.len) catch {
+            self.frameWriteFailed = true;
+            return error.BufferFull;
+        };
 
         const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
 
         if (required > buffer.*.len) {
-            const capacity = @max(required, buffer.*.len * 2);
+            const doubled_capacity = std.math.mul(usize, buffer.*.len, 2) catch required;
+            const capacity = @max(required, doubled_capacity);
             buffer.* = self.allocator.realloc(buffer.*, capacity) catch {
                 self.frameWriteFailed = true;
                 return error.BufferFull;
             };
         }
 
-        @memcpy(buffer.*[bufferLen.*..][0..data.len], data);
-        bufferLen.* += data.len;
-        return data.len;
+        @memcpy(buffer.*[buffer_len.*..][0..data.len], data);
+        buffer_len.* = required;
     }
 
-    // TODO: std.io.GenericWriter is deprecated but the replacement is much more involved.
-    // Migrate when the ecosystem stabilizes.
     pub fn writer(self: *BufferedBackend) Writer {
-        return .{ .context = .{ .backend = self } };
+        return .init(self);
     }
 
     pub fn beginFrame(self: *BufferedBackend) void {
@@ -609,13 +679,13 @@ pub const BufferedBackend = struct {
             self.hasCommittedFrame = true;
             return .ok;
         }
-        const writeStart = std.time.microTimestamp();
+        const writeStart = std.Io.Clock.awake.now(io);
         const committed_buffer = self.activeBuffer;
 
         if (self.useThread) {
-            self.renderMutex.lock();
+            self.renderMutex.lockUncancelable(io);
             while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
+                self.renderCondition.waitUncancelable(io, &self.renderMutex);
             }
 
             // Hand off the just-written buffer to the render thread and flip
@@ -632,15 +702,15 @@ pub const BufferedBackend = struct {
 
             self.renderRequested = true;
             self.renderInProgress = true;
-            self.renderCondition.signal();
-            self.renderMutex.unlock();
+            self.renderCondition.signal(io);
+            self.renderMutex.unlock(io);
         } else {
             const to_write = if (self.activeBuffer == .A)
                 self.outputA[0..self.outputLenA]
             else
                 self.outputB[0..self.outputLenB];
             self.output.write(to_write);
-            self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+            self.lastWriteTimeUs = @as(f64, @floatFromInt(writeStart.untilNow(io, .awake).toMicroseconds()));
         }
 
         self.lastCommittedBuffer = committed_buffer;
@@ -650,16 +720,16 @@ pub const BufferedBackend = struct {
 
     fn renderThreadFn(self: *BufferedBackend) void {
         while (true) {
-            self.renderMutex.lock();
+            self.renderMutex.lockUncancelable(io);
             while (!self.renderRequested and !self.shouldTerminate) {
-                self.renderCondition.wait(&self.renderMutex);
+                self.renderCondition.waitUncancelable(io, &self.renderMutex);
             }
 
             // Terminate wins: when shouldTerminate is set, exit without
             // writing even if a render was also requested. This keeps
             // shutdown-ANSI the last thing on the wire.
             if (self.shouldTerminate) {
-                self.renderMutex.unlock();
+                self.renderMutex.unlock(io);
                 break;
             }
 
@@ -668,14 +738,14 @@ pub const BufferedBackend = struct {
             const outputData = self.currentOutputBuffer;
             const outputLen = self.currentOutputLen;
 
-            const writeStart = std.time.microTimestamp();
+            const writeStart = std.Io.Clock.awake.now(io);
 
             self.output.write(outputData[0..outputLen]);
 
-            self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+            self.lastWriteTimeUs = @as(f64, @floatFromInt(writeStart.untilNow(io, .awake).toMicroseconds()));
             self.renderInProgress = false;
-            self.renderCondition.signal();
-            self.renderMutex.unlock();
+            self.renderCondition.signal(io);
+            self.renderMutex.unlock(io);
         }
     }
 
@@ -683,11 +753,11 @@ pub const BufferedBackend = struct {
         if (data.len == 0) return;
 
         if (self.useThread) {
-            self.renderMutex.lock();
+            self.renderMutex.lockUncancelable(io);
             while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
+                self.renderCondition.waitUncancelable(io, &self.renderMutex);
             }
-            self.renderMutex.unlock();
+            self.renderMutex.unlock(io);
         }
 
         self.output.write(data);
@@ -695,11 +765,11 @@ pub const BufferedBackend = struct {
 
     pub fn writeOutMultiple(self: *BufferedBackend, data_slices: []const []const u8) void {
         if (self.useThread) {
-            self.renderMutex.lock();
+            self.renderMutex.lockUncancelable(io);
             while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
+                self.renderCondition.waitUncancelable(io, &self.renderMutex);
             }
-            self.renderMutex.unlock();
+            self.renderMutex.unlock(io);
         }
 
         var totalLen: usize = 0;
@@ -750,7 +820,7 @@ pub const BufferedBackend = struct {
 /// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
-    frameBytes: std.ArrayListUnmanaged(u8) = .{},
+    frameBytes: std.ArrayListUnmanaged(u8) = .empty,
 
     /// Set when staging a frame fails. No bytes from a failed frame are
     /// published; the renderer forces a later full repaint.
@@ -799,23 +869,17 @@ pub const FeedBackend = struct {
         return false;
     }
 
-    pub const WriterCtx = struct {
-        backend: *FeedBackend,
-    };
+    pub const Writer = BackendWriter(FeedBackend, frameWrite);
 
-    pub const Writer = std.io.GenericWriter(WriterCtx, error{BufferFull}, frameWrite);
-
-    fn frameWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
-        const self = ctx.backend;
+    fn frameWrite(self: *FeedBackend, data: []const u8) error{BufferFull}!void {
         self.frameBytes.appendSlice(self.feed.allocator, data) catch {
             self.frameWriteFailed = true;
             return error.BufferFull;
         };
-        return data.len;
     }
 
     pub fn writer(self: *FeedBackend) Writer {
-        return .{ .context = .{ .backend = self } };
+        return .init(self);
     }
 
     pub fn beginFrame(self: *FeedBackend) void {
@@ -828,7 +892,7 @@ pub const FeedBackend = struct {
     }
 
     pub fn endFrame(self: *FeedBackend) WriteStatus {
-        const writeStart = std.time.microTimestamp();
+        const writeStart = std.Io.Clock.awake.now(io);
         var status: WriteStatus = .ok;
 
         if (self.frameWriteFailed) {
@@ -839,7 +903,7 @@ pub const FeedBackend = struct {
             };
         }
 
-        self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+        self.lastWriteTimeUs = @as(f64, @floatFromInt(writeStart.untilNow(io, .awake).toMicroseconds()));
         return status;
     }
 

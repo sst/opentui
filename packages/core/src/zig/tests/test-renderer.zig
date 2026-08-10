@@ -1,14 +1,16 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const renderer = @import("../renderer.zig");
 const renderer_output = @import("../renderer-output.zig");
 const gp = @import("../grapheme.zig");
 
 pub const TestMemoryOutput = struct {
     allocator: std.mem.Allocator,
-    bytes: std.ArrayListUnmanaged(u8) = .{},
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
     last_write_start: usize = 0,
     last_write_len: usize = 0,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
     thread_safe: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) TestMemoryOutput {
@@ -25,8 +27,8 @@ pub const TestMemoryOutput = struct {
 
     fn write(ctx: *anyopaque, data: []const u8) void {
         const self: *TestMemoryOutput = @ptrCast(@alignCast(ctx));
-        if (self.thread_safe) self.mutex.lock();
-        defer if (self.thread_safe) self.mutex.unlock();
+        if (self.thread_safe) self.mutex.lockUncancelable(io);
+        defer if (self.thread_safe) self.mutex.unlock(io);
 
         const start = self.bytes.items.len;
         self.bytes.appendSlice(self.allocator, data) catch @panic("memory output write failed");
@@ -51,7 +53,7 @@ pub const TestRenderer = struct {
     // empty map so tests never observe the host environment (TMUX, STY, TERM,
     // ...). Heap-allocated because Terminal borrows a stable pointer while
     // TestRenderer is returned by value.
-    env_map: *std.process.EnvMap,
+    env_map: *std.process.Environ.Map,
     renderer: *renderer.CliRenderer,
 
     const CreateConfig = struct {
@@ -90,9 +92,9 @@ pub const TestRenderer = struct {
         memory.thread_safe = config.thread_safe;
         errdefer memory.deinit();
 
-        const env_map = try allocator.create(std.process.EnvMap);
+        const env_map = try allocator.create(std.process.Environ.Map);
         errdefer allocator.destroy(env_map);
-        env_map.* = std.process.EnvMap.init(allocator);
+        env_map.* = std.process.Environ.Map.init(allocator);
         errdefer env_map.deinit();
         for (config.env_vars) |env_var| {
             try env_map.put(env_var.key, env_var.value);

@@ -21,8 +21,8 @@ pub const MemRegistry = struct {
 
     pub fn init(allocator: Allocator) MemRegistry {
         return .{
-            .buffers = .{},
-            .free_slots = .{},
+            .buffers = .empty,
+            .free_slots = .empty,
             .allocator = allocator,
         };
     }

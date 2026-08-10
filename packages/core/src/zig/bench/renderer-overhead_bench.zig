@@ -30,7 +30,7 @@ fn drawFrame(target: anytype, frame: usize, scenario: Scenario) void {
     }
 }
 
-fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: Scenario) !bench_utils.BenchStats {
+fn runScenario(io: std.Io, allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: Scenario) !bench_utils.BenchStats {
     var test_renderer = try test_renderer_mod.TestRenderer.create(allocator, WIDTH, HEIGHT, pool);
     defer test_renderer.deinit();
     drawFrame(test_renderer.renderer.getNextBuffer(), 0, .full_change);
@@ -44,7 +44,7 @@ fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: S
             test_renderer.memory.bytes.clearRetainingCapacity();
             test_renderer.memory.last_write_start = 0;
             test_renderer.memory.last_write_len = 0;
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             _ = test_renderer.renderer.render(false);
             elapsed += timer.read();
         }
@@ -53,7 +53,7 @@ fn runScenario(allocator: std.mem.Allocator, pool: *gp.GraphemePool, scenario: S
     return stats;
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     _ = show_mem;
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -64,10 +64,10 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "10k cells one change no images", .kind = .one_change },
         .{ .name = "10k cells full change no images", .kind = .full_change },
     };
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        const stats = try runScenario(allocator, pool, scenario.kind);
+        const stats = try runScenario(io, allocator, pool, scenario.kind);
         try results.append(allocator, .{
             .name = scenario.name,
             .min_ns = stats.min_ns,

@@ -1,8 +1,7 @@
 const std = @import("std");
-
-const c = @cImport({
-    @cInclude("yoga/Yoga.h");
-});
+const builtin = @import("builtin");
+const c = @import("yoga");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 
 pub const YGNodeRef = c.YGNodeRef;
 pub const YGNodeConstRef = c.YGNodeConstRef;
@@ -100,7 +99,7 @@ const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.
 const JsDirtiedCallback = *const fn (?*anyopaque) callconv(.c) void;
 pub const NativeMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) ExternalYogaSize;
 var opentui_config: YGConfigRef = null;
-var opentui_config_mutex: std.Thread.Mutex = .{};
+var opentui_config_mutex: std.Io.Mutex = .init;
 var global_measure_callback: ?*const anyopaque = null;
 var global_dirtied_callback: ?*const anyopaque = null;
 
@@ -173,8 +172,8 @@ fn undefinedValue() c.YGValue {
 }
 
 fn getOpenTUIConfig() YGConfigRef {
-    opentui_config_mutex.lock();
-    defer opentui_config_mutex.unlock();
+    opentui_config_mutex.lockUncancelable(io);
+    defer opentui_config_mutex.unlock(io);
 
     if (opentui_config == null) {
         const config = c.YGConfigNew();

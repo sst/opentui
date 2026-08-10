@@ -85,6 +85,15 @@ function ensureBuildArtifacts(): void {
   if (!existsSync(nativePackageDir)) {
     throw new Error(`Missing native package directory at ${nativePackageDir}. Run bun run build first.`)
   }
+  if (!existsSync(join(nativePackageDir, "LICENSE-GHOSTTY"))) {
+    throw new Error("Native package is missing the Ghostty and Unicode license notices")
+  }
+  const leakedGhosttyFiles = readdirSync(nativePackageDir).filter(
+    (name) => name.includes("ghostty-vt") || name.endsWith(".a") || name.endsWith(".lib"),
+  )
+  if (leakedGhosttyFiles.length > 0) {
+    throw new Error(`Native package contains unbundled Ghostty artifacts: ${leakedGhosttyFiles.join(", ")}`)
+  }
 }
 
 function assertPortableDeclarations(): void {
@@ -367,7 +376,6 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
-
     const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
     const raw = image.takeRaw()
     try {

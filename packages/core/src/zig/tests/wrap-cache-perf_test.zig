@@ -42,9 +42,9 @@ test "word wrap complexity - width changes are O(n)" {
             _ = view.getVirtualLineCount();
 
             view.setWrapWidth(width);
-            var timer = std.time.Timer.start() catch unreachable;
+            const start = std.Io.Clock.awake.now(std.testing.io);
             _ = view.getVirtualLineCount();
-            iter_times[iter] = timer.read();
+            iter_times[iter] = @intCast(start.untilNow(std.testing.io, .awake).toNanoseconds());
         }
 
         // Sort and take median

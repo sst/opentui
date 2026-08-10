@@ -91,9 +91,9 @@ test "no_zwj: mixed text with ZWJ emoji" {
 }
 
 test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
-    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_unicode.deinit(testing.allocator);
-    var result_no_zwj: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_no_zwj: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_no_zwj.deinit(testing.allocator);
 
     const text = "Hi👩‍🚀Bye";

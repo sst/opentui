@@ -1810,8 +1810,8 @@ test "Rope - toText shows basic structure" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "branch") != null or std.mem.indexOf(u8, debug_text, "leaf") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "branch") != null or std.mem.find(u8, debug_text, "leaf") != null);
 }
 
 test "Rope - toText shows empty rope" {
@@ -1823,8 +1823,8 @@ test "Rope - toText shows empty rope" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[empty]") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[empty]") != null);
 }
 
 test "Rope - toText with union type shows tags" {
@@ -1881,11 +1881,11 @@ test "Rope - toText with union type shows tags" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "brk") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "linestart") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w5") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w10") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "text") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "brk") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "linestart") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "w5") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "w10") != null);
 }
 
 test "Rope - toText with nested structure" {
@@ -1903,8 +1903,8 @@ test "Rope - toText with nested structure" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[branch") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[branch") != null);
 }
 
 test "Rope - toText after insertions shows updated structure" {
@@ -1915,13 +1915,13 @@ test "Rope - toText after insertions shows updated structure" {
     var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
 
     const before = try rope.toText(arena.allocator());
-    try std.testing.expect(std.mem.indexOf(u8, before, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, before, "[root") != null);
 
     try rope.append(.{ .value = 2 });
     try rope.append(.{ .value = 3 });
 
     const after = try rope.toText(arena.allocator());
-    try std.testing.expect(std.mem.indexOf(u8, after, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, after, "[root") != null);
     try std.testing.expect(after.len >= before.len);
 }
 
@@ -1938,8 +1938,8 @@ test "Rope - toText with custom metrics shows width info" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "w") != null);
 }
 
 test "Rope - toText shows single leaf" {
@@ -1951,9 +1951,9 @@ test "Rope - toText shows single leaf" {
 
     const debug_text = try rope.toText(arena.allocator());
 
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[leaf") != null);
-    try std.testing.expect(std.mem.indexOf(u8, debug_text, "]") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "[leaf") != null);
+    try std.testing.expect(std.mem.find(u8, debug_text, "]") != null);
 }
 
 test "Rope - marker cache MUST update after delete operations" {

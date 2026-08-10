@@ -520,8 +520,8 @@ pub fn writeSixelFramedPayload(writer: anytype, payload: []const u8, tmux: bool)
 }
 
 pub fn writeSixel(allocator: std.mem.Allocator, writer: anytype, image: *native_image.Image, tmux: bool) !void {
-    var payload: std.ArrayList(u8) = .empty;
-    defer payload.deinit(allocator);
-    try writeSixelPayload(allocator, payload.writer(allocator), image);
-    try writeSixelFramedPayload(writer, payload.items, tmux);
+    var payload: std.Io.Writer.Allocating = .init(allocator);
+    defer payload.deinit();
+    try writeSixelPayload(allocator, &payload.writer, image);
+    try writeSixelFramedPayload(writer, payload.written(), tmux);
 }

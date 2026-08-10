@@ -1720,7 +1720,7 @@ test "EditorView - horizontal scroll: editing in scrolled view" {
     var out_buffer: [200]u8 = undefined;
     const written = eb.getText(&out_buffer);
     const text = out_buffer[0..written];
-    try std.testing.expect(std.mem.indexOf(u8, text, "XYZ") != null);
+    try std.testing.expect(std.mem.find(u8, text, "XYZ") != null);
 }
 
 test "EditorView - horizontal scroll: backspace in scrolled view" {
@@ -2343,15 +2343,14 @@ test "EditorView - horizontal scroll: combined vertical and horizontal scrolling
     const repeated_line = "\nAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJ";
 
     var buffer: [3000]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
-    writer.writeAll(line0) catch unreachable;
+    var writer: std.Io.Writer = .fixed(&buffer);
+    try writer.writeAll(line0);
     var i: u32 = 1;
     while (i < 20) : (i += 1) {
-        writer.writeAll(repeated_line) catch unreachable;
+        try writer.writeAll(repeated_line);
     }
 
-    const text = fbs.getWritten();
+    const text = writer.buffered();
     try eb.setText(text);
 
     try eb.setCursor(15, 60);
@@ -2900,9 +2899,9 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const line = out_buffer[0..written];
 
-    try std.testing.expect(std.mem.indexOf(u8, line, short_text) != null);
-    try std.testing.expect(std.mem.indexOf(u8, line, "roken tests") == null);
-    try std.testing.expect(std.mem.indexOf(u8, line, "TODO in the codebase") == null);
+    try std.testing.expect(std.mem.find(u8, line, short_text) != null);
+    try std.testing.expect(std.mem.find(u8, line, "roken tests") == null);
+    try std.testing.expect(std.mem.find(u8, line, "TODO in the codebase") == null);
 
     const tail = opt_buffer.get(35, 0) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(@as(u32, 32), tail.char);

@@ -18,7 +18,7 @@ fn generateAsciiText(allocator: std.mem.Allocator, length: usize) ![]const u8 {
 }
 
 fn generateMixedText(allocator: std.mem.Allocator, length: usize) ![]const u8 {
-    var text: std.ArrayListUnmanaged(u8) = .{};
+    var text: std.ArrayList(u8) = .empty;
     errdefer text.deinit(allocator);
     var i: usize = 0;
     while (text.items.len < length) : (i += 1) {
@@ -34,7 +34,7 @@ fn generateMixedText(allocator: std.mem.Allocator, length: usize) ![]const u8 {
 }
 
 fn generateUnicodeHeavyText(allocator: std.mem.Allocator, length: usize) ![]const u8 {
-    var text: std.ArrayListUnmanaged(u8) = .{};
+    var text: std.ArrayList(u8) = .empty;
     errdefer text.deinit(allocator);
     var i: usize = 0;
     while (text.items.len < length) : (i += 1) {
@@ -51,11 +51,12 @@ fn generateUnicodeHeavyText(allocator: std.mem.Allocator, length: usize) ![]cons
 
 // Benchmark isAsciiOnly
 fn benchIsAsciiOnly(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // Small ASCII text (1KB)
@@ -68,7 +69,7 @@ fn benchIsAsciiOnly(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
@@ -95,7 +96,7 @@ fn benchIsAsciiOnly(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
@@ -122,7 +123,7 @@ fn benchIsAsciiOnly(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
@@ -149,7 +150,7 @@ fn benchIsAsciiOnly(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
@@ -171,11 +172,12 @@ fn benchIsAsciiOnly(
 
 // Benchmark findLineBreaks
 fn benchFindLineBreaks(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // Text with LF breaks
@@ -186,7 +188,7 @@ fn benchFindLineBreaks(
             defer temp.deinit();
             const alloc = temp.allocator();
 
-            var text: std.ArrayListUnmanaged(u8) = .{};
+            var text: std.ArrayList(u8) = .empty;
             for (0..100) |_| {
                 try text.appendSlice(alloc, "This is a line of text that ends with a newline character.\n");
             }
@@ -197,7 +199,7 @@ fn benchFindLineBreaks(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
@@ -222,7 +224,7 @@ fn benchFindLineBreaks(
             defer temp.deinit();
             const alloc = temp.allocator();
 
-            var text: std.ArrayListUnmanaged(u8) = .{};
+            var text: std.ArrayList(u8) = .empty;
             for (0..100) |_| {
                 try text.appendSlice(alloc, "This is a line of text that ends with CRLF.\r\n");
             }
@@ -233,7 +235,7 @@ fn benchFindLineBreaks(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
@@ -258,7 +260,7 @@ fn benchFindLineBreaks(
             defer temp.deinit();
             const alloc = temp.allocator();
 
-            var text: std.ArrayListUnmanaged(u8) = .{};
+            var text: std.ArrayList(u8) = .empty;
             for (0..1000) |_| {
                 try text.appendSlice(alloc, "Short line\n");
             }
@@ -269,7 +271,7 @@ fn benchFindLineBreaks(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
@@ -291,11 +293,12 @@ fn benchFindLineBreaks(
 
 // Benchmark findWrapBreaks
 fn benchFindWrapBreaks(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // ASCII text
@@ -312,7 +315,7 @@ fn benchFindWrapBreaks(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try utf8.findWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
@@ -343,7 +346,7 @@ fn benchFindWrapBreaks(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try utf8.findWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
@@ -365,11 +368,12 @@ fn benchFindWrapBreaks(
 
 // Benchmark findWrapPosByWidth
 fn benchFindWrapPosByWidth(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // ASCII text, narrow width
@@ -382,7 +386,7 @@ fn benchFindWrapPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findWrapPosByWidth(text, 40, 4, true, .unicode);
                 stats.record(timer.read());
             }
@@ -409,7 +413,7 @@ fn benchFindWrapPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findWrapPosByWidth(text, 120, 4, true, .unicode);
                 stats.record(timer.read());
             }
@@ -436,7 +440,7 @@ fn benchFindWrapPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
@@ -463,7 +467,7 @@ fn benchFindWrapPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
@@ -485,11 +489,12 @@ fn benchFindWrapPosByWidth(
 
 // Benchmark findPosByWidth
 fn benchFindPosByWidth(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // ASCII text, find middle
@@ -502,7 +507,7 @@ fn benchFindPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findPosByWidth(text, 500, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
@@ -529,7 +534,7 @@ fn benchFindPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findPosByWidth(text, 90000, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
@@ -556,7 +561,7 @@ fn benchFindPosByWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.findPosByWidth(text, 5000, 4, false, true, .unicode);
                 stats.record(timer.read());
             }
@@ -578,11 +583,12 @@ fn benchFindPosByWidth(
 
 // Benchmark calculateTextWidth
 fn benchCalculateTextWidth(
+    io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
     // Small ASCII text (1KB)
@@ -595,7 +601,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
@@ -622,7 +628,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
@@ -649,7 +655,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
@@ -674,7 +680,7 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const alloc = temp.allocator();
 
-            var text: std.ArrayListUnmanaged(u8) = .{};
+            var text: std.ArrayList(u8) = .empty;
             for (0..10 * 1024) |i| {
                 if (i % 20 == 0) {
                     try text.append(alloc, '\t');
@@ -685,7 +691,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text.items, 4, false, .unicode);
                 stats.record(timer.read());
             }
@@ -712,7 +718,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text, 4, false, .unicode);
                 stats.record(timer.read());
             }
@@ -739,7 +745,7 @@ fn benchCalculateTextWidth(
 
             var stats: BenchStats = .{};
             for (0..iterations) |_| {
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 _ = utf8.calculateTextWidth(text, 4, false, .unicode);
                 stats.record(timer.read());
             }
@@ -760,39 +766,40 @@ fn benchCalculateTextWidth(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 1000;
 
     // isAsciiOnly benchmarks
-    const ascii_only_results = try benchIsAsciiOnly(allocator, iterations, bench_filter);
+    const ascii_only_results = try benchIsAsciiOnly(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, ascii_only_results);
 
     // findLineBreaks benchmarks
-    const line_breaks_results = try benchFindLineBreaks(allocator, iterations, bench_filter);
+    const line_breaks_results = try benchFindLineBreaks(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, line_breaks_results);
 
     // findWrapBreaks benchmarks
-    const wrap_breaks_results = try benchFindWrapBreaks(allocator, iterations, bench_filter);
+    const wrap_breaks_results = try benchFindWrapBreaks(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, wrap_breaks_results);
 
     // findWrapPosByWidth benchmarks
-    const wrap_pos_results = try benchFindWrapPosByWidth(allocator, iterations, bench_filter);
+    const wrap_pos_results = try benchFindWrapPosByWidth(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, wrap_pos_results);
 
     // findPosByWidth benchmarks
-    const pos_width_results = try benchFindPosByWidth(allocator, iterations, bench_filter);
+    const pos_width_results = try benchFindPosByWidth(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, pos_width_results);
 
     // calculateTextWidth benchmarks
-    const text_width_results = try benchCalculateTextWidth(allocator, iterations, bench_filter);
+    const text_width_results = try benchCalculateTextWidth(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, text_width_results);
 
     return all_results.toOwnedSlice(allocator);

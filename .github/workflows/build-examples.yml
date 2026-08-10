@@ -130,6 +130,7 @@ jobs:
           set -e
           mkdir -p artifacts/example-notices
           cp LICENSE artifacts/example-notices/LICENSE
+          cp packages/core/THIRD_PARTY_LICENSES/GHOSTTY artifacts/example-notices/LICENSE-GHOSTTY
           cp packages/core/src/zig/vendor/wuffs/LICENSE artifacts/example-notices/LICENSE-WUFFS
           cp packages/core/src/zig/vendor/stb/LICENSE artifacts/example-notices/LICENSE-STB
           cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/example-notices/LICENSE-LIBWEBP
@@ -195,6 +196,8 @@ jobs:
           test -f artifacts/examples-linux-x64.zip || (echo "❌ examples-linux-x64.zip missing!" && exit 1)
           test -f artifacts/examples-windows-x64.zip || (echo "❌ examples-windows-x64.zip missing!" && exit 1)
           for directory in artifacts/examples-{darwin-x64,darwin-arm64,linux-x64,windows-x64}; do
+            test -f "$directory/LICENSE" || (echo "❌ OpenTUI license missing from $directory" && exit 1)
+            test -f "$directory/LICENSE-GHOSTTY" || (echo "❌ Ghostty notices missing from $directory" && exit 1)
             test -f "$directory/LICENSE-LIBWEBP" || (echo "❌ libwebp notice missing from $directory" && exit 1)
             test -f "$directory/PATENTS-LIBWEBP" || (echo "❌ libwebp patents missing from $directory" && exit 1)
             test -f "$directory/AUTHORS-LIBWEBP" || (echo "❌ libwebp authors missing from $directory" && exit 1)

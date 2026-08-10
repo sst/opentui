@@ -104,8 +104,8 @@ test "Selection - with newline characters" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "ne 2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "\n") != null);
+    try std.testing.expect(std.mem.find(u8, text, "ne 2") != null);
+    try std.testing.expect(std.mem.find(u8, text, "\n") != null);
 }
 
 test "Selection - across empty lines" {
@@ -201,9 +201,9 @@ test "Selection - including multiple line breaks" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "B") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "C") != null);
+    try std.testing.expect(std.mem.find(u8, text, "\n") != null);
+    try std.testing.expect(std.mem.find(u8, text, "B") != null);
+    try std.testing.expect(std.mem.find(u8, text, "C") != null);
 }
 
 test "Selection - at line boundaries" {
@@ -226,9 +226,9 @@ test "Selection - at line boundaries" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Li") != null);
+    try std.testing.expect(std.mem.find(u8, text, "1") != null);
+    try std.testing.expect(std.mem.find(u8, text, "\n") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Li") != null);
 }
 
 test "Selection - empty text" {
@@ -578,8 +578,8 @@ test "Selection - with graphemes" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "Hello") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "🌍") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Hello") != null);
+    try std.testing.expect(std.mem.find(u8, text, "🌍") != null);
 }
 
 test "Selection - wide emoji at boundary" {
@@ -920,9 +920,9 @@ test "Selection - updateLocalSelection across multiple lines" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expect(std.mem.indexOf(u8, text, "ne 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "Line") != null);
+    try std.testing.expect(std.mem.find(u8, text, "ne 1") != null);
+    try std.testing.expect(std.mem.find(u8, text, "\n") != null);
+    try std.testing.expect(std.mem.find(u8, text, "Line") != null);
 }
 
 test "Selection - updateLocalSelection backward selection" {
@@ -1051,6 +1051,6 @@ test "Selection - updateLocalSelection preserves anchor correctly" {
     const text = out_buffer[0..len];
 
     // Should include "e 2\nLine 3" since anchor is at col 3 of line 1 and focus at end of line 2
-    try std.testing.expect(std.mem.indexOf(u8, text, "e 2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "\nLine 3") != null);
+    try std.testing.expect(std.mem.find(u8, text, "e 2") != null);
+    try std.testing.expect(std.mem.find(u8, text, "\nLine 3") != null);
 }

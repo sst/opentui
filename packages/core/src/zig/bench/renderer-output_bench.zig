@@ -8,6 +8,7 @@ pub const benchName = "Renderer Output";
 const Operation = enum { atomic, backend };
 
 fn runScenario(
+    io: std.Io,
     allocator: std.mem.Allocator,
     result_allocator: std.mem.Allocator,
     name: []const u8,
@@ -34,7 +35,7 @@ fn runScenario(
     var stats: bench_utils.BenchStats = .{};
     var checksum: u64 = 0;
     for (0..iterations + 5) |iteration| {
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         switch (operation) {
             .atomic => try feed.writeAtomic(bytes),
             .backend => {
@@ -76,7 +77,7 @@ fn runScenario(
     };
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     const scenarios = [_]struct {
         name: []const u8,
         byte_count: usize,
@@ -88,12 +89,13 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "writeAtomic 4 MiB", .byte_count = 4 * 1024 * 1024, .iterations = 100, .operation = .atomic },
         .{ .name = "FeedBackend frame 4 MiB", .byte_count = 4 * 1024 * 1024, .iterations = 100, .operation = .backend },
     };
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         try results.append(allocator, try runScenario(
+            io,
             gpa.allocator(),
             allocator,
             scenario.name,

@@ -1,7 +1,9 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 
 const Allocator = std.mem.Allocator;
-var icc_cache_mutex: std.Thread.Mutex = .{};
+var icc_cache_mutex: std.Io.Mutex = .init;
 var icc_cache_clients: u32 = 0;
 
 extern fn ot_image_png_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
@@ -310,7 +312,7 @@ fn pngKeywordByteAllowed(byte: u8) bool {
 }
 
 fn parsePngIccp(payload: []const u8, payload_offset: usize) !struct { offset: usize, len: usize } {
-    const name_end = std.mem.indexOfScalar(u8, payload, 0) orelse return error.MalformedInput;
+    const name_end = std.mem.findScalar(u8, payload, 0) orelse return error.MalformedInput;
     if (name_end == 0 or name_end > 79 or name_end + 2 > payload.len) return error.MalformedInput;
     var previous_space = false;
     for (payload[0..name_end], 0..) |byte, index| {
@@ -344,37 +346,37 @@ pub const IccCacheStats = struct {
 };
 
 pub fn clearIccCache() void {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     ot_image_icc_cache_clear();
 }
 
 pub fn retainIccCache() void {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     std.debug.assert(icc_cache_clients < std.math.maxInt(u32));
     icc_cache_clients += 1;
 }
 
 pub fn releaseIccCache() void {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     std.debug.assert(icc_cache_clients > 0);
     icc_cache_clients -= 1;
     if (icc_cache_clients == 0) ot_image_icc_cache_clear();
 }
 
 pub fn getIccCacheStats() IccCacheStats {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     var stats: IccCacheStats = undefined;
     ot_image_icc_cache_stats(&stats.hits, &stats.misses, &stats.entries);
     return stats;
 }
 
 pub fn testFailIccProfileCopyAllocationOnce() void {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     ot_image_icc_test_fail_profile_copy_allocation_once();
 }
 
@@ -555,8 +557,8 @@ fn scanPng(data: []const u8) !PngMetadata {
 }
 
 fn transformPngIcc(compressed: []const u8, color_type: u8, pixels: []u8, width: u32, height: u32) !void {
-    icc_cache_mutex.lock();
-    defer icc_cache_mutex.unlock();
+    icc_cache_mutex.lock(io) catch unreachable;
+    defer icc_cache_mutex.unlock(io);
     const result = ot_image_icc_transform_rgba(
         compressed.ptr,
         @intCast(compressed.len),
@@ -671,14 +673,14 @@ fn probeInternal(
 
     if (metadata.iccp_compressed_len > 0) {
         const compressed = data[metadata.iccp_compressed_offset..][0..metadata.iccp_compressed_len];
-        icc_cache_mutex.lock();
+        icc_cache_mutex.lock(io) catch unreachable;
         const icc_result = ot_image_icc_validate(
             compressed.ptr,
             @intCast(compressed.len),
             metadata.color_type,
             max_icc_profile_bytes,
         );
-        icc_cache_mutex.unlock();
+        icc_cache_mutex.unlock(io);
         const icc_status = statusFromIccResult(icc_result);
         if (icc_status != .ok) return icc_status;
     }

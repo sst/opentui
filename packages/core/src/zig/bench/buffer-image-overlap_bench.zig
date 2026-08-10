@@ -121,6 +121,7 @@ fn runWorkload(target: *buffer.OptimizedBuffer, scenario: Scenario) !void {
 }
 
 fn runScenario(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     source: *image.Image,
@@ -135,7 +136,7 @@ fn runScenario(
     for (0..WARMUP_SAMPLES + SAMPLES) |sample| {
         target.clear(ansi.rgbColor(0, 0, 0, 255), null);
         try addPlacements(target, source, scenario);
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         try runWorkload(target, scenario);
         const elapsed = timer.read();
         if (sample >= WARMUP_SAMPLES) stats.record(elapsed);
@@ -143,7 +144,7 @@ fn runScenario(
     return stats;
 }
 
-pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
+pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     _ = show_mem;
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -161,10 +162,10 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "1k transparent full fills with sparse placement", .kind = .transparent_fill_sparse },
         .{ .name = "100 transparent full fills with dense placement", .kind = .transparent_fill_dense },
     };
-    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
+    var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .empty;
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        const stats = try runScenario(allocator, pool, source, scenario.kind);
+        const stats = try runScenario(io, allocator, pool, source, scenario.kind);
         try results.append(allocator, .{
             .name = scenario.name,
             .min_ns = stats.min_ns,
