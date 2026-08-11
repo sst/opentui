@@ -1,6 +1,6 @@
 ---
 name: opentui
-description: Build terminal UIs with OpenTUI. Covers core, components, native images, audio, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
+description: Build terminal UIs with OpenTUI. Covers core, components, native images, audio, clipboard, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
 ---
 
 # OpenTUI Skill
@@ -26,6 +26,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 - Components: `/docs/components/text`, `/docs/components/input`, `/docs/components/image`
 - Layout: `/docs/core-concepts/layout`
 - Keyboard: `/docs/core-concepts/keyboard`
+- Clipboard: `/docs/core-concepts/clipboard`
 - Plugins: `/docs/plugins/slots`
 - Runtime and packaging: `/docs/reference/env-vars`, `/docs/reference/standalone-executables`
 - Package entrypoints: `/docs/reference/package-entrypoints`
@@ -40,10 +41,11 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `getting-started`, `installation`, `quickstart`, `intro`                                           | `docs/getting-started.mdx`                  |
 | `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`                                          | `docs/core-concepts/renderer.mdx`           |
-| `audio`, `native-audio`, `sound`, `playback`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft`    | `docs/core-concepts/audio.mdx`              |
+| `audio`, `native-audio`, `sound`, `playback`, `capture`, `microphone`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft` | `docs/core-concepts/audio.mdx` |
 | `keymap`, `keybindings`, `shortcuts`, `commands`, `leader`, `ex-commands`                          | `docs/keymap/overview.mdx`                  |
 | `layout`, `flexbox`, `yoga`, `positioning`                                                         | `docs/core-concepts/layout.mdx`             |
 | `keyboard`, `input`, `keybindings`, `paste`, `focus`                                               | `docs/core-concepts/keyboard.mdx`           |
+| `clipboard`, `copy`, `osc52`, `host-clipboard`                                                     | `docs/core-concepts/clipboard.mdx`          |
 | `testing`, `test-renderer`, `snapshots`, `frames`                                                  | `docs/core-concepts/testing.mdx`            |
 | `react`, `jsx`, `hooks`, `keyboard`, `paste`, `focus`, `blur`, `selection`, `animation`, `testing` | `docs/bindings/react.mdx`                   |
 | `solid`, `jsx`, `signals`, `hooks`, `keyboard`, `animation`, `testing`                             | `docs/bindings/solid.mdx`                   |
@@ -70,6 +72,7 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 - `docs/keymap/overview.mdx`
 - `docs/core-concepts/layout.mdx`
 - `docs/core-concepts/keyboard.mdx`
+- `docs/core-concepts/clipboard.mdx`
 - `docs/bindings/react.mdx`
 - `docs/bindings/solid.mdx`
 - `docs/plugins/slots.mdx`
