@@ -206,7 +206,8 @@ describe("ScrollBoxRenderable - child delegation", () => {
     const offset = rows[4].y - scrollbox.viewport.y
 
     const preservation = scrollbox.preserveViewport(rows[4])
-    preservation?.cancel()
+    expect(preservation).toBeDefined()
+    preservation!.cancel()
     scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
     await renderOnce()
 
@@ -292,12 +293,12 @@ describe("ScrollBoxRenderable - child delegation", () => {
 
     scrollbox.preserveViewport(rows[4])
     scrollbox.remove(rows[4])
-    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(4)
 
-    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    scrollbox.insertBefore(rows[4], rows[5])
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(4)
@@ -353,6 +354,62 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(4)
+  })
+
+  test("cancels explicit viewport preservation when scrollBy moves away and back", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[4])
+    scrollbox.scrollBy(1)
+    scrollbox.scrollBy(-1)
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(4)
+  })
+
+  test("preserves a horizontal viewport anchor when preceding content resizes", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 4,
+      height: 2,
+      scrollX: true,
+      scrollY: false,
+      viewportCulling: false,
+      contentOptions: { flexDirection: "row" },
+    })
+    testRenderer.root.add(scrollbox)
+    const columns = Array.from({ length: 10 }, () => {
+      const column = new BoxRenderable(testRenderer, { width: 1, flexShrink: 0 })
+      scrollbox.add(column)
+      return column
+    })
+    await renderOnce()
+    scrollbox.scrollLeft = 4
+    await renderOnce()
+    const offset = columns[6].x - scrollbox.viewport.x
+
+    const preservation = scrollbox.preserveViewport(columns[6])
+    columns[0].width = 3
+    await renderOnce()
+    preservation?.cancel()
+
+    expect(scrollbox.scrollLeft).toBe(6)
+    expect(columns[6].x - scrollbox.viewport.x).toBe(offset)
   })
 
   test("explicit viewport preservation pauses sticky top only for its active scope", async () => {

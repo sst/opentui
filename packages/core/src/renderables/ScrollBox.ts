@@ -193,11 +193,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   set scrollTop(value: number) {
-    const previous = this.verticalScrollBar.scrollPosition
     this.verticalScrollBar.scrollPosition = value
-    if (!this._isApplyingStickyScroll && !this.restoringViewport && this.scrollTop !== previous) {
-      this.scrollRevision++
-    }
     this.updateStickyState()
   }
 
@@ -206,11 +202,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   set scrollLeft(value: number) {
-    const previous = this.horizontalScrollBar.scrollPosition
     this.horizontalScrollBar.scrollPosition = value
-    if (!this._isApplyingStickyScroll && !this.restoringViewport && this.scrollLeft !== previous) {
-      this.scrollRevision++
-    }
     this.updateStickyState()
   }
 
@@ -398,6 +390,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
+        if (!this._isApplyingStickyScroll && !this.restoringViewport) this.scrollRevision++
         this.updateStickyState()
       },
     })
@@ -414,6 +407,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
+        if (!this._isApplyingStickyScroll && !this.restoringViewport) this.scrollRevision++
         this.updateStickyState()
       },
     })
@@ -445,8 +439,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
-    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar
-    // change will trigger the scrollTop setter which handles it
   }
 
   public preserveViewport(anchor: Renderable, options: PreserveViewportOptions = {}): ViewportPreservation | undefined {
