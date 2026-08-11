@@ -5,11 +5,12 @@ import { RGBA } from "../lib/RGBA.js"
 import type { ImageRenderProtocol, RenderContext, TerminalCapabilities } from "../types.js"
 
 export type ImageFit = "fit" | "cover" | "fill"
+export type ImageRenderableSource = ImageSource | NativeImage
 
 const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
 export interface ImageRenderableOptions extends RenderableOptions<ImageRenderable> {
-  source?: ImageSource
+  source?: ImageRenderableSource
   fit?: ImageFit
   protocol?: ImageRenderProtocol
   onLoad?: (image: NativeImage) => void
@@ -38,8 +39,9 @@ function pixelResolution(ctx: RenderContext): { width: number; height: number } 
 }
 
 export class ImageRenderable extends Renderable {
-  private _source: ImageSource | undefined
+  private _source: ImageRenderableSource | undefined
   private _image: NativeImage | null = null
+  private _pendingImage: NativeImage | null = null
   private _loadError: unknown = null
   private _loadController: AbortController | null = null
   public onLoad?: (image: NativeImage) => void
@@ -57,16 +59,18 @@ export class ImageRenderable extends Renderable {
     if (options.source !== undefined) this.source = options.source
   }
 
-  public get source(): ImageSource | undefined {
+  public get source(): ImageRenderableSource | undefined {
     return this._source
   }
 
-  public set source(source: ImageSource | undefined) {
+  public set source(source: ImageRenderableSource | undefined) {
     source ??= undefined
     if (source === this._source) return
     this._source = source
     this._loadController?.abort()
     this._loadController = null
+    this._pendingImage?.dispose()
+    this._pendingImage = null
 
     if (source === undefined) {
       this._loadError = null
@@ -80,7 +84,19 @@ export class ImageRenderable extends Renderable {
     const controller = new AbortController()
     this._loadController = controller
     this._loadError = null
-    this.loadPromise = this.load(source, controller)
+    let imagePromise: Promise<NativeImage>
+    if (source instanceof NativeImage) {
+      try {
+        const image = source.retain()
+        this._pendingImage = image
+        imagePromise = Promise.resolve(image)
+      } catch (error) {
+        imagePromise = Promise.reject(error)
+      }
+    } else {
+      imagePromise = NativeImage.load(source, { signal: controller.signal })
+    }
+    this.loadPromise = this.load(imagePromise, controller)
   }
 
   public get image(): NativeImage | null {
@@ -202,10 +218,10 @@ export class ImageRenderable extends Renderable {
     )
   }
 
-  private async load(source: ImageSource, controller: AbortController): Promise<void> {
+  private async load(imagePromise: Promise<NativeImage>, controller: AbortController): Promise<void> {
     let image: NativeImage
     try {
-      image = await NativeImage.load(source, { signal: controller.signal })
+      image = await imagePromise
     } catch (error) {
       if (controller.signal.aborted || this.isDestroyed || this._loadController !== controller) return
       this._loadController = null
@@ -219,6 +235,7 @@ export class ImageRenderable extends Renderable {
       return
     }
 
+    if (this._pendingImage === image) this._pendingImage = null
     const previous = this._image
     this._image = image
     this._loadController = null
@@ -230,6 +247,8 @@ export class ImageRenderable extends Renderable {
   protected destroySelf(): void {
     this._loadController?.abort()
     this._loadController = null
+    this._pendingImage?.dispose()
+    this._pendingImage = null
     this._image?.dispose()
     this._image = null
     super.destroySelf()

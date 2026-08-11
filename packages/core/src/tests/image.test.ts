@@ -538,6 +538,18 @@ describe("NativeImage", () => {
     }
   })
 
+  test("retains independently disposable references without copying", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const retained = image.retain()
+    expect(retained.ptr).not.toBe(image.ptr)
+    image.dispose()
+    try {
+      expect([...retained.raw().data]).toEqual([1, 2, 3, 255])
+    } finally {
+      retained.dispose()
+    }
+  })
+
   test("transfers native RGBA pixels without copying", () => {
     const pixels = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
     const image = NativeImage.fromRgba(pixels, 2, 1)

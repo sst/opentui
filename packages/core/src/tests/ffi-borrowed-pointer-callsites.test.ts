@@ -661,6 +661,7 @@ describe("borrowed pointer call sites", () => {
       "imageDecode",
       "imageCreateFromRgba",
       "imageGetInfo",
+      "imageRetain",
       "imageClone",
       "imageCopyPixels",
       "imageResize",
@@ -693,6 +694,7 @@ describe("borrowed pointer call sites", () => {
       lib.imageDecode(data)
       lib.imageCreateFromRgba(pixels, 1, 1, 4)
       lib.imageGetInfo(handle)
+      lib.imageRetain(handle)
       lib.imageClone(handle)
       lib.imageCopyPixels(handle, destination, 4, false)
       lib.imageResize(handle, 1, 1, 0)
@@ -720,6 +722,7 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageCreateFromRgba")![0]).toBe(pixels)
       expect(calls.get("imageCreateFromRgba")![5]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageRetain")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageCopyPixels")![1]).toBe(destination)
       expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
