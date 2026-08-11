@@ -11,16 +11,24 @@ import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./S
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
   private _viewportCulling: boolean
+  private onLayout: () => void
 
   constructor(
     ctx: RenderContext,
     viewport: BoxRenderable,
     viewportCulling: boolean,
+    onLayout: () => void,
     options: RenderableOptions<BoxRenderable>,
   ) {
     super(ctx, options)
     this.viewport = viewport
     this._viewportCulling = viewportCulling
+    this.onLayout = onLayout
+  }
+
+  public override updateFromLayout(): void {
+    super.updateFromLayout()
+    this.onLayout()
   }
 
   get viewportCulling(): boolean {
@@ -71,6 +79,22 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   viewportCulling?: boolean
 }
 
+export interface ViewportPreservation {
+  cancel(): void
+}
+
+export interface PreserveViewportOptions {
+  id?: string
+}
+
+interface ViewportAnchor extends ViewportPreservation {
+  child: Renderable
+  id?: string
+  left: number
+  top: number
+  scrollRevision: number
+}
+
 const SCROLLBOX_PADDING_KEYS = [
   "padding",
   "paddingX",
@@ -117,6 +141,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   protected _focusable: boolean = true
   private selectionListener?: () => void
+  private viewportAnchor?: ViewportAnchor
+  private scrollRevision = 0
+  private restoringViewport = false
 
   private autoScrollMouseX: number = 0
   private autoScrollMouseY: number = 0
@@ -166,7 +193,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   set scrollTop(value: number) {
+    const previous = this.verticalScrollBar.scrollPosition
     this.verticalScrollBar.scrollPosition = value
+    if (!this._isApplyingStickyScroll && !this.restoringViewport && this.scrollTop !== previous) {
+      this.scrollRevision++
+    }
     this.updateStickyState()
   }
 
@@ -175,7 +206,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   set scrollLeft(value: number) {
+    const previous = this.horizontalScrollBar.scrollPosition
     this.horizontalScrollBar.scrollPosition = value
+    if (!this._isApplyingStickyScroll && !this.restoringViewport && this.scrollLeft !== previous) {
+      this.scrollRevision++
+    }
     this.updateStickyState()
   }
 
@@ -337,7 +372,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new ContentRenderable(ctx, this.viewport, viewportCulling, {
+    this.content = new ContentRenderable(ctx, this.viewport, viewportCulling, () => this.restoreViewport(), {
       alignSelf: "flex-start",
       flexShrink: 0,
       ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
@@ -410,6 +445,53 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
     // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar
     // change will trigger the scrollTop setter which handles it
+  }
+
+  public preserveViewport(anchor: Renderable, options: PreserveViewportOptions = {}): ViewportPreservation | undefined {
+    if (anchor.isDestroyed || anchor.parent !== this.content) return
+    const layout = anchor.getLayoutNode().getComputedLayout()
+    const preservation: ViewportAnchor = {
+      child: anchor,
+      id: options.id,
+      left: layout.left,
+      top: layout.top,
+      scrollRevision: this.scrollRevision,
+      cancel: () => {
+        if (this.viewportAnchor === preservation) this.viewportAnchor = undefined
+      },
+    }
+    this.viewportAnchor = preservation
+    return preservation
+  }
+
+  private restoreViewport(): void {
+    const anchor = this.viewportAnchor
+    if (!anchor) return
+    if (anchor.id) {
+      const current = this.content.getRenderable(anchor.id)
+      if (current) anchor.child = current
+    }
+    if (
+      anchor.child.isDestroyed ||
+      anchor.child.parent !== this.content ||
+      this.scrollRevision !== anchor.scrollRevision
+    ) {
+      this.viewportAnchor = undefined
+      return
+    }
+
+    const layout = anchor.child.getLayoutNode().getComputedLayout()
+    const x = layout.left - anchor.left
+    const y = layout.top - anchor.top
+    if (x === 0 && y === 0) return
+    this.restoringViewport = true
+    try {
+      this.scrollBy({ x, y })
+    } finally {
+      this.restoringViewport = false
+    }
+    anchor.left = layout.left
+    anchor.top = layout.top
   }
 
   public scrollChildIntoView(childId: string): void {

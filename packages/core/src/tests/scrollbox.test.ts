@@ -128,6 +128,222 @@ describe("ScrollBoxRenderable - child delegation", () => {
 
     expect(scrollbox.verticalScrollBar.parent).toBeNull()
   })
+
+  test("preserves an explicit viewport anchor before drawing prepended content", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[4])
+    const prepended = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+    prepended.add(new TextRenderable(testRenderer, { content: "prepended" }))
+    scrollbox.insertBefore(prepended, rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-4")
+  })
+
+  test("keeps an explicit viewport anchor armed across async no-op frames", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    const preservation = scrollbox.preserveViewport(rows[4])
+    await renderOnce()
+    const prepended = new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 })
+    scrollbox.insertBefore(prepended, rows[0])
+    await renderOnce()
+    preservation?.cancel()
+
+    expect(scrollbox.scrollTop).toBe(6)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-4")
+  })
+
+  test("preserves an explicit viewport anchor replaced by declarative reconciliation", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${index}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    const preservation = scrollbox.preserveViewport(rows[4], { id: "row-4" })
+    scrollbox.remove(rows[4])
+    const replacement = new BoxRenderable(testRenderer, { id: "row-4", height: 1, flexShrink: 0 })
+    replacement.add(new TextRenderable(testRenderer, { content: "row-4" }))
+    scrollbox.insertBefore(replacement, rows[5])
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
+    await renderOnce()
+    preservation?.cancel()
+
+    expect(scrollbox.scrollTop).toBe(6)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-4")
+  })
+
+  test("cancels explicit viewport preservation when the user scrolls", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[4])
+    scrollbox.scrollTop = 5
+    scrollbox.scrollTop = 4
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(4)
+  })
+
+  test("explicit viewport preservation takes precedence over sticky top", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "top",
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+
+    const preservation = scrollbox.preserveViewport(rows[0])
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
+    await renderOnce()
+    preservation?.cancel()
+
+    expect(scrollbox.scrollTop).toBe(2)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-0")
+  })
+
+  test("preserves an explicit viewport anchor with culling enabled", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 20 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${index}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    const preservation = scrollbox.preserveViewport(rows[4])
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
+    await renderOnce()
+    preservation?.cancel()
+
+    expect(scrollbox.scrollTop).toBe(6)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-4")
+  })
+
+  test("does not resolve child ids when viewport preservation is inactive", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    scrollbox.add(new BoxRenderable(testRenderer, { height: 10, flexShrink: 0 }))
+    const getRenderable = spyOn(scrollbox.content, "getRenderable")
+
+    await renderOnce()
+
+    expect(getRenderable).not.toHaveBeenCalled()
+  })
+
+  test("app-level post-layout compensation exposes an intermediate shifted frame", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+    const before = scrollbox.scrollHeight
+
+    const prepended = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+    prepended.add(new TextRenderable(testRenderer, { content: "prepended" }))
+    scrollbox.insertBefore(prepended, rows[0])
+    await renderOnce()
+    const shiftedFrame = captureCharFrame()
+
+    scrollbox.scrollBy(scrollbox.scrollHeight - before)
+    await renderOnce()
+    const restoredFrame = captureCharFrame()
+
+    expect(shiftedFrame.split("\n")[0]).toContain("row-3")
+    expect(restoredFrame.split("\n")[0]).toContain("row-4")
+  })
 })
 
 describe("ScrollBoxRenderable - culled content layout freshness", () => {
