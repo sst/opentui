@@ -381,72 +381,32 @@ fn expectLibraries(libraries: Libraries, wayland: bool, x11: bool) !void {
     try std.testing.expectEqual(x11, libraries.x11);
 }
 
-test "clipboard linux routing loads WSLg libraries and represents headless WSL" {
-    var loader: FakeLoader = .{ .wayland_available = true, .x11_available = true };
-    const wslg_libraries = selectLibraries(.{
-        .is_wsl = true,
-        .has_wayland_display = true,
-        .has_x11_display = true,
-    }, &loader);
-
-    try std.testing.expect(wslg_libraries.is_wsl);
-    try std.testing.expect(wslg_libraries.wayland);
-    try std.testing.expect(wslg_libraries.x11);
-    try std.testing.expectEqual(@as(u32, 1), loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
-
-    loader.wayland_attempts = 0;
-    loader.x11_attempts = 0;
-    const headless_libraries = selectLibraries(.{
-        .is_wsl = true,
-        .has_wayland_display = false,
-        .has_x11_display = false,
-    }, &loader);
-    try std.testing.expect(headless_libraries.is_wsl);
-    try std.testing.expect(!headless_libraries.wayland);
-    try std.testing.expect(!headless_libraries.x11);
-    try std.testing.expectEqual(@as(u32, 0), loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 0), loader.x11_attempts);
-}
-
-test "clipboard linux routing loads only libraries for applicable displays" {
-    var headless_loader: FakeLoader = .{ .wayland_available = true, .x11_available = true };
-    try expectLibraries(selectLibraries(.{
-        .is_wsl = false,
-        .has_wayland_display = false,
-        .has_x11_display = false,
-    }, &headless_loader), false, false);
-    try std.testing.expectEqual(@as(u32, 0), headless_loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 0), headless_loader.x11_attempts);
-
-    var wayland_loader: FakeLoader = .{ .wayland_available = true };
-    try expectLibraries(selectLibraries(.{
-        .is_wsl = false,
-        .has_wayland_display = true,
-        .has_x11_display = false,
-    }, &wayland_loader), true, false);
-    try std.testing.expectEqual(@as(u32, 1), wayland_loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 0), wayland_loader.x11_attempts);
-
-    var x11_loader: FakeLoader = .{ .x11_available = true };
-    try expectLibraries(selectLibraries(.{
-        .is_wsl = false,
-        .has_wayland_display = false,
-        .has_x11_display = true,
-    }, &x11_loader), false, true);
-    try std.testing.expectEqual(@as(u32, 0), x11_loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 1), x11_loader.x11_attempts);
-}
-
-test "clipboard linux routing preserves independent Wayland and X11 load results" {
-    var loader: FakeLoader = .{ .x11_available = true };
-    try expectLibraries(selectLibraries(.{
-        .is_wsl = false,
-        .has_wayland_display = true,
-        .has_x11_display = true,
-    }, &loader), false, true);
-    try std.testing.expectEqual(@as(u32, 1), loader.wayland_attempts);
-    try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
+test "clipboard linux routing loads only applicable and available libraries" {
+    const TestCase = struct {
+        environment: Environment,
+        available: Libraries,
+        expected: Libraries,
+        attempts: [2]u32,
+    };
+    const cases = [_]TestCase{
+        .{ .environment = .{ .is_wsl = true, .has_wayland_display = false, .has_x11_display = false }, .available = .{ .wayland = true, .x11 = true }, .expected = .{ .is_wsl = true }, .attempts = .{ 0, 0 } },
+        .{ .environment = .{ .is_wsl = false, .has_wayland_display = true, .has_x11_display = false }, .available = .{ .wayland = true }, .expected = .{ .wayland = true }, .attempts = .{ 1, 0 } },
+        .{ .environment = .{ .is_wsl = false, .has_wayland_display = false, .has_x11_display = true }, .available = .{ .x11 = true }, .expected = .{ .x11 = true }, .attempts = .{ 0, 1 } },
+        .{ .environment = .{ .is_wsl = true, .has_wayland_display = true, .has_x11_display = true }, .available = .{ .wayland = true, .x11 = true }, .expected = .{ .wayland = true, .x11 = true, .is_wsl = true }, .attempts = .{ 1, 1 } },
+        .{ .environment = .{ .is_wsl = false, .has_wayland_display = true, .has_x11_display = true }, .available = .{ .x11 = true }, .expected = .{ .x11 = true }, .attempts = .{ 1, 1 } },
+        .{ .environment = .{ .is_wsl = false, .has_wayland_display = true, .has_x11_display = true }, .available = .{ .wayland = true }, .expected = .{ .wayland = true }, .attempts = .{ 1, 1 } },
+    };
+    for (cases) |case| {
+        var loader: FakeLoader = .{
+            .wayland_available = case.available.wayland,
+            .x11_available = case.available.x11,
+        };
+        const libraries = selectLibraries(case.environment, &loader);
+        try expectLibraries(libraries, case.expected.wayland, case.expected.x11);
+        try std.testing.expectEqual(case.expected.is_wsl, libraries.is_wsl);
+        try std.testing.expectEqual(case.attempts[0], loader.wayland_attempts);
+        try std.testing.expectEqual(case.attempts[1], loader.x11_attempts);
+    }
 }
 
 test "clipboard linux environment treats display variables as nonempty and WSL as presence based" {

@@ -349,14 +349,6 @@ ot_clipboard_macos_test_bounded_output(uint32_t limit, uint32_t first_count,
     }
 }
 
-__attribute__((visibility("hidden"))) int32_t ot_clipboard_macos_test_clear_null(void) {
-    return ot_clipboard_macos_clear_pasteboard(nil);
-}
-
-__attribute__((visibility("hidden"))) int32_t ot_clipboard_macos_test_read_null(void) {
-    return ot_clipboard_macos_validate_pasteboard(nil);
-}
-
 void ot_clipboard_macos_free_bytes(uint8_t *bytes) {
     free(bytes);
 }

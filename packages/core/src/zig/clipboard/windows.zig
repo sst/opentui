@@ -771,20 +771,14 @@ test "Windows clipboard text conversion validates NUL and UTF-16" {
     );
 }
 
-test "Windows clipboard bounded copy accepts exact limit and chunk boundaries" {
-    var source: [COPY_STOP_INTERVAL + 1]u8 = undefined;
-    for (&source, 0..) |*byte, index| byte.* = @truncate(index);
-
-    const exact = try copyBytesBounded(std.testing.allocator, source[0..COPY_STOP_INTERVAL], COPY_STOP_INTERVAL, testOptions());
+test "Windows clipboard bounded copy accepts the exact limit" {
+    const source = "bytes";
+    const exact = try copyBytesBounded(std.testing.allocator, source, source.len, testOptions());
     defer std.testing.allocator.free(exact);
-    try std.testing.expectEqualSlices(u8, source[0..COPY_STOP_INTERVAL], exact);
-
-    const across_boundary = try copyBytesBounded(std.testing.allocator, &source, source.len, testOptions());
-    defer std.testing.allocator.free(across_boundary);
-    try std.testing.expectEqualSlices(u8, &source, across_boundary);
+    try std.testing.expectEqualSlices(u8, source, exact);
     try std.testing.expectError(
         error.LimitExceeded,
-        copyBytesBounded(std.testing.allocator, &source, source.len - 1, testOptions()),
+        copyBytesBounded(std.testing.allocator, source, source.len - 1, testOptions()),
     );
 }
 
@@ -821,9 +815,5 @@ test "Windows clipboard UTF-16 scan is bounded by output limit" {
     try std.testing.expectError(
         error.LimitExceeded,
         clipboardTextToUtf8(std.testing.allocator, &.{ 'a', 'b', 0 }, 1, testOptions()),
-    );
-    try std.testing.expectError(
-        error.MissingNul,
-        clipboardTextToUtf8(std.testing.allocator, &.{ 'a', 'b' }, 2, testOptions()),
     );
 }

@@ -90,23 +90,17 @@ const xclipRead = async (selection: ClipboardSelection): Promise<XclipResult> =>
   return oracle.done
 }
 
-const startXclipOwner = async (selection: ClipboardSelection, text: string): Promise<XclipOwner> => {
-  const owner = startOracle("xclip", ["-selection", selection, "-in", "-quiet"], text, OWNER_TIMEOUT_MS)
+const startExternalOwner = async (
+  command: "xclip" | "xsel",
+  selection: ClipboardSelection,
+  args: string[],
+  text: string,
+): Promise<XclipOwner> => {
+  const owner = startOracle(command, args, text, OWNER_TIMEOUT_MS)
   await owner.ready
   if (owner.process.exitCode !== null || owner.process.signalCode !== null) {
     const result = await owner.done
-    throw new Error(`xclip failed to own ${selection}: ${result.stderr.toString() || `exit ${result.code}`}`)
-  }
-  return owner
-}
-
-const startXselOwner = async (selection: ClipboardSelection, text: string): Promise<XclipOwner> => {
-  const selectionFlag = selection === "clipboard" ? "--clipboard" : "--primary"
-  const owner = startOracle("xsel", [selectionFlag, "--input", "--nodetach"], text, OWNER_TIMEOUT_MS)
-  await owner.ready
-  if (owner.process.exitCode !== null || owner.process.signalCode !== null) {
-    const result = await owner.done
-    throw new Error(`xsel failed to own ${selection}: ${result.stderr.toString() || `exit ${result.code}`}`)
+    throw new Error(`${command} failed to own ${selection}: ${result.stderr.toString() || `exit ${result.code}`}`)
   }
   return owner
 }
@@ -119,7 +113,7 @@ const waitForOwner = async (owner: XclipOwner, selection: ClipboardSelection, ex
       throw new Error(`external owner exited before owning ${selection}: ${result.stderr.toString()}`)
     }
     const result = await xclipRead(selection)
-    if (!result.error && result.signal === null && result.code === 0 && result.stdout.equals(expectedBytes)) return
+    if (!result.error && result.code === 0 && result.stdout.equals(expectedBytes)) return
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`external owner did not acquire ${selection}`)
@@ -129,10 +123,6 @@ const stopOwner = async (owner: XclipOwner | undefined): Promise<void> => {
   if (!owner) return
   if (owner.process.exitCode === null && owner.process.signalCode === null) owner.process.kill("SIGTERM")
   await owner.done
-}
-
-const disposeHost = async (host: HostClipboardService | undefined): Promise<void> => {
-  if (host) await host.dispose()
 }
 
 const assertXclipRead = async (selection: ClipboardSelection, expected: string): Promise<void> => {
@@ -183,7 +173,7 @@ test.skipIf(!LIVE)(
         expect(await host.writeText(exactText, { selection })).toEqual({ status: "written" })
         await assertXclipRead(selection, exactText)
 
-        owner = await startXclipOwner(selection, exactText)
+        owner = await startExternalOwner("xclip", selection, ["-selection", selection, "-in", "-quiet"], exactText)
         await waitForOwner(owner, selection, exactText)
         await assertHostRead(host, selection, exactText)
         await stopOwner(owner)
@@ -193,7 +183,12 @@ test.skipIf(!LIVE)(
       expect(await host.writeText(largeText, { selection: "clipboard" })).toEqual({ status: "written" })
       await assertXclipRead("clipboard", largeText)
 
-      owner = await startXclipOwner("clipboard", xclipLargeText)
+      owner = await startExternalOwner(
+        "xclip",
+        "clipboard",
+        ["-selection", "clipboard", "-in", "-quiet"],
+        xclipLargeText,
+      )
       await waitForOwner(owner, "clipboard", xclipLargeText)
       await assertHostRead(host, "clipboard", xclipLargeText)
       await stopOwner(owner)
@@ -201,7 +196,7 @@ test.skipIf(!LIVE)(
 
       await host.dispose()
       host = createHostClipboard({ timeoutMs: PROCESS_TIMEOUT_MS, maxReadBytes: 6 * 1024 * 1024 })
-      owner = await startXselOwner("primary", largeText)
+      owner = await startExternalOwner("xsel", "primary", ["--primary", "--input", "--nodetach"], largeText)
       await waitForOwner(owner, "primary", largeText)
       await assertHostRead(host, "primary", largeText)
       await stopOwner(owner)
@@ -222,7 +217,7 @@ test.skipIf(!LIVE)(
       host = undefined
     } finally {
       await stopOwner(owner)
-      await disposeHost(host)
+      if (host) await host.dispose()
     }
   },
   60_000,

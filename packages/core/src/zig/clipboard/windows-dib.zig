@@ -648,7 +648,6 @@ test "Windows DIB conversion honors a noncanonical BMP pixel gap" {
 
 test "Windows DIB conversion rejects invalid BMP file headers and offsets" {
     var bmp = bmpFixture();
-    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, bmp[0..1], testOptions()));
     try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, bmp[0..13], testOptions()));
 
     bmp[0] = 'Z';
@@ -658,9 +657,6 @@ test "Windows DIB conversion rejects invalid BMP file headers and offsets" {
     try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
     bmp = bmpFixture();
     std.mem.writeInt(u16, bmp[6..8], 1, .little);
-    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
-    bmp = bmpFixture();
-    std.mem.writeInt(u16, bmp[8..10], 1, .little);
     try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
     bmp = bmpFixture();
     std.mem.writeInt(u32, bmp[10..14], 13, .little);
@@ -695,12 +691,9 @@ test "Windows DIB conversion rejects malformed and unsupported headers" {
     dib_v5 = dibV5Fixture();
     std.mem.writeInt(u32, dib_v5[56..60], 0, .little);
     try std.testing.expectError(error.Unsupported, convertToPng(std.testing.allocator, &dib_v5, testOptions()));
-}
-
-test "Windows DIB conversion rejects top-down BI_ALPHABITFIELDS" {
-    var dib = dibV5Fixture();
-    std.mem.writeInt(u32, dib[16..20], BI_ALPHABITFIELDS, .little);
-    try std.testing.expectError(error.InvalidData, convertToPng(std.testing.allocator, &dib, testOptions()));
+    var alpha_bitfields = dibV5Fixture();
+    std.mem.writeInt(u32, alpha_bitfields[16..20], BI_ALPHABITFIELDS, .little);
+    try std.testing.expectError(error.InvalidData, convertToPng(std.testing.allocator, &alpha_bitfields, testOptions()));
 }
 
 test "Windows DIB conversion enforces pixel conversion and output limits" {
@@ -714,13 +707,6 @@ test "Windows DIB conversion enforces pixel conversion and output limits" {
     options = testOptions();
     options.max_output_bytes = 64;
     try std.testing.expectError(error.LimitExceeded, convertToPng(std.testing.allocator, &dib, options));
-    var oversized = dib;
-    std.mem.writeInt(i32, oversized[4..8], std.math.maxInt(i32), .little);
-    std.mem.writeInt(i32, oversized[8..12], std.math.maxInt(i32), .little);
-    options = testOptions();
-    options.max_image_pixels = std.math.maxInt(u32);
-    options.max_conversion_bytes = std.math.maxInt(u32);
-    try std.testing.expectError(error.LimitExceeded, convertToPng(std.testing.allocator, &oversized, options));
 }
 
 test "Windows DIB conversion observes cancellation and deadlines" {

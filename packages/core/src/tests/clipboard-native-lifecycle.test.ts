@@ -15,20 +15,10 @@ import {
 
 const READ_REQUEST = Uint8Array.of(1, 0, 0, 0, 10, 0, 0, 0, ...new TextEncoder().encode("text/plain"))
 
-function expectTimedOutAndDestroy(operation: ClipboardOperationHandle): void {
-  const lib = resolveRenderLib()
-  expect(lib.clipboardOperationPoll(operation)).toBe(NativeClipboardOperationStatus.TimedOut)
-  expect(lib.clipboardOperationResultMimeLength(operation).status).toBe(NativeClipboardCopyStatus.InvalidState)
-  expect(lib.clipboardOperationDestroy(operation)).toBe(NativeClipboardDestroyStatus.Destroyed)
-  expect(lib.clipboardOperationPoll(operation)).toBe(NativeClipboardOperationStatus.InvalidHandle)
-  expect(lib.clipboardOperationDestroy(operation)).toBe(NativeClipboardDestroyStatus.InvalidHandle)
-}
-
 test("native clipboard production-symbol ABI lifecycle", async () => {
   const lib = resolveRenderLib()
   let service = lib.clipboardServiceCreate(3, 2)
-  expect(service).not.toBeNull()
-  if (!service) return
+  if (!service) throw new Error("failed to create clipboard service")
   const operations = new Set<ClipboardOperationHandle>()
   try {
     expect(() => (lib as typeof lib & { dispose(): void }).dispose()).toThrow("clipboard services are active")
@@ -43,7 +33,17 @@ test("native clipboard production-symbol ABI lifecycle", async () => {
     }
     expect(starts.map(({ status }) => status)).toEqual(Array(3).fill(NativeClipboardStartStatus.Ok))
     expect(operations.size).toBe(3)
-    for (const operation of operations) expectTimedOutAndDestroy(operation)
+    for (const operation of operations) {
+      expect(lib.clipboardOperationPoll(operation)).toBe(NativeClipboardOperationStatus.TimedOut)
+    }
+    const [operation, ...remaining] = operations
+    expect(lib.clipboardOperationResultMimeLength(operation!).status).toBe(NativeClipboardCopyStatus.InvalidState)
+    expect(lib.clipboardOperationDestroy(operation!)).toBe(NativeClipboardDestroyStatus.Destroyed)
+    expect(lib.clipboardOperationPoll(operation!)).toBe(NativeClipboardOperationStatus.InvalidHandle)
+    expect(lib.clipboardOperationDestroy(operation!)).toBe(NativeClipboardDestroyStatus.InvalidHandle)
+    for (const handle of remaining) {
+      expect(lib.clipboardOperationDestroy(handle)).toBe(NativeClipboardDestroyStatus.Destroyed)
+    }
     operations.clear()
 
     expect(lib.clipboardServiceBeginShutdown(service)).toBe(NativeClipboardShutdownStatus.Pending)

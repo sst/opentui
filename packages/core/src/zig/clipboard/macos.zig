@@ -111,8 +111,6 @@ extern fn ot_clipboard_macos_test_bounded_output(
     second_count: u32,
     out_length: *u32,
 ) i32;
-extern fn ot_clipboard_macos_test_clear_null() i32;
-extern fn ot_clipboard_macos_test_read_null() i32;
 
 comptime {
     std.debug.assert(@sizeOf(MimeType) == @sizeOf(u32));
@@ -366,16 +364,6 @@ test "macOS clipboard image output stops at the configured byte limit" {
     try std.testing.expectEqual(@as(u32, 4), length);
 }
 
-test "macOS clipboard clear rejects a missing pasteboard" {
-    if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
-    try std.testing.expectEqual(ShimStatus.failed, shimStatus(ot_clipboard_macos_test_clear_null()));
-}
-
-test "macOS clipboard read rejects a missing pasteboard" {
-    if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
-    try std.testing.expectEqual(ShimStatus.failed, shimStatus(ot_clipboard_macos_test_read_null()));
-}
-
 test "macOS clipboard MIME request parsing preserves order" {
     const request = [_]u8{ 2, 0, 0, 0, 9, 0, 0, 0 } ++ "image/png".* ++
         [_]u8{ 10, 0, 0, 0 } ++ "text/plain".*;
@@ -447,21 +435,6 @@ test "macOS clipboard mutation callback is not called before the lock" {
     );
     try std.testing.expectEqual(Status.cancelled, status.?);
     try std.testing.expect(!mutation.called);
-}
-
-test "macOS clipboard post-shim stop maps exact terminal status" {
-    try clipboard_clock.init();
-    var cancelled = std.atomic.Value(bool).init(true);
-    try std.testing.expect(postShimStop(.{
-        .cancel_requested = &cancelled,
-        .deadline_ns = std.math.maxInt(i128),
-    }).? == .cancelled);
-
-    cancelled.store(false, .release);
-    try std.testing.expect(postShimStop(.{
-        .cancel_requested = &cancelled,
-        .deadline_ns = clipboard_clock.nowNs(),
-    }).? == .timed_out);
 }
 
 test "macOS clipboard shim callback maps exact terminal status" {

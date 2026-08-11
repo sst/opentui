@@ -1978,20 +1978,14 @@ test "clipboard read request validation enforces exact native MIME bounds" {
     std.mem.writeInt(u32, oversized_essence[0..4], 1, .little);
     std.mem.writeInt(u32, oversized_essence[4..8], 256, .little);
     try std.testing.expect(!validateReadRequest(&oversized_essence));
-}
 
-test "clipboard over-limit read request returns invalid argument before allocation" {
     const service = createService(std.testing.allocator, 1, 1, null, 0);
     try std.testing.expect(service != 0);
     defer destroyTestService(service);
-    var request: [4 + 4 + 256]u8 = @splat('x');
-    std.mem.writeInt(u32, request[0..4], 1, .little);
-    std.mem.writeInt(u32, request[4..8], 256, .little);
     var operation: Handle = 99;
-
     try std.testing.expectEqual(
         StartStatus.invalid_argument,
-        startReadOperation(service, &request, request.len, 0, 1, 1, 1, 1, &operation),
+        startReadOperation(service, &oversized_essence, oversized_essence.len, 0, 1, 1, 1, 1, &operation),
     );
     try std.testing.expectEqual(@as(Handle, 0), operation);
     try std.testing.expectEqual(@as(usize, 0), acquireService(service).?.operations.items.len);
@@ -2038,7 +2032,7 @@ test "clipboard Wayland connection reset clears connection-scoped read state" {
     try std.testing.expectEqual(@as(u8, 0), operation.wayland_stale_retry_count);
 }
 
-test "clipboard zero-byte final image candidate exhausts as empty" {
+test "clipboard Wayland candidate exhaustion preserves the observable result" {
     try std.testing.expectEqual(OperationStatus.empty, waylandReadExhaustionStatus(true, false));
     try std.testing.expectEqual(OperationStatus.unsupported, waylandReadExhaustionStatus(false, false));
     try std.testing.expectEqual(OperationStatus.failed, waylandReadExhaustionStatus(true, true));

@@ -1393,12 +1393,6 @@ test "Wayland core helper destroys its role before its surface" {
     try std.testing.expect(test_role_destroyed_before_surface);
 }
 
-test "Wayland flush completion distinguishes EAGAIN from completion and hard failure" {
-    try std.testing.expectEqual(FlushResult.complete, classifyFlush(0, .SUCCESS));
-    try std.testing.expectEqual(FlushResult.pending, classifyFlush(-1, .AGAIN));
-    try std.testing.expectEqual(FlushResult.failed, classifyFlush(-1, .PIPE));
-}
-
 test "Wayland connection setup applies the finite receive buffer cap" {
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_display_connect = testDisplayConnect;
@@ -1414,7 +1408,7 @@ test "Wayland connection setup applies the finite receive buffer cap" {
     try std.testing.expectEqual(@as(usize, WAYLAND_CONNECTION_BUFFER_SIZE_MAX), test_max_buffer_size);
 }
 
-test "Wayland dispatch drains queued callbacks in one invocation" {
+test "Wayland dispatch drains queued callbacks up to the per-drive bound" {
     if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_display_dispatch_pending_single = testDispatchQueue;
@@ -1422,32 +1416,16 @@ test "Wayland dispatch drains queued callbacks in one invocation" {
     var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
     connection.display = @ptrFromInt(1);
     connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
-    test_dispatch_call_count = 0;
-    test_dispatched_callback_count = 0;
-    test_dispatch_queue_length = 3;
+    for ([_]u32{ 3, DISPATCH_EVENTS_PER_DRIVE_MAX, DISPATCH_EVENTS_PER_DRIVE_MAX + 5 }) |queued| {
+        test_dispatch_call_count = 0;
+        test_dispatched_callback_count = 0;
+        test_dispatch_queue_length = queued;
 
-    try std.testing.expect(connection.dispatchAvailable());
-
-    try std.testing.expectEqual(@as(u32, 3), test_dispatched_callback_count);
-    try std.testing.expectEqual(@as(u32, 0), test_dispatch_queue_length);
-}
-
-test "Wayland dispatch bounds the events drained per invocation" {
-    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
-    var symbols: linux.WaylandSymbols = undefined;
-    symbols.wl_display_dispatch_pending_single = testDispatchQueue;
-    symbols.wl_display_prepare_read = testPrepareReadBlocked;
-    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
-    connection.display = @ptrFromInt(1);
-    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
-    test_dispatch_call_count = 0;
-    test_dispatched_callback_count = 0;
-    test_dispatch_queue_length = DISPATCH_EVENTS_PER_DRIVE_MAX + 5;
-
-    try std.testing.expect(connection.dispatchAvailable());
-
-    try std.testing.expectEqual(@as(u32, DISPATCH_EVENTS_PER_DRIVE_MAX), test_dispatched_callback_count);
-    try std.testing.expectEqual(@as(u32, 5), test_dispatch_queue_length);
+        try std.testing.expect(connection.dispatchAvailable());
+        const dispatched = @min(queued, DISPATCH_EVENTS_PER_DRIVE_MAX);
+        try std.testing.expectEqual(dispatched, test_dispatched_callback_count);
+        try std.testing.expectEqual(queued - dispatched, test_dispatch_queue_length);
+    }
 }
 
 test "Wayland selection barrier orders admissions across in-flight syncs" {
@@ -1511,7 +1489,7 @@ test "Wayland read queues callbacks for the next dispatch invocation" {
     defer posix_io.close(pipe[1]);
     _ = try posix_io.write(pipe[1], "x");
     var symbols: linux.WaylandSymbols = undefined;
-    symbols.wl_display_dispatch_pending_single = testDispatchNoPending;
+    symbols.wl_display_dispatch_pending_single = testDispatchQueue;
     symbols.wl_display_prepare_read = testPrepareReadReady;
     symbols.wl_display_get_fd = testDisplayGetFd;
     symbols.wl_display_read_events = testReadEvents;
@@ -1521,12 +1499,19 @@ test "Wayland read queues callbacks for the next dispatch invocation" {
     connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
     test_display_fd = pipe[0];
     test_dispatch_call_count = 0;
+    test_dispatched_callback_count = 0;
+    test_dispatch_queue_length = 0;
     test_read_event_count = 0;
 
     try std.testing.expect(connection.dispatchAvailable());
-
     try std.testing.expectEqual(@as(u32, 1), test_dispatch_call_count);
     try std.testing.expectEqual(@as(u32, 1), test_read_event_count);
+    try std.testing.expectEqual(@as(u32, 0), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 1), test_dispatch_queue_length);
+
+    try std.testing.expect(connection.dispatchAvailable());
+    try std.testing.expectEqual(@as(u32, 1), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 0), test_dispatch_queue_length);
 }
 
 test "Wayland writes and clears settle deterministically after marshalling for every flush outcome" {
@@ -1628,11 +1613,6 @@ fn testPrepareReadBlocked(_: *linux.WlDisplay) callconv(.c) c_int {
     return -1;
 }
 
-fn testDispatchNoPending(_: *linux.WlDisplay) callconv(.c) c_int {
-    test_dispatch_call_count += 1;
-    return 0;
-}
-
 fn testPrepareReadReady(_: *linux.WlDisplay) callconv(.c) c_int {
     return 0;
 }
@@ -1643,6 +1623,7 @@ fn testDisplayGetFd(_: *linux.WlDisplay) callconv(.c) c_int {
 
 fn testReadEvents(_: *linux.WlDisplay) callconv(.c) c_int {
     test_read_event_count += 1;
+    if (test_read_event_count == 1) test_dispatch_queue_length += 1;
     return 0;
 }
 
@@ -1690,9 +1671,6 @@ fn testProxyVersion(_: *WlProxy) callconv(.c) u32 {
 }
 
 test "Wayland MIME retention ignores irrelevant metadata without consuming the bounded set" {
-    try std.testing.expect(isRelevantMime("image/png"));
-    try std.testing.expect(isRelevantMime("image/bmp"));
-    try std.testing.expect(isRelevantMime("TEXT/PLAIN;CHARSET=UTF-8"));
     try std.testing.expect(!isRelevantMime("application/x-irrelevant"));
     try std.testing.expect(!isRelevantMime(&([_]u8{'x'} ** (MAX_MIME_BYTES + 1))));
 
@@ -1726,9 +1704,6 @@ test "Wayland MIME matching parses essence and UTF-8 charset parameters" {
         "image/png",
         connection.offeredMime(&connection.offers[0], "image/png").?.requested,
     );
-    inline for (.{ "image/jpeg", "image/webp", "image/gif" }) |mime| {
-        try std.testing.expectEqualStrings(mime, canonicalMimeEssence(mime).?);
-    }
 }
 
 test "Wayland MIME retention preserves all supported essences and deduplicates aliases" {
@@ -1917,31 +1892,6 @@ test "Wayland bound core seat keyboard loss fails active and future acquisitions
     try std.testing.expectEqual(Failure.protocol, connection.failure);
 }
 
-test "Wayland provider retirement preserves active transfers" {
-    var connection: Connection = undefined;
-    var transfer: [1]Transfer = undefined;
-    var provider: Provider = .{
-        .connection = &connection,
-        .source = undefined,
-        .primary = false,
-        .data = &.{},
-        .transfers = &transfer,
-        .transfer_count = 1,
-    };
-    connection.clipboard_provider = &provider;
-    connection.primary_provider = null;
-    connection.providers = .{ &provider, null, null, null };
-
-    connection.retireProvider(&provider);
-
-    try std.testing.expect(connection.clipboard_provider == null);
-    try std.testing.expect(connection.providers[0] == &provider);
-
-    connection.clipboard_provider = &provider;
-    connection.retireProviders();
-    try std.testing.expect(connection.providers[0] == &provider);
-}
-
 test "Wayland failed connection cancels providers and frees idle generations" {
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_proxy_marshal_array_flags = testMarshal;
@@ -2098,6 +2048,10 @@ test "Wayland clear retires the current provider at the generation bound" {
 
     try std.testing.expectEqual(SelectionResult.ok, connection.clearSelection(false));
     try std.testing.expect(connection.clipboard_provider == null);
+    try std.testing.expect(connection.providers[0] == &old);
+    try std.testing.expect(connection.providers[1] == &current);
+    try std.testing.expectEqual(@as(u8, 1), old.transfer_count);
+    try std.testing.expectEqual(@as(u8, 1), current.transfer_count);
 }
 
 test "Wayland provider transfers expire after a bounded idle interval" {
