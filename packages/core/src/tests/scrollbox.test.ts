@@ -573,6 +573,108 @@ describe("ScrollBoxRenderable - child delegation", () => {
     expect(scrollbox.scrollTop).toBe(3)
   })
 
+  test("automatic preservation cancellation keeps sticky manually paused through range clamping", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "bottom",
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[4])
+    scrollbox.remove(rows[4])
+    scrollbox.remove(rows[8])
+    scrollbox.remove(rows[9])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(3)
+
+    for (let i = 0; i < 5; i++) {
+      scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    }
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(3)
+  })
+
+  test("same-position scrolling re-engages sticky after preservation clamps the range", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "bottom",
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[4])
+    scrollbox.remove(rows[4])
+    scrollbox.remove(rows[8])
+    scrollbox.remove(rows[9])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(3)
+
+    scrollbox.scrollTop = 3
+    for (let i = 0; i < 5; i++) {
+      scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    }
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(8)
+  })
+
+  test("orthogonal scroll cancellation preserves sticky intent", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 4,
+      height: 4,
+      scrollX: true,
+      stickyScroll: true,
+      stickyStart: "bottom",
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { width: 10, height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+
+    scrollbox.preserveViewport(rows[6])
+    scrollbox.add(new BoxRenderable(testRenderer, { width: 10, height: 2, flexShrink: 0 }))
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(6)
+
+    scrollbox.scrollLeft = 1
+    scrollbox.add(new BoxRenderable(testRenderer, { width: 10, height: 1, flexShrink: 0 }))
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(9)
+  })
+
   test("preserves an explicit viewport anchor with culling enabled", async () => {
     const scrollbox = new ScrollBoxRenderable(testRenderer, {
       id: "scrollbox",
