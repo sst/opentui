@@ -24,25 +24,25 @@ Clipboard reads are separate from terminal paste input. A read returns data to t
 ## Quick start
 
 ```typescript
-import { createClipboard, createHostClipboard, createRendererClipboardAdapter } from "@opentui/core";
+import { createClipboard, createHostClipboard, createRendererClipboardAdapter } from "@opentui/core"
 
 const clipboard = createClipboard({
   host: createHostClipboard(),
   terminal: createRendererClipboardAdapter(renderer),
-});
+})
 
 const writeResult = await clipboard.writeText("Hello from OpenTUI", {
   destination: "best-available",
-});
-console.log(writeResult.host, writeResult.terminal);
+})
+console.log(writeResult.host, writeResult.terminal)
 
-const readResult = await clipboard.read({ preferredTypes: ["text/plain"] });
+const readResult = await clipboard.read({ preferredTypes: ["text/plain"] })
 if (readResult.status === "read") {
-  const { bytes } = readResult.representation;
-  console.log(new TextDecoder().decode(bytes));
+  const { bytes } = readResult.representation
+  console.log(new TextDecoder().decode(bytes))
 }
 
-await clipboard.dispose();
+await clipboard.dispose()
 ```
 
 `createHostClipboard()` creates the native host clipboard service. `createRendererClipboardAdapter(renderer)`
@@ -53,12 +53,12 @@ service.
 
 `writeText()` and `clear()` require a `destination` policy that selects the terminal, the host, or both:
 
-| Destination      | Local session                                                       | Remote session                             |
-| ---------------- | ------------------------------------------------------------------- | ------------------------------------------ |
-| `terminal-only`  | Terminal only                                                       | Terminal only                              |
-| `host-only`      | Host only                                                           | Skipped unless `allowRemoteHost` is `true` |
-| `best-available` | Host first, then the terminal if the host is unsupported or fails   | Terminal only                              |
-| `all-available`  | Both concurrently                                                   | Terminal, plus host with `allowRemoteHost` |
+| Destination      | Local session                                                     | Remote session                             |
+| ---------------- | ----------------------------------------------------------------- | ------------------------------------------ |
+| `terminal-only`  | Terminal only                                                     | Terminal only                              |
+| `host-only`      | Host only                                                         | Skipped unless `allowRemoteHost` is `true` |
+| `best-available` | Host first, then the terminal if the host is unsupported or fails | Terminal only                              |
+| `all-available`  | Both concurrently                                                 | Terminal, plus host with `allowRemoteHost` |
 
 Skipped destinations report `{ status: "not-attempted" }` in the result.
 
@@ -85,20 +85,20 @@ List the MIME types that you accept, in order of preference:
 ```typescript
 const result = await clipboard.read({
   preferredTypes: ["image/png", "text/plain"],
-});
+})
 ```
 
 On success, `result.representation` contains a canonical lowercase `mimeType` and caller-owned `bytes` as a
 `Uint8Array`. The possible statuses are:
 
-| Status           | Meaning                                                             |
-| ---------------- | ------------------------------------------------------------------- |
-| `read`           | `representation` holds the matched MIME type and its bytes          |
-| `empty`          | The selection has no content in an accepted type                    |
-| `unsupported`    | The platform or selection does not support the operation            |
-| `cancelled`      | The abort signal fired before the operation finished                |
-| `timed-out`      | The operation passed its deadline                                   |
-| `limit-exceeded` | The content exceeds the configured size or image limits             |
+| Status           | Meaning                                                              |
+| ---------------- | -------------------------------------------------------------------- |
+| `read`           | `representation` holds the matched MIME type and its bytes           |
+| `empty`          | The selection has no content in an accepted type                     |
+| `unsupported`    | The platform or selection does not support the operation             |
+| `cancelled`      | The abort signal fired before the operation finished                 |
+| `timed-out`      | The operation passed its deadline                                    |
+| `limit-exceeded` | The content exceeds the configured size or image limits              |
 | `failed`         | A platform error occurred. The `error` field contains the diagnostic |
 
 ### Supported content types
@@ -162,18 +162,18 @@ Every operation accepts an `AbortSignal`. Cancellation is cooperative. A synchro
 in progress finishes before the service observes the abort.
 
 ```typescript
-import { createHostClipboard } from "@opentui/core";
+import { createHostClipboard } from "@opentui/core"
 
-const host = createHostClipboard();
-const controller = new AbortController();
+const host = createHostClipboard()
+const controller = new AbortController()
 
 const pending = host.read({
   preferredTypes: ["text/plain"],
   signal: controller.signal,
-});
+})
 
-controller.abort();
-console.log((await pending).status); // "cancelled" unless the read already finished
+controller.abort()
+console.log((await pending).status) // "cancelled" unless the read already finished
 ```
 
 ## Host-only usage
@@ -181,14 +181,14 @@ console.log((await pending).status); // "cancelled" unless the read already fini
 Use `createHostClipboard()` alone when you do not need the terminal path or a renderer:
 
 ```typescript
-import { createHostClipboard } from "@opentui/core";
+import { createHostClipboard } from "@opentui/core"
 
-const host = createHostClipboard({ maxReadBytes: 2 * 1024 * 1024 });
+const host = createHostClipboard({ maxReadBytes: 2 * 1024 * 1024 })
 
-const result = await host.writeText("copied without a renderer");
-console.log(result.status);
+const result = await host.writeText("copied without a renderer")
+console.log(result.status)
 
-await host.dispose();
+await host.dispose()
 ```
 
 When a process starts with only a `WAYLAND_SOCKET` file descriptor, create one host service per process. The
@@ -200,8 +200,8 @@ process can consume the inherited socket only once.
 
 ```typescript
 if (renderer.isOsc52Supported()) {
-  renderer.copyToClipboardOSC52("copied text");
-  renderer.clearClipboardOSC52();
+  renderer.copyToClipboardOSC52("copied text")
+  renderer.clearClipboardOSC52()
 }
 ```
 
