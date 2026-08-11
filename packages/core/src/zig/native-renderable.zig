@@ -66,13 +66,18 @@ pub const NativeRenderable = struct {
         const effective_width = normalizeYogaMeasureWidthInput(width, width_mode);
         const effective_height = normalizeYogaMeasureHeightInput(height);
         const measure_width = floorToU32(effective_width);
-        const measure_height = floorToU32(effective_height);
+        const is_absolute = self.yoga_node != null and isYogaNodeAbsolute(self.yoga_node);
+        // Intrinsic and absolute measurements still need the full content height.
+        const height_is_bounded = width_mode == @intFromEnum(native_yoga.YogaMeasureMode.at_most) and
+            self.yoga_node != null and
+            !is_absolute;
+        const measure_height = if (height_is_bounded) floorToU32(effective_height) else std.math.maxInt(u32);
         const result = self.measureTarget(measure_width, measure_height) orelse return .{ .width = 1, .height = 1 };
 
         var measured_width: f32 = @floatFromInt(@max(@as(u32, 1), result.width_cols_max));
         var measured_height: f32 = @floatFromInt(@max(@as(u32, 1), result.line_count));
 
-        if (width_mode == @intFromEnum(native_yoga.YogaMeasureMode.at_most) and self.yoga_node != null and !isYogaNodeAbsolute(self.yoga_node)) {
+        if (height_is_bounded) {
             measured_width = @min(effective_width, measured_width);
             measured_height = @min(effective_height, measured_height);
         }

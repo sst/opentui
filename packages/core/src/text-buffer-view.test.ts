@@ -617,6 +617,15 @@ describe("TextBufferView", () => {
       expect(result3!.widthColsMax).toBe(20)
     })
 
+    it("should bound wrapped measurement by height", () => {
+      buffer.setStyledText(stringToStyledText("A\nABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+      view.setWrapMode("char")
+
+      expect(view.measureForDimensions(5, 1)).toEqual({ lineCount: 1, widthColsMax: 1 })
+      expect(view.measureForDimensions(5, 2)).toEqual({ lineCount: 2, widthColsMax: 5 })
+      expect(view.measureForDimensions(5, 4)).toEqual({ lineCount: 4, widthColsMax: 5 })
+    })
+
     it("should handle no wrap mode", () => {
       const styledText = stringToStyledText("Hello\nWorld\nTest")
       buffer.setStyledText(styledText)

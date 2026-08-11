@@ -2300,6 +2300,34 @@ test "TextBufferView measureForDimensions - char wrap" {
     try std.testing.expectEqual(@as(u32, 20), result3.width_cols_max);
 }
 
+test "TextBufferView measureForDimensions - height bounds wrapped lines and cache" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("A\nABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    view.setWrapMode(.char);
+
+    const height_one = try view.measureForDimensions(5, 1);
+    try std.testing.expectEqual(@as(u32, 1), height_one.line_count);
+    try std.testing.expectEqual(@as(u32, 1), height_one.width_cols_max);
+
+    const height_two = try view.measureForDimensions(5, 2);
+    try std.testing.expectEqual(@as(u32, 2), height_two.line_count);
+    try std.testing.expectEqual(@as(u32, 5), height_two.width_cols_max);
+
+    const height_four = try view.measureForDimensions(5, 4);
+    try std.testing.expectEqual(@as(u32, 4), height_four.line_count);
+    try std.testing.expectEqual(@as(u32, 5), height_four.width_cols_max);
+}
+
 test "TextBufferView measureForDimensions - no wrap mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

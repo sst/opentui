@@ -172,6 +172,22 @@ pub const UnifiedTextBuffer = struct {
         iter_mod.walkLinesAndSegments(&self._rope, ctx, segment_callback, line_end_callback);
     }
 
+    pub fn walkLinesAndSegmentsWhile(
+        self: *const Self,
+        ctx: *anyopaque,
+        segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
+        line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
+        should_continue_callback: *const fn (ctx: *anyopaque) bool,
+    ) void {
+        iter_mod.walkLinesAndSegmentsWhile(
+            &self._rope,
+            ctx,
+            segment_callback,
+            line_end_callback,
+            should_continue_callback,
+        );
+    }
+
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,

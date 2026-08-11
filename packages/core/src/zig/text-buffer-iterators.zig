@@ -68,6 +68,16 @@ pub fn walkLinesAndSegments(
     segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
+    walkLinesAndSegmentsWhile(rope, ctx, segment_callback, line_end_callback, null);
+}
+
+pub fn walkLinesAndSegmentsWhile(
+    rope: *const UnifiedRope,
+    ctx: *anyopaque,
+    segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
+    line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
+    should_continue_callback: ?*const fn (ctx: *anyopaque) bool,
+) void {
     if (rope.count() == 0) {
         return;
     }
@@ -76,6 +86,8 @@ pub fn walkLinesAndSegments(
         user_ctx: *anyopaque,
         seg_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
         line_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
+        should_continue_callback: ?*const fn (ctx: *anyopaque) bool,
+        stopped_early: bool = false,
         current_line_idx: u32 = 0,
         current_col_offset: u32 = 0,
         line_start_seg: u32 = 0,
@@ -107,6 +119,12 @@ pub fn walkLinesAndSegments(
             }
 
             walk_ctx.current_seg_idx = idx + 1;
+            if (walk_ctx.should_continue_callback) |should_continue| {
+                if (!should_continue(walk_ctx.user_ctx)) {
+                    walk_ctx.stopped_early = true;
+                    return .{ .keep_walking = false };
+                }
+            }
             return .{};
         }
     };
@@ -115,6 +133,7 @@ pub fn walkLinesAndSegments(
         .user_ctx = ctx,
         .seg_callback = segment_callback,
         .line_callback = line_end_callback,
+        .should_continue_callback = should_continue_callback,
     };
     rope.walk(&walk_ctx, WalkContext.walker) catch {};
 
@@ -123,7 +142,7 @@ pub fn walkLinesAndSegments(
     const had_breaks = walk_ctx.current_line_idx > 0;
     const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
 
-    if (has_content_after_break or had_breaks) {
+    if (!walk_ctx.stopped_early and (has_content_after_break or had_breaks)) {
         line_end_callback(ctx, .{
             .line_idx = walk_ctx.current_line_idx,
             .col_offset = walk_ctx.current_col_offset,

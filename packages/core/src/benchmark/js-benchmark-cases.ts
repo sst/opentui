@@ -92,30 +92,34 @@ function proportionalColumnWidthsCase(): BenchmarkCase {
   }
 }
 
-const WORD_WRAP_LOGICAL_LINES = 64
 const WORD_WRAP_TOKENS_PER_LINE = 128
 const WORD_WRAP_LINE_COLUMNS = 767
-const WORD_WRAP_TEXT_BYTES = 49_151
 const WORD_WRAP_WIDTH_A = 72
 const WORD_WRAP_WIDTH_B = 78
-const WORD_WRAP_MEASURE_HEIGHT = 2_048
+const WORD_WRAP_MEASURE_HEIGHT = 6
 const WORD_WRAP_LINE = `${"token ".repeat(WORD_WRAP_TOKENS_PER_LINE - 1)}token`
-const WORD_WRAP_TEXT = new Array(WORD_WRAP_LOGICAL_LINES).fill(WORD_WRAP_LINE).join("\n")
-const WORD_WRAP_CONTRIBUTION_A = 704_072
-const WORD_WRAP_CONTRIBUTION_B = 1_920_234
+const WORD_WRAP_CONTRIBUTION_A = 6_072
+const WORD_WRAP_CONTRIBUTION_B = 18_234
+const WORD_WRAP_FIXTURES = [
+  { label: "1-kib", logicalLines: 1 },
+  { label: "16-kib", logicalLines: 21 },
+  { label: "64-kib", logicalLines: 85 },
+] as const
 
-function textBufferWordWrapMeasureCase(): BenchmarkCase {
+function textBufferWordWrapMeasureCase(label: string, logicalLines: number): BenchmarkCase {
+  const text = new Array(logicalLines).fill(WORD_WRAP_LINE).join("\n")
+  const textBytes = text.length
   return {
     category: "JS Text",
-    name: "text-buffer-word-wrap-measure",
-    workload_version: 1,
+    name: `text-buffer-word-wrap-measure-${label}`,
+    workload_version: 2,
     parameters: {
       width_method: "unicode",
       wrap_mode: "word",
-      logical_lines: WORD_WRAP_LOGICAL_LINES,
+      logical_lines: logicalLines,
       tokens_per_line: WORD_WRAP_TOKENS_PER_LINE,
       line_columns: WORD_WRAP_LINE_COLUMNS,
-      text_bytes: WORD_WRAP_TEXT_BYTES,
+      text_bytes: textBytes,
       width_a: WORD_WRAP_WIDTH_A,
       width_b: WORD_WRAP_WIDTH_B,
       measure_height: WORD_WRAP_MEASURE_HEIGHT,
@@ -123,11 +127,11 @@ function textBufferWordWrapMeasureCase(): BenchmarkCase {
     setup() {
       const textBuffer = TextBuffer.create("unicode")
       try {
-        textBuffer.setText(WORD_WRAP_TEXT)
+        textBuffer.setText(text)
         const view = TextBufferView.create(textBuffer)
         try {
           view.setWrapMode("word")
-          if (textBuffer.byteSize !== WORD_WRAP_TEXT_BYTES || textBuffer.getLineCount() !== WORD_WRAP_LOGICAL_LINES) {
+          if (textBuffer.byteSize !== textBytes || textBuffer.getLineCount() !== logicalLines) {
             throw new Error(
               `text-buffer-word-wrap-measure: fixture shape bytes=${textBuffer.byteSize} ` +
                 `lines=${textBuffer.getLineCount()}`,
@@ -282,7 +286,7 @@ export const defaultBenchmarkCases: readonly BenchmarkCase[] = [
   mouseCase("direct-bubble-depth-8", false),
   mouseCase("stdin-sgr-bubble-depth-8", true),
   proportionalColumnWidthsCase(),
-  textBufferWordWrapMeasureCase(),
+  ...WORD_WRAP_FIXTURES.map(({ label, logicalLines }) => textBufferWordWrapMeasureCase(label, logicalLines)),
   directBoxDrawingCase(),
 ]
 
