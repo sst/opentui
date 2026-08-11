@@ -223,6 +223,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private updateStickyState(): void {
+    if (this.restoringViewport) return
+
     if (!this._stickyScroll) {
       this.syncManualScrollState()
       return
@@ -839,7 +841,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.horizontalScrollBar.scrollSize = this.content.width
       this.horizontalScrollBar.viewportSize = this.viewport.width
 
-      if (this._stickyScroll) {
+      if (this._stickyScroll && !this.viewportAnchor) {
         const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
         const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
         const stickyStart = this._stickyStart

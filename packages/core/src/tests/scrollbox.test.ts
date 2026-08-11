@@ -243,7 +243,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     expect(scrollbox.scrollTop).toBe(4)
   })
 
-  test("explicit viewport preservation takes precedence over sticky top", async () => {
+  test("explicit viewport preservation pauses sticky top only for its active scope", async () => {
     const scrollbox = new ScrollBoxRenderable(testRenderer, {
       id: "scrollbox",
       width: 20,
@@ -264,10 +264,58 @@ describe("ScrollBoxRenderable - child delegation", () => {
     const preservation = scrollbox.preserveViewport(rows[0])
     scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }), rows[0])
     await renderOnce()
-    preservation?.cancel()
 
     expect(scrollbox.scrollTop).toBe(2)
     expect(captureCharFrame().split("\n")[0]).toContain("row-0")
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(3)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-0")
+
+    preservation?.cancel()
+
+    expect(scrollbox.scrollTop).toBe(3)
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(0)
+  })
+
+  test("explicit viewport preservation keeps a manually paused sticky state", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "top",
+      viewportCulling: false,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${index}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    const preservation = scrollbox.preserveViewport(rows[4])
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expect(captureCharFrame().split("\n")[0]).toContain("row-4")
+
+    preservation?.cancel()
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
   })
 
   test("preserves an explicit viewport anchor with culling enabled", async () => {
