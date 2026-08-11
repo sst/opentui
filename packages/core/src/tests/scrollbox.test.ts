@@ -24,6 +24,10 @@ let captureCharFrame: () => string
 let mockTreeSitterClient: MockTreeSitterClient
 let mockTreeSitterClients: MockTreeSitterClient[]
 
+function expectFrameLineToStartWith(line: number, prefix: string): void {
+  expect(captureCharFrame().split("\n")[line]?.trimStart().slice(0, prefix.length)).toBe(prefix)
+}
+
 beforeEach(async () => {
   ;({
     renderer: testRenderer,
@@ -154,7 +158,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(12)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
   test("preserves the anchor when prepend and trim keep the content height unchanged", async () => {
@@ -176,7 +180,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(5)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
   test("preserves the anchor when the viewport resizes during a prepend", async () => {
@@ -199,10 +203,10 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(6)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
-  test("preserves the anchor across reordering and anchor removal", async () => {
+  test("preserves the anchor across reordering", async () => {
     const options = { id: "scrollbox", width: 20, height: 4, preserveScrollAnchor: true }
     const scrollbox = new ScrollBoxRenderable(testRenderer, options)
     testRenderer.root.add(scrollbox)
@@ -220,7 +224,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(3)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
   test("preserves the anchor when a child destroys itself", async () => {
@@ -241,7 +245,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(3)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
   test("preserves the source anchor when a child is reparented", async () => {
@@ -270,18 +274,14 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(source.scrollTop).toBe(3)
-    expect(captureCharFrame().split("\n")[0]?.trimStart()).toStartWith("row-4")
+    expectFrameLineToStartWith(0, "row-4")
   })
 
-  test("does not retain an anchor after a rejected mutation", async () => {
+  test("does not change the anchor after a rejected mutation", async () => {
     const options = { id: "scrollbox", width: 20, height: 4, preserveScrollAnchor: true }
     const scrollbox = new ScrollBoxRenderable(testRenderer, options)
     testRenderer.root.add(scrollbox)
-    const rows = Array.from({ length: 10 }, (_, i) => {
-      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
-      scrollbox.add(row)
-      return row
-    })
+    for (let i = 0; i < 10; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
     await renderOnce()
     scrollbox.scrollTop = 4
     await renderOnce()
@@ -289,7 +289,27 @@ describe("ScrollBoxRenderable - child delegation", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {})
     scrollbox.remove(new BoxRenderable(testRenderer, { id: "not-a-child" }))
     warn.mockRestore()
-    rows[0]!.height = 2
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(4)
+  })
+
+  test("does not retain transient state after a throwing mutation", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 10; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    expect(() => scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1 }), {})).toThrow(
+      "Anchor must be a Renderable",
+    )
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(4)
@@ -306,6 +326,47 @@ describe("ScrollBoxRenderable - child delegation", () => {
 
     scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), scrollbox.getChildren()[0])
     scrollbox.scrollTop = 2
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(2)
+  })
+
+  test("does not overwrite newer same-position scroll intent", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 10; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), scrollbox.getChildren()[0])
+    scrollbox.scrollTop = 2
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(4)
+  })
+
+  test("does not overwrite direct scrollbar input after insertion", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 10; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), scrollbox.getChildren()[0])
+    scrollbox.verticalScrollBar.scrollBy(-2)
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(2)
@@ -329,6 +390,30 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     scrollbox.insertBefore(new BoxRenderable(testRenderer, { width: 4, flexShrink: 0 }), scrollbox.getChildren()[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollLeft).toBe(12)
+    expect(scrollbox.scrollTop).toBe(0)
+  })
+
+  test("vertical scroll intent does not cancel horizontal anchoring", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 8,
+      height: 3,
+      scrollX: true,
+      scrollY: false,
+      contentOptions: { flexDirection: "row" },
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 6; i++) scrollbox.add(new BoxRenderable(testRenderer, { width: 4, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollLeft = 8
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { width: 4, flexShrink: 0 }), scrollbox.getChildren()[0])
+    scrollbox.scrollBy({ x: 0, y: 1 })
     await renderOnce()
 
     expect(scrollbox.scrollLeft).toBe(12)
@@ -356,6 +441,292 @@ describe("ScrollBoxRenderable - child delegation", () => {
     await renderOnce()
 
     expect(scrollbox.scrollTop).toBe(2)
+    expect(scrollbox.scrollLeft).toBe(0)
+  })
+
+  test("anchors to visible content when inserting above the viewport", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[3])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expectFrameLineToStartWith(0, "row-4")
+  })
+
+  test("anchors to visible content at the culling threshold", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 16 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[3])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expectFrameLineToStartWith(0, "row-4")
+  })
+
+  test("preserves a resize anchor at the culling threshold", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 16 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    rows[0]!.height = 2
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+  })
+
+  test("captures immediately when anchoring is enabled", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, { id: "scrollbox", width: 20, height: 4 })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.preserveScrollAnchor = true
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expectFrameLineToStartWith(0, "row-4")
+  })
+
+  test("normalizes a removed preserveScrollAnchor prop to false", () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      preserveScrollAnchor: true,
+    })
+
+    ;(scrollbox as unknown as { preserveScrollAnchor: null }).preserveScrollAnchor = null
+
+    expect(scrollbox.preserveScrollAnchor).toBe(false)
+  })
+
+  test("falls back to the next visible anchor when the first is hidden", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    rows[4]!.visible = false
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(4)
+    expectFrameLineToStartWith(1, "row-5")
+  })
+
+  test("ignores absolute children when choosing an anchor", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    scrollbox.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        top: 4,
+        width: 20,
+        height: 1,
+        zIndex: -1,
+      }),
+    )
+    const rows = Array.from({ length: 10 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expectFrameLineToStartWith(0, "row-4")
+  })
+
+  test("preserves the anchor when a child above the viewport resizes", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, () => {
+      const row = new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 })
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    rows[0]!.height = 2
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+  })
+
+  test("preserves as much of the anchor as possible when the viewport grows", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 12; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollTop = 8
+    await renderOnce()
+
+    const first = scrollbox.getChildren()[0]
+    scrollbox.height = 6
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), first)
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), first)
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(8)
+  })
+
+  test("lets sticky scrolling take precedence over anchoring", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "bottom",
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 8; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    expect(scrollbox.scrollTop).toBe(4)
+
+    scrollbox.add(new BoxRenderable(testRenderer, { height: 2, flexShrink: 0 }))
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(6)
+  })
+
+  test("sticky scrolling only takes precedence on its configured axis", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      stickyScroll: true,
+      stickyStart: "left",
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    for (let i = 0; i < 10; i++) scrollbox.add(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }))
+    await renderOnce()
+    scrollbox.scrollTop = 6
+    await renderOnce()
+
+    scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), scrollbox.getChildren()[0])
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(7)
+    expect(scrollbox.scrollLeft).toBe(0)
+  })
+
+  test("defers anchoring when a layout callback mutates content", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "scrollbox",
+      width: 20,
+      height: 4,
+      preserveScrollAnchor: true,
+    })
+    testRenderer.root.add(scrollbox)
+    const rows = Array.from({ length: 10 }, (_, i) => {
+      const row = new BoxRenderable(testRenderer, { id: `row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      return row
+    })
+    await renderOnce()
+    scrollbox.scrollTop = 4
+    await renderOnce()
+
+    let prepended = false
+    scrollbox.viewport.onSizeChange = () => {
+      if (prepended) return
+      prepended = true
+      scrollbox.insertBefore(new BoxRenderable(testRenderer, { height: 1, flexShrink: 0 }), rows[0])
+    }
+    scrollbox.height = 5
+    await renderOnce()
+    await renderOnce()
+
+    expect(scrollbox.scrollTop).toBe(5)
+    expectFrameLineToStartWith(0, "row-4")
   })
 
   test("destroyRecursively fully detaches internal parts without warnings", () => {

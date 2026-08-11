@@ -115,6 +115,21 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 
 Viewport culling skips render calls for offscreen children, so their `renderBefore` and `renderAfter` hooks do not run. Do not make layout or state depend on render hooks; disable `viewportCulling` if every child must run a render hook.
 
+## Preserving the scroll anchor
+
+Enable scroll anchoring when content can be inserted, removed, reordered, or resized above a manually scrolled viewport:
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "history",
+  width: 60,
+  height: 20,
+  preserveScrollAnchor: true,
+})
+```
+
+ScrollBox keeps the leading visible direct child at the same viewport position on each scrolled axis. Sticky scrolling and newer calls to `scrollTo`, `scrollBy`, or the scroll position setters take precedence over anchoring. Absolute and hidden children are not used as anchors.
+
 ## Customizing scrollbars
 
 Style the scrollbars using nested options:
@@ -221,6 +236,7 @@ When focused, ScrollBox responds to keyboard input:
 | `stickyScroll`               | `boolean`                                | `false` | Keep scroll position pinned to an edge |
 | `stickyStart`                | `"top" \| "bottom" \| "left" \| "right"` | -       | Which edge to stick to                 |
 | `viewportCulling`            | `boolean`                                | `true`  | Only render visible children           |
+| `preserveScrollAnchor`       | `boolean`                                | `false` | Preserve visible content during layout |
 | `scrollAcceleration`         | `ScrollAcceleration`                     | -       | Custom scroll acceleration algorithm   |
 | `rootOptions`                | `BoxOptions`                             | -       | Style options for root container       |
 | `wrapperOptions`             | `BoxOptions`                             | -       | Style options for wrapper              |
