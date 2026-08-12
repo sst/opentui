@@ -250,7 +250,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
   .screen {
     position: absolute;
-    inset: 0 0 auto auto;
+    inset: -2.5em 0 auto auto;
     width: 20rem;
     overflow: hidden;
     clip-path: inset(0 100% 0 0);
@@ -402,6 +402,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
     .screen {
       position: static;
+      inset: auto;
       width: min(100%, 26rem);
       min-height: 0;
       grid-column: 1;
