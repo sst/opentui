@@ -27,7 +27,7 @@ describe("parser diagnostics", () => {
   })
 
   test("does not partially parse unsupported flowchart syntax", () => {
-    for (const statement of ["A <--> B", "A & B --> C", "A((Start)) --> B", "A-->B; B-->C"]) {
+    for (const statement of ["A & B --> C", "A((Start)) --> B", "A-->B; B-->C"]) {
       expect(() => parseMermaidFlowchartDiagram(`flowchart LR\n  ${statement}`)).toThrow(MermaidSyntaxError)
     }
   })

@@ -733,6 +733,24 @@ stateDiagram-v2
     }
   })
 
+  test("keeps lifecycle states intact around branches and feedback", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  [*] --> Idle
+  Idle --> MailboxPending: enqueue + setAlarm
+  MailboxPending --> PromptSubmitted: drain mailbox
+  PromptSubmitted --> Polling: prompt admitted
+  Polling --> Polling: execution still active
+  Polling --> Completed: terminal log event
+  Polling --> Polling: retry after transient failure
+  Completed --> Idle: final Slack projection
+  Idle --> Expired: 30 days inactive
+  Expired --> [*]: delete SQLite state`)
+
+    for (const state of ["Idle", "MailboxPending", "PromptSubmitted", "Polling", "Completed", "Expired"]) {
+      expect(output.match(new RegExp(state, "g"))).toHaveLength(1)
+    }
+  })
+
   test("keeps composite titles intact under reciprocal composite routes", () => {
     const source = `stateDiagram-v2
   direction LR

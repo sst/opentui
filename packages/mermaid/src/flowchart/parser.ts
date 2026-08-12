@@ -31,7 +31,7 @@ const ID_ONLY_RE = new RegExp(`^${ID_RE}$`)
 const EXPLICIT_NODE_SHAPE_RE = new RegExp(`^${ID_RE}(?:\\[|\\(|\\{)`)
 const CIRCLE_NODE_RE = new RegExp(`^${ID_RE}\\(\\(.+\\)\\)$`)
 const EDGE_OPERATOR_RE =
-  /(-\.(?!->)(.+?)\.->)|(--|==|-\.)\s+(.+?)\s+(-->|==>|\.->|-\.->)|(-->|==>|-\.->|---|~~~)\s*(?:\|([^|]*)\|\s*)?/g
+  /(-\.(?!->)(.+?)\.(?:->|-))|(--|==|-\.)\s+(.+?)\s+(-->|==>|\.->|-\.->|\.-)|(<-->|-->|==>|-\.->|---|~~~)\s*(?:\|([^|]*)\|\s*)?/dg
 
 function normalizeDirection(value?: string): FlowchartDirection {
   const upper = value?.toUpperCase()
@@ -138,9 +138,11 @@ function createEdge(
   label: string,
   style: FlowchartEdgeStyle | undefined,
   arrowhead: boolean,
+  sourceArrowhead: boolean,
 ): FlowchartEdge {
   const edge: FlowchartEdge = style ? { from, to, label, style } : { from, to, label }
   if (!arrowhead) edge.arrowhead = false
+  if (sourceArrowhead) edge.sourceArrowhead = true
   return edge
 }
 
@@ -150,6 +152,7 @@ interface ParsedEdgeOperator {
   label: string
   style: FlowchartEdgeStyle | undefined
   arrowhead: boolean
+  sourceArrowhead: boolean
   orderOnly: boolean
 }
 
@@ -158,12 +161,15 @@ function parseEdgeOperators(line: string): ParsedEdgeOperator[] {
     const inlineDashedArrow = match[1]
     const startArrow = inlineDashedArrow ?? match[3] ?? match[6]!
     const endArrow = inlineDashedArrow ?? match[5] ?? match[6]!
+    const labelGroup = match[2] ? 2 : match[4] ? 4 : match[7] ? 7 : undefined
+    const labelRange = labelGroup === undefined ? undefined : match.indices?.[labelGroup]
     return {
       index: match.index,
       end: match.index + match[0].length,
-      label: decodeMermaidText((match[2] ?? match[4] ?? match[7] ?? "").trim()),
+      label: stripQuotes(labelRange ? line.slice(labelRange[0], labelRange[1]) : ""),
       style: edgeStyleFromArrow(startArrow, endArrow),
-      arrowhead: endArrow !== "---",
+      arrowhead: endArrow === "~~~" || endArrow.endsWith(">"),
+      sourceArrowhead: startArrow.startsWith("<"),
       orderOnly: endArrow === "~~~",
     }
   })
@@ -329,6 +335,7 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
             operator.label,
             operator.style,
             operator.arrowhead,
+            operator.sourceArrowhead,
           )
           edges.push(operator.orderOnly ? { ...edge, orderOnly: true } : edge)
         }

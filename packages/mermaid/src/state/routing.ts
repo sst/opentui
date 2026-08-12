@@ -17,9 +17,9 @@ interface StateTransitionRoutePlanBase {
 export type StateTransitionRoutePlan =
   | (StateTransitionRoutePlanBase & { kind: "self" })
   | (StateTransitionRoutePlanBase & { kind: "horizontal-forward"; leftToRight: boolean })
-  | (StateTransitionRoutePlanBase & { kind: "bottom-feedback"; railY: number })
+  | (StateTransitionRoutePlanBase & { kind: "bottom-feedback"; railY: number; approachX: number })
   | (StateTransitionRoutePlanBase & { kind: "top-feedback"; railY: number })
-  | (StateTransitionRoutePlanBase & { kind: "bottom-parallel"; railY: number })
+  | (StateTransitionRoutePlanBase & { kind: "bottom-parallel"; railY: number; approachX: number })
   | (StateTransitionRoutePlanBase & { kind: "vertical-elbow"; hasReverse: boolean; offsetConnector: boolean })
   | (StateTransitionRoutePlanBase & { kind: "side-parallel"; railX: number })
   | (StateTransitionRoutePlanBase & { kind: "vertical" })
@@ -245,6 +245,42 @@ function horizontalCorridorCrossesUnrelatedState(
   return !space.isFree(corridor)
 }
 
+function bottomApproachX(
+  diagram: StateVisibleDiagram,
+  transition: StateVisibleTransition,
+  from: BoxBounds,
+  to: BoxBounds,
+  bounds: ReadonlyMap<string, BoxBounds>,
+  railY: number,
+): number {
+  const targetX = to.width > 1 ? (from.centerX > to.centerX ? to.left + 1 : to.left + to.width - 2) : to.centerX
+  const targetBottomY = to.top + to.height
+  const top = Math.min(targetBottomY, railY)
+  const bottom = Math.max(targetBottomY, railY)
+  const isClear = (x: number): boolean =>
+    !diagram.states.some((state) => {
+      if (state.id === transition.from || state.id === transition.to || isHiddenCompositeMarker(state)) return false
+      const bound = bounds.get(state.id)
+      return Boolean(
+        bound &&
+        x >= bound.left &&
+        x < bound.left + bound.width &&
+        top < bound.top + bound.height &&
+        bottom >= bound.top,
+      )
+    })
+
+  if (isClear(targetX)) return targetX
+  const maxX = Math.max(targetX, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + 1
+  for (let distance = 1; distance <= maxX; distance++) {
+    const right = targetX + distance
+    if (isClear(right)) return right
+    const left = targetX - distance
+    if (left >= 0 && isClear(left)) return left
+  }
+  return targetX
+}
+
 export function createStateTransitionRoutePlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
@@ -294,21 +330,33 @@ export function createStateTransitionRoutePlans(
       (diagram.direction === "LR" || diagram.direction === "RL") && isStateHorizontalFeedback(diagram, from, to)
     const feedbackAllocation = feedbackAllocations.get(transition)
     if (feedbackAllocation) {
+      if (feedbackAllocation.side === "bottom") {
+        return [
+          {
+            ...base,
+            kind: "bottom-feedback",
+            railY: feedbackAllocation.railY,
+            approachX: bottomApproachX(diagram, transition, from, to, bounds, feedbackAllocation.railY),
+          },
+        ]
+      }
       return [
         {
           ...base,
-          kind: feedbackAllocation.side === "bottom" ? "bottom-feedback" : "top-feedback",
+          kind: "top-feedback",
           railY: feedbackAllocation.railY,
         },
       ]
     }
     if (parallelIndex > 0) {
       if ((diagram.direction === "LR" || diagram.direction === "RL") && from.centerY === to.centerY) {
+        const railY = allocateBottomRail()
         return [
           {
             ...base,
             kind: "bottom-parallel",
-            railY: allocateBottomRail(),
+            railY,
+            approachX: bottomApproachX(diagram, transition, from, to, bounds, railY),
           },
         ]
       }
@@ -328,7 +376,15 @@ export function createStateTransitionRoutePlans(
       }
       if (from.centerY === to.centerY) {
         if (hasReverseTransition(diagram, transition) && from.centerX > to.centerX) {
-          return [{ ...base, kind: "bottom-parallel", railY: allocateBottomRail() }]
+          const railY = allocateBottomRail()
+          return [
+            {
+              ...base,
+              kind: "bottom-parallel",
+              railY,
+              approachX: bottomApproachX(diagram, transition, from, to, bounds, railY),
+            },
+          ]
         }
         return [{ ...base, kind: "horizontal-forward", leftToRight: from.centerX <= to.centerX }]
       }
@@ -339,7 +395,15 @@ export function createStateTransitionRoutePlans(
     }
 
     if (from.centerY !== to.centerY) {
-      if (from.centerY > to.centerY && feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
+      if (from.centerY > to.centerY && feedback)
+        return [
+          {
+            ...base,
+            kind: "bottom-feedback",
+            railY: feedbackLaneY,
+            approachX: bottomApproachX(diagram, transition, from, to, bounds, feedbackLaneY),
+          },
+        ]
       const hasReverse = hasReverseTransition(diagram, transition)
       return [
         {
@@ -350,9 +414,25 @@ export function createStateTransitionRoutePlans(
         },
       ]
     }
-    if (feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
+    if (feedback)
+      return [
+        {
+          ...base,
+          kind: "bottom-feedback",
+          railY: feedbackLaneY,
+          approachX: bottomApproachX(diagram, transition, from, to, bounds, feedbackLaneY),
+        },
+      ]
     if (horizontalCorridorCrossesUnrelatedState(diagram, transition, from, to, bounds)) {
-      return [{ ...base, kind: "bottom-parallel", railY: allocateBottomRail() }]
+      const railY = allocateBottomRail()
+      return [
+        {
+          ...base,
+          kind: "bottom-parallel",
+          railY,
+          approachX: bottomApproachX(diagram, transition, from, to, bounds, railY),
+        },
+      ]
     }
     return [{ ...base, kind: "horizontal-forward", leftToRight: from.centerX <= to.centerX }]
   })
@@ -473,14 +553,14 @@ function outsideTopY(bounds: BoxBounds): number {
 }
 
 function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
-  const { from, to, targetIsChoice, targetIsHiddenMarker, transition, railY } = builder.route as Extract<
+  const { from, to, targetIsChoice, targetIsHiddenMarker, transition, railY, approachX } = builder.route as Extract<
     StateTransitionRoutePlan,
     { kind: "bottom-feedback" | "bottom-parallel" }
   >
   const sourceX = from.centerX
   const targetX = to.width > 1 ? (sourceX > to.centerX ? to.left + 1 : to.left + to.width - 2) : to.centerX
   const targetRailCutsSource = targetX >= from.left && targetX <= from.left + from.width - 1
-  const railTargetX = targetRailCutsSource ? Math.max(from.left + from.width, to.left + to.width) + 2 : targetX
+  const railTargetX = targetRailCutsSource ? Math.max(from.left + from.width, to.left + to.width) + 2 : approachX
   const sourceBottomY = outsideBottomY(from)
   const targetBottomY = outsideBottomY(to)
   addBottomDeparture(builder, from, sourceX)

@@ -16,6 +16,7 @@ export interface FlowchartEdge {
   label: string
   style?: FlowchartEdgeStyle
   arrowhead?: false
+  sourceArrowhead?: true
   orderOnly?: boolean
 }
 

@@ -555,12 +555,25 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
   }
 
   const ranks = computeRanks(diagram)
-  const fallbackStates = diagram.states.filter((state) => !bounds.has(state.id))
+  const fallbackStates = diagram.states
+    .filter((state) => !bounds.has(state.id))
+    .sort((left, right) => (ranks.get(left.id) ?? 0) - (ranks.get(right.id) ?? 0))
   for (const state of fallbackStates) {
     const size = sizes.get(state.id)!
-    const rank = ranks.get(state.id) ?? bounds.size
     const top = baselineY + 5
-    const left = rank * (size.width + defaultGap)
+    const rank = ranks.get(state.id) ?? bounds.size
+    let left = rank * (size.width + defaultGap)
+    while (true) {
+      const collision = [...bounds.values()].find(
+        (bound) =>
+          left < bound.left + bound.width + defaultGap &&
+          left + size.width + defaultGap > bound.left &&
+          top < bound.top + bound.height &&
+          top + size.height > bound.top,
+      )
+      if (!collision) break
+      left = collision.left + collision.width + defaultGap
+    }
     bounds.set(state.id, {
       id: state.id,
       left,
