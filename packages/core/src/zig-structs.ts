@@ -192,15 +192,6 @@ export const CursorStateStruct = defineStruct([
   ["a", "f32"],
 ])
 
-export const EmbeddedTerminalComposeResultStruct = defineStruct([
-  ["rows", "u32"],
-  ["cells", "u32"],
-  ["dirty", "u8"],
-  ["padding0", "u8"],
-  ["padding1", "u8"],
-  ["padding2", "u8"],
-])
-
 export const EmbeddedTerminalCursorStruct = defineStruct([
   ["x", "u16"],
   ["y", "u16"],

@@ -121,13 +121,6 @@ const EmbeddedTerminalStatus = struct {
     const processing_failed: i32 = -5;
 };
 
-pub const ExternalEmbeddedTerminalComposeResult = extern struct {
-    rows: u32 = 0,
-    cells: u32 = 0,
-    dirty: u8 = 0,
-    _padding: [3]u8 = .{ 0, 0, 0 },
-};
-
 pub const ExternalEmbeddedTerminalCursor = extern struct {
     x: u16 = 0,
     y: u16 = 0,
@@ -202,7 +195,6 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 }
 
 comptime {
-    std.debug.assert(@sizeOf(ExternalEmbeddedTerminalComposeResult) == 12);
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalCursor) == 14);
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalKeyOptions) == 12);
     _ = native_span_feed;
@@ -264,18 +256,10 @@ export fn embeddedTerminalCompose(
     buffer_handle: NativeHandle,
     x: i32,
     y: i32,
-    out_result_ptr: ?*ExternalEmbeddedTerminalComposeResult,
 ) i32 {
-    const out_result = out_result_ptr orelse return EmbeddedTerminalStatus.invalid;
-    out_result.* = .{};
     const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
     const target = acquireBuffer(buffer_handle) orelse return EmbeddedTerminalStatus.invalid;
-    const result = terminal_value.compose(target, x, y) catch |err| return embeddedTerminalStatus(err);
-    out_result.* = .{
-        .rows = result.rows,
-        .cells = result.cells,
-        .dirty = @intCast(@intFromEnum(result.dirty)),
-    };
+    terminal_value.compose(target, x, y) catch |err| return embeddedTerminalStatus(err);
     return 0;
 }
 

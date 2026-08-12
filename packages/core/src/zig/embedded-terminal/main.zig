@@ -9,8 +9,6 @@ pub const Error = error{
     ResponseOverflow,
 } || std.mem.Allocator.Error || buffer.BufferError;
 
-pub const ComposeResult = compositor.Result;
-
 pub const Cursor = struct {
     x: u16 = 0,
     y: u16 = 0,
@@ -101,7 +99,7 @@ pub const EmbeddedTerminal = struct {
         self.force_redraw = true;
     }
 
-    pub fn compose(self: *EmbeddedTerminal, target: *buffer.OptimizedBuffer, x: i32, y: i32) Error!ComposeResult {
+    pub fn compose(self: *EmbeddedTerminal, target: *buffer.OptimizedBuffer, x: i32, y: i32) Error!void {
         self.render_state.update(self.allocator, &self.terminal) catch |err| {
             self.render_state.deinit(self.allocator);
             self.render_state = .empty;
@@ -112,7 +110,7 @@ pub const EmbeddedTerminal = struct {
             self.render_state.dirty = .full;
             self.force_redraw = false;
         }
-        return compositor.compose(self.allocator, &self.render_state, target, x, y);
+        try compositor.compose(self.allocator, &self.render_state, target, x, y);
     }
 
     pub fn cursor(self: *EmbeddedTerminal) Cursor {

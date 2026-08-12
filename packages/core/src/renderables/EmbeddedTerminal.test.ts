@@ -155,7 +155,7 @@ describe("EmbeddedTerminalRenderable", () => {
     )
     expect(
       () => new EmbeddedTerminalRenderable(setup.renderer, { cols: 80, rows: 24, maxScrollback: 0x1_0000_0000 }),
-    ).toThrow("maxScrollback must be an integer between 0 and 4294967295")
+    ).toThrow("Embedded terminal maxScrollback exceeds native u32 length limit")
   })
 
   test("cleans up focus and native state when the data callback throws", () => {

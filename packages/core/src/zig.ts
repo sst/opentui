@@ -48,7 +48,6 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
   CursorStateStruct,
-  EmbeddedTerminalComposeResultStruct,
   EmbeddedTerminalCursorStruct,
   EmbeddedTerminalKeyOptionsStruct,
   CursorStyleOptionsStruct,
@@ -174,12 +173,6 @@ export enum NativeClipboardShutdownStatus {
 
 export type EmbeddedTerminalHandle = NativeHandle<"embedded_terminal">
 
-export type EmbeddedTerminalDirty = "clean" | "partial" | "full"
-export type EmbeddedTerminalCursorStyle = "bar" | "block" | "underline" | "block-hollow"
-export type EmbeddedTerminalKeyAction = "release" | "press" | "repeat"
-export type EmbeddedTerminalMouseAction = "press" | "release" | "motion"
-export type EmbeddedTerminalMouseButton = "unknown" | "left" | "right" | "middle" | "four" | "five" | "six" | "seven"
-
 export type EmbeddedTerminalCursor = {
   x: number
   y: number
@@ -187,18 +180,12 @@ export type EmbeddedTerminalCursor = {
   visible: boolean
   blinking: boolean
   wideTail: boolean
-  style: EmbeddedTerminalCursorStyle
+  style: "bar" | "block" | "underline" | "block-hollow"
   color?: { r: number; g: number; b: number }
 }
 
-export type EmbeddedTerminalComposeResult = {
-  rows: number
-  cells: number
-  dirty: EmbeddedTerminalDirty
-}
-
 export type EmbeddedTerminalKey = {
-  action?: EmbeddedTerminalKeyAction
+  action?: "release" | "press" | "repeat"
   key?: string
   mods?: number
   consumedMods?: number
@@ -208,8 +195,8 @@ export type EmbeddedTerminalKey = {
 }
 
 export type EmbeddedTerminalMouse = {
-  action: EmbeddedTerminalMouseAction
-  button?: EmbeddedTerminalMouseButton
+  action: "press" | "release" | "motion"
+  button?: "unknown" | "left" | "right" | "middle" | "four" | "five" | "six" | "seven"
   mods?: number
   x: number
   y: number
@@ -338,13 +325,6 @@ function embeddedTerminalDimension(value: number, name: string) {
   return value
 }
 
-function embeddedTerminalScrollback(value: number) {
-  if (!Number.isInteger(value) || value < 0 || value > MAX_FFI_U32) {
-    throw new RangeError(`Embedded terminal maxScrollback must be an integer between 0 and ${MAX_FFI_U32}`)
-  }
-  return value
-}
-
 function embeddedTerminalI32(value: number, name: string) {
   if (!Number.isInteger(value) || value < -0x8000_0000 || value > 0x7fff_ffff) {
     throw new RangeError(`Embedded terminal ${name} must be a signed 32-bit integer`)
@@ -432,7 +412,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     embeddedTerminalCompose: {
-      args: ["u32", "u32", "i32", "i32", "ptr"],
+      args: ["u32", "u32", "i32", "i32"],
       returns: "i32",
     },
     embeddedTerminalCursor: {
@@ -3087,12 +3067,7 @@ export interface RenderLib extends AudioEngineLib {
   embeddedTerminalResize: (handle: EmbeddedTerminalHandle, cols: number, rows: number) => void
   embeddedTerminalInvalidate: (handle: EmbeddedTerminalHandle) => void
   embeddedTerminalScroll: (handle: EmbeddedTerminalHandle, delta: number) => void
-  embeddedTerminalCompose: (
-    handle: EmbeddedTerminalHandle,
-    target: OptimizedBufferHandle,
-    x: number,
-    y: number,
-  ) => EmbeddedTerminalComposeResult
+  embeddedTerminalCompose: (handle: EmbeddedTerminalHandle, target: OptimizedBufferHandle, x: number, y: number) => void
   embeddedTerminalCursor: (handle: EmbeddedTerminalHandle) => EmbeddedTerminalCursor
   embeddedTerminalEncodeKey: (handle: EmbeddedTerminalHandle, key: EmbeddedTerminalKey) => Uint8Array
   embeddedTerminalEncodeMouse: (handle: EmbeddedTerminalHandle, mouse: EmbeddedTerminalMouse) => Uint8Array
@@ -3131,7 +3106,6 @@ class FFIRenderLib implements RenderLib {
       ...allocStruct(MeasureResultStruct),
       result: { lineCount: 0, widthColsMax: 0 } as MeasureResult,
     },
-    embeddedTerminalCompose: allocStruct(EmbeddedTerminalComposeResultStruct),
     embeddedTerminalCursor: allocStruct(EmbeddedTerminalCursorStruct),
     embeddedTerminalKeyOptions: allocStruct(EmbeddedTerminalKeyOptionsStruct),
     audioStreamStats: {
@@ -3195,7 +3169,7 @@ class FFIRenderLib implements RenderLib {
   }): EmbeddedTerminalHandle {
     const cols = embeddedTerminalDimension(options.cols, "columns")
     const rows = embeddedTerminalDimension(options.rows, "rows")
-    const maxScrollback = embeddedTerminalScrollback(options.maxScrollback ?? 10_000)
+    const maxScrollback = toSafeFFIU32Length(options.maxScrollback ?? 10_000, "Embedded terminal maxScrollback")
     const out = new Uint32Array(1)
     embeddedTerminalResult(this.opentui.symbols.createEmbeddedTerminal(cols, rows, maxScrollback, out), "creation")
     if (!out[0]) throw new Error("Embedded terminal creation returned an invalid handle")
@@ -3242,24 +3216,16 @@ class FFIRenderLib implements RenderLib {
     target: OptimizedBufferHandle,
     x: number,
     y: number,
-  ): EmbeddedTerminalComposeResult {
-    const storage = this.ffiStructStorage.embeddedTerminalCompose
+  ): void {
     embeddedTerminalResult(
       this.opentui.symbols.embeddedTerminalCompose(
         handle,
         target,
         embeddedTerminalI32(x, "composition x"),
         embeddedTerminalI32(y, "composition y"),
-        storage.buffer,
       ),
       "compose",
     )
-    const result = EmbeddedTerminalComposeResultStruct.unpack(storage.buffer)
-    return {
-      rows: result.rows,
-      cells: result.cells,
-      dirty: (["clean", "partial", "full"] as const)[result.dirty] ?? "full",
-    }
   }
 
   public embeddedTerminalCursor(handle: EmbeddedTerminalHandle): EmbeddedTerminalCursor {
