@@ -6,7 +6,7 @@ order: 20
 
 # Mermaid Diagrams
 
-`@opentui/mermaid` renders flowchart, sequence, and state diagrams as styled OpenTUI Markdown blocks or plain terminal text.
+`@opentui/mermaid` renders flowchart, sequence, state, and timeline diagrams as styled OpenTUI Markdown blocks or plain terminal text.
 
 Install the package separately:
 
@@ -61,9 +61,15 @@ The options callback runs when the Markdown block renders, so theme changes do n
 Each supported family has a parser and a plain-text renderer:
 
 ```typescript
-import { renderFlowchartDiagram, renderSequenceDiagram, renderStateDiagram } from "@opentui/mermaid"
+import {
+  renderFlowchartDiagram,
+  renderSequenceDiagram,
+  renderStateDiagram,
+  renderTimelineDiagram,
+} from "@opentui/mermaid"
 
 console.log(renderFlowchartDiagram("flowchart LR\n  Parse --> Layout --> Render"))
+console.log(renderTimelineDiagram("timeline\n  2026 : Timeline support"))
 ```
 
 ## Diagnostics
