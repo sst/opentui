@@ -52,6 +52,9 @@ export class CodeRenderable extends TextBufferRenderable {
   private _treeSitterClient: TreeSitterClient
   private _highlightsDirty: boolean = false
   private _highlightSnapshotId: number = 0
+  private _highlightLoopActive: boolean = false
+  private _highlightPromise?: Promise<void>
+  private _highlightRerun: boolean = false
   private _conceal: boolean
   private _drawUnstyledText: boolean
   private _shouldRenderTextBuffer: boolean = true
@@ -106,11 +109,15 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._content
   }
 
+  private invalidateHighlights(): void {
+    this._highlightsDirty = true
+    this._highlightSnapshotId++
+  }
+
   set content(value: string) {
     if (this._content !== value) {
       this._content = value
-      this._highlightsDirty = true
-      this._highlightSnapshotId++
+      this.invalidateHighlights()
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
         this.requestRender()
@@ -170,7 +177,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -181,7 +188,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -192,7 +199,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -203,7 +210,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set drawUnstyledText(value: boolean) {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -214,7 +221,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set initialStyledText(value: StyledText | undefined) {
     if (this._initialStyledText !== value) {
       this._initialStyledText = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -223,7 +230,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._streaming = value
       this._hadInitialContent = false
       this._lastHighlights = []
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -234,7 +241,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set treeSitterClient(value: TreeSitterClient) {
     if (this._treeSitterClient !== value) {
       this._treeSitterClient = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -249,14 +256,14 @@ export class CodeRenderable extends TextBufferRenderable {
   set baseHighlight(value: string | undefined) {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
   set onHighlight(value: OnHighlightCallback | undefined) {
     if (this._onHighlight !== value) {
       this._onHighlight = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
@@ -267,12 +274,12 @@ export class CodeRenderable extends TextBufferRenderable {
   set onChunks(value: OnChunksCallback | undefined) {
     if (this._onChunks !== value) {
       this._onChunks = value
-      this._highlightsDirty = true
+      this.invalidateHighlights()
     }
   }
 
   get isHighlighting(): boolean {
-    return this._isHighlighting
+    return this._isHighlighting || this._highlightRerun
   }
 
   get highlightingDone(): Promise<void> {
@@ -420,6 +427,25 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  private async runHighlights(): Promise<void> {
+    try {
+      do {
+        this._highlightRerun = false
+        await this.startHighlight()
+      } while (this._highlightRerun && !this.isDestroyed && this._content.length > 0 && this._filetype)
+    } finally {
+      this._highlightLoopActive = false
+      this._highlightRerun = false
+    }
+  }
+
+  private clearPendingHighlight(): void {
+    this._highlightSnapshotId++
+    this._isHighlighting = false
+    this._highlightRerun = false
+    this._highlightingPromise = Promise.resolve()
+  }
+
   private setRenderedLineSources(lineSources: number[] | undefined): void {
     this._renderedLineSources = lineSources
     this._mappedLineInfo = undefined
@@ -536,20 +562,55 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._highlightsDirty) {
       if (this.isDestroyed) return
 
-      if (this._content.length === 0) {
-        this._shouldRenderTextBuffer = false
+      const hasContent = this._content.length > 0
+      if (!hasContent || !this._filetype) {
+        this._shouldRenderTextBuffer = hasContent
         this._highlightsDirty = false
-      } else if (!this._filetype) {
-        this._shouldRenderTextBuffer = true
-        this._highlightsDirty = false
+        this.clearPendingHighlight()
+
+        if (hasContent) {
+          this.textBuffer.setText(this._content)
+          this.setRenderedLineSources(undefined)
+          this.updateTextInfo()
+        }
       } else {
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
-        this._highlightingPromise = this.startHighlight()
+        if (this._highlightLoopActive) {
+          this._isHighlighting = true
+          this._highlightRerun = true
+          this._highlightingPromise = this._highlightPromise!
+        } else {
+          const { promise: highlightingPromise, resolve, reject } = Promise.withResolvers<void>()
+          this._highlightLoopActive = true
+          this._highlightPromise = highlightingPromise
+          this._highlightingPromise = highlightingPromise
+          const clearHighlight = () => {
+            if (this._highlightPromise === highlightingPromise) {
+              this._highlightPromise = undefined
+            }
+          }
+          void this.runHighlights().then(
+            () => {
+              clearHighlight()
+              resolve()
+            },
+            (error) => {
+              clearHighlight()
+              reject(error)
+            },
+          )
+        }
       }
     }
 
     if (!this._shouldRenderTextBuffer) return
     super.renderSelf(buffer)
+  }
+
+  public override destroy(): void {
+    if (this.isDestroyed) return
+    this.clearPendingHighlight()
+    super.destroy()
   }
 }

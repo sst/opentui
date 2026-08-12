@@ -399,6 +399,44 @@ describe("TreeSitterClient", () => {
     expect(result.warning).toContain("No parser available for filetype unsupported-lang")
   }, 5000)
 
+  test("should reject one-shot highlighting after a correlated worker error", async () => {
+    await client.initialize()
+
+    const internals = client as unknown as {
+      messageCallbacks: Map<string, unknown>
+      worker?: {
+        onmessage: ((event: { data: { type: "ERROR"; messageId: string; error: string } }) => void) | null
+        postMessage: (message: { type?: string; messageId?: string }) => void
+      }
+    }
+    const worker = internals.worker
+    expect(worker).toBeDefined()
+    if (!worker) {
+      throw new Error("Expected initialized client to have a worker")
+    }
+
+    let messageId: string | undefined
+    const originalPostMessage = worker.postMessage.bind(worker)
+    worker.postMessage = (message) => {
+      if (message.type === "ONESHOT_HIGHLIGHT") {
+        messageId = message.messageId
+        return
+      }
+      originalPostMessage(message)
+    }
+
+    const highlighting = client.highlightOnce("const value = 1", "javascript")
+    expect(messageId).toBeDefined()
+    expect(internals.messageCallbacks.size).toBe(1)
+
+    worker.onmessage?.({
+      data: { type: "ERROR", messageId: messageId!, error: "synthetic one-shot failure" },
+    })
+
+    await expect(highlighting).rejects.toThrow("synthetic one-shot failure")
+    expect(internals.messageCallbacks.size).toBe(0)
+  })
+
   test("should perform multiple one-shot highlights independently", async () => {
     await client.initialize()
 
