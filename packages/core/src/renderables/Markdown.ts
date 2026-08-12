@@ -1880,7 +1880,8 @@ export class MarkdownRenderable extends Renderable {
       const custom = this._renderNode
         ? this.createTopLevelCustomRenderable(block, blockIndex, existingMoved ? undefined : existing?.renderable)
         : undefined
-      if (existing && custom?.renderable !== existing.renderable) existing.renderable.destroyRecursively()
+      if (existingMoved) this._blockStates.splice(blockIndex, 0, existing!)
+      else if (existing && custom?.renderable !== existing.renderable) existing.renderable.destroyRecursively()
 
       if (custom?.renderable) {
         const marginTop =

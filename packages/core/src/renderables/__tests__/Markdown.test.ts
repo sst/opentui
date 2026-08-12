@@ -2199,6 +2199,34 @@ test("custom code block renderable updates when fenced content changes", async (
   expect(md.getRenderable("custom-widget")).toBe(initial)
 })
 
+test("custom code block renderable keeps its state when content is prepended", async () => {
+  const source = `\`\`\`widget\n${"wide content ".repeat(10)}\n\`\`\``
+  const md = createMarkdownRenderable({
+    id: "custom-code-move",
+    content: source,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: (node, ctx) => {
+      if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
+      return ctx.previous instanceof TextRenderable
+        ? ctx.previous
+        : new TextRenderable(renderer, { id: "movable-widget", content: node.text, width: "100%", wrapMode: "none" })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md.getRenderable("movable-widget") as TextRenderable
+  initial.scrollX = 4
+
+  md.content = `Intro\n\n${source}`
+  await renderMarkdownRenderable(md)
+
+  expect(md.getRenderable("movable-widget")).toBe(initial)
+  expect(initial.scrollX).toBe(4)
+  expect(captureFrame()).toContain("Intro")
+})
+
 test("createMarkdownCodeBlockRenderer dispatches fenced code by language", async () => {
   const md = createMarkdownRenderable({
     id: "language-code-renderer",
