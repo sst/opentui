@@ -1,0 +1,76 @@
+---
+// The minimal variant of the landing page. The only styles are a centered
+// 56rem column, the Berkeley Mono font, the wordmark, the default link
+// blue, and a white background. This is intentional. Do not add more
+// styles or more copy.
+import OpenTUILogo from "../components/OpenTUILogo.astro"
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="OpenTUI is a library to build terminal user interfaces in TypeScript, React, or Solid, on a native Zig renderer."
+    />
+    <title>OpenTUI</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <h1><OpenTUILogo class="logo" title="OpenTUI" /></h1>
+
+    <p>A library to build terminal user interfaces.</p>
+
+    <ul>
+      <li>Written in Zig.</li>
+      <li>Write TypeScript, React, or Solid.</li>
+      <li>Boxes, text, and flex layout become terminal cells.</li>
+      <li>Menus and inputs handle the keyboard for you.</li>
+      <li>It can play sound, show images, and render 3D.</li>
+      <li>Serve it over SSH. Compile it to one file.</li>
+    </ul>
+
+    <p><code>bun create tui</code></p>
+
+    <p>
+      <a href="/docs/getting-started">Documentation</a><br />
+      <a href="https://github.com/anomalyco/opentui">GitHub</a>
+    </p>
+
+    <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>
+  </body>
+</html>
+
+<style is:global>
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  body {
+    max-width: 56rem;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+    background: #fff;
+    color: #000;
+    font-family: "Berkeley Mono", monospace;
+    line-height: 1.5;
+  }
+
+  .logo {
+    width: 250px;
+    height: 60px;
+    display: block;
+  }
+
+  code {
+    font-family: inherit;
+    font-size: inherit;
+  }
+</style>
