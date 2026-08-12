@@ -1,173 +1,145 @@
 ---
-// The landing page is built around one idea: the bullet list drives a film,
-// and the film only exists while you ask for it.
-//
-// Default view is a centered, left-aligned text column with no video. Click
-// a bullet (or j/k, arrow keys, Enter) and the list makes room for a film on
-// the right. On narrower screens the film opens above the list instead.
-// Click the active bullet again, or press Escape, to return to the plain list.
-// Transitions are 150ms linear - terminal speed, movement only, no fades.
-// At 64rem and below the film opens above the list instead of beside it.
-//
-// The placeholder files are symlinks in public/video to ~/capture. Replace
-// the data-video attribute on each bullet when real captures exist.
 import OpenTUILogo from "../components/OpenTUILogo.astro"
+import ThemeToggle from "../components/ThemeToggle.astro"
+import Minimal from "../layouts/Minimal.astro"
+
+const description =
+  "OpenTUI is a library to build terminal user interfaces in TypeScript, React, or Solid, on a native Zig renderer."
+const title = "OpenTUI"
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="OpenTUI is a library to build terminal user interfaces in TypeScript, React, or Solid, on a native Zig renderer."
-    />
-    <title>OpenTUI</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
-  </head>
-  <body>
-    <h1><OpenTUILogo class="logo" title="OpenTUI" /></h1>
-
-    <p>A library to build terminal user interfaces.</p>
+<Minimal {title} description={description}>
+  <main>
+    <header>
+      <h1><OpenTUILogo class="logo" title="OpenTUI" /></h1>
+      <p>A library to build terminal user interfaces.</p>
+    </header>
 
     <div class="band">
-      <figure class="screen">
-        <video src="/video/vt520.mp4" muted loop playsinline preload="metadata"></video>
-      </figure>
+      <div class="screen" id="feature-video" aria-hidden="true">
+        <video muted loop playsinline preload="metadata"></video>
+      </div>
 
       <ul>
-        <li data-video="/video/vt520.mp4">It is written in Zig.</li>
-        <li data-video="/video/prism.mp4">You write TypeScript, React, or Solid. Other languages can use the C ABI.</li>
-        <li data-video="/video/prism.mp4">You arrange boxes and text with flexbox.</li>
-        <li data-video="/video/vt520.mp4">You add selects, inputs, and scroll boxes with keyboard and mouse controls.</li>
-        <li data-video="/video/prism.mp4">You can play sounds, show images, and render 3D graphics.</li>
+        <li><button type="button" data-video="/video/vt520.mp4">It is written in Zig.</button></li>
+        <li>
+          <button type="button" data-video="/video/prism.mp4">
+            You write TypeScript, React, or Solid. Other languages can use the C ABI.
+          </button>
+        </li>
+        <li><button type="button" data-video="/video/prism.mp4">You arrange boxes and text with flexbox.</button></li>
+        <li>
+          <button type="button" data-video="/video/vt520.mp4">
+            You add selects, inputs, and scroll boxes with keyboard and mouse controls.
+          </button>
+        </li>
+        <li>
+          <button type="button" data-video="/video/prism.mp4">
+            You can play sounds, show images, and render 3D graphics.
+          </button>
+        </li>
       </ul>
     </div>
 
     <p>OpenCode uses it in production for millions of users.</p>
+  </main>
 
-    <p>
-      <a href="/docs/getting-started">Documentation</a><br />
-      <a href="/blog">Blog</a><br />
-      <a href="https://github.com/anomalyco/opentui">GitHub</a>
-    </p>
+  <nav aria-label="Primary">
+    <a href="/docs/getting-started">Documentation</a>
+    <a href="/devlog">Devlog</a>
+    <a href="https://github.com/anomalyco/opentui">GitHub</a>
+  </nav>
 
-    <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>
+  <footer>
+    <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>. <ThemeToggle /></p>
+  </footer>
 
-    <script>
-      const band = document.querySelector<HTMLElement>(".band")!
-      const video = band.querySelector("video")!
-      const list = band.querySelector("ul")!
-      const points = [...band.querySelectorAll<HTMLLIElement>("li[data-video]")]
-      let current: HTMLLIElement | null = null
+  <script>
+    const band = document.querySelector<HTMLElement>(".band")!
+    const video = band.querySelector("video")!
+    const list = band.querySelector("ul")!
+    const points = [...band.querySelectorAll<HTMLButtonElement>("button[data-video]")]
+    let current: HTMLButtonElement | null = null
 
-      function open(li: HTMLLIElement) {
-        const src = li.dataset.video!
-        if (video.getAttribute("src") !== src) video.setAttribute("src", src)
-        video.play().catch(() => {})
-        band.classList.add("playing")
-        current = li
-        for (const point of points) point.classList.toggle("active", point === li)
+    for (const point of points) {
+      point.setAttribute("aria-controls", "feature-video")
+      point.setAttribute("aria-expanded", "false")
+    }
+
+    function open(point: HTMLButtonElement) {
+      const src = point.dataset.video!
+      if (video.getAttribute("src") !== src) video.setAttribute("src", src)
+      video.play().catch(() => {})
+      band.classList.add("playing")
+      current = point
+
+      for (const candidate of points) {
+        const active = candidate === point
+        candidate.classList.toggle("active", active)
+        candidate.setAttribute("aria-expanded", String(active))
+      }
+    }
+
+    function close(restoreFocus = false) {
+      const activePoint = current
+      band.classList.remove("playing")
+      video.pause()
+      current = null
+
+      for (const point of points) {
+        point.classList.remove("active")
+        point.setAttribute("aria-expanded", "false")
       }
 
-      function close() {
-        band.classList.remove("playing")
-        video.pause()
-        current = null
-        for (const point of points) point.classList.remove("active")
-      }
+      if (restoreFocus) activePoint?.focus()
+    }
 
-      for (const li of points) {
-        li.tabIndex = 0
-        li.addEventListener("click", () => {
-          if (current === li) close()
-          else open(li)
-        })
-        li.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault()
-            if (current === li) close()
-            else open(li)
-          }
-        })
-      }
-
-      video.addEventListener("click", () => {
-        if (video.paused) video.play().catch(() => {})
-        else video.pause()
+    for (const point of points) {
+      point.addEventListener("click", () => {
+        if (current === point) close()
+        else open(point)
       })
+    }
 
-      // The list behaves like an OpenTUI Select: j/k anywhere, arrow keys
-      // when they cannot be needed for scrolling, wrap-around at the ends,
-      // Escape dismisses the film.
-      const steps: Record<string, number> = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }
-      window.addEventListener("keydown", (event) => {
-        if (event.metaKey || event.ctrlKey || event.altKey) return
-        if (event.key === "Escape") {
-          close()
-          return
-        }
-        const step = steps[event.key]
-        if (!step) return
-        const scrollable = document.documentElement.scrollHeight > innerHeight
-        if (event.key.startsWith("Arrow") && scrollable && !list.contains(document.activeElement)) return
-        event.preventDefault()
-        const index = current ? points.indexOf(current) : step > 0 ? -1 : 0
-        open(points[(index + step + points.length) % points.length]!)
-      })
-    </script>
-  </body>
-</html>
+    const steps: Record<string, number> = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }
+    window.addEventListener("keydown", (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key === "Escape") {
+        if (current) close(true)
+        return
+      }
 
-<style is:global>
-  @font-face {
-    font-family: "Berkeley Mono";
-    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
+      const step = steps[event.key]
+      if (!step) return
 
-  body {
-    margin: 0;
-    padding: 4rem 1.5rem;
-    background: #fff;
-    color: #000;
-    font-family: "Berkeley Mono", monospace;
-    line-height: 1.5;
-  }
+      const scrollable = document.documentElement.scrollHeight > innerHeight
+      if (event.key.startsWith("Arrow") && scrollable && !list.contains(document.activeElement)) return
 
-  body > :not(script, style) {
-    width: min(100%, 36rem);
-    margin-inline: auto;
-  }
+      event.preventDefault()
+      const index = current ? points.indexOf(current) : step > 0 ? -1 : 0
+      const point = points[(index + step + points.length) % points.length]!
+      point.focus()
+      open(point)
+    })
+  </script>
+</Minimal>
 
+<style>
   .logo {
     display: block;
     width: 250px;
     height: 60px;
   }
 
-  code {
-    font-family: inherit;
-    font-size: inherit;
-  }
-
-  /* The list stays on the page's text spine while the video grows to its
-     right. The header and footer remain on that axis, and one shared seam
-     prevents overlap. */
   .band {
     position: relative;
-    width: min(100%, 36rem);
-    margin-inline: auto;
+    width: 100%;
     margin-block: 1em;
-    transition: width 75ms linear 75ms;
+    transition: width var(--motion-step) linear var(--motion-step);
   }
 
   .band.playing {
-    width: min(100%, 56rem);
+    width: min(56rem, calc(50vw + var(--content-width) / 2 - var(--page-gutter)));
     transition-delay: 0ms;
   }
 
@@ -175,22 +147,25 @@ import OpenTUILogo from "../components/OpenTUILogo.astro"
     position: absolute;
     inset: 0 0 auto auto;
     width: 22rem;
-    margin: 0;
     overflow: hidden;
     clip-path: inset(0 100% 0 0);
-    transition: clip-path 75ms linear;
+    pointer-events: none;
+    visibility: hidden;
+    transition:
+      clip-path var(--motion-step) linear,
+      visibility 0ms linear var(--motion-step);
   }
 
   .band.playing .screen {
     clip-path: inset(0);
-    transition-delay: 75ms;
+    visibility: visible;
+    transition-delay: var(--motion-step), var(--motion-step);
   }
 
   .band ul {
-    box-sizing: border-box;
-    margin-block: 0;
     width: 100%;
-    transition: width 75ms linear 75ms;
+    margin-block: 0;
+    transition: width var(--motion-step) linear var(--motion-step);
   }
 
   .band.playing ul {
@@ -203,45 +178,47 @@ import OpenTUILogo from "../components/OpenTUILogo.astro"
     width: 100%;
     height: auto;
     aspect-ratio: 16 / 9;
+  }
+
+  button[data-video] {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
   }
 
-  li[data-video] {
-    cursor: pointer;
-  }
-
-  /* Keep the focus ring for keyboard users, skip the mousedown flash. */
-  li[data-video]:focus:not(:focus-visible) {
-    outline: none;
-  }
-
-  li[data-video]:hover {
+  button[data-video]:hover {
     text-decoration: underline;
   }
 
-  li.active {
-    color: LinkText;
+  button[data-video].active {
+    color: var(--link-color);
   }
 
-  /* If the full two-pane composition cannot retain comfortable gutters,
-     keep the compact measure and stack the same two surfaces. */
+  nav a {
+    display: block;
+    width: fit-content;
+  }
+
   @media (max-width: 64rem) {
-    .band {
+    .band,
+    .band.playing {
       position: static;
       display: grid;
-      margin-inline: auto;
-      width: min(100%, 36rem);
-      grid-template-columns: 1fr;
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: 0fr auto;
       row-gap: 0;
       transition:
-        grid-template-rows 150ms linear,
-        row-gap 150ms linear;
+        grid-template-rows calc(2 * var(--motion-step)) linear,
+        row-gap calc(2 * var(--motion-step)) linear;
     }
 
     .band.playing {
-      width: min(100%, 36rem);
-      grid-template-columns: 1fr;
       grid-template-rows: 1fr auto;
       row-gap: 1.5rem;
     }
@@ -249,11 +226,15 @@ import OpenTUILogo from "../components/OpenTUILogo.astro"
     .screen {
       position: static;
       width: auto;
+      min-height: 0;
       grid-column: 1;
       grid-row: 1;
-      min-height: 0;
       clip-path: none;
-      transition: none;
+      transition: visibility 0ms linear calc(2 * var(--motion-step));
+    }
+
+    .band.playing .screen {
+      transition-delay: 0ms;
     }
 
     .band ul,
@@ -263,32 +244,22 @@ import OpenTUILogo from "../components/OpenTUILogo.astro"
       grid-row: 2;
       transition: none;
     }
-
-    .screen video {
-      width: 100%;
-    }
   }
 
   @media (max-width: 40rem) {
-    body {
-      padding: 2rem 1rem;
-    }
-
-    ul {
-      padding-inline-start: 1.25rem;
-    }
-
     .logo {
       width: 200px;
       height: 48px;
     }
 
+    .band ul {
+      padding-inline-start: 1.25rem;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .band,
     .screen,
-    .screen video,
     .band ul {
       transition: none;
     }

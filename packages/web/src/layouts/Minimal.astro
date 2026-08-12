@@ -1,0 +1,113 @@
+---
+interface Props {
+  title: string
+  description: string
+}
+
+const { title, description } = Astro.props
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      const theme = localStorage.getItem("theme")
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+    </script>
+  </head>
+  <body>
+    <div class="page">
+      <slot />
+    </div>
+  </body>
+</html>
+
+<style is:global>
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    color-scheme: light;
+    --page-background: #fff;
+    --page-color: #000;
+    --link-color: LinkText;
+    --content-width: 36rem;
+    --page-gutter: 1.5rem;
+    --motion-step: 75ms;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: var(--page-background);
+  }
+
+  body {
+    margin: 0;
+    padding: 4rem var(--page-gutter);
+    background: var(--page-background);
+    color: var(--page-color);
+    font-family: "Berkeley Mono", monospace;
+    line-height: 1.5;
+  }
+
+  .page {
+    width: min(100%, var(--content-width));
+    margin-inline: auto;
+  }
+
+  a,
+  a:visited {
+    color: var(--link-color);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page-background: #000;
+    --page-color: #fff;
+    --link-color: #0088ff;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page-background: #fff;
+    --page-color: #000;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      color-scheme: dark;
+      --page-background: #000;
+      --page-color: #fff;
+      --link-color: #0088ff;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    :root {
+      --page-gutter: 1rem;
+    }
+
+    body {
+      padding-block: 1.25rem 2rem;
+    }
+  }
+</style>

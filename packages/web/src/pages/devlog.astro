@@ -1,0 +1,26 @@
+---
+import Minimal from "../layouts/Minimal.astro"
+import ThemeToggle from "../components/ThemeToggle.astro"
+---
+
+<Minimal title="Devlog | OpenTUI" description="Development notes from OpenTUI.">
+  <main>
+    <h1>Devlog</h1>
+    <p>Development notes from OpenTUI.</p>
+  </main>
+
+  <nav aria-label="Primary">
+    <a href="/">Home</a>
+    <a href="/docs/getting-started">Documentation</a>
+    <a href="https://github.com/anomalyco/opentui">GitHub</a>
+  </nav>
+
+  <footer><ThemeToggle /></footer>
+</Minimal>
+
+<style>
+  nav a {
+    display: block;
+    width: fit-content;
+  }
+</style>
