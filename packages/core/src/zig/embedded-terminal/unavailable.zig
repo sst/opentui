@@ -2,12 +2,6 @@ const buffer = @import("../buffer.zig");
 
 pub const Error = error{Unsupported};
 
-pub const ComposeResult = struct {
-    dirty: enum(u8) { false, partial, full },
-    rows: u32 = 0,
-    cells: u32 = 0,
-};
-
 pub const Cursor = struct {
     x: u16 = 0,
     y: u16 = 0,
@@ -33,7 +27,7 @@ pub const EmbeddedTerminal = struct {
     }
     pub fn scroll(_: *EmbeddedTerminal, _: i32) void {}
     pub fn invalidate(_: *EmbeddedTerminal) void {}
-    pub fn compose(_: *EmbeddedTerminal, _: *buffer.OptimizedBuffer, _: i32, _: i32) Error!ComposeResult {
+    pub fn compose(_: *EmbeddedTerminal, _: *buffer.OptimizedBuffer, _: i32, _: i32) Error!void {
         return error.Unsupported;
     }
     pub fn cursor(_: *EmbeddedTerminal) Cursor {

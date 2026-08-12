@@ -5,28 +5,19 @@ const ghostty = @import("ghostty.zig");
 
 pub const Error = std.mem.Allocator.Error || buffer.BufferError;
 
-pub const Result = struct {
-    dirty: ghostty.RenderState.Dirty,
-    rows: u32,
-    cells: u32,
-};
-
 pub fn compose(
     allocator: std.mem.Allocator,
     state: *ghostty.RenderState,
     target: *buffer.OptimizedBuffer,
     origin_x: i32,
     origin_y: i32,
-) Error!Result {
+) Error!void {
     const dirty = state.dirty;
-    if (dirty == .false) return .{ .dirty = dirty, .rows = 0, .cells = 0 };
+    if (dirty == .false) return;
 
     const rows = state.row_data.slice();
     const row_dirty = rows.items(.dirty);
     const row_cells = rows.items(.cells);
-    var rows_drawn: u32 = 0;
-    var cells_drawn: u32 = 0;
-
     for (0..state.rows) |y| {
         if (dirty == .partial and !row_dirty[y]) continue;
 
@@ -40,16 +31,13 @@ pub fn compose(
                 origin_x,
                 @intCast(dest_y),
                 &state.colors,
-                &cells_drawn,
             );
         }
 
         row_dirty[y] = false;
-        rows_drawn += 1;
     }
 
     state.dirty = .false;
-    return .{ .dirty = dirty, .rows = rows_drawn, .cells = cells_drawn };
 }
 
 fn clearRow(target: *buffer.OptimizedBuffer, origin_x: i32, y: u32, cols: u16, foreground: anytype, background: anytype) void {
@@ -75,7 +63,6 @@ fn composeRow(
     origin_x: i32,
     dest_y: u32,
     colors: *const ghostty.RenderState.Colors,
-    cells_drawn: *u32,
 ) Error!void {
     const raw_items = cells.items(.raw);
     const graphemes = cells.items(.grapheme);
@@ -96,17 +83,14 @@ fn composeRow(
         var writer: std.Io.Writer = .fixed(&stack);
         encodeCodepoint(&writer, raw.codepoint()) catch {
             try drawAllocated(allocator, target, raw, grapheme, @intCast(dest_x), dest_y, fg, bg, style);
-            cells_drawn.* += 1;
             continue :cell_loop;
         };
         for (grapheme) |codepoint| encodeCodepoint(&writer, codepoint) catch {
             try drawAllocated(allocator, target, raw, grapheme, @intCast(dest_x), dest_y, fg, bg, style);
-            cells_drawn.* += 1;
             continue :cell_loop;
         };
 
         try draw(target, writer.buffered(), raw.gridWidth(), @intCast(dest_x), dest_y, fg, bg, style);
-        cells_drawn.* += 1;
     }
 }
 
