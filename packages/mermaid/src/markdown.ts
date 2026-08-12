@@ -38,12 +38,15 @@ interface PreparedDiagram {
 
 interface ResolvedMermaidOptions {
   compact: boolean
+  layoutMaxWidth: number
   key: string
   colors: Record<keyof NonNullable<MermaidMarkdownRendererOptions["colors"]>, RGBA | undefined>
 }
 
 export interface MermaidMarkdownRendererOptions {
   compact?: boolean
+  /** Fold horizontal flowcharts that exceed this width. Defaults to 120 columns. */
+  layoutMaxWidth?: number
   colors?: {
     text?: ColorInput
     primary?: ColorInput
@@ -64,10 +67,12 @@ function resolveOptions(options: MermaidMarkdownRendererOptions): ResolvedMermai
     warning: input.warning === undefined ? undefined : parseColor(input.warning),
     background: input.background === undefined ? undefined : parseColor(input.background),
   }
-  const key = `${options.compact === true ? 1 : 0}:${Object.values(colors)
+  const layoutMaxWidth =
+    options.layoutMaxWidth === undefined ? 120 : Math.max(1, Math.trunc(options.layoutMaxWidth))
+  const key = `${options.compact === true ? 1 : 0}:${layoutMaxWidth}:${Object.values(colors)
     .map((value) => value?.toInts().join(",") ?? "")
     .join(":")}`
-  return { compact: options.compact === true, key, colors }
+  return { compact: options.compact === true, layoutMaxWidth, key, colors }
 }
 
 class StaticDiagramRenderable extends TextRenderable {
@@ -128,11 +133,19 @@ class StaticDiagramRenderable extends TextRenderable {
   }
 }
 
-function prepareDiagram(kind: DiagramKind, source: string, options: ResolvedMermaidOptions): PreparedDiagram {
+function prepareDiagram(
+  kind: DiagramKind,
+  source: string,
+  options: ResolvedMermaidOptions,
+  layoutMaxWidth: number,
+): PreparedDiagram {
   const colors = options.colors
   switch (kind) {
     case "flowchart": {
-      const grid = drawFlowchartDiagramGrid(parseMermaidFlowchartDiagram(source), { compact: options.compact })
+      const grid = drawFlowchartDiagramGrid(parseMermaidFlowchartDiagram(source), {
+        compact: options.compact,
+        layoutMaxWidth,
+      })
       return preparedDiagram(
         kind,
         source,
@@ -228,11 +241,13 @@ export function createMermaidCodeBlockRenderer(
     const kind = detectMermaidDiagram(token.text)
     if (!kind) return undefined
     const options = staticOptions ?? resolveOptions(dynamicInput!())
+    const layoutMaxWidth = Math.min(options.layoutMaxWidth, Math.max(1, Math.trunc(ctx.width)))
+    const optionsKey = `${options.key}:${layoutMaxWidth}`
     const previous = context.previous instanceof StaticDiagramRenderable ? context.previous.prepared : undefined
-    if (previous?.source === token.text && previous.optionsKey === options.key) return context.previous
+    if (previous?.source === token.text && previous.optionsKey === optionsKey) return context.previous
 
     try {
-      const prepared = prepareDiagram(kind, token.text, options)
+      const prepared = prepareDiagram(kind, token.text, { ...options, key: optionsKey }, layoutMaxWidth)
       const diagram = reuseDiagram(ctx, prepared, context.previous)
       return diagram
     } catch (error) {
