@@ -1,0 +1,64 @@
+---
+import OpenTUILogo from "./OpenTUILogo.astro"
+
+const links = [
+  { href: "/docs/getting-started", label: "Docs" },
+  { href: "/devlog", label: "Devlog" },
+]
+
+const normalize = (path: string) => path.replace(/\/+$/, "") || "/"
+const current = normalize(Astro.url.pathname)
+---
+
+<header>
+  <a class="brand" href="/" aria-label="OpenTUI home">
+    <OpenTUILogo class="wordmark" />
+  </a>
+  <nav aria-label="Site">
+    {
+      links.map(({ href, label }) => (
+        <a href={href} aria-current={normalize(href) === current ? "page" : undefined}>
+          {label}
+        </a>
+      ))
+    }
+  </nav>
+</header>
+
+<style>
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-block-start: -1rem;
+    padding-block: 1rem;
+    background: var(--page-background);
+  }
+
+  .brand {
+    display: block;
+    color: inherit;
+  }
+
+  .wordmark {
+    display: block;
+    width: 7.8125rem;
+    height: 1.875rem;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  nav a[aria-current="page"] {
+    color: inherit;
+  }
+</style>

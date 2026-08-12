@@ -1,7 +1,6 @@
 ---
-import BlockDivider from "../components/BlockDivider.astro"
 import OpenTUILogo from "../components/OpenTUILogo.astro"
-import ThemeToggle from "../components/ThemeToggle.astro"
+import SiteFooter from "../components/SiteFooter.astro"
 import landingVideos from "../data/landing-videos.json"
 import Minimal from "../layouts/Minimal.astro"
 
@@ -95,18 +94,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
         <p>OpenCode uses it in production for millions of users.</p>
 
-        <BlockDivider animation="hopper" />
-
-        <nav aria-label="Primary">
-          <a href="/docs/getting-started">Documentation</a>
-          <a href="/devlog">Devlog</a>
-          <a href="https://github.com/anomalyco/opentui">GitHub</a>
-        </nav>
-
-
-        <footer>
-          <p><ThemeToggle /> MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>
-        </footer>
+        <SiteFooter links divider />
       </div>
     </div>
   </main>
@@ -285,15 +273,6 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
     margin-block: 1em 0;
   }
 
-  .copy nav,
-  .copy footer {
-    margin-block-start: 1em;
-  }
-
-  .copy :global(.block-divider) {
-    margin-block-start: 1em;
-  }
-
   .screen video {
     display: block;
     width: 100%;
@@ -373,11 +352,6 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
   button[data-video]:hover {
     text-decoration: underline;
-  }
-
-  nav a {
-    display: block;
-    width: fit-content;
   }
 
   @media (max-width: 64rem) {

@@ -1,0 +1,42 @@
+---
+import { getCollection, render, type CollectionEntry } from "astro:content"
+import Devlog from "../../layouts/Devlog.astro"
+
+export async function getStaticPaths() {
+  const posts = (await getCollection("devlog")).filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
+
+  return posts.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }))
+}
+
+interface Props {
+  entry: CollectionEntry<"devlog">
+}
+
+const { entry } = Astro.props
+const { Content } = await render(entry)
+const date = entry.data.date.toISOString().slice(0, 10)
+---
+
+<Devlog
+  title={`${entry.data.title} | OpenTUI Devlog`}
+  description={entry.data.description ?? "Development notes from OpenTUI."}
+  footerLinks
+  footerAnimation="inchworm"
+>
+  <article class="devlog-post">
+    <header>
+      <h1>{entry.data.title}</h1>
+      <p class="devlog-meta">
+        <time datetime={date}>{date}</time>
+        {entry.data.author && ` · ${entry.data.author}`}
+      </p>
+    </header>
+
+    <div class="devlog-content">
+      <Content />
+    </div>
+  </article>
+</Devlog>

@@ -1,26 +1,51 @@
 ---
-import Minimal from "../layouts/Minimal.astro"
-import ThemeToggle from "../components/ThemeToggle.astro"
+import { getCollection } from "astro:content"
+import Devlog from "../layouts/Devlog.astro"
+
+const posts = (await getCollection("devlog"))
+  .filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+
+const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 ---
 
-<Minimal title="Devlog | OpenTUI" description="Development notes from OpenTUI.">
-  <main>
-    <h1>Devlog</h1>
-    <p>Development notes from OpenTUI.</p>
-  </main>
+<Devlog title="Devlog | OpenTUI" description="Development notes from OpenTUI.">
+  <h1>Devlog</h1>
 
-  <nav aria-label="Primary">
-    <a href="/">Home</a>
-    <a href="/docs/getting-started">Documentation</a>
-    <a href="https://github.com/anomalyco/opentui">GitHub</a>
-  </nav>
-
-  <footer><ThemeToggle /></footer>
-</Minimal>
+  <ul>
+    {
+      posts.map((post) => (
+        <li>
+          <time datetime={isoDate(post.data.date)}>{isoDate(post.data.date)}</time>
+          <a href={`/devlog/${post.id}`}>{post.data.title}</a>
+        </li>
+      ))
+    }
+  </ul>
+</Devlog>
 
 <style>
-  nav a {
-    display: block;
-    width: fit-content;
+  h1 {
+    margin-block: 0 1.5rem;
+  }
+
+  ul {
+    margin-block: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    gap: 1rem;
+  }
+
+  li + li {
+    margin-block-start: 0.5rem;
+  }
+
+  time {
+    flex-shrink: 0;
+    color: GrayText;
   }
 </style>

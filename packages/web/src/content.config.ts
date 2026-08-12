@@ -19,6 +19,19 @@ const docs = defineCollection({
   }),
 })
 
+const devlog = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/devlog" }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    date: z.coerce.date(),
+    author: z.string().optional(),
+    tags: z.array(z.string().trim().min(1)).default([]),
+    draft: z.boolean().default(false),
+  }),
+})
+
 export const collections = {
   docs,
+  devlog,
 }

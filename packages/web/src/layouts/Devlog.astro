@@ -1,0 +1,68 @@
+---
+import type { ComponentProps } from "astro/types"
+import SiteFooter from "../components/SiteFooter.astro"
+import SiteNav from "../components/SiteNav.astro"
+import Minimal from "./Minimal.astro"
+
+interface Props {
+  title: string
+  description: string
+  footerLinks?: boolean
+  footerAnimation?: ComponentProps<typeof SiteFooter>["animation"]
+}
+
+const { title, description, footerLinks = false, footerAnimation } = Astro.props
+---
+
+<Minimal {title} {description}>
+  <SiteNav />
+
+  <main>
+    <slot />
+  </main>
+
+  <SiteFooter links={footerLinks} divider={footerLinks} animation={footerAnimation} />
+</Minimal>
+
+<style>
+  main {
+    margin-block: 3rem 2rem;
+  }
+
+  :global(.devlog-post header) {
+    margin-block-end: 2rem;
+  }
+
+  :global(.devlog-post h1) {
+    margin-block: 0 0.25rem;
+  }
+
+  :global(.devlog-meta) {
+    margin: 0;
+    color: GrayText;
+  }
+
+  :global(.devlog-content h2) {
+    margin-block: 2rem 0.75rem;
+  }
+
+  :global(.devlog-content p),
+  :global(.devlog-content ul) {
+    margin-block: 0 1rem;
+  }
+
+  :global(.devlog-content pre) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  :global(.devlog-content code) {
+    font-family: inherit;
+  }
+
+  :global(.devlog-content hr) {
+    margin-block: 2rem 1rem;
+    border: 0;
+    border-block-start: 1px solid;
+  }
+</style>

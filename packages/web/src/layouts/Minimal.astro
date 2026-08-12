@@ -37,6 +37,30 @@ const { title, description } = Astro.props
     font-display: swap;
   }
 
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Oblique.woff2") format("woff2");
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Bold-Oblique.woff2") format("woff2");
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+  }
+
   :root {
     color-scheme: light;
     --page-background: #fff;
@@ -67,6 +91,15 @@ const { title, description } = Astro.props
   .page {
     width: min(100%, var(--content-width));
     margin-inline: auto;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+  }
+
+  h2,
+  h3 {
+    font-size: 1rem;
   }
 
   a,
