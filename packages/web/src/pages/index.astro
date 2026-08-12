@@ -125,6 +125,33 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
         candidate.classList.toggle("active", active)
         candidate.setAttribute("aria-expanded", String(active))
       }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          if (getComputedStyle(screen).position !== "static") return
+          await Promise.allSettled(band.getAnimations().map((animation) => animation.finished))
+          if (current !== point) return
+
+          const mediaBounds = screen.getBoundingClientRect()
+          const pointBounds = point.getBoundingClientRect()
+          const padding = 16
+          const top = Math.min(mediaBounds.top, pointBounds.top)
+          const bottom = Math.max(mediaBounds.bottom, pointBounds.bottom)
+          const availableHeight = innerHeight - 2 * padding
+          let offset = 0
+
+          if (bottom - top <= availableHeight) {
+            if (top < padding) offset = top - padding
+            else if (bottom > innerHeight - padding) offset = bottom - innerHeight + padding
+          } else if (pointBounds.bottom > innerHeight - padding) {
+            offset = pointBounds.bottom - innerHeight + padding
+          } else if (pointBounds.top < padding) {
+            offset = pointBounds.top - padding
+          }
+
+          if (offset) scrollBy({ top: offset, behavior: "smooth" })
+        })
+      })
     }
 
     function close(restoreFocus = false) {
