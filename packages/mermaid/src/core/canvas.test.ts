@@ -38,6 +38,12 @@ describe("DiagramCanvas", () => {
     expect(stringWidth(canvas.toString())).toBe(4)
   })
 
+  test("does not emit partial wide graphemes", () => {
+    const clipped = new DiagramCanvas<"label">(1, 1)
+    clipped.setText(0, 0, "界", "label")
+    expect(clipped.toString()).toBe("")
+  })
+
   test("keeps custom measurement for ASCII text", () => {
     let measurements = 0
     const canvas = new DiagramCanvas<"label">(5, 1, {

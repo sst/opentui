@@ -67,6 +67,11 @@ describe("parser diagnostics", () => {
     }
   })
 
+  test("rejects chained sequence and state transitions instead of creating phantom endpoints", () => {
+    expect(() => parseMermaidSequenceDiagram("sequenceDiagram\n  A->>B->>C: hello")).toThrow(MermaidSyntaxError)
+    expect(() => parseMermaidStateDiagram("stateDiagram-v2\n  A-->B-->C")).toThrow(MermaidSyntaxError)
+  })
+
   test("reports unclosed state constructs at their opening line", () => {
     expect(() =>
       parseMermaidStateDiagram(`stateDiagram-v2
