@@ -2,12 +2,17 @@
 import OpenTUILogo from "./OpenTUILogo.astro"
 
 const links = [
-  { href: "/docs/getting-started", label: "Docs" },
-  { href: "/devlog", label: "Devlog" },
+  { href: "/docs/getting-started", section: "/docs", label: "Docs" },
+  { href: "/devlog", section: "/devlog", label: "Devlog" },
 ]
 
 const normalize = (path: string) => path.replace(/\/+$/, "") || "/"
 const current = normalize(Astro.url.pathname)
+const currentValue = (href: string, section: string) => {
+  if (current === normalize(href)) return "page"
+  if (current === section || current.startsWith(`${section}/`)) return "true"
+  return undefined
+}
 ---
 
 <header>
@@ -16,8 +21,8 @@ const current = normalize(Astro.url.pathname)
   </a>
   <nav aria-label="Site">
     {
-      links.map(({ href, label }) => (
-        <a href={href} aria-current={normalize(href) === current ? "page" : undefined}>
+      links.map(({ href, section, label }) => (
+        <a href={href} aria-current={currentValue(href, section)}>
           {label}
         </a>
       ))
@@ -58,7 +63,7 @@ const current = normalize(Astro.url.pathname)
     gap: 1rem;
   }
 
-  nav a[aria-current="page"] {
+  nav a[aria-current] {
     color: inherit;
   }
 </style>

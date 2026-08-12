@@ -10,7 +10,7 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 ---
 
 <Devlog title="Devlog | OpenTUI" description="Development notes from OpenTUI.">
-  <h1>Devlog</h1>
+  <h1 class="sr-only">Devlog</h1>
 
   <ul>
     {
@@ -25,8 +25,15 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 </Devlog>
 
 <style>
-  h1 {
-    margin-block: 0 1.5rem;
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   ul {
