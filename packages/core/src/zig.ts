@@ -1265,6 +1265,7 @@ function getOpenTUILib(libPath?: string) {
     imageRetain: { args: ["u32", "ptr"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     imageMaterialize: { args: ["u32"], returns: "u32" },
+    imageEnsureEncodedPng: { args: ["u32"], returns: "u32" },
     imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
     imageClone: { args: ["u32", "ptr"], returns: "u32" },
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
@@ -2683,6 +2684,7 @@ export interface RenderLib extends AudioEngineLib {
   imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
   imageMaterialize: (image: ImageHandle) => number
+  imageEnsureEncodedPng: (image: ImageHandle) => number
   imageGetPixelsPtr: (image: ImageHandle) => Pointer | null
   imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
@@ -5708,6 +5710,10 @@ class FFIRenderLib implements RenderLib {
 
   public imageMaterialize(image: ImageHandle): number {
     return this.opentui.symbols.imageMaterialize(image)
+  }
+
+  public imageEnsureEncodedPng(image: ImageHandle): number {
+    return this.opentui.symbols.imageEnsureEncodedPng(image)
   }
 
   public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {

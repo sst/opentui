@@ -559,6 +559,10 @@ export class NativeImage {
     )
   }
 
+  public ensureEncodedPng(): void {
+    checkStatus(this.lib.imageEnsureEncodedPng(this.guard()))
+  }
+
   public raw(format: PixelFormat = "rgba8"): RawImage {
     const stride = this.width * 4
     const data = new Uint8Array(stride * this.height)

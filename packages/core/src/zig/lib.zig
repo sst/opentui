@@ -2917,6 +2917,12 @@ export fn imageMaterialize(image_handle: NativeHandle) u32 {
     return @intFromEnum(native_image.Status.ok);
 }
 
+export fn imageEnsureEncodedPng(image_handle: NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    _ = image.ensureEncodedPng() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(native_image.Status.ok);
+}
+
 export fn imageClone(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
@@ -2975,6 +2981,27 @@ test "imageGetPixelsPtr requires exclusive ownership and invalidates encoded sta
     try std.testing.expect(imageGetPixelsPtr(handle) != null);
     try std.testing.expectEqual(@as(?[]u8, null), value.encoded_png);
     try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+}
+
+test "imageEnsureEncodedPng attaches an encoding that pixel mutation discards" {
+    const pixels = [_]u8{ 1, 2, 3, 255, 4, 5, 6, 255 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 2, 1, 8, &handle),
+    );
+    defer imageDestroy(handle);
+
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.invalid_handle)),
+        imageEnsureEncodedPng(INVALID_HANDLE),
+    );
+    try std.testing.expectEqual(@as(u32, @intFromEnum(native_image.Status.ok)), imageEnsureEncodedPng(handle));
+    const image = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(image.encoded_png != null);
+
+    try std.testing.expect(imageGetPixelsPtr(handle) != null);
+    try std.testing.expectEqual(@as(?[]u8, null), image.encoded_png);
 }
 
 test "imageRetain creates independently disposable handles without copying pixels" {
