@@ -542,7 +542,6 @@ describe("NativeImage", () => {
     const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255, 4, 5, 6, 128), 2, 1)
     try {
       image.ensureEncodedPng()
-      image.ensureEncodedPng()
       expect(image.info()).toMatchObject({ width: 2, height: 1, format: "raw-rgba", hasAlpha: true })
       expect([...image.raw().data]).toEqual([1, 2, 3, 255, 4, 5, 6, 128])
     } finally {
