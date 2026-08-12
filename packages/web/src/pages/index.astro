@@ -1,4 +1,5 @@
 ---
+import BlockDivider from "../components/BlockDivider.astro"
 import OpenTUILogo from "../components/OpenTUILogo.astro"
 import ThemeToggle from "../components/ThemeToggle.astro"
 import landingVideos from "../data/landing-videos.json"
@@ -19,7 +20,16 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
     <div class="band">
       <div class="screen" id="feature-video" aria-hidden="true">
-        <video muted loop playsinline preload="metadata"></video>
+        <div class="video-frame">
+          <video muted loop playsinline preload="metadata"></video>
+          <button class="audio-toggle" type="button" aria-label="Enable audio" title="Enable audio" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+              <path class="sound-on" d="M16 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"></path>
+              <path class="sound-off" d="m16.5 9.5 5 5m0-5-5 5"></path>
+            </svg>
+          </button>
+        </div>
         <p class="caption"><span></span> <a href=""></a>.</p>
       </div>
 
@@ -31,6 +41,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
               data-video={videos.video.file}
               data-source={videos.video.source}
               data-credit={videos.video.credit}
+              data-has-audio={videos.video.hasAudio}
               data-author={`@${videos.video.handle}`}>It is written in Zig.</button
             >
           </li>
@@ -40,6 +51,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
               data-video={videos.components.file}
               data-source={videos.components.source}
               data-credit={videos.components.credit}
+              data-has-audio={videos.components.hasAudio}
               data-author={`@${videos.components.handle}`}
             >
               You write TypeScript, React, or Solid. Other languages can use the C ABI.
@@ -51,6 +63,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
               data-video={videos.images.file}
               data-source={videos.images.source}
               data-credit={videos.images.credit}
+              data-has-audio={videos.images.hasAudio}
               data-author={`@${videos.images.handle}`}>You arrange boxes and text with flexbox.</button
             >
           </li>
@@ -60,6 +73,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
               data-video={videos.editor.file}
               data-source={videos.editor.source}
               data-credit={videos.editor.credit}
+              data-has-audio={videos.editor.hasAudio}
               data-author={`@${videos.editor.handle}`}
             >
               You add selects, inputs, and scroll boxes with keyboard and mouse controls.
@@ -71,6 +85,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
               data-video={videos["3d"].file}
               data-source={videos["3d"].source}
               data-credit={videos["3d"].credit}
+              data-has-audio={videos["3d"].hasAudio}
               data-author={`@${videos["3d"].handle}`}
             >
               You can play sounds, show images, and render 3D graphics.
@@ -80,11 +95,14 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
         <p>OpenCode uses it in production for millions of users.</p>
 
+        <BlockDivider animation="hopper" />
+
         <nav aria-label="Primary">
           <a href="/docs/getting-started">Documentation</a>
           <a href="/devlog">Devlog</a>
           <a href="https://github.com/anomalyco/opentui">GitHub</a>
         </nav>
+
 
         <footer>
           <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>. <ThemeToggle /></p>
@@ -97,6 +115,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
     const band = document.querySelector<HTMLElement>(".band")!
     const screen = band.querySelector<HTMLElement>(".screen")!
     const video = band.querySelector("video")!
+    const audioToggle = band.querySelector<HTMLButtonElement>(".audio-toggle")!
     const caption = band.querySelector<HTMLElement>(".caption")!
     const credit = caption.querySelector("span")!
     const source = caption.querySelector("a")!
@@ -115,6 +134,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
       source.href = point.dataset.source!
       source.textContent = point.dataset.author!
       credit.textContent = point.dataset.credit!
+      audioToggle.hidden = point.dataset.hasAudio !== "true"
       video.play().catch(() => {})
       band.classList.add("playing")
       screen.setAttribute("aria-hidden", "false")
@@ -153,6 +173,15 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
         })
       })
     }
+
+    audioToggle.addEventListener("click", () => {
+      video.muted = !video.muted
+      const label = video.muted ? "Enable audio" : "Mute audio"
+      audioToggle.dataset.muted = String(video.muted)
+      audioToggle.ariaLabel = label
+      audioToggle.title = label
+      if (video.paused) video.play().catch(() => {})
+    })
 
     function close(restoreFocus = false) {
       const activePoint = current
@@ -261,12 +290,67 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
     margin-block-start: 1em;
   }
 
+  .copy :global(.block-divider) {
+    margin-block-start: 1em;
+  }
+
   .screen video {
     display: block;
     width: 100%;
     object-fit: contain;
     aspect-ratio: 5 / 4;
     background: #000;
+  }
+
+  .video-frame {
+    position: relative;
+  }
+
+  .audio-toggle {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    padding: 0.5rem;
+    place-items: center;
+    border: 0;
+    border-radius: 0;
+    background: #000c;
+    color: #fff;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .audio-toggle:focus-visible {
+    outline: 1px solid #fff;
+    outline-offset: 2px;
+  }
+
+  .audio-toggle[hidden] {
+    display: none;
+  }
+
+  .audio-toggle svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.75;
+  }
+
+  .audio-toggle .sound-on,
+  .audio-toggle:not([data-muted="false"]) .sound-off {
+    fill: none;
+  }
+
+  .audio-toggle[data-muted="false"] .sound-off,
+  .audio-toggle:not([data-muted="false"]) .sound-on {
+    display: none;
   }
 
   .caption {

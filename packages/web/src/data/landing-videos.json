@@ -10,6 +10,7 @@
     "duration": 31.594,
     "width": 1920,
     "height": 1080,
+    "hasAudio": true,
     "description": "base ui + shadcn/ui, but for OpenTUI terminal interfaces"
   },
   {
@@ -23,6 +24,7 @@
     "duration": 52.933,
     "width": 1736,
     "height": 1080,
+    "hasAudio": false,
     "description": "Druk, a terminal code editor with keyboard and mouse control, built with OpenTUI"
   },
   {
@@ -36,6 +38,7 @@
     "duration": 57.724,
     "width": 2462,
     "height": 1818,
+    "hasAudio": true,
     "description": "OpenTUI 3D rendering and recent renderer features"
   },
   {
@@ -49,6 +52,7 @@
     "duration": 44.55,
     "width": 1998,
     "height": 1362,
+    "hasAudio": true,
     "description": "Live audio streaming in OpenTUI"
   },
   {
@@ -62,6 +66,7 @@
     "duration": 34.617,
     "width": 2128,
     "height": 1592,
+    "hasAudio": true,
     "description": "OpenTUI image elements using Kitty graphics, Sixel, and block-character fallbacks"
   },
   {
@@ -75,6 +80,7 @@
     "duration": 39.701,
     "width": 1954,
     "height": 1954,
+    "hasAudio": true,
     "description": "Video frames and audio rendered as an animated dot grid in OpenTUI"
   }
 ]
