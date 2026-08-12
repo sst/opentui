@@ -856,20 +856,8 @@ const Service = struct {
             .pending => .pending,
             .ready => service.driveWaylandOperation(operation),
             .unsupported => service.fallbackWayland(operation, libraries),
-            .failed => service.recoverWayland(operation, libraries),
+            .failed => service.finishWaylandFailure(operation),
         };
-    }
-
-    fn recoverWayland(
-        service: *Service,
-        operation: *Operation,
-        libraries: clipboard_linux.Libraries,
-    ) OperationStatus {
-        const failure = service.takeWaylandFailure();
-        service.resetWayland();
-        if (libraries.x11) return service.fallbackWayland(operation, libraries);
-        rememberWaylandFailure(operation, failure);
-        return service.finishOperation(operation, .failed);
     }
 
     fn fallbackWayland(
