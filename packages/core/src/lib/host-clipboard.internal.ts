@@ -12,7 +12,6 @@ const DEFAULT_CLIPBOARD_MAX_IMAGE_PIXELS = 64 * 1024 * 1024
 const DEFAULT_CLIPBOARD_MAX_CONVERSION_BYTES = 512 * 1024 * 1024
 const DEFAULT_CLIPBOARD_MAX_CONCURRENT_OPERATIONS = 16
 const DEFAULT_CLIPBOARD_MAX_PROVIDER_TRANSFERS = 16
-const DEFAULT_CLIPBOARD_MAX_WORK_UNITS_PER_DRAIN = 64
 const MAX_U32 = 0xffff_ffff
 const MIME_ESSENCE_PATTERN = /^[a-z0-9!#$%&'*+.^_`|~-]+\/[a-z0-9!#$%&'*+.^_`|~-]+$/i
 export const HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX = 64
@@ -26,16 +25,10 @@ export interface NormalizedHostClipboardOptions {
   readonly maxConversionBytes: number
   readonly maxConcurrentOperations: number
   readonly maxProviderTransfers: number
-  readonly maxWorkUnitsPerDrain: number
   readonly waylandSeat?: string
 }
 
 export type HostClipboardBackendFactory = (options: NormalizedHostClipboardOptions) => HostClipboardBackend
-
-export const normalizeRemainingTimeout = (timeoutMs: number, elapsedMs: number): number => {
-  const exactRemainingMs = timeoutMs - elapsedMs
-  return exactRemainingMs <= 0 ? 0 : Math.max(1, Math.floor(exactRemainingMs))
-}
 
 export interface ActiveClipboardOperation {
   readonly controller: AbortController
@@ -80,10 +73,6 @@ const normalizeOptions = (options: HostClipboardOptions): NormalizedHostClipboar
     maxProviderTransfers: validatePositiveU32(
       "maxProviderTransfers",
       options.maxProviderTransfers ?? DEFAULT_CLIPBOARD_MAX_PROVIDER_TRANSFERS,
-    ),
-    maxWorkUnitsPerDrain: validatePositiveU32(
-      "maxWorkUnitsPerDrain",
-      options.maxWorkUnitsPerDrain ?? DEFAULT_CLIPBOARD_MAX_WORK_UNITS_PER_DRAIN,
     ),
     waylandSeat,
   }
@@ -197,31 +186,21 @@ export const createHostClipboardWithBackend = (
   const assertUsable = (): void => {
     if (disposed) throw new Error("Host clipboard service is disposed")
   }
-  const remainingTimeout = (startedAt: number): number =>
-    normalizeRemainingTimeout(config.timeoutMs, performance.now() - startedAt)
-  const atCapacity = (): { readonly status: "failed"; readonly error: Error } | undefined =>
-    active.size >= config.maxConcurrentOperations
-      ? { status: "failed", error: new Error("Host clipboard operation limit reached") }
-      : undefined
   return {
     maxWriteBytes: config.maxWriteBytes,
     read(readOptions) {
-      const startedAt = performance.now()
       try {
         assertUsable()
         const preferredTypes = normalizePreferredTypes(readOptions.preferredTypes)
         const selection = normalizeSelection(readOptions.selection)
         if (readOptions.signal?.aborted) return Promise.resolve({ status: "cancelled" })
-        const capacityFailure = atCapacity()
-        if (capacityFailure) return Promise.resolve(capacityFailure)
-        const timeoutMs = remainingTimeout(startedAt)
-        if (timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
+        if (config.timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
         return runTrackedOperation(active, readOptions.signal, async (signal) => {
           const result = await backend.read({
             preferredTypes,
             selection,
             maxBytes: config.maxReadBytes,
-            timeoutMs,
+            timeoutMs: config.timeoutMs,
             signal,
           })
           if (result.status !== "read") return result
@@ -233,35 +212,27 @@ export const createHostClipboardWithBackend = (
       }
     },
     writeText(text, operationOptions = {}) {
-      const startedAt = performance.now()
       try {
         assertUsable()
         validateClipboardText(text, config.maxWriteBytes)
         const selection = normalizeSelection(operationOptions.selection)
         if (operationOptions.signal?.aborted) return Promise.resolve({ status: "cancelled" })
-        const capacityFailure = atCapacity()
-        if (capacityFailure) return Promise.resolve(capacityFailure)
-        const timeoutMs = remainingTimeout(startedAt)
-        if (timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
+        if (config.timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
         return runTrackedOperation(active, operationOptions.signal, (signal) =>
-          backend.writeText(text, { selection, timeoutMs, signal }),
+          backend.writeText(text, { selection, timeoutMs: config.timeoutMs, signal }),
         )
       } catch (error) {
         return Promise.reject(error)
       }
     },
     clear(operationOptions = {}) {
-      const startedAt = performance.now()
       try {
         assertUsable()
         const selection = normalizeSelection(operationOptions.selection)
         if (operationOptions.signal?.aborted) return Promise.resolve({ status: "cancelled" })
-        const capacityFailure = atCapacity()
-        if (capacityFailure) return Promise.resolve(capacityFailure)
-        const timeoutMs = remainingTimeout(startedAt)
-        if (timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
+        if (config.timeoutMs === 0) return Promise.resolve({ status: "timed-out" })
         return runTrackedOperation(active, operationOptions.signal, (signal) =>
-          backend.clear({ selection, timeoutMs, signal }),
+          backend.clear({ selection, timeoutMs: config.timeoutMs, signal }),
         )
       } catch (error) {
         return Promise.reject(error)

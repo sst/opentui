@@ -134,7 +134,6 @@ export interface HostClipboardOptions {
   readonly maxConversionBytes?: number
   readonly maxConcurrentOperations?: number
   readonly maxProviderTransfers?: number
-  readonly maxWorkUnitsPerDrain?: number
   readonly waylandSeat?: string
 }
 
@@ -229,8 +228,7 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
     read(options) {
       try {
         assertUsable()
-        if (options.signal?.aborted) return host.read(options)
-        return runTrackedOperation(active, options.signal, (signal) => host.read({ ...options, signal }))
+        return host.read(options)
       } catch (error) {
         return Promise.reject(error)
       }

@@ -17,10 +17,12 @@ import type {
   HostClipboardWriteResult,
 } from "./clipboard.js"
 import { type HostClipboardBackendFactory } from "./host-clipboard.internal.js"
-import { NativeClipboardPollScheduler } from "./host-clipboard.native.scheduler.js"
 
 type NativeResult = ClipboardReadResult | HostClipboardWriteResult | HostClipboardClearResult
 const SHUTDOWN_POLL_INTERVAL_MS = 1
+const OPERATION_POLL_INTERVAL_MS = 1
+const PROVIDER_POLL_INTERVAL_MS = 8
+const MAX_WORK_UNITS_PER_DRAIN = 64
 
 interface PendingOperation {
   readonly handle: ClipboardOperationHandle
@@ -59,13 +61,13 @@ class NativeClipboardBackend implements HostClipboardBackend {
   private readonly library: RenderLib
   private readonly service: ClipboardServiceHandle
   private readonly pending = new Map<ClipboardOperationHandle, PendingOperation>()
-  private readonly scheduler = new NativeClipboardPollScheduler({ set: setTimeout, clear: clearTimeout })
+  private pollTimer: ReturnType<typeof setTimeout> | undefined
+  private pollTimerForOperation = false
   private providerActive = false
   private disposed = false
   private disposePromise: Promise<void> | undefined
 
   constructor(
-    private readonly maxWorkUnitsPerDrain: number,
     private readonly maxImagePixels: number,
     private readonly maxConversionBytes: number,
     maxConcurrentOperations: number,
@@ -150,7 +152,36 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private ensureScheduled(): void {
-    this.scheduler.schedule(this.pending.size > 0, this.providerActive, () => this.drain())
+    const hasPendingOperation = this.pending.size > 0
+    if (!hasPendingOperation && !this.providerActive) {
+      this.clearPollTimer()
+      return
+    }
+    if (this.pollTimer !== undefined) {
+      if (hasPendingOperation && !this.pollTimerForOperation) this.clearPollTimer()
+      else {
+        if (hasPendingOperation) this.pollTimer.ref()
+        else this.pollTimer.unref()
+        return
+      }
+    }
+    this.pollTimerForOperation = hasPendingOperation
+    this.pollTimer = setTimeout(
+      () => {
+        this.pollTimer = undefined
+        this.pollTimerForOperation = false
+        this.drain()
+      },
+      hasPendingOperation ? OPERATION_POLL_INTERVAL_MS : PROVIDER_POLL_INTERVAL_MS,
+    )
+    if (!hasPendingOperation) this.pollTimer.unref()
+  }
+
+  private clearPollTimer(): void {
+    if (this.pollTimer === undefined) return
+    clearTimeout(this.pollTimer)
+    this.pollTimer = undefined
+    this.pollTimerForOperation = false
   }
 
   private drain(): void {
@@ -167,7 +198,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
       }
     }
     let workUnits = 0
-    while (workUnits < this.maxWorkUnitsPerDrain && this.pending.size > 0) {
+    while (workUnits < MAX_WORK_UNITS_PER_DRAIN && this.pending.size > 0) {
       const operation = this.pending.values().next().value
       if (!operation) break
       workUnits += 1
@@ -295,7 +326,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private async shutdown(): Promise<void> {
-    this.scheduler.dispose()
+    this.clearPollTimer()
     let status = this.library.clipboardServiceBeginShutdown(this.service)
     while (status === NativeClipboardShutdownStatus.Pending) {
       await new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_POLL_INTERVAL_MS))
@@ -310,7 +341,6 @@ class NativeClipboardBackend implements HostClipboardBackend {
 
 export const createNativeHostClipboardBackend: HostClipboardBackendFactory = (options) =>
   new NativeClipboardBackend(
-    options.maxWorkUnitsPerDrain,
     options.maxImagePixels,
     options.maxConversionBytes,
     options.maxConcurrentOperations,

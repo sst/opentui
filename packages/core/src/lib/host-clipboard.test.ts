@@ -6,11 +6,7 @@ import {
   type HostClipboardReadOptions,
   type HostClipboardWriteOptions,
 } from "./clipboard.js"
-import {
-  createHostClipboardWithBackend,
-  normalizeRemainingTimeout,
-  type NormalizedHostClipboardOptions,
-} from "./host-clipboard.internal.js"
+import { createHostClipboardWithBackend, type NormalizedHostClipboardOptions } from "./host-clipboard.internal.js"
 
 const createBackend = (overrides: Partial<HostClipboardBackend> = {}) => {
   const reads: HostClipboardReadOptions[] = []
@@ -61,11 +57,10 @@ describe("createHostClipboard", () => {
       "maxConversionBytes",
       "maxConcurrentOperations",
       "maxProviderTransfers",
-      "maxWorkUnitsPerDrain",
     ] as const) {
       expect(() => createHost(backend, { [name]: -1 })).toThrow(RangeError)
     }
-    for (const name of ["maxConcurrentOperations", "maxProviderTransfers", "maxWorkUnitsPerDrain"] as const) {
+    for (const name of ["maxConcurrentOperations", "maxProviderTransfers"] as const) {
       expect(() => createHost(backend, { [name]: 0 })).toThrow(RangeError)
     }
     for (const waylandSeat of ["", "seat\0name"]) {
@@ -85,11 +80,6 @@ describe("createHostClipboard", () => {
     expect(results.map(({ status }) => status)).toEqual(["timed-out", "timed-out", "timed-out"])
     expect([fake.reads.length, fake.writes.length, fake.clears.length]).toEqual([0, 0, 0])
     await host.dispose()
-  })
-
-  it("preserves a one millisecond backend budget while an exact timeout remainder is positive", () => {
-    expect(normalizeRemainingTimeout(1, 0.6)).toBe(1)
-    expect(normalizeRemainingTimeout(1, 1)).toBe(0)
   })
 
   it("normalizes defaults, selections, MIME types, signals, and timeout values", async () => {
@@ -123,7 +113,6 @@ describe("createHostClipboard", () => {
       maxConversionBytes: 13,
       maxConcurrentOperations: 14,
       maxProviderTransfers: 15,
-      maxWorkUnitsPerDrain: 16,
       waylandSeat: "seat0",
     }
     const host = createHostClipboardWithBackend(options, (normalized) => {
@@ -207,31 +196,6 @@ describe("createHostClipboard", () => {
     const pending = host.read({ preferredTypes: ["text/plain"], signal: controller.signal })
     controller.abort()
     expect(await pending).toEqual({ status: "cancelled" })
-    await host.dispose()
-  })
-
-  it("preserves a tighter caller operation limit", async () => {
-    let release: (() => void) | undefined
-    let readCount = 0
-    const fake = createBackend({
-      async read() {
-        readCount += 1
-        await new Promise<void>((resolve) => {
-          release = resolve
-        })
-        return { status: "empty" }
-      },
-    })
-    const host = createHost(fake.backend, { maxConcurrentOperations: 1 })
-    const first = host.read({ preferredTypes: ["text/plain"] })
-
-    const second = await host.read({ preferredTypes: ["text/plain"] })
-    expect(second.status).toBe("failed")
-    if (second.status === "failed") expect(second.error.message).toContain("operation limit")
-    expect(readCount).toBe(1)
-
-    release?.()
-    await first
     await host.dispose()
   })
 

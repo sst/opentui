@@ -53,7 +53,6 @@ const emittedAllowlist = [
   ".node-test/src/lib/clipboard.test.js",
   ".node-test/src/lib/clipboard-service.test.js",
   ".node-test/src/lib/host-clipboard.test.js",
-  ".node-test/src/lib/host-clipboard.native.scheduler.test.js",
   ".node-test/src/lib/extmarks.test.js",
   ".node-test/src/lib/detect-links.test.js",
   ".node-test/src/lib/extmarks-multiwidth.test.js",

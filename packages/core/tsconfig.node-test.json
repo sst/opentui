@@ -17,7 +17,6 @@
     "src/lib/clipboard.test.ts",
     "src/lib/clipboard-service.test.ts",
     "src/lib/host-clipboard.test.ts",
-    "src/lib/host-clipboard.native.scheduler.test.ts",
     "src/lib/extmarks.test.ts",
     "src/lib/detect-links.test.ts",
     "src/lib/extmarks-multiwidth.test.ts",

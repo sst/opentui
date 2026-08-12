@@ -149,7 +149,6 @@ renderer adapter maps `primary` to the OSC 52 primary target.
 | `maxConversionBytes`      | `536870912` (512 MiB) | Memory ceiling for image conversion                                         |
 | `maxConcurrentOperations` | `16`                  | Active operations per service                                               |
 | `maxProviderTransfers`    | `16`                  | Concurrent outgoing paste transfers served on Linux                         |
-| `maxWorkUnitsPerDrain`    | `64`                  | Native work items processed per scheduler drain                             |
 | `waylandSeat`             | auto                  | Explicit Wayland seat name                                                  |
 
 When a service reaches `maxConcurrentOperations`, additional operations resolve to `{ status: "failed" }` and do
