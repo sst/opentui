@@ -18,48 +18,25 @@ import OpenTUILogo from "../components/OpenTUILogo.astro"
 
 const variants = [
   {
-    name: "0 · The baseline",
-    note: "Yours, verbatim. This is what /minimal says until a variation is selected.",
+    name: "0 · Mine",
+    note: "Edited manually",
     html: `
-      <p>A library to build terminal user interfaces.</p>
+      <p>[OpenTUI LOGO] is a library to build terminal user interfaces.</p>
       <ul>
-        <li>Written in Zig.</li>
-        <li>Write TypeScript, React, or Solid.</li>
-        <li>Boxes, text, and flex layout become terminal cells.</li>
-        <li>Menus and inputs handle the keyboard for you.</li>
-        <li>It can play sound, show images, and render 3D.</li>
-        <li>Serve it over SSH. Compile it to one file.</li>
-      </ul>`,
-  },
-  {
-    name: "1 · The factual correction",
-    note: "The baseline with every vague point made concrete, proof line added.",
-    html: `
-      <p>A library to build terminal user interfaces.</p>
-      <p>It powers OpenCode in production today.</p>
-      <ul>
-        <li>The core is written in Zig.</li>
-        <li>Write TypeScript, React, or Solid. One renderer underneath.</li>
-        <li>Flexbox layout, with the Yoga engine compiled in.</li>
-        <li>Each frame, it writes only the cells that changed.</li>
-        <li>Selects, inputs, text areas, and scroll boxes are built in, keybindings included.</li>
-        <li>It can play sound, show images, and render 3D.</li>
-        <li>Test it in a script. Serve it over SSH. Compile it to one file.</li>
-      </ul>`,
-  },
-  {
-    name: "2 · The bare minimum",
-    note: "The fewest words that survive. Nothing to misread.",
-    html: `
-      <p>Terminal user interfaces.</p>
-      <ul>
-        <li>Zig core.</li>
-        <li>TypeScript, React, or Solid.</li>
-        <li>Flexbox.</li>
-        <li>Sound, images, 3D.</li>
-        <li>SSH. One-file builds.</li>
-        <li>Powers OpenCode.</li>
-      </ul>`,
+        <li>It is written in Zig.</li>
+        <li>You write TypeScript, React, or Solid. Other languages can use the C ABI.</li>
+        <li>You arrange boxes and text with flexbox.</li>
+        <li>You add selects, inputs, and scroll boxes with keyboard and mouse controls.</li>
+        <li>You can play sounds, show images, and render 3D graphics.</li>
+      </ul>
+      <p>OpenCode uses it in production for millions of users.</p>`,
+    footer: `
+      <p>
+        <a href="/docs/getting-started">Documentation</a><br />
+        <a href="/blog">Blog</a><br />
+        <a href="https://github.com/anomalyco/opentui">GitHub</a>
+      </p>
+      <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>`,
   },
   {
     name: "3 · Second person",
@@ -76,14 +53,46 @@ const variants = [
       </ul>`,
   },
   {
-    name: "4 · No bullets",
-    note: "The user's own hunch: maybe not even bullet points. Plain sentences, stacked.",
+    name: "12 · improve.sh",
+    note: "The baseline through ~/src/notes/grammar/tasks/improve.sh doc: strong verbs, named actors, no ambiguous pronouns, reader as you.",
+    html: `
+      <p>OpenTUI is a library for building terminal user interfaces.</p>
+      <ul>
+        <li>A Zig core renders every frame.</li>
+        <li>You write TypeScript, React, or Solid.</li>
+        <li>The core turns boxes, text, and flexbox layout into terminal cells.</li>
+        <li>Menus and inputs respond to the keyboard on their own.</li>
+        <li>OpenTUI plays sound, shows images, and renders 3D.</li>
+        <li>Serve your app over SSH. Compile it to one file.</li>
+      </ul>`,
+  },
+  {
+    name: "11 · STE strict",
+    note: "The baseline in strict ASD-STE100: full sentences, articles, one name per thing. (Flavored STE returns the baseline unchanged.)",
+    html: `
+      <p>OpenTUI is a library. Use it to build terminal user interfaces.</p>
+      <ul>
+        <li>The renderer is written in Zig.</li>
+        <li>You can write applications in TypeScript, React, or Solid.</li>
+        <li>The renderer changes boxes, text, and flex layout into terminal cells.</li>
+        <li>The menu and input components have their own keyboard controls.</li>
+        <li>The library can play sounds, show images, and draw 3D graphics.</li>
+        <li>Serve the application over SSH. Compile the application to one file.</li>
+      </ul>`,
+  },
+  {
+    name: "0 · The baseline",
+    note: "Yours, verbatim. This is what /minimal says until a variation is selected.",
     html: `
       <p>A library to build terminal user interfaces.</p>
-      <p>You write TypeScript, React, or Solid. A core written in Zig arranges your boxes with flexbox and rewrites only the cells that changed.</p>
-      <p>Selects, inputs, and scroll boxes come with their keys bound. Sound, images, and 3D come with the library.</p>
-      <p>Test it in a script. Serve it over SSH. Compile it to one file.</p>
-      <p>It powers OpenCode in production today.</p>`,
+      <ul>
+        <li>Written in Zig.</li>
+        <li>Write TypeScript, React, or Solid.</li>
+        <li>Boxes, text, and flex layout become terminal cells.</li>
+        <li>Menus and inputs handle the keyboard for you.</li>
+        <li>It can play sound, show images, and render 3D.</li>
+        <li>Serve it over SSH. Compile it to one file.</li>
+      </ul>`,
   },
   {
     name: "5 · Proof first",
@@ -113,41 +122,19 @@ const variants = [
       </ul>`,
   },
   {
-    name: "7 · Numbers",
-    note: "Countable facts only. Each number is real and checkable.",
+    name: "1 · The factual correction",
+    note: "The baseline with every vague point made concrete, proof line added.",
     html: `
       <p>A library to build terminal user interfaces.</p>
       <ul>
-        <li>One renderer, written in Zig.</li>
-        <li>Three ways to write it: TypeScript, React, or Solid.</li>
-        <li>315 exported C functions for everything else.</li>
-        <li>About sixty keybindings in the text area alone.</li>
-        <li>Zero cells written when nothing changes.</li>
-        <li>One file when you ship it.</li>
+        <li>Written in Zig.</li>
+        <li>Write TypeScript, React, or Solid. One renderer underneath.</li>
+        <li>Flexbox layout, with the Yoga engine compiled in.</li>
+        <li>Each frame, it writes only the cells that changed.</li>
+        <li>Selects, inputs, text areas, and scroll boxes are built in, keybindings included.</li>
+        <li>It can play sound, show images, and render 3D.</li>
+        <li>Test it in a script. Serve it over SSH. Compile it to one file.</li>
       </ul>`,
-  },
-  {
-    name: "8 · Questions",
-    note: "The six questions a visitor actually has, answered in one line each.",
-    html: `
-      <p>What is it? A library to build terminal user interfaces.</p>
-      <p>What do I write? TypeScript, React, or Solid.</p>
-      <p>What draws it? A core written in Zig. Flexbox in, changed cells out.</p>
-      <p>What is built in? Selects, inputs, scroll boxes, sound, images, 3D.</p>
-      <p>How do I ship it? Over SSH, or compiled to one file. Test it in a script first.</p>
-      <p>Who uses it? OpenCode, in production, today.</p>`,
-  },
-  {
-    name: "9 · Staccato",
-    note: "Shortest lines, no bullets. Reads like someone talking.",
-    html: `
-      <p>The terminal is a grid of cells.</p>
-      <p>OpenTUI treats it like a display.</p>
-      <p>A Zig core. Flexbox layout. Only the changed cells are written.</p>
-      <p>TypeScript, React, or Solid.</p>
-      <p>Sound. Images. 3D.</p>
-      <p>Tested in scripts. Served over SSH. Shipped as one file.</p>
-      <p>It powers OpenCode.</p>`,
   },
   {
     name: "10 · Inventory",
@@ -165,31 +152,64 @@ const variants = [
       </ul>`,
   },
   {
-    name: "11 · STE strict",
-    note: "The baseline in strict ASD-STE100: full sentences, articles, one name per thing. (Flavored STE returns the baseline unchanged.)",
+    name: "8 · Questions",
+    note: "The six questions a visitor actually has, answered in one line each.",
     html: `
-      <p>OpenTUI is a library. Use it to build terminal user interfaces.</p>
+      <p>What is it? A library to build terminal user interfaces.</p>
+      <p>What do I write? TypeScript, React, or Solid.</p>
+      <p>What draws it? A core written in Zig. Flexbox in, changed cells out.</p>
+      <p>What is built in? Selects, inputs, scroll boxes, sound, images, 3D.</p>
+      <p>How do I ship it? Over SSH, or compiled to one file. Test it in a script first.</p>
+      <p>Who uses it? OpenCode, in production, today.</p>`,
+  },
+  {
+    name: "4 · No bullets",
+    note: "The user's own hunch: maybe not even bullet points. Plain sentences, stacked.",
+    html: `
+      <p>A library to build terminal user interfaces.</p>
+      <p>You write TypeScript, React, or Solid. A core written in Zig arranges your boxes with flexbox and rewrites only the cells that changed.</p>
+      <p>Selects, inputs, and scroll boxes come with their keys bound. Sound, images, and 3D come with the library.</p>
+      <p>Test it in a script. Serve it over SSH. Compile it to one file.</p>
+      <p>It powers OpenCode in production today.</p>`,
+  },
+  {
+    name: "9 · Staccato",
+    note: "Shortest lines, no bullets. Reads like someone talking.",
+    html: `
+      <p>The terminal is a grid of cells.</p>
+      <p>OpenTUI treats it like a display.</p>
+      <p>A Zig core. Flexbox layout. Only the changed cells are written.</p>
+      <p>TypeScript, React, or Solid.</p>
+      <p>Sound. Images. 3D.</p>
+      <p>Tested in scripts. Served over SSH. Shipped as one file.</p>
+      <p>It powers OpenCode.</p>`,
+  },
+  {
+    name: "2 · The bare minimum",
+    note: "The fewest words that survive. Nothing to misread.",
+    html: `
+      <p>Terminal user interfaces.</p>
       <ul>
-        <li>The renderer is written in Zig.</li>
-        <li>You can write applications in TypeScript, React, or Solid.</li>
-        <li>The renderer changes boxes, text, and flex layout into terminal cells.</li>
-        <li>The menu and input components have their own keyboard controls.</li>
-        <li>The library can play sounds, show images, and draw 3D graphics.</li>
-        <li>Serve the application over SSH. Compile the application to one file.</li>
+        <li>Zig core.</li>
+        <li>TypeScript, React, or Solid.</li>
+        <li>Flexbox.</li>
+        <li>Sound, images, 3D.</li>
+        <li>SSH. One-file builds.</li>
+        <li>Powers OpenCode.</li>
       </ul>`,
   },
   {
-    name: "12 · improve.sh",
-    note: "The baseline through ~/src/notes/grammar/tasks/improve.sh doc: strong verbs, named actors, no ambiguous pronouns, reader as you.",
+    name: "7 · Numbers",
+    note: "Countable facts only. Each number is real and checkable.",
     html: `
-      <p>OpenTUI is a library for building terminal user interfaces.</p>
+      <p>A library to build terminal user interfaces.</p>
       <ul>
-        <li>A Zig core renders every frame.</li>
-        <li>You write TypeScript, React, or Solid.</li>
-        <li>The core turns boxes, text, and flexbox layout into terminal cells.</li>
-        <li>Menus and inputs respond to the keyboard on their own.</li>
-        <li>OpenTUI plays sound, shows images, and renders 3D.</li>
-        <li>Serve your app over SSH. Compile it to one file.</li>
+        <li>One renderer, written in Zig.</li>
+        <li>Three ways to write it: TypeScript, React, or Solid.</li>
+        <li>315 exported C functions for everything else.</li>
+        <li>About sixty keybindings in the text area alone.</li>
+        <li>Zero cells written when nothing changes.</li>
+        <li>One file when you ship it.</li>
       </ul>`,
   },
 ]
@@ -223,17 +243,23 @@ const variants = [
             <div class="page">
               <OpenTUILogo class="logo" title="OpenTUI" />
               <Fragment set:html={v.html} />
-              <p>
-                <code>bun create tui</code>
-              </p>
-              <p>
-                <a href="/docs/getting-started">Documentation</a>
-                <br />
-                <a href="https://github.com/anomalyco/opentui">GitHub</a>
-              </p>
-              <p>
-                MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.
-              </p>
+              {v.footer ? (
+                <Fragment set:html={v.footer} />
+              ) : (
+                <>
+                  <p>
+                    <code>bun create tui</code>
+                  </p>
+                  <p>
+                    <a href="/docs/getting-started">Documentation</a>
+                    <br />
+                    <a href="https://github.com/anomalyco/opentui">GitHub</a>
+                  </p>
+                  <p>
+                    MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.
+                  </p>
+                </>
+              )}
             </div>
           </section>
         ))

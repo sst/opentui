@@ -1,701 +1,296 @@
 ---
-import Base from "../layouts/Base.astro"
-import CellularDivider from "../components/CellularDivider.astro"
+// The landing page is built around one idea: the bullet list drives a film,
+// and the film only exists while you ask for it.
+//
+// Default view is a centered, left-aligned text column with no video. Click
+// a bullet (or j/k, arrow keys, Enter) and the list makes room for a film on
+// the right. On narrower screens the film opens above the list instead.
+// Click the active bullet again, or press Escape, to return to the plain list.
+// Transitions are 150ms linear - terminal speed, movement only, no fades.
+// At 64rem and below the film opens above the list instead of beside it.
+//
+// The placeholder files are symlinks in public/video to ~/capture. Replace
+// the data-video attribute on each bullet when real captures exist.
 import OpenTUILogo from "../components/OpenTUILogo.astro"
-import TerminalIllustration from "../components/TerminalIllustration.astro"
-
-// All listings are adapted from the docs pages they cite; they use only API
-// shown on those pages and must be re-verified when those pages change.
-const coreListing = `import { createCliRenderer, Box, Text } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  Box(
-    { borderStyle: "rounded", padding: 1 },
-    Text({ content: "Hello, OpenTUI!" }),
-  ),
-)`
-
-// Captured with createTestRenderer({ width: 25, height: 5 }) via
-// setup.captureCharFrame(); regenerate if the listings change.
-const capturedFrame = `╭───────────────────────╮
-│                       │
-│ Hello, OpenTUI!       │
-│                       │
-╰───────────────────────╯`
-
-// FIG_02-04 are one continuous example: the FIG_01 tree grows, step by
-// step, into a small menu app. Each listing is the small delta on top of
-// the previous one (imports/renderer omitted so lines fit the 3-column
-// flow). Re-verify against the cited docs pages if their API changes.
-const layoutListing = `Box(
-  { flexDirection: "row", width: "100%" },
-  Box(
-    { width: 20, border: true },
-    Text({ content: "Menu" }),
-  ),
-  Box(
-    { flexGrow: 1, padding: 1 },
-    Text({ content: "Hello, OpenTUI!" }),
-  ),
-)`
-
-const selectListing = `Box(
-  { flexDirection: "row", width: "100%" },
-  Select({
-    width: 20,
-    options: [
-      { name: "Espresso", description: "$3" },
-      { name: "Filter", description: "$4" },
-      { name: "Cold brew", description: "$5" },
-    ],
-  }),
-  Box(
-    { flexGrow: 1, padding: 1 },
-    Text({ content: "Hello, OpenTUI!" }),
-  ),
-)`
-
-const interactionListing = `const detail = Text({
-  content: "Espresso — $3",
-  fg: "#38bdf8",
-})
-
-menu.on(
-  SelectRenderableEvents.SELECTION_CHANGED,
-  (i, option) => {
-    detail.content =
-      \`\${option.name} — \${option.description}\`
-  },
-)`
-
-// Verified against packages/react/src/utils/index.ts: a <select>'s
-// onChange prop is wired to SelectRenderableEvents.SELECTION_CHANGED.
-const jsxListing = `function Menu() {
-  const [item, setItem] = useState(
-    "Espresso",
-  )
-
-  return (
-    <box flexDirection="row" width="100%">
-      <select
-        width={20}
-        options={options}
-        onChange={(i, o) => setItem(o.name)}
-      />
-      <box flexGrow={1} padding={1}>
-        <text fg="#38bdf8">{item}</text>
-      </box>
-    </box>
-  )
-}`
-
-const sshListing = `createServer({
-  hostKey: { path: "./host_key" },
-}).serve((session) => {
-  session.renderer.root.add(
-    Box(
-      { flexDirection: "row", width: "100%" },
-      menu,
-      Box(
-        { flexGrow: 1, padding: 1 },
-        detail,
-      ),
-    ),
-  )
-})`
-
-// ---------------------------------------------------------------------------
-// "It's not just boxes and text." DRAFT — what OpenTUI can actually build,
-// for someone deciding whether to use it, not for someone studying the
-// renderer. Placed right after the hero, before the "Building a terminal
-// app" walkthrough: excite first, then teach. Deliberately NOT using the
-// FIG_xx/plate convention below (source|output grid, corner tags, dense
-// caption) — that convention is for the walkthrough's tutorial content.
-// This is three short, different-shaped pitches:
-//   - Audio: real code + three REAL, playable .wav files (the exact
-//     synthesis from native-audio-demo.ts's own sound effects — see
-//     generate-landing-evidence.ts). Realizes the brief's own example
-//     ("a player showing + playing audio while showing it").
-//   - Images: real code + a REAL captured photograph (dragon.jpg through
-//     ImageRenderable's actual blocks-protocol fallback, captured with
-//     captureSpans() and redrawn as an SVG using those exact colors — not a
-//     filter, not a mockup). See generate-landing-evidence.ts.
-//   - 3D/graphics: no capture (WebGPU needs a real GPU; couldn't produce
-//     one honestly in the time available) — a real, copy-pasteable command
-//     to go see it yourself instead of a screenshot standing in for one.
-// See ../../LANDING_PAGE_PLAN.md for why these three and not others, and
-// for what changed after the first draft missed the brief (it leaned on
-// implementation internals like grapheme/UTF-16 counting and color-matrix
-// formulas — correct, but not something a prospective user weighs, and not
-// something to spend a landing page's attention on).
-const boxesAudioListing = `const audio = Audio.create()
-audio.start()
-audio.play(sound)`
-
-const boxesImageListing = `new ImageRenderable(renderer, {
-  source: "./dragon.jpg",
-  fit: "cover",
-})`
-
-const indexData = [
-  {
-    part: "PART I: FIRST FRAME",
-    entries: [
-      { title: "Getting started", meta: "GUIDE", slug: "/docs/getting-started" },
-      { title: "Renderer lifecycle", meta: "CORE CONCEPT", slug: "/docs/core-concepts/renderer" },
-      { title: "Renderables", meta: "CORE CONCEPT", slug: "/docs/core-concepts/renderables" },
-      { title: "Layout system", meta: "CORE CONCEPT", slug: "/docs/core-concepts/layout" },
-    ]
-  },
-  {
-    part: "PART II: TEXT, COLOR, AND CELLS",
-    entries: [
-      { title: "Text", meta: "COMPONENT", slug: "/docs/components/text" },
-      { title: "Colors", meta: "CORE CONCEPT", slug: "/docs/core-concepts/colors" },
-      { title: "Frame buffer", meta: "COMPONENT", slug: "/docs/components/frame-buffer" },
-      { title: "Color matrix", meta: "REFERENCE", slug: "/docs/reference/color-matrix" },
-    ]
-  },
-  {
-    part: "PART III: INPUT AND COMPONENTS",
-    entries: [
-      { title: "Keyboard and input", meta: "CORE CONCEPT", slug: "/docs/core-concepts/keyboard" },
-      { title: "Input component", meta: "COMPONENT", slug: "/docs/components/input" },
-      { title: "Image component", meta: "COMPONENT", slug: "/docs/components/image" },
-      { title: "Testing", meta: "CORE CONCEPT", slug: "/docs/core-concepts/testing" },
-    ]
-  },
-  {
-    part: "PART IV: APIS AND TRANSPORTS",
-    entries: [
-      { title: "React", meta: "BINDING", slug: "/docs/bindings/react" },
-      { title: "Solid", meta: "BINDING", slug: "/docs/bindings/solid" },
-      { title: "SSH", meta: "REFERENCE", slug: "/docs/reference/ssh" },
-      { title: "Package entrypoints", meta: "REFERENCE", slug: "/docs/reference/package-entrypoints" },
-    ]
-  },
-  {
-    part: "PART V: SOUND, PIXELS, AND OTHER MACHINES",
-    entries: [
-      { title: "Native audio", meta: "CORE CONCEPT", slug: "/docs/core-concepts/audio" },
-      { title: "Three.js WebGPU", meta: "REFERENCE", slug: "/docs/reference/three" },
-      { title: "Keymap engine", meta: "REFERENCE", slug: "/docs/keymap/overview" },
-      { title: "QR code", meta: "COMPONENT", slug: "/docs/components/qr-code" },
-    ]
-  }
-]
 ---
 
-<Base
-  title="OpenTUI - Terminal UIs on a native Zig core"
-  description="Build interactive terminal applications with TypeScript, React, or Solid on OpenTUI's native Zig core."
->
-  <!-- Fixed Top Nav -->
-  <header class="fixed-top-nav" id="top-nav">
-    <div class="fixed-top-nav-backdrop"></div>
-    <div class="fixed-top-nav-inner">
-      <a href="/" class="fixed-nav-logo-link" aria-label="OpenTUI">
-        <OpenTUILogo class="brand-logo" id="brand-logo" title="OpenTUI" />
-      </a>
-      <nav class="fixed-nav-links">
-        <a href="/docs/getting-started">Documentation</a>
-        <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-      </nav>
-    </div>
-  </header>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="OpenTUI is a library to build terminal user interfaces in TypeScript, React, or Solid, on a native Zig renderer."
+    />
+    <title>OpenTUI</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <h1><OpenTUILogo class="logo" title="OpenTUI" /></h1>
 
-  <div class="editorial-wrapper">
-    <div class="editorial-container">
+    <p>A library to build terminal user interfaces.</p>
 
-      <!-- Product Hero -->
-      <header class="editorial-hero">
-        <div class="hero-logo-slot" id="hero-logo-slot" aria-hidden="true"></div>
-
-        <div class="hero-illustration-bleed">
-          <TerminalIllustration
-            label="OpenTUI terminal recordings, animated"
-            controls="hover"
-            fit="contain"
-            holdMs={600}
-            class="hero-illustration"
-            stories={[
-              {
-                // "Original colors, not neon" is about the recording
-                // itself: press `N` in the app first to switch off its
-                // neon glow/bloom/scanline effects, *then* start it playing
-                // — captured colors are plain white text on black
-                // (confirmed directly against the raw recording; an earlier
-                // version of this file shipped with `N` never actually
-                // landing, still neon). tone="inherit" (the default) then
-                // recolors that by luminance into this element's own ink
-                // color, so it bleeds into the page and tracks light/dark
-                // mode instead of sitting in a literal black box — still
-                // clean and non-neon, just not literally white-on-black.
-                // For the literal look instead, tone="recorded" +
-                // background="recorded" paints the captured colors (and
-                // black background) verbatim.
-                src: "/recordings/anomaly.json",
-                tone: "inherit",
-                title: "Wordmark cuts",
-                caption: "Thirty-one wordmark treatments, rapid-cut, non-neon.",
-              },
-            ]}
-          />
-        </div>
-
-        <div class="hero-grid">
-          <div class="hero-copy">
-            <h1 class="hero-headline">
-              Terminal UIs on a native Zig core.
-            </h1>
-            <p class="editorial-lead-desc">
-              Build terminal applications in TypeScript with the imperative API, React, or Solid, all on the same renderer. The core exposes a C ABI for any other language.
-            </p>
-            <div class="hero-start">
-              <code class="hero-start-cmd" id="copy-cmd">$ bun create tui</code>
-              <a class="hero-start-link" href="/docs/getting-started">Read the docs &rarr;</a>
-            </div>
-          </div>
-
-          <div class="hero-preview" aria-hidden="true"></div>
-        </div>
-      </header>
-
-      <div class="section-rule" aria-hidden="true"></div>
-
-      <!-- "It's not just boxes and text." DRAFT. See LANDING_PAGE_PLAN.md
-           for why this exists and what it replaced: an earlier draft here
-           led with implementation internals (grapheme/UTF-16 counting,
-           color-matrix formulas) that a prospective user doesn't weigh —
-           correct, but not a reason to pick a terminal UI library. This
-           version leads with three things you'd actually build, each
-           proven a different way instead of the same figure template three
-           times: real playable audio, a real captured photograph, and (no
-           capture for this one — see caption) a real command to go run the
-           3D examples yourself. -->
-      <section class="editorial-frontmatter">
-        <h2 class="frontmatter-title">It's not just boxes and text.</h2>
-      </section>
-
-      <p class="showcase-intro">
-        A terminal window looks like it's good for monospace text and maybe a border. OpenTUI's native core does that, but it also plays real audio, decodes real photographs, and drives an actual GPU scene &mdash; all inside the same grid of character cells. Here's what that looks like.
-      </p>
-
-      <div class="showcase-feature">
-        <h3>It can make sound.</h3>
-        <p>
-          Most terminal UI libraries stop at a bell character. OpenTUI ships a real, native audio engine: play sound effects, stream a live internet radio station, or read from a microphone &mdash; cross-platform device output, not a browser trick.
-        </p>
-
-        <div class="showcase-media" style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start;">
-          <div>
-            <span class="figure-code-label">Jump &middot; 540Hz</span>
-            <audio controls preload="none" src="/audio/jump.wav" style="width: 200px; display: block;"></audio>
-          </div>
-          <div>
-            <span class="figure-code-label">Coin &middot; 980Hz</span>
-            <audio controls preload="none" src="/audio/coin.wav" style="width: 200px; display: block;"></audio>
-          </div>
-          <div>
-            <span class="figure-code-label">Thud &middot; 140Hz</span>
-            <audio controls preload="none" src="/audio/thud.wav" style="width: 200px; display: block;"></audio>
-          </div>
-        </div>
-        <p class="showcase-caption">
-          These three are OpenTUI's own demo sound effects &mdash; a sine wave shaped by an exponential decay, nothing fancier &mdash; rendered to real files so you can press play right here. In an app they'd come from <code>Audio.create()</code>:
-        </p>
-        <pre class="figure-code" style="max-width: 320px; margin-top: 10px;"><code>{boxesAudioListing}</code></pre>
-        <p class="showcase-links">
-          Continue reading: <a href="/docs/core-concepts/audio">Native audio</a>
-        </p>
-      </div>
-
-      <div class="showcase-feature">
-        <h3>It can show you a photograph.</h3>
-        <p>
-          Point an Image component at a file, a URL, or raw bytes. OpenTUI figures out how to draw it depending on what the terminal in front of it supports &mdash; down to plain Unicode characters if it has to.
-        </p>
-
-        <div class="showcase-media" style="text-align: center;">
-          <img
-            src="/images/dragon-mosaic.svg"
-            width="672"
-            height="336"
-            alt="A photograph of a dragon statue, rendered as a mosaic of colored terminal cells"
-            style="max-width: 100%; width: 480px; height: auto; border: 1px solid var(--border-subtle);"
-          />
-        </div>
-        <p class="showcase-caption">
-          A real photograph, run through that fallback path and captured cell for cell &mdash; not a filter, not a screenshot. 84&times;42 terminal cells, redrawn here at the exact colors OpenTUI's renderer computed.
-        </p>
-        <pre class="figure-code" style="max-width: 320px; margin-top: 10px;"><code>{boxesImageListing}</code></pre>
-        <p class="showcase-links">
-          Continue reading: <a href="/docs/components/image">Image component</a>
-        </p>
-      </div>
-
-      <div class="showcase-feature">
-        <h3>It can even do this.</h3>
-        <p>
-          <code>@opentui/three</code> drives an actual Three.js scene through WebGPU and downsamples the result into that same grid of cells. The example gallery has a live fractal shader, a couple of 2D physics sandboxes, and &mdash; the day this repository passed 5,000 stars on GitHub &mdash; a particle-swarm star that still runs today.
-        </p>
-
-        <div class="showcase-media">
-          <div class="showcase-cta">
-            <div><span class="showcase-cta-prompt">$</span>curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh</div>
-            <div><span class="showcase-cta-prompt">$</span>./opentui-examples</div>
-          </div>
-        </div>
-        <p class="showcase-caption">
-          No screenshot here on purpose: WebGPU needs a real GPU, which the process that builds this page doesn't have, and a static image would undersell something that moves. Run it instead &mdash; that command above is real and does exactly what it says.
-        </p>
-        <p class="showcase-links">
-          Continue reading: <a href="/docs/reference/three">Three.js WebGPU</a>
-        </p>
-      </div>
-
-      <p class="showcase-outro">
-        None of that replaces the basics: boxes, text, a menu that responds to arrow keys. That's where the rest of this page starts.
-      </p>
-
-      <div class="section-rule" aria-hidden="true"></div>
-
-      <!-- Illustrated Introduction: Front Matter -->
-      <section class="editorial-frontmatter">
-        <h2 class="frontmatter-title">Building a terminal app.</h2>
-        <p class="frontmatter-subtitle">
-          A step-by-step demo: a menu, a detail pane, and the code behind both.
-        </p>
-      </section>
-
-      <p class="editorial-intro">
-        OpenTUI turns a tree of components into terminal output. Here's the smallest one there is.
-      </p>
-
-      <!-- FIG_01: The interface you write -->
-      <figure class="editorial-figure editorial-lead-figure" id="fig-01">
-        <span class="fig-tag-top-left">FIG_01</span>
-        <span class="fig-tag-top-right">[ ONE RENDERABLE TREE ]</span>
-
-        <div class="figure-code-grid">
-          <div>
-            <span class="figure-code-label">Source</span>
-            <pre class="figure-code"><code>{coreListing}</code></pre>
-          </div>
-          <div>
-            <span class="figure-code-label">Output</span>
-            <div class="figure-output-wrap">
-              <pre class="figure-output"><code>{capturedFrame}</code></pre>
-            </div>
-          </div>
-        </div>
-
-        <div class="figure-caption-text">
-          <code>renderer.root.add(...)</code> attaches this tree; the renderer resolves it into the frame above. <code>@opentui/react</code> and <code>@opentui/solid</code> build the same renderables from JSX over the same renderer.
-        </div>
+    <div class="band">
+      <figure class="screen">
+        <video src="/video/vt520.mp4" muted loop playsinline preload="metadata"></video>
       </figure>
 
-      <p class="editorial-intro-links">
-        <a href="/docs/getting-started">Getting started</a> &middot; <a href="/docs/core-concepts/renderables">Renderables</a> &middot; <a href="/docs/bindings/react">React</a> &middot; <a href="/docs/bindings/solid">Solid</a>
-      </p>
-
-      <!-- Editorial Multi-Column Flow -->
-      <div class="editorial-flow">
-
-        <p>
-          One box is not a menu. Add a second box next to the first.
-        </p>
-
-        <p>
-          Give the first box a fixed width. Give the second room to grow. Now there are two panes: one 20 columns wide, one that takes whatever is left.
-        </p>
-
-        <!-- FIG_02: two boxes -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_02</span>
-          <span class="fig-tag-top-right">[ TWO BOXES ]</span>
-
-          <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{layoutListing}</code></pre>
-
-          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; rendered at 60&times;20, then resized live</div>
-
-          <div class="figure-caption-text">
-            Same two boxes, running for real. Resize the terminal: the numbers change, nothing else does.
-          </div>
-          <span class="fig-tag-bottom-left">LAYOUT</span>
-          <span class="fig-tag-bottom-right">FLEX &rarr; CELLS</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/layout">Layout system</a> &middot; <a href="/docs/core-concepts/renderables">Renderables</a>
-        </p>
-
-        <p>
-          The left box is still just a box. Replace it with a <code>Select</code>.
-        </p>
-
-        <p>
-          Same spot in the tree. Same width. But a <code>Select</code> remembers which option is highlighted, and the Up and Down keys move it &mdash; you didn't write that part.
-        </p>
-
-        <!-- FIG_03: the box becomes a list -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_03</span>
-          <span class="fig-tag-top-right">[ THE BOX BECOMES A LIST ]</span>
-
-          <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{selectListing}</code></pre>
-
-          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; Down arrow moving the highlight</div>
-
-          <div class="figure-caption-text">
-            Press Down. &ldquo;Filter &mdash; $4&rdquo; highlights on the left. The right pane hasn't caught up yet &mdash; that's next.
-          </div>
-          <span class="fig-tag-bottom-left">SELECT</span>
-          <span class="fig-tag-bottom-right">OPTIONS &rarr; HIGHLIGHT</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/components/select">Select</a> &middot; <a href="/docs/core-concepts/keyboard">Keyboard and input</a>
-        </p>
-
-        <p>
-          Wire the highlight to the pane on the right.
-        </p>
-
-        <p>
-          Add one <code>Text</code> for the pane, and one handler on the <code>Select</code> from FIG_03. Press Down twice from Espresso and the pane reads &ldquo;Cold brew &mdash; $5&rdquo;.
-        </p>
-
-        <!-- FIG_04: wire the highlight -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_04</span>
-          <span class="fig-tag-top-right">[ WIRE THE HIGHLIGHT ]</span>
-
-          <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{interactionListing}</code></pre>
-
-          <div class="figure-placeholder" aria-hidden="true">Capture pending &mdash; highlight moving, detail pane updating in sync</div>
-
-          <div class="figure-caption-text">
-            One event handler, one property assignment. That's the entire interaction &mdash; no redraw call, nothing to schedule.
-          </div>
-          <span class="fig-tag-bottom-left">SELECTION_CHANGED</span>
-          <span class="fig-tag-bottom-right">EVENT &rarr; CONTENT</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/testing">Testing</a> &middot; <a href="/docs/core-concepts/colors">Colors</a>
-        </p>
-
-        <p>
-          The same interaction is testable: <code>createTestRenderer</code> can send a Down keypress in a script and check what the pane says next. No real terminal required.
-        </p>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/core-concepts/testing">Testing</a>
-        </p>
-
-        <p>
-          The tree so far is small: one <code>Select</code>, two <code>Text</code> nodes, two <code>Box</code> wrappers. Here it is again, written as JSX instead of function calls.
-        </p>
-
-        <!-- FIG_05: same tree, different syntax -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_05</span>
-          <span class="fig-tag-top-right">[ SAME TREE, DIFFERENT SYNTAX ]</span>
-
-          <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{jsxListing}</code></pre>
-
-          <div class="figure-caption-text">
-            Same tree, same renderer: <code>onChange</code> is the same <code>SELECTION_CHANGED</code> event from FIG_04, just wired through a prop instead of <code>.on(...)</code>.
-          </div>
-          <span class="fig-tag-bottom-left">@OPENTUI/REACT</span>
-          <span class="fig-tag-bottom-right">ONCHANGE &rarr; SELECTION_CHANGED</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/bindings/react">React</a> &middot; <a href="/docs/bindings/solid">Solid</a>
-        </p>
-
-        <p>
-          The tree doesn't need a local terminal either. Wrap it in an SSH handler and it renders wherever someone connects from.
-        </p>
-
-        <!-- FIG_06: the same tree, over SSH -->
-        <figure class="editorial-figure">
-          <span class="fig-tag-top-left">FIG_06</span>
-          <span class="fig-tag-top-right">[ THE SAME TREE, OVER SSH ]</span>
-
-          <span class="figure-code-label">Source</span>
-          <pre class="figure-code"><code>{sshListing}</code></pre>
-
-          <div class="figure-caption-text">
-            The exact tree from FIG_04, attached to <code>session.renderer</code> instead of <code>renderer</code>. Whoever connects sees the same menu.
-          </div>
-          <span class="fig-tag-bottom-left">@OPENTUI/SSH</span>
-          <span class="fig-tag-bottom-right">SESSION.RENDERER</span>
-        </figure>
-
-        <p class="flow-refs">
-          Continue reading: <a href="/docs/reference/ssh">SSH</a> &middot; <a href="/docs/reference/standalone-executables">Standalone executables</a>
-        </p>
-
-        <p>
-          <code>bun build --compile</code> packages the whole program, tree included, into a single file. None of these three &mdash; JSX, SSH, or a compiled binary &mdash; changes a line of the tree itself.
-        </p>
-
-        <p>
-          A list on the left, details on the right, reachable over SSH: you've just built the shape of <code>ssh terminal.shop</code>. The renderer underneath is the same one drawing OpenCode's interface today.
-        </p>
-
-        <p>
-          Layout, a real component, live interaction, and three ways to ship it &mdash; that's what you just built. The index below follows each piece into the documentation, including <a href="/docs/core-concepts/rendering-pipeline">how the renderer resolves all of it</a> beneath the tree you write.
-        </p>
-
-      </div>
-
-      <div class="section-rule" aria-hidden="true"></div>
-
-      <!-- Reading Index -->
-      <section class="toc-section" id="index">
-        <div class="toc-header">
-          <h2 class="toc-heading">Reading index.</h2>
-          <span class="toc-version">DOCUMENTATION ROUTES</span>
-        </div>
-
-        <div class="toc-grid">
-          {indexData.map((part) => (
-            <div class="toc-part-card">
-              <div class="toc-part-label">{part.part}</div>
-              <ul class="toc-chapter-list">
-                {part.entries.map((entry) => (
-                  <li class="toc-chapter-item">
-                    <a href={entry.slug}>
-                      <span>{entry.title}</span>
-                      <span class="chapter-words">{entry.meta}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <!-- Editorial Footer -->
-      <footer class="editorial-footer">
-        <div class="footer-identity">
-          <OpenTUILogo class="footer-logo-mark" />
-        </div>
-        <div class="footer-links">
-          <a href="/docs/getting-started">Documentation</a>
-          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-        <div class="footer-bottom">
-          <span>Open source under the MIT License</span>
-          <span>&middot;</span>
-          <a href="https://anoma.ly/" target="_blank" rel="noopener noreferrer">&copy; 2026 Anomaly</a>
-        </div>
-      </footer>
-
+      <ul>
+        <li data-video="/video/vt520.mp4">It is written in Zig.</li>
+        <li data-video="/video/prism.mp4">You write TypeScript, React, or Solid. Other languages can use the C ABI.</li>
+        <li data-video="/video/prism.mp4">You arrange boxes and text with flexbox.</li>
+        <li data-video="/video/vt520.mp4">You add selects, inputs, and scroll boxes with keyboard and mouse controls.</li>
+        <li data-video="/video/prism.mp4">You can play sounds, show images, and render 3D graphics.</li>
+      </ul>
     </div>
-  </div>
 
-  <script>
-    const topNav = document.getElementById("top-nav")
-    const brandLogo = document.getElementById("brand-logo")
-    const heroSlot = document.getElementById("hero-logo-slot")
-    let ticking = false
+    <p>OpenCode uses it in production for millions of users.</p>
 
-    let metrics = { deltaX: 0, deltaY: 48, scale: 2.133 }
+    <p>
+      <a href="/docs/getting-started">Documentation</a><br />
+      <a href="/blog">Blog</a><br />
+      <a href="https://github.com/anomalyco/opentui">GitHub</a>
+    </p>
 
-    function updateMetrics() {
-      if (brandLogo && heroSlot) {
-        const logoParent = brandLogo.parentElement
-        const logoParentRect = logoParent?.getBoundingClientRect()
-        const slotRect = heroSlot.getBoundingClientRect()
-        const scrollY = window.scrollY || document.documentElement.scrollTop || 0
+    <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>
 
-        const maxAvailableWidth = window.innerWidth - (window.innerWidth < 768 ? 40 : 72)
-        const targetScale = Math.min(2.133, Math.max(1.5, maxAvailableWidth / 125))
+    <script>
+      const band = document.querySelector<HTMLElement>(".band")!
+      const video = band.querySelector("video")!
+      const list = band.querySelector("ul")!
+      const points = [...band.querySelectorAll<HTMLLIElement>("li[data-video]")]
+      let current: HTMLLIElement | null = null
 
-        if (logoParentRect) {
-          const deltaX = slotRect.left - logoParentRect.left
-          const deltaY = slotRect.top + scrollY - logoParentRect.top
-          metrics = { deltaX, deltaY, scale: targetScale }
+      function open(li: HTMLLIElement) {
+        const src = li.dataset.video!
+        if (video.getAttribute("src") !== src) video.setAttribute("src", src)
+        video.play().catch(() => {})
+        band.classList.add("playing")
+        current = li
+        for (const point of points) point.classList.toggle("active", point === li)
+      }
+
+      function close() {
+        band.classList.remove("playing")
+        video.pause()
+        current = null
+        for (const point of points) point.classList.remove("active")
+      }
+
+      for (const li of points) {
+        li.tabIndex = 0
+        li.addEventListener("click", () => {
+          if (current === li) close()
+          else open(li)
+        })
+        li.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            if (current === li) close()
+            else open(li)
+          }
+        })
+      }
+
+      video.addEventListener("click", () => {
+        if (video.paused) video.play().catch(() => {})
+        else video.pause()
+      })
+
+      // The list behaves like an OpenTUI Select: j/k anywhere, arrow keys
+      // when they cannot be needed for scrolling, wrap-around at the ends,
+      // Escape dismisses the film.
+      const steps: Record<string, number> = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }
+      window.addEventListener("keydown", (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) return
+        if (event.key === "Escape") {
+          close()
+          return
         }
-      }
-    }
-
-    function updateNav() {
-      const scrollY = window.scrollY || document.documentElement.scrollTop || 0
-      const threshold = 120
-      const progress = Math.min(1, Math.max(0, scrollY / threshold))
-
-      const currentX = (1 - progress) * metrics.deltaX
-      const currentY = (1 - progress) * metrics.deltaY
-      const currentScale = 1 + (1 - progress) * (metrics.scale - 1)
-
-      topNav?.style.setProperty("--logo-translate-x", `${currentX.toFixed(2)}px`)
-      topNav?.style.setProperty("--logo-translate-y", `${currentY.toFixed(2)}px`)
-      topNav?.style.setProperty("--logo-scale", `${currentScale.toFixed(3)}`)
-      topNav?.style.setProperty("--nav-bg-opacity", `${progress.toFixed(3)}`)
-
-      if (progress > 0.15) {
-        topNav?.classList.add("is-scrolled")
-      } else {
-        topNav?.classList.remove("is-scrolled")
-      }
-
-      if (progress >= 1) {
-        topNav?.classList.add("is-docked")
-      } else {
-        topNav?.classList.remove("is-docked")
-      }
-
-      ticking = false
-    }
-
-    function onScroll() {
-      if (!ticking) {
-        window.requestAnimationFrame(updateNav)
-        ticking = true
-      }
-    }
-
-    function onResize() {
-      updateMetrics()
-      updateNav()
-    }
-
-    const copyCmd = document.getElementById("copy-cmd")
-    let copyTimer
-    copyCmd?.addEventListener("click", () => {
-      navigator.clipboard?.writeText("bun create tui")
-      if (copyTimer) clearTimeout(copyTimer)
-      copyCmd.textContent = "$ bun create tui (copied)"
-      copyCmd.classList.add("is-copied")
-      copyTimer = setTimeout(() => {
-        copyCmd.textContent = "$ bun create tui"
-        copyCmd.classList.remove("is-copied")
-      }, 1800)
-    })
-
-    window.addEventListener("scroll", onScroll, { passive: true })
-    window.addEventListener("resize", onResize, { passive: true })
-
-    updateMetrics()
-    updateNav()
-  </script>
-
-  <script src="../scripts/terminal-illustration.js"></script>
-</Base>
+        const step = steps[event.key]
+        if (!step) return
+        const scrollable = document.documentElement.scrollHeight > innerHeight
+        if (event.key.startsWith("Arrow") && scrollable && !list.contains(document.activeElement)) return
+        event.preventDefault()
+        const index = current ? points.indexOf(current) : step > 0 ? -1 : 0
+        open(points[(index + step + points.length) % points.length]!)
+      })
+    </script>
+  </body>
+</html>
 
 <style is:global>
-  @import "../styles/terminal-illustration.css";
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  body {
+    margin: 0;
+    padding: 4rem 1.5rem;
+    background: #fff;
+    color: #000;
+    font-family: "Berkeley Mono", monospace;
+    line-height: 1.5;
+  }
+
+  body > :not(script, style) {
+    width: min(100%, 36rem);
+    margin-inline: auto;
+  }
+
+  .logo {
+    display: block;
+    width: 250px;
+    height: 60px;
+  }
+
+  code {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  /* The list stays on the page's text spine while the video grows to its
+     right. The header and footer remain on that axis, and one shared seam
+     prevents overlap. */
+  .band {
+    position: relative;
+    width: min(100%, 36rem);
+    margin-inline: auto;
+    margin-block: 1em;
+    transition: width 75ms linear 75ms;
+  }
+
+  .band.playing {
+    width: min(100%, 56rem);
+    transition-delay: 0ms;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0 0 auto auto;
+    width: 22rem;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path 75ms linear;
+  }
+
+  .band.playing .screen {
+    clip-path: inset(0);
+    transition-delay: 75ms;
+  }
+
+  .band ul {
+    box-sizing: border-box;
+    margin-block: 0;
+    width: 100%;
+    transition: width 75ms linear 75ms;
+  }
+
+  .band.playing ul {
+    width: calc(100% - 23.5rem);
+    transition-delay: 0ms;
+  }
+
+  .screen video {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    cursor: pointer;
+  }
+
+  li[data-video] {
+    cursor: pointer;
+  }
+
+  /* Keep the focus ring for keyboard users, skip the mousedown flash. */
+  li[data-video]:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  li[data-video]:hover {
+    text-decoration: underline;
+  }
+
+  li.active {
+    color: LinkText;
+  }
+
+  /* If the full two-pane composition cannot retain comfortable gutters,
+     keep the compact measure and stack the same two surfaces. */
+  @media (max-width: 64rem) {
+    .band {
+      position: static;
+      display: grid;
+      margin-inline: auto;
+      width: min(100%, 36rem);
+      grid-template-columns: 1fr;
+      grid-template-rows: 0fr auto;
+      row-gap: 0;
+      transition:
+        grid-template-rows 150ms linear,
+        row-gap 150ms linear;
+    }
+
+    .band.playing {
+      width: min(100%, 36rem);
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+      row-gap: 1.5rem;
+    }
+
+    .screen {
+      position: static;
+      width: auto;
+      grid-column: 1;
+      grid-row: 1;
+      min-height: 0;
+      clip-path: none;
+      transition: none;
+    }
+
+    .band ul,
+    .band.playing ul {
+      width: auto;
+      grid-column: 1;
+      grid-row: 2;
+      transition: none;
+    }
+
+    .screen video {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    body {
+      padding: 2rem 1rem;
+    }
+
+    ul {
+      padding-inline-start: 1.25rem;
+    }
+
+    .logo {
+      width: 200px;
+      height: 48px;
+    }
+
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .band,
+    .screen,
+    .screen video,
+    .band ul {
+      transition: none;
+    }
+  }
 </style>
