@@ -4,9 +4,11 @@ import {
   parseMermaidFlowchartDiagram,
   parseMermaidSequenceDiagram,
   parseMermaidStateDiagram,
+  parseMermaidTimelineDiagram,
   renderFlowchartDiagram,
   renderSequenceDiagram,
   renderStateDiagram,
+  renderTimelineDiagram,
 } from "./index.js"
 
 describe("public API", () => {
@@ -29,6 +31,12 @@ describe("public API", () => {
         kind: "state",
         parse: parseMermaidStateDiagram,
         render: renderStateDiagram,
+      },
+      {
+        source: "timeline\n  2026 : Timeline support",
+        kind: "timeline",
+        parse: parseMermaidTimelineDiagram,
+        render: renderTimelineDiagram,
       },
     ] as const
 

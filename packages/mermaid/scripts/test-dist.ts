@@ -55,15 +55,18 @@ try {
   renderFlowchartDiagram,
   renderSequenceDiagram,
   renderStateDiagram,
+  renderTimelineDiagram,
   type FlowchartDiagram,
   type SequenceDiagram,
   type StateDiagram,
+  type TimelineDiagram,
 } from "@opentui/mermaid"
 
 const sources = [
   ["flowchart", "flowchart LR\\n  A --> B", renderFlowchartDiagram],
   ["sequence", "sequenceDiagram\\n  A->>B: hello", renderSequenceDiagram],
   ["state", "stateDiagram-v2\\n  A --> B", renderStateDiagram],
+  ["timeline", "timeline\\n  2026 : shipped", renderTimelineDiagram],
 ] as const
 
 for (const [kind, source, render] of sources) {
@@ -71,7 +74,7 @@ for (const [kind, source, render] of sources) {
   if (!render(source).trim()) throw new Error(\`failed to render \${kind}\`)
 }
 
-const typecheck: FlowchartDiagram | SequenceDiagram | StateDiagram | undefined = undefined
+const typecheck: FlowchartDiagram | SequenceDiagram | StateDiagram | TimelineDiagram | undefined = undefined
 void typecheck
 console.log("@opentui/mermaid dist consumer passed")
 `,

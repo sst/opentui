@@ -128,6 +128,9 @@ const publicDeclarations = new Set([
   "state/diagram.d.ts",
   "state/parser.d.ts",
   "state/types.d.ts",
+  "timeline/diagram.d.ts",
+  "timeline/parser.d.ts",
+  "timeline/types.d.ts",
 ])
 prunePrivateDeclarations(distDir)
 

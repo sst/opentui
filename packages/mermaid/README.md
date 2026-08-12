@@ -1,6 +1,6 @@
 # `@opentui/mermaid`
 
-Render Mermaid-flavored flowchart, sequence, and state diagrams in OpenTUI Markdown or as plain terminal text.
+Render Mermaid-flavored flowchart, sequence, state, and timeline diagrams in OpenTUI Markdown or as plain terminal text.
 
 ## Install
 
@@ -35,7 +35,7 @@ import { renderFlowchartDiagram } from "@opentui/mermaid"
 console.log(renderFlowchartDiagram("flowchart LR\n  Parse --> Layout --> Render"))
 ```
 
-The package also exports parsers and plain renderers for sequence and state diagrams.
+The package also exports parsers and plain renderers for sequence, state, and timeline diagrams.
 
 ## Support
 
@@ -44,9 +44,10 @@ This package implements a practical Mermaid syntax subset for terminal rendering
 - **Flowchart:** five directions, chained solid/dashed/thick/undirected edges, labels, nested subgraphs, local subgraph directions, and box/rounded/database/decision/subroutine nodes.
 - **Sequence:** participants and actors, message arrow variants, self messages, notes, `alt`/`else`, `loop`, participant boxes, autonumbering, and activations.
 - **State:** four directions, aliases, start/end/choice states, labeled/parallel/self transitions, composites, and left/right notes.
+- **Timeline:** titles, sections, periods, multiple events, and continuation events. Bare, `TD`, and `LR` timelines all use a vertical spine suited to terminal reading.
 
 All visible text supports quotes, Mermaid `<br>` line breaks, Unicode, and named or numeric HTML entities. Presentation-only flowchart directives are ignored because terminal colors come from the OpenTUI theme.
 
-Common Mermaid features outside this subset include additional flowchart shapes and `&` fan-out syntax; sequence `opt`, `par`, `critical`, `break`, `rect`, create/destroy, and bidirectional messages; and state fork/join, concurrent regions, descriptions, and composite-local directions.
+Common Mermaid features outside this subset include additional flowchart shapes and `&` fan-out syntax; sequence `opt`, `par`, `critical`, `break`, `rect`, create/destroy, and bidirectional messages; state fork/join, concurrent regions, descriptions, and composite-local directions; and timeline styling directives.
 
 This project is not affiliated with the Mermaid project.

@@ -46,3 +46,14 @@ export type {
   StateDiagramState,
   StateDiagramTransition,
 } from "./state/types.js"
+
+export { renderTimelineDiagram } from "./timeline/diagram.js"
+export { isMermaidTimelineDiagram, parseMermaidTimelineDiagram } from "./timeline/parser.js"
+export type {
+  TimelineDiagram,
+  TimelineDiagramRenderOptions,
+  TimelineDirection,
+  TimelineEntry,
+  TimelinePeriod,
+  TimelineSection,
+} from "./timeline/types.js"
