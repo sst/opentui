@@ -90,7 +90,7 @@ interface ExampleDefinition {
   name: string
   description: string
   run?: (renderer: CliRenderer) => void | Promise<void>
-  destroy?: (renderer: CliRenderer) => void
+  destroy?: (renderer: CliRenderer) => void | Promise<void>
   unavailableMessage?: string
 }
 
@@ -105,7 +105,7 @@ interface ExampleSection {
 
 interface ExampleModule {
   run?: (renderer: CliRenderer) => void | Promise<void>
-  destroy?: (renderer: CliRenderer) => void
+  destroy?: (renderer: CliRenderer) => void | Promise<void>
 }
 
 declare const OPENTUI_BUN_ONLY_EXAMPLES: boolean | undefined
@@ -131,6 +131,7 @@ interface ExampleMenuValue {
 type MenuOptionValue = CategoryMenuValue | SpacerMenuValue | MessageMenuValue | ExampleMenuValue
 type MenuOption = Omit<SelectOption, "value"> & { value: MenuOptionValue }
 type MenuFocusArea = "filter" | "list"
+type PendingIntent = "menu" | "quit"
 
 interface ExampleTheme {
   titleColor: RGBA
@@ -190,8 +191,8 @@ function threeExample(name: string, description: string, load: () => Promise<Exa
       const module = await loadModule()
       return module.run?.(renderer)
     },
-    destroy(renderer) {
-      loaded?.destroy?.(renderer)
+    async destroy(renderer) {
+      await loaded?.destroy?.(renderer)
     },
   }
 }
@@ -604,7 +605,7 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
     {
       name: "Clipboard & Paste Test Bed",
       description:
-        "OSC 52 copy, paste transport, and editor semantics diagnostics with a selectable, copyable event log",
+        "Manual host/terminal clipboard writes, host reads, clears, lifecycle, and terminal paste diagnostics",
       run: clipboardPasteDemo.run,
       destroy: clipboardPasteDemo.destroy,
     },
@@ -816,6 +817,9 @@ class ExampleSelector {
   private selectedExampleName: string | null = examples[0]?.name ?? null
   private menuFocusArea: MenuFocusArea = "filter"
   private filterText = ""
+  private transitioning = false
+  private pendingIntent: PendingIntent | null = null
+  private destroyed = false
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer
@@ -1208,14 +1212,18 @@ class ExampleSelector {
   private setupKeyboardHandling(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
       if (key.name === "c" && key.ctrl) {
-        this.cleanup()
+        key.preventDefault()
+        key.stopPropagation()
+        this.requestIntent("quit")
         return
       }
 
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":
-            this.returnToMenu()
+            key.preventDefault()
+            key.stopPropagation()
+            this.requestIntent("menu")
             break
         }
         return
@@ -1271,10 +1279,6 @@ class ExampleSelector {
         }
       }
 
-      if (key.name === "c" && key.ctrl) {
-        this.cleanup()
-        return
-      }
       switch (key.name) {
         case "c":
           console.log("Capabilities:", this.renderer.capabilities)
@@ -1295,28 +1299,40 @@ class ExampleSelector {
   }
 
   private async runSelected(selected: Example): Promise<void> {
-    this.inMenu = false
-    this.hideMenuElements()
+    if (this.transitioning) return
+    this.transitioning = true
 
-    if (selected.run) {
-      this.currentExample = selected
-      await selected.run(this.renderer)
-    } else {
-      if (!this.notImplementedText) {
-        const theme = MENU_THEMES[this.themeMode]
-        const unavailableMessage = selected.unavailableMessage ?? `${selected.name} is not implemented yet.`
-        this.notImplementedText = new TextRenderable(this.renderer, {
-          id: "not-implemented",
-          position: "absolute",
-          left: 10,
-          top: 10,
-          content: `${unavailableMessage} Press Escape to return.`,
-          fg: theme.notImplementedColor,
-          zIndex: 10,
-        })
-        this.renderer.root.add(this.notImplementedText)
+    try {
+      this.inMenu = false
+      this.hideMenuElements()
+
+      if (selected.run) {
+        this.currentExample = selected
+        await selected.run(this.renderer)
+      } else {
+        if (!this.notImplementedText) {
+          const theme = MENU_THEMES[this.themeMode]
+          const unavailableMessage = selected.unavailableMessage ?? `${selected.name} is not implemented yet.`
+          this.notImplementedText = new TextRenderable(this.renderer, {
+            id: "not-implemented",
+            position: "absolute",
+            left: 10,
+            top: 10,
+            content: `${unavailableMessage} Press Escape to return.`,
+            fg: theme.notImplementedColor,
+            zIndex: 10,
+          })
+          this.renderer.root.add(this.notImplementedText)
+        }
+        this.renderer.requestRender()
       }
-      this.renderer.requestRender()
+    } catch (error) {
+      console.error(`Failed to run example "${selected.name}":`, error)
+      await this.destroyCurrentExample()
+      this.restoreMenu("run failure")
+    } finally {
+      this.transitioning = false
+      this.schedulePendingIntent()
     }
   }
 
@@ -1373,19 +1389,43 @@ class ExampleSelector {
     this.setMenuFocus("filter")
   }
 
-  private returnToMenu(): void {
-    if (this.currentExample) {
-      this.currentExample.destroy?.(this.renderer)
-      this.currentExample = null
+  private async returnToMenu(): Promise<void> {
+    if (this.transitioning) return
+    this.transitioning = true
+    try {
+      await this.destroyCurrentExample()
+      this.restoreMenu("return failure")
+    } finally {
+      this.transitioning = false
+      this.schedulePendingIntent()
     }
+  }
 
-    if (this.notImplementedText) {
-      this.renderer.root.remove(this.notImplementedText)
-      this.notImplementedText = null
+  private async destroyCurrentExample(): Promise<void> {
+    const example = this.currentExample
+    this.currentExample = null
+    if (!example) return
+
+    try {
+      await example.destroy?.(this.renderer)
+    } catch (error) {
+      console.error(`Failed to destroy example "${example.name}":`, error)
     }
+  }
 
+  private restoreMenu(failureContext: string): void {
     this.inMenu = true
-    this.restart()
+
+    try {
+      if (this.notImplementedText) {
+        this.renderer.root.remove(this.notImplementedText)
+        this.notImplementedText = null
+      }
+
+      this.restart()
+    } catch (error) {
+      console.error(`Failed to restore the examples menu after ${failureContext}:`, error)
+    }
   }
 
   private restart(): void {
@@ -1396,20 +1436,58 @@ class ExampleSelector {
     this.renderer.requestRender()
   }
 
-  private cleanup(): void {
-    if (this.currentExample) {
-      this.currentExample.destroy?.(this.renderer)
+  private async cleanup(): Promise<void> {
+    if (this.transitioning) return
+    this.transitioning = true
+    try {
+      await this.destroyCurrentExample()
+      this.filterInput?.blur()
+      this.selectElement?.blur()
+      this.menuContainer?.destroy()
+    } catch (error) {
+      console.error("Failed to clean up the examples menu:", error)
+    } finally {
+      this.destroyed = true
+      this.pendingIntent = null
+      try {
+        this.renderer.destroy()
+      } catch (error) {
+        console.error("Failed to destroy the examples renderer:", error)
+      } finally {
+        this.transitioning = false
+      }
     }
-    if (this.filterInput) {
-      this.filterInput.blur()
+  }
+
+  private requestIntent(intent: PendingIntent): void {
+    if (this.destroyed) return
+
+    if (intent === "quit" || this.pendingIntent === null) {
+      this.pendingIntent = intent
     }
-    if (this.selectElement) {
-      this.selectElement.blur()
+
+    if (!this.transitioning) {
+      this.runPendingIntent()
     }
-    if (this.menuContainer) {
-      this.menuContainer.destroy()
+  }
+
+  private schedulePendingIntent(): void {
+    if (this.pendingIntent !== null && !this.destroyed) {
+      queueMicrotask(() => this.runPendingIntent())
     }
-    this.renderer.destroy()
+  }
+
+  private runPendingIntent(): void {
+    if (this.transitioning || this.destroyed) return
+
+    const intent = this.pendingIntent
+    this.pendingIntent = null
+
+    if (intent === "quit") {
+      void this.cleanup()
+    } else if (intent === "menu" && !this.inMenu) {
+      void this.returnToMenu()
+    }
   }
 }
 

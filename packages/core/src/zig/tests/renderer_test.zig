@@ -4227,7 +4227,7 @@ test "renderer transmits small kitty images at native size" {
     try std.testing.expect(std.mem.find(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
 }
 
-test "renderer transmits only cropped kitty source pixels" {
+test "renderer reuses the kitty transmit across source rectangle changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -4250,47 +4250,31 @@ test "renderer transmits only cropped kitty source pixels" {
     }
     test_renderer.renderer.terminal.caps.kitty_graphics = true;
 
+    // A clipped placement transmits the full image once; the placement escape
+    // selects the visible source rectangle.
     const next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 8, 12, 8, 8, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     const output = test_renderer.memory.lastWrite();
 
-    try std.testing.expect(std.mem.find(u8, output, "a=t,f=24,s=8,v=8") != null);
-    try std.testing.expect(std.mem.find(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
+    try std.testing.expect(std.mem.find(u8, output, "a=t,f=24,s=64,v=64") != null);
+    try std.testing.expect(std.mem.find(u8, output, "x=8,y=12,w=8,h=8,C=1") != null);
     const transmit_start = std.mem.find(u8, output, "\x1b_Ga=t").?;
     const transmit_end = std.mem.findPos(u8, output, transmit_start, "\x1b[").?;
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
-    try std.testing.expectEqual(@as(usize, 8 * 8 * 3), transmitted.len);
-    var expected: [8 * 8 * 3]u8 = undefined;
-    for (0..8) |y| {
-        for (0..8) |x| {
-            const offset = (y * 8 + x) * 3;
-            expected[offset] = @truncate((12 + y) * 64 + 8 + x);
-            expected[offset + 1] = 100;
-            expected[offset + 2] = 200;
-        }
-    }
-    try std.testing.expectEqualSlices(u8, &expected, transmitted);
+    try std.testing.expectEqual(@as(usize, 64 * 64 * 3), transmitted.len);
 
+    // A scroll step changes only the source rectangle: no delete-image, no new
+    // transmit, just a re-placement referencing the retained image.
     const changed = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try changed.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 16, 12, 8, 8, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     const changed_output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.find(u8, changed_output, "a=d,d=I") != null);
-    try std.testing.expect(std.mem.find(u8, changed_output, "a=t,f=24,s=8,v=8") != null);
-    const changed_start = std.mem.find(u8, changed_output, "\x1b_Ga=t").?;
-    const changed_end = std.mem.findPos(u8, changed_output, changed_start, "\x1b[").?;
-    const changed_transmitted = try terminal_image_test.decodeKittyChunks(changed_output[changed_start..changed_end]);
-    defer std.testing.allocator.free(changed_transmitted);
-    for (0..8) |y| {
-        for (0..8) |x| {
-            const offset = (y * 8 + x) * 3;
-            expected[offset] = @truncate((12 + y) * 64 + 16 + x);
-        }
-    }
-    try std.testing.expectEqualSlices(u8, &expected, changed_transmitted);
-    try std.testing.expect(!std.mem.eql(u8, transmitted, changed_transmitted));
+    try std.testing.expect(std.mem.find(u8, changed_output, "a=d,d=I") == null);
+    try std.testing.expect(std.mem.find(u8, changed_output, "a=t") == null);
+    try std.testing.expect(std.mem.find(u8, changed_output, "a=d,d=i") != null);
+    try std.testing.expect(std.mem.find(u8, changed_output, "x=16,y=12,w=8,h=8,C=1") != null);
 }
 
 test "renderer does not publish a frame when image dirty preparation fails" {

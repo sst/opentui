@@ -846,6 +846,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
+  private terminalKeepAliveTimer: ReturnType<typeof setInterval> | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
   private pendingSplitStartupCursorSeed: boolean = false
@@ -1019,8 +1020,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    *   - Calls `lib.createRenderer` → native Zig allocation
    *   - Registers in the process-wide `rendererTracker`
    *   - Adds `process.on(...)` listeners for SIGWINCH (process.stdout only),
-   *     "warning", "uncaughtException", "unhandledRejection", "beforeExit",
-   *     plus the configured `exitSignals`
+   *     "warning", "uncaughtException", "unhandledRejection", plus the
+   *     configured `exitSignals`
    *   - Replaces `global.requestAnimationFrame` with the renderer's impl
    *   - When `setupTerminal()` is called, it will put `stdin` in raw mode and
    *     call `stdin.resume()`
@@ -1156,8 +1157,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGQUIT", // Ctrl+\
       "SIGABRT", // Abort signal
       "SIGHUP", // Hangup (terminal closed)
+      "SIGPIPE", // Broken output pipe
       "SIGBREAK", // Ctrl+Break on Windows
-      "SIGPIPE", // Broken pipe
       "SIGBUS", // Bus error
     ]
 
@@ -1214,8 +1215,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("beforeExit", this.exitHandler)
-
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
@@ -1310,6 +1309,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this._exitListenersAdded = true
+  }
+
+  private startTerminalKeepAlive(): void {
+    if (this.stdin !== process.stdin || this.terminalKeepAliveTimer !== null) return
+    this.terminalKeepAliveTimer = setInterval(() => {}, 60_000)
+  }
+
+  private stopTerminalKeepAlive(): void {
+    if (this.terminalKeepAliveTimer === null) return
+    clearInterval(this.terminalKeepAliveTimer)
+    this.terminalKeepAliveTimer = null
   }
 
   private removeExitListeners(): void {
@@ -3494,6 +3504,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
+    this.startTerminalKeepAlive()
   }
 
   private dispatchMouseEvent(
@@ -4137,6 +4148,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.stdinParser?.hasPendingPixelResolutionResponse()) this.stdinParser.pausePendingTimeout()
     else this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
+    this.stopTerminalKeepAlive()
 
     this.themeModeState.cancelRefresh()
 
@@ -4160,6 +4172,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     else this.stdinParser?.reset()
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
+    this.startTerminalKeepAlive()
     this.addExitListeners()
 
     const resumePreservedNonAltSurface =
@@ -4271,7 +4284,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
-    process.removeListener("beforeExit", this.exitHandler)
     this.removeExitListeners()
 
     if (this.resizeTimeoutId !== null) {
@@ -4314,6 +4326,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.setCapturedRenderable(undefined)
 
     this.stdin.removeListener("data", this.stdinListener)
+    this.stopTerminalKeepAlive()
     if (this.stdin.setRawMode) {
       try {
         this.stdin.setRawMode(false)
