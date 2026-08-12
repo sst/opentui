@@ -213,10 +213,14 @@ pub const WaylandSymbols = struct {
     wl_display_connect: *const fn (?[*:0]const u8) callconv(.c) ?*WlDisplay,
     wl_display_disconnect: *const fn (*WlDisplay) callconv(.c) void,
     wl_display_get_fd: *const fn (*WlDisplay) callconv(.c) c_int,
-    // Deliberately require Wayland 1.25 rather than bulk-dispatching an unbounded event queue.
-    wl_display_dispatch_pending_single: *const fn (*WlDisplay) callconv(.c) c_int,
+    wl_display_dispatch_pending: *const fn (*WlDisplay) callconv(.c) c_int,
+    // Single-event dispatch needs libwayland 1.25 (Ubuntu 26.04 ships 1.24). When it is
+    // missing, wayland.zig bulk-dispatches a queue bounded by the connection buffer cap.
+    wl_display_dispatch_pending_single: ?*const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_get_error: *const fn (*WlDisplay) callconv(.c) c_int,
-    wl_display_set_max_buffer_size: *const fn (*WlDisplay, usize) callconv(.c) void,
+    // The buffer cap needs libwayland 1.23 (Ubuntu 24.04 ships 1.22). Older clients use
+    // fixed-size connection buffers, so a missing cap still bounds the receive queue.
+    wl_display_set_max_buffer_size: ?*const fn (*WlDisplay, usize) callconv(.c) void,
     wl_display_flush: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_prepare_read: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_read_events: *const fn (*WlDisplay) callconv(.c) c_int,
@@ -336,7 +340,11 @@ fn loadCachedLibrary(
 fn loadSymbols(comptime Symbols: type, library: *std.DynLib) ?Symbols {
     var symbols: Symbols = undefined;
     inline for (@typeInfo(Symbols).@"struct".fields) |field| {
-        @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null;
+        switch (@typeInfo(field.type)) {
+            // Optional fields name symbols missing from older library versions.
+            .optional => |optional| @field(symbols, field.name) = library.lookup(optional.child, field.name),
+            else => @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null,
+        }
     }
     return symbols;
 }

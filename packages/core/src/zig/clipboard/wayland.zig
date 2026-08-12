@@ -510,7 +510,10 @@ pub const Connection = struct {
 
     fn start(self: *Connection) !void {
         const display = self.symbols.wl_display_connect(null) orelse return error.ConnectFailed;
-        self.symbols.wl_display_set_max_buffer_size(display, WAYLAND_CONNECTION_BUFFER_SIZE_MAX);
+        // libwayland before 1.23 has no cap symbol and uses fixed-size bounded buffers instead.
+        if (self.symbols.wl_display_set_max_buffer_size) |set_max_buffer_size| {
+            set_max_buffer_size(display, WAYLAND_CONNECTION_BUFFER_SIZE_MAX);
+        }
         self.display = display;
         const registry = self.marshal(@ptrCast(display), 1, self.symbols.wl_registry_interface, 1, 0, &.{}) orelse
             return error.RegistryFailed;
@@ -532,17 +535,24 @@ pub const Connection = struct {
     fn dispatchAvailable(self: *Connection) bool {
         if (comptime builtin.os.tag != .linux) return false;
         const display = self.display orelse return false;
-        var dispatched_count: u32 = 0;
-        while (dispatched_count < DISPATCH_EVENTS_PER_DRIVE_MAX) {
-            const dispatched = self.symbols.wl_display_dispatch_pending_single(display);
-            if (dispatched < 0) return false;
-            if (dispatched == 0) break;
-            dispatched_count += 1;
+        if (self.symbols.wl_display_dispatch_pending_single) |dispatch_single| {
+            var dispatched_count: u32 = 0;
+            while (dispatched_count < DISPATCH_EVENTS_PER_DRIVE_MAX) {
+                const dispatched = dispatch_single(display);
+                if (dispatched < 0) return false;
+                if (dispatched == 0) break;
+                dispatched_count += 1;
+            }
+            if (self.queueFlush() == .failed) return false;
+            if (dispatched_count == DISPATCH_EVENTS_PER_DRIVE_MAX) return true;
+        } else {
+            // libwayland before 1.25 has no single-event dispatch. The pending queue is
+            // bounded by the connection receive buffer, so one bulk dispatch stays bounded.
+            if (self.symbols.wl_display_dispatch_pending(display) < 0) return false;
+            if (self.queueFlush() == .failed) return false;
         }
-        if (self.queueFlush() == .failed) return false;
-        if (dispatched_count == DISPATCH_EVENTS_PER_DRIVE_MAX) return true;
         if (self.symbols.wl_display_prepare_read(display) != 0) {
-            return self.symbols.wl_display_dispatch_pending_single(display) >= 0;
+            return self.dispatchPendingBounded(display) >= 0;
         }
 
         var descriptor = [_]std.posix.pollfd{.{
@@ -560,6 +570,11 @@ pub const Connection = struct {
         }
         if (self.symbols.wl_display_read_events(display) < 0) return false;
         return true;
+    }
+
+    fn dispatchPendingBounded(self: *Connection, display: *linux.WlDisplay) c_int {
+        if (self.symbols.wl_display_dispatch_pending_single) |dispatch_single| return dispatch_single(display);
+        return self.symbols.wl_display_dispatch_pending(display);
     }
 
     fn queueFlush(self: *Connection) FlushResult {
@@ -1406,6 +1421,17 @@ test "Wayland connection setup applies the finite receive buffer cap" {
     try connection.start();
 
     try std.testing.expectEqual(@as(usize, WAYLAND_CONNECTION_BUFFER_SIZE_MAX), test_max_buffer_size);
+
+    // libwayland before 1.23 has no cap symbol; setup must still succeed because
+    // those versions already use fixed-size bounded connection buffers.
+    symbols.wl_display_set_max_buffer_size = null;
+    var uncapped = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    uncapped.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_max_buffer_size = 0;
+
+    try uncapped.start();
+
+    try std.testing.expectEqual(@as(usize, 0), test_max_buffer_size);
 }
 
 test "Wayland dispatch drains queued callbacks up to the per-drive bound" {
@@ -1426,6 +1452,25 @@ test "Wayland dispatch drains queued callbacks up to the per-drive bound" {
         try std.testing.expectEqual(dispatched, test_dispatched_callback_count);
         try std.testing.expectEqual(queued - dispatched, test_dispatch_queue_length);
     }
+}
+
+test "Wayland dispatch bulk-drains pending events without the 1.25 single-event symbol" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    // Ubuntu 26.04 ships libwayland 1.24, which lacks wl_display_dispatch_pending_single.
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_display_dispatch_pending_single = null;
+    symbols.wl_display_dispatch_pending = testDispatchQueueBulk;
+    symbols.wl_display_prepare_read = testPrepareReadBlocked;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_dispatch_call_count = 0;
+    test_dispatched_callback_count = 0;
+    test_dispatch_queue_length = DISPATCH_EVENTS_PER_DRIVE_MAX + 5;
+
+    try std.testing.expect(connection.dispatchAvailable());
+    try std.testing.expectEqual(@as(u32, DISPATCH_EVENTS_PER_DRIVE_MAX + 5), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 0), test_dispatch_queue_length);
 }
 
 test "Wayland selection barrier orders admissions across in-flight syncs" {
@@ -1607,6 +1652,14 @@ fn testDispatchQueue(_: *linux.WlDisplay) callconv(.c) c_int {
     test_dispatch_queue_length -= 1;
     test_dispatched_callback_count += 1;
     return 1;
+}
+
+fn testDispatchQueueBulk(_: *linux.WlDisplay) callconv(.c) c_int {
+    test_dispatch_call_count += 1;
+    const dispatched: c_int = @intCast(test_dispatch_queue_length);
+    test_dispatched_callback_count += test_dispatch_queue_length;
+    test_dispatch_queue_length = 0;
+    return dispatched;
 }
 
 fn testPrepareReadBlocked(_: *linux.WlDisplay) callconv(.c) c_int {

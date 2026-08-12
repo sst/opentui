@@ -1842,7 +1842,10 @@ fn readXauthorityField(storage: []u8, offset: *usize) ![]u8 {
 }
 
 fn displayNumberMatches(number: []const u8, display: u16) bool {
-    if (number.len == 0 or number.len > 5) return false;
+    // libXau semantics: an empty number field matches every display. Mutter's
+    // Xwayland auth file writes its MIT cookies without a display number.
+    if (number.len == 0) return true;
+    if (number.len > 5) return false;
     return (std.fmt.parseInt(u16, number, 10) catch return false) == display;
 }
 
@@ -2555,6 +2558,24 @@ test "X11 Xauthority parser selects exact loopback MIT cookie and rejects trunca
     try std.testing.expectEqualStrings(XAUTH_NAME, match.name);
     try std.testing.expectEqualStrings("best", match.data);
     try std.testing.expectError(error.InvalidXauthority, parseXauthority(bytes.items[0 .. bytes.items.len - 1], endpoint));
+}
+
+test "X11 Xauthority parser treats an empty display number as a wildcard" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    // Mutter writes Xwayland MIT cookies without a display number; libXau treats
+    // that as matching every display, so rejecting it breaks GNOME Xwayland auth.
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer bytes.deinit(std.testing.allocator);
+    try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_WILD, &.{}, "", XAUTH_NAME, "mutter");
+    const endpoint = try parseDisplay(":0");
+    const match = try parseXauthority(bytes.items, endpoint);
+    try std.testing.expectEqualStrings(XAUTH_NAME, match.name);
+    try std.testing.expectEqualStrings("mutter", match.data);
+
+    try std.testing.expect(displayNumberMatches("", 0));
+    try std.testing.expect(displayNumberMatches("", 42));
+    try std.testing.expect(!displayNumberMatches("1", 0));
+    try std.testing.expect(!displayNumberMatches("123456", 0));
 }
 
 test "X11 Xauthority loading accepts only bounded regular files and observes cancellation" {
