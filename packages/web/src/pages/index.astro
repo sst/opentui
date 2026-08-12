@@ -1,11 +1,13 @@
 ---
 import OpenTUILogo from "../components/OpenTUILogo.astro"
 import ThemeToggle from "../components/ThemeToggle.astro"
+import landingVideos from "../data/landing-videos.json"
 import Minimal from "../layouts/Minimal.astro"
 
 const description =
   "OpenTUI is a library to build terminal user interfaces in TypeScript, React, or Solid, on a native Zig renderer."
 const title = "OpenTUI"
+const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, video]))
 ---
 
 <Minimal {title} description={description}>
@@ -18,45 +20,86 @@ const title = "OpenTUI"
     <div class="band">
       <div class="screen" id="feature-video" aria-hidden="true">
         <video muted loop playsinline preload="metadata"></video>
+        <p class="caption"><span></span> <a href=""></a>.</p>
       </div>
 
-      <ul>
-        <li><button type="button" data-video="/video/vt520.mp4">It is written in Zig.</button></li>
-        <li>
-          <button type="button" data-video="/video/prism.mp4">
-            You write TypeScript, React, or Solid. Other languages can use the C ABI.
-          </button>
-        </li>
-        <li><button type="button" data-video="/video/prism.mp4">You arrange boxes and text with flexbox.</button></li>
-        <li>
-          <button type="button" data-video="/video/vt520.mp4">
-            You add selects, inputs, and scroll boxes with keyboard and mouse controls.
-          </button>
-        </li>
-        <li>
-          <button type="button" data-video="/video/prism.mp4">
-            You can play sounds, show images, and render 3D graphics.
-          </button>
-        </li>
-      </ul>
+      <div class="copy">
+        <ul>
+          <li>
+            <button
+              type="button"
+              data-video={videos.video.file}
+              data-source={videos.video.source}
+              data-credit={videos.video.credit}
+              data-author={`@${videos.video.handle}`}>It is written in Zig.</button
+            >
+          </li>
+          <li>
+            <button
+              type="button"
+              data-video={videos.components.file}
+              data-source={videos.components.source}
+              data-credit={videos.components.credit}
+              data-author={`@${videos.components.handle}`}
+            >
+              You write TypeScript, React, or Solid. Other languages can use the C ABI.
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              data-video={videos.images.file}
+              data-source={videos.images.source}
+              data-credit={videos.images.credit}
+              data-author={`@${videos.images.handle}`}>You arrange boxes and text with flexbox.</button
+            >
+          </li>
+          <li>
+            <button
+              type="button"
+              data-video={videos.editor.file}
+              data-source={videos.editor.source}
+              data-credit={videos.editor.credit}
+              data-author={`@${videos.editor.handle}`}
+            >
+              You add selects, inputs, and scroll boxes with keyboard and mouse controls.
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              data-video={videos["3d"].file}
+              data-source={videos["3d"].source}
+              data-credit={videos["3d"].credit}
+              data-author={`@${videos["3d"].handle}`}
+            >
+              You can play sounds, show images, and render 3D graphics.
+            </button>
+          </li>
+        </ul>
+
+        <p>OpenCode uses it in production for millions of users.</p>
+
+        <nav aria-label="Primary">
+          <a href="/docs/getting-started">Documentation</a>
+          <a href="/devlog">Devlog</a>
+          <a href="https://github.com/anomalyco/opentui">GitHub</a>
+        </nav>
+
+        <footer>
+          <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>. <ThemeToggle /></p>
+        </footer>
+      </div>
     </div>
-
-    <p>OpenCode uses it in production for millions of users.</p>
   </main>
-
-  <nav aria-label="Primary">
-    <a href="/docs/getting-started">Documentation</a>
-    <a href="/devlog">Devlog</a>
-    <a href="https://github.com/anomalyco/opentui">GitHub</a>
-  </nav>
-
-  <footer>
-    <p>MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>. <ThemeToggle /></p>
-  </footer>
 
   <script>
     const band = document.querySelector<HTMLElement>(".band")!
+    const screen = band.querySelector<HTMLElement>(".screen")!
     const video = band.querySelector("video")!
+    const caption = band.querySelector<HTMLElement>(".caption")!
+    const credit = caption.querySelector("span")!
+    const source = caption.querySelector("a")!
     const list = band.querySelector("ul")!
     const points = [...band.querySelectorAll<HTMLButtonElement>("button[data-video]")]
     let current: HTMLButtonElement | null = null
@@ -69,8 +112,12 @@ const title = "OpenTUI"
     function open(point: HTMLButtonElement) {
       const src = point.dataset.video!
       if (video.getAttribute("src") !== src) video.setAttribute("src", src)
+      source.href = point.dataset.source!
+      source.textContent = point.dataset.author!
+      credit.textContent = point.dataset.credit!
       video.play().catch(() => {})
       band.classList.add("playing")
+      screen.setAttribute("aria-hidden", "false")
       current = point
 
       for (const candidate of points) {
@@ -83,6 +130,7 @@ const title = "OpenTUI"
     function close(restoreFocus = false) {
       const activePoint = current
       band.classList.remove("playing")
+      screen.setAttribute("aria-hidden", "true")
       video.pause()
       current = null
 
@@ -139,14 +187,15 @@ const title = "OpenTUI"
   }
 
   .band.playing {
-    width: min(56rem, calc(50vw + var(--content-width) / 2 - var(--page-gutter)));
+    width: min(54rem, calc(50vw + var(--content-width) / 2 - var(--page-gutter)));
+    min-height: calc(20rem * 4 / 5 + 1.875rem);
     transition-delay: 0ms;
   }
 
   .screen {
     position: absolute;
     inset: 0 0 auto auto;
-    width: 22rem;
+    width: 20rem;
     overflow: hidden;
     clip-path: inset(0 100% 0 0);
     pointer-events: none;
@@ -162,22 +211,42 @@ const title = "OpenTUI"
     transition-delay: var(--motion-step), var(--motion-step);
   }
 
-  .band ul {
+  .copy {
     width: 100%;
-    margin-block: 0;
     transition: width var(--motion-step) linear var(--motion-step);
   }
 
-  .band.playing ul {
-    width: calc(100% - 23.5rem);
+  .band.playing .copy {
+    width: calc(100% - 21.5rem);
     transition-delay: 0ms;
+  }
+
+  .band ul {
+    margin-block: 0;
+  }
+
+  .copy p {
+    margin-block: 1em 0;
+  }
+
+  .copy nav,
+  .copy footer {
+    margin-block-start: 1em;
   }
 
   .screen video {
     display: block;
     width: 100%;
-    height: auto;
-    aspect-ratio: 16 / 9;
+    object-fit: contain;
+    aspect-ratio: 5 / 4;
+    background: #000;
+  }
+
+  .caption {
+    margin-block: 0.375rem 0;
+    font-size: 0.75rem;
+    color: GrayText;
+    pointer-events: auto;
   }
 
   button[data-video] {
@@ -195,10 +264,6 @@ const title = "OpenTUI"
     text-decoration: underline;
   }
 
-  button[data-video].active {
-    color: var(--link-color);
-  }
-
   nav a {
     display: block;
     width: fit-content;
@@ -213,6 +278,7 @@ const title = "OpenTUI"
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: 0fr auto;
       row-gap: 0;
+      min-height: 0;
       transition:
         grid-template-rows calc(2 * var(--motion-step)) linear,
         row-gap calc(2 * var(--motion-step)) linear;
@@ -225,7 +291,7 @@ const title = "OpenTUI"
 
     .screen {
       position: static;
-      width: auto;
+      width: min(100%, 26rem);
       min-height: 0;
       grid-column: 1;
       grid-row: 1;
@@ -237,8 +303,8 @@ const title = "OpenTUI"
       transition-delay: 0ms;
     }
 
-    .band ul,
-    .band.playing ul {
+    .copy,
+    .band.playing .copy {
       width: auto;
       grid-column: 1;
       grid-row: 2;

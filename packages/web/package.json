@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
+    "optimize:video": "bash scripts/optimize-landing-video.sh",
     "scaffold": "bun scripts/test-doc-examples.ts",
     "validate:docs:metadata": "bun scripts/validate-doc-metadata.ts",
     "validate:docs:links": "bun scripts/validate-doc-links.ts",
