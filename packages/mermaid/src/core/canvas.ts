@@ -40,7 +40,7 @@ export interface DiagramCanvasRunOptions<Style extends string, Metadata extends 
   trimBottom?: boolean
 }
 
-const MAX_DIAGRAM_CELLS = 1_000_000
+const MAX_DIAGRAM_CELLS = 250_000
 
 export class DiagramCanvasSizeError extends Error {
   constructor(

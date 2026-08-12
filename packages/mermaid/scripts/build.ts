@@ -10,7 +10,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join, resolve, sep } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
@@ -185,7 +185,7 @@ console.log("Library built at:", distDir)
 function prunePrivateDeclarations(directory: string, relative = ""): void {
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry)
-    const entryRelative = join(relative, entry)
+    const entryRelative = join(relative, entry).split(sep).join("/")
     if (statSync(path).isDirectory()) {
       prunePrivateDeclarations(path, entryRelative)
       if (readdirSync(path).length === 0) rmSync(path, { recursive: true })

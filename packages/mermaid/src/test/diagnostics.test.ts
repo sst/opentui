@@ -41,6 +41,11 @@ describe("parser diagnostics", () => {
     expect(diagram.edges).toHaveLength(1)
   })
 
+  test("rejects pathological flowchart statements before parsing edge operators", () => {
+    const statement = "-.a".repeat(4_000)
+    expect(() => parseMermaidFlowchartDiagram(`flowchart LR\n${statement}`)).toThrow("Flowchart statement is too long")
+  })
+
   test("exposes structured syntax errors through top-level rendering", () => {
     try {
       renderSequenceDiagram(`sequenceDiagram

@@ -4,7 +4,7 @@ import { DiagramCanvas, DiagramCanvasSizeError, type DiagramCanvasCell } from ".
 
 describe("DiagramCanvas", () => {
   test("rejects canvases that exceed the rendering budget", () => {
-    expect(() => new DiagramCanvas(2_000, 1_000)).toThrow(DiagramCanvasSizeError)
+    expect(() => new DiagramCanvas(1_000, 251)).toThrow(DiagramCanvasSizeError)
   })
 
   test("rejects invalid canvas dimensions", () => {
