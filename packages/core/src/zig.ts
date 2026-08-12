@@ -1262,8 +1262,10 @@ function getOpenTUILib(libPath?: string) {
     imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
+    imageRetain: { args: ["u32", "ptr"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     imageMaterialize: { args: ["u32"], returns: "u32" },
+    imageEnsureEncodedPng: { args: ["u32"], returns: "u32" },
     imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
     imageClone: { args: ["u32", "ptr"], returns: "u32" },
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
@@ -2679,8 +2681,10 @@ export interface RenderLib extends AudioEngineLib {
     stride: number,
   ) => { status: number; handle: ImageHandle | null }
   imageDestroy: (image: ImageHandle) => void
+  imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
   imageMaterialize: (image: ImageHandle) => number
+  imageEnsureEncodedPng: (image: ImageHandle) => number
   imageGetPixelsPtr: (image: ImageHandle) => Pointer | null
   imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
@@ -5676,6 +5680,11 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.imageDestroy(image)
   }
 
+  public imageRetain(image: ImageHandle): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageRetain(image, output), output)
+  }
+
   public imageRetainIccCache(): void {
     this.opentui.symbols.imageRetainIccCache()
   }
@@ -5701,6 +5710,10 @@ class FFIRenderLib implements RenderLib {
 
   public imageMaterialize(image: ImageHandle): number {
     return this.opentui.symbols.imageMaterialize(image)
+  }
+
+  public imageEnsureEncodedPng(image: ImageHandle): number {
+    return this.opentui.symbols.imageEnsureEncodedPng(image)
   }
 
   public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {

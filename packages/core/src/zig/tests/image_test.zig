@@ -57,6 +57,12 @@ fn resizeWithAllocator(allocator: std.mem.Allocator) !void {
     defer resized.deinit();
 }
 
+fn encodePngWithAllocator(allocator: std.mem.Allocator) !void {
+    const source = try image.createFromRgba(allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer source.deinit();
+    _ = try source.ensureEncodedPng();
+}
+
 test "image operations release partial allocations on OOM" {
     const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
     defer std.testing.allocator.free(png);
@@ -64,6 +70,7 @@ test "image operations release partial allocations on OOM" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, decodePngWithAllocator, .{png});
     try std.testing.checkAllAllocationFailures(std.testing.allocator, clonePngWithAllocator, .{png});
     try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeWithAllocator, .{});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, encodePngWithAllocator, .{});
 }
 
 test "image inspection does not retain encoded PNG bytes" {
@@ -497,6 +504,57 @@ test "image creation rejects invalid stride and short input" {
     const pixels = [_]u8{0} ** 16;
     try std.testing.expectError(error.InvalidArgument, image.createFromRgba(std.testing.allocator, &pixels, 2, 2, 7));
     try std.testing.expectError(error.InvalidArgument, image.createFromRgba(std.testing.allocator, pixels[0..15], 2, 2, 8));
+}
+
+test "ensureEncodedPng round-trips opaque pixels through the RGB path" {
+    const pixels = [_]u8{
+        1, 2, 3, 255, 4,  5,  6,  255,
+        7, 8, 9, 255, 10, 11, 12, 255,
+    };
+    const source = try makeImage(&pixels, 2, 2);
+    defer source.deinit();
+    try std.testing.expectEqual(@as(u32, 0), source.metadata.has_alpha);
+
+    const encoded = try source.ensureEncodedPng();
+    try std.testing.expectEqual(encoded, source.encoded_png.?);
+
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(encoded, .{}, &info));
+    try std.testing.expectEqual(@as(u32, 2), info.width);
+    try std.testing.expectEqual(@as(u32, 2), info.height);
+    try std.testing.expectEqual(@as(u32, 0), info.has_alpha);
+
+    const decoded = try image.decode(std.testing.allocator, encoded, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqualSlices(u8, &pixels, try decoded.ensurePixels());
+}
+
+test "ensureEncodedPng round-trips transparent pixels through the RGBA path" {
+    const pixels = [_]u8{
+        1, 2, 3, 254, 4,  5,  6,  0,
+        7, 8, 9, 128, 10, 11, 12, 255,
+    };
+    const source = try makeImage(&pixels, 2, 2);
+    defer source.deinit();
+    try std.testing.expectEqual(@as(u32, 1), source.metadata.has_alpha);
+
+    const encoded = try source.ensureEncodedPng();
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(encoded, .{}, &info));
+    try std.testing.expectEqual(@as(u32, 1), info.has_alpha);
+
+    const decoded = try image.decode(std.testing.allocator, encoded, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqualSlices(u8, &pixels, try decoded.ensurePixels());
+}
+
+test "ensureEncodedPng is a no-op when an encoding is already attached" {
+    const source = try makeImage(&[_]u8{ 1, 2, 3, 255 }, 1, 1);
+    defer source.deinit();
+    const first = try source.ensureEncodedPng();
+    const second = try source.ensureEncodedPng();
+    try std.testing.expectEqual(first.ptr, second.ptr);
+    try std.testing.expectEqual(first.len, second.len);
 }
 
 test "extract copies the exact requested rectangle" {

@@ -1377,7 +1377,7 @@ pub const CliRenderer = struct {
         placement: OptimizedBuffer.ImagePlacement,
         image_id: u32,
     ) !void {
-        const transmit = try self.kittyPlacementTransmit(placement);
+        const transmit = try self.kittyPlacementTransmit(placement, .pixels);
         defer if (transmit.owned) transmit.image.deinit();
         try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, self.terminal.isInTmux());
         try terminal_image.writeKittyPlacementAtCursor(
@@ -1995,20 +1995,31 @@ pub const CliRenderer = struct {
         return kittyDownscaleAppliesTo(placement.source_width, placement.source_height, placement.pixel_width, placement.pixel_height);
     }
 
-    fn kittyCropApplies(placement: OptimizedBuffer.ImagePlacement) bool {
-        return placement.source_x != 0 or placement.source_y != 0 or
-            placement.source_width != placement.image.width() or placement.source_height != placement.image.height();
-    }
-
     const KittyTransmit = struct {
         image: *native_image.Image,
         owned: bool,
     };
 
-    fn kittyPlacementTransmit(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) !KittyTransmit {
+    // How a placement's source rectangle reaches the terminal: the live render
+    // path selects it in the placement escape so scrolling a clipped image never
+    // retransmits, while scrollback snapshots must bake it into the transmitted
+    // pixels because their placements cannot carry a source rectangle and the
+    // terminal would otherwise retain the full image in its history.
+    const KittyTransmitCrop = enum { escape, pixels };
+
+    fn kittyCropApplies(placement: OptimizedBuffer.ImagePlacement) bool {
+        return placement.source_x != 0 or placement.source_y != 0 or
+            placement.source_width != placement.image.width() or placement.source_height != placement.image.height();
+    }
+
+    fn kittyPlacementTransmit(
+        self: *CliRenderer,
+        placement: OptimizedBuffer.ImagePlacement,
+        crop: KittyTransmitCrop,
+    ) !KittyTransmit {
         const source = placement.image;
         const downscaled = kittyDownscaleApplies(placement);
-        if (downscaled or kittyCropApplies(placement)) {
+        if (downscaled or (crop == .pixels and kittyCropApplies(placement))) {
             const cropped = try native_image.extract(
                 self.allocator,
                 source,
@@ -2065,12 +2076,12 @@ pub const CliRenderer = struct {
                 );
                 const source_changed = committed.source_x != placement.source_x or committed.source_y != placement.source_y or
                     committed.source_width != placement.source_width or committed.source_height != placement.source_height;
-                break :blk committed.opacity != placement.opacity or source_changed or previous_downscaled != downscaled or
-                    (downscaled and (committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height));
+                break :blk committed.opacity != placement.opacity or previous_downscaled != downscaled or
+                    (downscaled and (source_changed or committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height));
             } else false;
             if (previous == null or retransmit) {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
-                const transmit = try self.kittyPlacementTransmit(placement);
+                const transmit = try self.kittyPlacementTransmit(placement, .escape);
                 defer if (transmit.owned) transmit.image.deinit();
                 try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, tmux);
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
@@ -2080,7 +2091,10 @@ pub const CliRenderer = struct {
                 try terminal_image.writeKittyDelete(writer, image_id, placement.placement_id, false, tmux);
             } else continue;
             if (placement.x < 0 or placement.y < 0) continue;
-            const normalized = downscaled or kittyCropApplies(placement);
+            // A downscaled transmit already contains exactly the placement's
+            // source rectangle; otherwise the full image was transmitted and the
+            // placement escape selects the visible portion.
+            const normalized = downscaled;
             try terminal_image.writeKittyPlacement(
                 writer,
                 image_id,

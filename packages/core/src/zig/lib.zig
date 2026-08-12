@@ -2884,6 +2884,15 @@ export fn imageDestroy(image_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
+export fn imageRetain(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (image.ref_count == std.math.maxInt(u32)) return @intFromEnum(native_image.Status.memory_limit);
+    image.retain();
+    return @intFromEnum(insertImage(image, output));
+}
+
 export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_info orelse return @intFromEnum(native_image.Status.invalid_argument);
@@ -2905,6 +2914,12 @@ export fn imageMaterialize(image_handle: NativeHandle) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     if (image.ref_count != 1) return @intFromEnum(native_image.Status.invalid_argument);
     _ = image.ensurePixels() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(native_image.Status.ok);
+}
+
+export fn imageEnsureEncodedPng(image_handle: NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    _ = image.ensureEncodedPng() catch |err| return @intFromEnum(native_image.statusFromError(err));
     return @intFromEnum(native_image.Status.ok);
 }
 
@@ -2966,6 +2981,51 @@ test "imageGetPixelsPtr requires exclusive ownership and invalidates encoded sta
     try std.testing.expect(imageGetPixelsPtr(handle) != null);
     try std.testing.expectEqual(@as(?[]u8, null), value.encoded_png);
     try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+}
+
+test "imageEnsureEncodedPng attaches an encoding that pixel mutation discards" {
+    const pixels = [_]u8{ 1, 2, 3, 255, 4, 5, 6, 255 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 2, 1, 8, &handle),
+    );
+    defer imageDestroy(handle);
+
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.invalid_handle)),
+        imageEnsureEncodedPng(INVALID_HANDLE),
+    );
+    try std.testing.expectEqual(@as(u32, @intFromEnum(native_image.Status.ok)), imageEnsureEncodedPng(handle));
+    const image = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(image.encoded_png != null);
+
+    try std.testing.expect(imageGetPixelsPtr(handle) != null);
+    try std.testing.expectEqual(@as(?[]u8, null), image.encoded_png);
+}
+
+test "imageRetain creates independently disposable handles without copying pixels" {
+    const pixels = [_]u8{ 1, 2, 3, 255 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 1, 1, 4, &handle),
+    );
+    defer imageDestroy(handle);
+
+    var retained_handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageRetain(handle, &retained_handle),
+    );
+    defer imageDestroy(retained_handle);
+    try std.testing.expect(handle != retained_handle);
+    const image = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(image, acquireImage(retained_handle));
+
+    imageDestroy(handle);
+    try std.testing.expect(acquireImage(handle) == null);
+    try std.testing.expectEqual(image, acquireImage(retained_handle));
 }
 
 export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filter: u32, out_handle: ?*NativeHandle) u32 {
