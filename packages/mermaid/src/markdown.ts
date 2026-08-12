@@ -67,8 +67,7 @@ function resolveOptions(options: MermaidMarkdownRendererOptions): ResolvedMermai
     warning: input.warning === undefined ? undefined : parseColor(input.warning),
     background: input.background === undefined ? undefined : parseColor(input.background),
   }
-  const layoutMaxWidth =
-    options.layoutMaxWidth === undefined ? 120 : Math.max(1, Math.trunc(options.layoutMaxWidth))
+  const layoutMaxWidth = options.layoutMaxWidth === undefined ? 120 : Math.max(1, Math.trunc(options.layoutMaxWidth))
   const key = `${options.compact === true ? 1 : 0}:${layoutMaxWidth}:${Object.values(colors)
     .map((value) => value?.toInts().join(",") ?? "")
     .join(":")}`
