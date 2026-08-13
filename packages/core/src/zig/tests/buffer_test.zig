@@ -541,6 +541,25 @@ test "OptimizedBuffer text buffer tab clips a negative draw origin" {
     try std.testing.expectEqual(@as(u32, ' '), target.get(0, 0).?.char);
 }
 
+test "OptimizedBuffer text buffer clips width-1 text at a negative draw origin" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    var text = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer text.deinit();
+    try text.setText("AB");
+    var view = try TextBufferView.init(std.testing.allocator, text);
+    defer view.deinit();
+
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = pool, .id = "negative-width1-text" });
+    defer target.deinit();
+
+    target.drawTextBuffer(view, -1, 0);
+
+    try std.testing.expectEqual(@as(u32, 'B'), target.get(0, 0).?.char);
+}
+
 test "OptimizedBuffer image-free frame buffer copy does not allocate" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();

@@ -1018,6 +1018,9 @@ pub const OptimizedBuffer = struct {
         if (ansi.TextAttributes.getLinkId(attributes) != 0) return false;
         if (gp.isGraphemeChar(char) or gp.isContinuationChar(char)) return false;
 
+        // The caller must clip the glyph before it calculates the index.
+        assert(index < self.buffer.char.len);
+
         const dest_char = self.buffer.char[index];
         const dest_attributes = self.buffer.attributes[index];
         if (ansi.TextAttributes.getLinkId(dest_attributes) != 0) return false;
@@ -1768,7 +1771,12 @@ pub const OptimizedBuffer = struct {
                         break;
                     }
 
-                    if (currentX < -@as(i32, @intCast(g_width))) {
+                    // A glyph occupies columns [currentX, currentX + g_width).
+                    // If this range ends at or before column 0, the glyph is left of the screen.
+                    // Skip the glyph, but advance the counters to put the next glyph in the correct columns.
+                    // This check permits wide glyphs that cross column 0.
+                    // The g_width > 1 check below discards these glyphs before they reach the unchecked fast-path index.
+                    if (currentX + @as(i32, @intCast(g_width)) <= 0) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
                         column_in_line += g_width;
