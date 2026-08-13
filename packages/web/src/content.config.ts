@@ -19,8 +19,8 @@ const docs = defineCollection({
   }),
 })
 
-const devlog = defineCollection({
-  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/devlog" }),
+const scrollback = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/scrollback" }),
   schema: z.object({
     title: z.string(),
     description: z.string().optional(),
@@ -33,5 +33,5 @@ const devlog = defineCollection({
 
 export const collections = {
   docs,
-  devlog,
+  scrollback,
 }

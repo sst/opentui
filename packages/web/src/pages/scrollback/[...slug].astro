@@ -2,10 +2,10 @@
 import { getCollection, render, type CollectionEntry } from "astro:content"
 import ProseCode from "../../components/ProseCode.astro"
 import ProseTable from "../../components/ProseTable.astro"
-import Devlog from "../../layouts/Devlog.astro"
+import Scrollback from "../../layouts/Scrollback.astro"
 
 export async function getStaticPaths() {
-  const posts = (await getCollection("devlog")).filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
+  const posts = (await getCollection("scrollback")).filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
 
   return posts.map((entry) => ({
     params: { slug: entry.id },
@@ -14,7 +14,7 @@ export async function getStaticPaths() {
 }
 
 interface Props {
-  entry: CollectionEntry<"devlog">
+  entry: CollectionEntry<"scrollback">
 }
 
 const { entry } = Astro.props
@@ -22,16 +22,16 @@ const { Content } = await render(entry)
 const date = entry.data.date.toISOString().slice(0, 10)
 ---
 
-<Devlog
-  title={`${entry.data.title} | OpenTUI Devlog`}
+<Scrollback
+  title={`${entry.data.title} | OpenTUI Scrollback`}
   description={entry.data.description ?? "Development notes from OpenTUI."}
   footerLinks
   footerAnimation="inchworm"
 >
-  <article class="devlog-post">
+  <article class="scrollback-post">
     <header>
       <h1>{entry.data.title}</h1>
-      <p class="devlog-meta">
+      <p class="scrollback-meta">
         <time datetime={date}>{date}</time>
         {entry.data.author && ` · ${entry.data.author}`}
       </p>
@@ -41,4 +41,4 @@ const date = entry.data.date.toISOString().slice(0, 10)
       <Content components={{ pre: ProseCode, table: ProseTable }} />
     </div>
   </article>
-</Devlog>
+</Scrollback>

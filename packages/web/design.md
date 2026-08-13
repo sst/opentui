@@ -105,7 +105,7 @@ can do the same work.
 - Build shared page primitives from these rules. Do not copy landing-page CSS
   into each route.
 - Keep shared article-content styles (headings, code, tables, callouts) in one
-  stylesheet used by documentation and devlog.
+  stylesheet used by documentation and scrollback.
 - Wrap markdown output (code fences, tables) with shared components at build
   time. Do not rewrite the rendered DOM with scripts.
 - Use design tokens only for repeated values such as width, spacing, type,

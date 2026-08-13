@@ -1,28 +1,28 @@
 ---
 import { getCollection } from "astro:content"
-import Devlog from "../layouts/Devlog.astro"
+import Scrollback from "../layouts/Scrollback.astro"
 
-const posts = (await getCollection("devlog"))
+const posts = (await getCollection("scrollback"))
   .filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 ---
 
-<Devlog title="Devlog | OpenTUI" description="Development notes from OpenTUI.">
-  <h1 class="sr-only">Devlog</h1>
+<Scrollback title="Scrollback | OpenTUI" description="Development notes from OpenTUI.">
+  <h1 class="sr-only">Scrollback</h1>
 
   <ul>
     {
       posts.map((post) => (
         <li>
           <time datetime={isoDate(post.data.date)}>{isoDate(post.data.date)}</time>
-          <a href={`/devlog/${post.id}`}>{post.data.title}</a>
+          <a href={`/scrollback/${post.id}`}>{post.data.title}</a>
         </li>
       ))
     }
   </ul>
-</Devlog>
+</Scrollback>
 
 <style>
   .sr-only {
