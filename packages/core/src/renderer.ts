@@ -4450,10 +4450,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     try {
-      this.lib.destroyRenderer(this.rendererPtr)
+      this.lib.destroyRenderer(this.rendererPtr, this.stdin === process.stdin)
     } catch (e) {
       console.error("Error in lib.destroyRenderer during destroy:", e)
     }
+    const bufferedInput = this.stdin.readableLength
+    if (bufferedInput > 0) this.stdin.read(bufferedInput)
     rendererTracker.renderers.delete(this)
     if (rendererTracker.renderers.size === 0) {
       void destroyTreeSitterClient().catch((error) => {

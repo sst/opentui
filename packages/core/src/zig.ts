@@ -329,7 +329,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     destroyRenderer: {
-      args: ["u32"],
+      args: ["u32", "bool"],
       returns: "void",
     },
     setUseThread: {
@@ -2215,7 +2215,7 @@ export interface AudioEngineLib {
 export interface RenderLib extends AudioEngineLib {
   createRenderer: (width: number, height: number, options?: NativeRendererCreateOptions) => RendererHandle | null
   setTerminalEnvVar: (renderer: RendererHandle, key: string, value: string) => boolean
-  destroyRenderer: (renderer: RendererHandle) => void
+  destroyRenderer: (renderer: RendererHandle, flushInput?: boolean) => void
   setUseThread: (renderer: RendererHandle, useThread: boolean) => void
   setClearOnShutdown: (renderer: RendererHandle, clear: boolean) => void
   setBackgroundColor: (renderer: RendererHandle, color: RGBA) => void
@@ -3231,8 +3231,8 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public destroyRenderer(renderer: Pointer): void {
-    this.opentui.symbols.destroyRenderer(renderer)
+  public destroyRenderer(renderer: Pointer, flushInput: boolean = false): void {
+    this.opentui.symbols.destroyRenderer(renderer, ffiBool(flushInput))
   }
 
   public setUseThread(renderer: Pointer, useThread: boolean) {
