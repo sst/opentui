@@ -12,6 +12,19 @@ export interface EmbeddedTerminalOptions extends RenderableOptions<EmbeddedTermi
   maxScrollback?: number
   onData?: (data: Uint8Array) => void
   onTerminalResize?: (cols: number, rows: number) => void
+  onScreenChange?: () => void
+}
+
+export type EmbeddedTerminalScreen = {
+  text: string
+  lines: string[]
+  columns: number
+  rows: number
+  cursor: {
+    x: number
+    y: number
+    visible: boolean
+  }
 }
 
 const MOD_SHIFT = 1 << 0
@@ -26,6 +39,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   private handle: EmbeddedTerminalHandle | null = null
   private _onData?: (data: Uint8Array) => void
   private _onTerminalResize?: (cols: number, rows: number) => void
+  private _onScreenChange?: () => void
   private keyreleaseHandler: ((key: KeyEvent) => void) | null = null
 
   constructor(ctx: RenderContext, options: EmbeddedTerminalOptions) {
@@ -40,6 +54,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
     this._focusable = true
     this._onData = options.onData
     this._onTerminalResize = options.onTerminalResize
+    this._onScreenChange = options.onScreenChange
     this.lib = resolveRenderLib()
 
     try {
@@ -65,6 +80,39 @@ export class EmbeddedTerminalRenderable extends Renderable {
 
   public set onTerminalResize(value: ((cols: number, rows: number) => void) | undefined) {
     this._onTerminalResize = value
+  }
+
+  public get onScreenChange(): (() => void) | undefined {
+    return this._onScreenChange
+  }
+
+  public set onScreenChange(value: (() => void) | undefined) {
+    this._onScreenChange = value
+  }
+
+  public screen(): EmbeddedTerminalScreen {
+    const cursor = this.handle
+      ? this.lib.embeddedTerminalCursor(this.handle)
+      : { x: 0, y: 0, visible: false, hasValue: false }
+    const lines = this.frameBuffer
+      ? new TextDecoder()
+          .decode(this.frameBuffer.getRealCharBytes(true))
+          .split("\n")
+          .slice(0, this.height)
+          .map((line) => line.trimEnd())
+      : []
+    while (lines.at(-1) === "") lines.pop()
+    return {
+      text: lines.join("\n"),
+      lines,
+      columns: this.width,
+      rows: this.height,
+      cursor: {
+        x: cursor.x,
+        y: cursor.y,
+        visible: cursor.hasValue && cursor.visible,
+      },
+    }
   }
 
   public write(data: string | Uint8Array): void {
@@ -152,6 +200,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this.handle || !this.frameBuffer || !this.visible || this.isDestroyed) return
     this.lib.embeddedTerminalCompose(this.handle, buffer.ptr, 0, 0)
+    this._onScreenChange?.()
     if (!this.focused) return
     const cursor = this.lib.embeddedTerminalCursor(this.handle)
     const visible = cursor.visible && cursor.hasValue
