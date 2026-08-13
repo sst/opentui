@@ -23,6 +23,7 @@ const { title, description, wide = false } = Astro.props
     </script>
   </head>
   <body>
+    <slot name="nav" />
     <div class:list={["page", { wide }]}>
       <slot />
     </div>
@@ -68,6 +69,8 @@ const { title, description, wide = false } = Astro.props
     --page-color: #000;
     --link-color: LinkText;
     --content-width: 36rem;
+    /* Widest bounded composition: site chrome and wide pages align to it. */
+    --frame-width: 64rem;
     --page-gutter: 1.5rem;
     --motion-step: 75ms;
   }
@@ -78,6 +81,9 @@ const { title, description, wide = false } = Astro.props
 
   html {
     background: var(--page-background);
+    /* Keep the centered layout stable between pages with and without a
+     * scrollbar. */
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -96,7 +102,7 @@ const { title, description, wide = false } = Astro.props
 
   /* Wide pages (documentation): 13rem nav + 3rem gap + 48rem content. */
   .page.wide {
-    width: min(100%, 64rem);
+    width: min(100%, var(--frame-width));
   }
 
   h1 {

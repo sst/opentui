@@ -31,10 +31,14 @@ const currentValue = (href: string, section: string) => {
 </header>
 
 <style>
+  /* Site chrome: one frame width on every page, independent of the content
+   * column, so the nav does not shift between routes. */
   header {
     position: sticky;
     top: 0;
     z-index: 1;
+    width: min(100%, var(--frame-width));
+    margin-inline: auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;

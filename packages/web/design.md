@@ -54,6 +54,11 @@ can do the same work.
 ## Layout
 
 - Keep one primary left edge for the logo, text, list, links, and footer.
+- Align site chrome (the sticky header) to the frame width (`64rem`) on every
+  page, independent of the content column, so navigation does not shift
+  between routes.
+- Reserve the scrollbar gutter so centered layouts do not shift between pages
+  with and without a scrollbar.
 - Center the closed composition in the viewport.
 - Do not center each section on a different axis.
 - Do not let an expanded element move the page spine.

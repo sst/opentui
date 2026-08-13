@@ -16,7 +16,7 @@ const { title, description, footerLinks = false, footerAnimation } = Astro.props
 ---
 
 <Minimal {title} {description}>
-  <SiteNav />
+  <SiteNav slot="nav" />
 
   <main>
     <slot />

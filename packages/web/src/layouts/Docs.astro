@@ -18,9 +18,10 @@ const { prev, next } = getPrevNextDocs(docsIndex, slug)
 ---
 
 <Minimal title={`${title} | OpenTUI Docs`} description={description ?? "OpenTUI documentation."} wide>
-  <a class="skip" href="#docs-content">Skip to content</a>
-
-  <SiteNav />
+  <Fragment slot="nav">
+    <a class="skip" href="#docs-content">Skip to content</a>
+    <SiteNav />
+  </Fragment>
 
   <div class="docs">
     <aside>
