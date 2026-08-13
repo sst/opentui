@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
+import { RGBA } from "../lib/RGBA.js"
 import { resolveRenderLib } from "../zig.js"
 import { EmbeddedTerminalRenderable } from "./EmbeddedTerminal.js"
 
@@ -197,6 +198,25 @@ describe("EmbeddedTerminalRenderable", () => {
     }
     terminal.destroy()
     expect(terminal.isDestroyed).toBe(true)
+  })
+
+  test("restores terminal cells after render hooks change", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      renderAfter: (buffer) => {
+        buffer.setCell(0, 0, "X", RGBA.fromInts(255, 255, 255, 255), RGBA.fromInts(0, 0, 0, 255))
+      },
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("A")
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().startsWith("X")).toBe(true)
+
+    terminal.renderAfter = undefined
+    terminal.requestRender()
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().startsWith("A")).toBe(true)
   })
 
   test("forwards Kitty key releases while focused", () => {
