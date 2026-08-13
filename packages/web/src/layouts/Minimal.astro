@@ -122,12 +122,12 @@ const { title, description, wide = false } = Astro.props
     width: min(100%, var(--frame-width));
   }
 
-  /* The document title carries the page. Display size takes display
-   * leading: 1.25, tighter than the 1.5 body text and the 4/3 heading
-   * boxes (see styles/prose.css). */
+  /* The document title matches the wordmark's 1.875rem height, anchoring
+   * the page without out-weighing the brand. Its 2.25rem line box stays
+   * on the half-line grid, with display leading tighter than body text. */
   h1 {
-    font-size: 2.25rem;
-    line-height: 1.25;
+    font-size: 1.875rem;
+    line-height: 2.25rem;
   }
 
   h2 {
@@ -179,10 +179,6 @@ const { title, description, wide = false } = Astro.props
 
     body {
       padding-block: 1.25rem 2rem;
-    }
-
-    h1 {
-      font-size: 1.875rem;
     }
   }
 </style>
