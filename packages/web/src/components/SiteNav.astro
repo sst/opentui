@@ -16,27 +16,38 @@ const currentValue = (href: string, section: string) => {
 ---
 
 <header>
-  <a class="brand" href="/" aria-label="OpenTUI home">
-    <OpenTUILogo class="wordmark" />
-  </a>
-  <nav aria-label="Site">
-    {
-      links.map(({ href, section, label }) => (
-        <a href={href} aria-current={currentValue(href, section)}>
-          {label}
-        </a>
-      ))
-    }
-  </nav>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="OpenTUI home">
+      <OpenTUILogo class="wordmark" />
+    </a>
+    <nav aria-label="Site">
+      {
+        links.map(({ href, section, label }) => (
+          <a href={href} aria-current={currentValue(href, section)}>
+            {label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
 </header>
 
 <style>
-  /* Site chrome: one frame width on every page, independent of the content
-   * column, so the nav does not shift between routes. */
+  /* Site chrome: the background band spans the full viewport; the nav
+   * content aligns to the frame width on every page, independent of the
+   * content column, so it does not shift between routes. */
   header {
     position: sticky;
     top: 0;
     z-index: 1;
+    margin-block-start: -1rem;
+    margin-inline: calc(-1 * var(--page-gutter));
+    padding-block: 1rem;
+    padding-inline: var(--page-gutter);
+    background: var(--page-background);
+  }
+
+  .bar {
     width: min(100%, var(--frame-width));
     margin-inline: auto;
     display: flex;
@@ -44,9 +55,6 @@ const currentValue = (href: string, section: string) => {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem 1.5rem;
-    margin-block-start: -1rem;
-    padding-block: 1rem;
-    background: var(--page-background);
   }
 
   /* Content scrolling under the nav stays faintly visible. */

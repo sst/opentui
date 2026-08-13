@@ -4,7 +4,7 @@ import SiteNav from "../components/SiteNav.astro"
 import Minimal from "../layouts/Minimal.astro"
 ---
 
-<Minimal title="Page not found | OpenTUI" description="This page does not exist.">
+<Minimal title="Page not found | OpenTUI" description="This page does not exist." wide>
   <SiteNav slot="nav" />
 
   <main>
@@ -18,6 +18,7 @@ import Minimal from "../layouts/Minimal.astro"
 
 <style>
   main {
+    max-width: var(--content-width);
     margin-block: 3rem 2rem;
   }
 </style>

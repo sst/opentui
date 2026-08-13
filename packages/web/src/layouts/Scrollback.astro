@@ -15,7 +15,7 @@ interface Props {
 const { title, description, footerLinks = false, footerAnimation } = Astro.props
 ---
 
-<Minimal {title} {description}>
+<Minimal {title} {description} wide>
   <SiteNav slot="nav" />
 
   <main>
@@ -27,6 +27,7 @@ const { title, description, footerLinks = false, footerAnimation } = Astro.props
 
 <style>
   main {
+    max-width: var(--content-width);
     margin-block: 3rem 2rem;
   }
 

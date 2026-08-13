@@ -22,6 +22,9 @@ can do the same work.
 - Use one centered content column with a clear left edge for content.
   Documentation may use a wider bounded composition (`64rem`) for navigation
   plus content.
+- On pages with site chrome, anchor the content column to the frame's left
+  edge, under the wordmark. Do not float a narrow column in the middle of the
+  frame.
 - Keep normal content at a narrow reading measure. Use `36rem` as the default maximum width.
 - Use GrayText for structural hairlines (code borders, table rows) and the
   text color for rules that carry content weight (table header, callout edge).
