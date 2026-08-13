@@ -105,6 +105,16 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   body.docs-menu-open .subnav {
     display: none;
   }
+
+  @media (max-width: 60rem) {
+    body:not(.docs-scrolled) .subnav {
+      display: none;
+    }
+
+    body.docs-scrolled:not(.docs-menu-open) > header {
+      padding-block-end: 0;
+    }
+  }
 </style>
 
 <style>
@@ -287,6 +297,13 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   // closes them again.
   const panels = Array.from(document.querySelectorAll<HTMLDetailsElement>("details.menu, details.onpage"))
   const header = document.querySelector("body > header")
+
+  function syncScrolled() {
+    document.body.classList.toggle("docs-scrolled", window.scrollY > 0)
+  }
+
+  syncScrolled()
+  window.addEventListener("scroll", syncScrolled, { passive: true })
 
   function sync() {
     document.body.classList.toggle(
