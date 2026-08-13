@@ -43,6 +43,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   private _onTerminalResize?: (cols: number, rows: number) => void
   private _onScreenChange?: () => void
   private keyreleaseHandler: ((key: KeyEvent) => void) | null = null
+  private hadRenderHooks = false
 
   constructor(ctx: RenderContext, options: EmbeddedTerminalOptions) {
     const cols = options.cols ?? (typeof options.width === "number" ? options.width : 80)
@@ -186,6 +187,13 @@ export class EmbeddedTerminalRenderable extends Renderable {
 
   public handlePaste(event: PasteEvent): void {
     this.send(this.encodePaste(event.bytes), "input")
+  }
+
+  public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+    const hasRenderHooks = Boolean(this.renderBefore || this.renderAfter)
+    if (this.handle && (hasRenderHooks || this.hadRenderHooks)) this.lib.embeddedTerminalInvalidate(this.handle)
+    this.hadRenderHooks = hasRenderHooks
+    super.render(buffer, deltaTime)
   }
 
   protected onResize(width: number, height: number): void {
