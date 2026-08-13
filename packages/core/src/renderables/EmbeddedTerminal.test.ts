@@ -70,6 +70,24 @@ describe("EmbeddedTerminalRenderable", () => {
     )
   })
 
+  test("distinguishes user input from terminal responses", () => {
+    const output: Array<{ data: string; source?: "input" | "response" }> = []
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onData: (data, source) => output.push({ data: new TextDecoder().decode(data), source }),
+    })
+    setup.renderer.root.add(terminal)
+
+    terminal.write("\x1b[5n")
+    terminal.handleKeyPress(keyEvent({ name: "enter", sequence: "\r" }))
+
+    expect(output).toEqual([
+      { data: "\x1b[0n", source: "response" },
+      { data: "\r", source: "input" },
+    ])
+  })
+
   test("encodes no-button motion and suppresses unavailable pixel coordinates", () => {
     const lib = resolveRenderLib()
     const handle = lib.createEmbeddedTerminal({ cols: 20, rows: 4 })

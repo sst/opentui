@@ -6,11 +6,13 @@ import type { MouseEvent } from "../renderer.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { resolveRenderLib, type EmbeddedTerminalHandle, type EmbeddedTerminalMouse, type RenderLib } from "../zig.js"
 
+export type EmbeddedTerminalDataSource = "input" | "response"
+
 export interface EmbeddedTerminalOptions extends RenderableOptions<EmbeddedTerminalRenderable> {
   cols?: number
   rows?: number
   maxScrollback?: number
-  onData?: (data: Uint8Array) => void
+  onData?: (data: Uint8Array, source: EmbeddedTerminalDataSource) => void
   onTerminalResize?: (cols: number, rows: number) => void
   onScreenChange?: () => void
 }
@@ -37,7 +39,7 @@ const MOD_NUM_LOCK = 1 << 5
 export class EmbeddedTerminalRenderable extends Renderable {
   private readonly lib: RenderLib
   private handle: EmbeddedTerminalHandle | null = null
-  private _onData?: (data: Uint8Array) => void
+  private _onData?: (data: Uint8Array, source: EmbeddedTerminalDataSource) => void
   private _onTerminalResize?: (cols: number, rows: number) => void
   private _onScreenChange?: () => void
   private keyreleaseHandler: ((key: KeyEvent) => void) | null = null
@@ -66,11 +68,11 @@ export class EmbeddedTerminalRenderable extends Renderable {
     }
   }
 
-  public get onData(): ((data: Uint8Array) => void) | undefined {
+  public get onData(): ((data: Uint8Array, source: EmbeddedTerminalDataSource) => void) | undefined {
     return this._onData
   }
 
-  public set onData(value: ((data: Uint8Array) => void) | undefined) {
+  public set onData(value: ((data: Uint8Array, source: EmbeddedTerminalDataSource) => void) | undefined) {
     this._onData = value
   }
 
@@ -155,7 +157,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
     this.keyreleaseHandler = (key) => this.handleKeyPress(key)
     this.ctx._internalKeyInput.onInternal("keyrelease", this.keyreleaseHandler)
     try {
-      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, true) : new Uint8Array())
+      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, true) : new Uint8Array(), "input")
     } catch (error) {
       this.removeKeyreleaseHandler()
       super.blur()
@@ -166,7 +168,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   public blur(): void {
     if (!this.focused) return
     try {
-      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, false) : new Uint8Array())
+      this.send(this.handle ? this.lib.embeddedTerminalEncodeFocus(this.handle, false) : new Uint8Array(), "input")
     } catch {
       // User callbacks must not prevent focus or native resource cleanup.
     } finally {
@@ -178,12 +180,12 @@ export class EmbeddedTerminalRenderable extends Renderable {
 
   public handleKeyPress(key: KeyEvent): boolean {
     const output = this.encodeKey(key)
-    this.send(output)
+    this.send(output, "input")
     return output.byteLength > 0
   }
 
   public handlePaste(event: PasteEvent): void {
-    this.send(this.encodePaste(event.bytes))
+    this.send(this.encodePaste(event.bytes), "input")
   }
 
   protected onResize(width: number, height: number): void {
@@ -278,12 +280,12 @@ export class EmbeddedTerminalRenderable extends Renderable {
     if (output.byteLength === 0) return
     event.preventDefault()
     event.stopPropagation()
-    this.send(output)
+    this.send(output, "input")
   }
 
   private flushResponses(): void {
     if (!this.handle) return
-    this.send(this.lib.embeddedTerminalDrainResponses(this.handle))
+    this.send(this.lib.embeddedTerminalDrainResponses(this.handle), "response")
   }
 
   private removeKeyreleaseHandler(): void {
@@ -292,8 +294,8 @@ export class EmbeddedTerminalRenderable extends Renderable {
     this.keyreleaseHandler = null
   }
 
-  private send(data: Uint8Array): void {
-    if (data.byteLength > 0) this._onData?.(data)
+  private send(data: Uint8Array, source: EmbeddedTerminalDataSource): void {
+    if (data.byteLength > 0) this._onData?.(data, source)
   }
 }
 
