@@ -607,6 +607,193 @@ describe("Renderable - Child Management", () => {
     expect(call[1]).toBe(renderable.screenY)
   })
 
+  test("retained subtrees replay semantics without redrawing clean descendants", async () => {
+    const hitGridSpy = spyOn(testRenderer, "drawHitGridLayer")
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    expect(child.renderCount).toBe(1)
+
+    hitGridSpy.mockClear()
+    testRenderer.requestRender()
+    await renderOnce()
+
+    expect(child.renderCount).toBe(1)
+    expect(hitGridSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test("stable undefined-axis coordinates do not invalidate retained subtrees", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    testRenderer.requestRender()
+    await renderOnce()
+
+    expect(child.renderCount).toBe(1)
+  })
+
+  test("dirty descendants invalidate retained subtrees", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    child.requestRender()
+    await renderOnce()
+
+    expect(child.renderCount).toBe(2)
+  })
+
+  test("dirty descendants expand compact retained command lists", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    testRenderer.root.add(new TestRenderable(testRenderer, { id: "sibling", width: 1, height: 1 }))
+    await renderOnce()
+    const compacted = child.renderCount
+    child.requestRender()
+    await renderOnce()
+
+    expect(child.renderCount).toBe(compacted + 1)
+  })
+
+  test("live descendants redraw retained subtrees", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", live: true, width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    const initial = child.renderCount
+    await renderOnce()
+
+    expect(child.renderCount).toBeGreaterThan(initial)
+  })
+
+  test("activating live descendants expands compact retained command lists", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    testRenderer.root.add(new TestRenderable(testRenderer, { id: "sibling", width: 1, height: 1 }))
+    await renderOnce()
+    const compacted = child.renderCount
+    child.live = true
+    await renderOnce()
+
+    expect(child.renderCount).toBeGreaterThan(compacted)
+  })
+
+  test("moving an ancestor redraws retained descendants at their new screen position", async () => {
+    const parent = new TestRenderable(testRenderer, {
+      id: "parent",
+      position: "absolute",
+      left: 0,
+      width: 10,
+      height: 2,
+    })
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    parent.add(layer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+    parent.left = 2
+    await renderOnce()
+
+    expect(child.renderCount).toBe(2)
+    expect(child.getScreenPosition().x).toBe(2)
+  })
+
+  test("enabling mouse after caching retains descendant hit targets", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new CountingRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    testRenderer.useMouse = false
+    await renderOnce()
+    testRenderer.useMouse = true
+    await renderOnce()
+
+    expect(testRenderer.hitTest(0, 0)).toBe(child.num)
+  })
+
+  test("capturing a retained target reveals the target beneath it", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const lower = new CountingRenderable(testRenderer, {
+      id: "lower",
+      position: "absolute",
+      width: 10,
+      height: 1,
+    })
+    const upper = new CountingRenderable(testRenderer, {
+      id: "upper",
+      position: "absolute",
+      width: 10,
+      height: 1,
+      zIndex: 1,
+    })
+    layer.add(lower)
+    layer.add(upper)
+    testRenderer.root.add(layer)
+
+    await renderOnce()
+    expect(testRenderer.hitTest(0, 0)).toBe(upper.num)
+
+    ;(testRenderer as any).setCapturedRenderable(upper)
+    await renderOnce()
+
+    expect(testRenderer.hitTest(0, 0)).toBe(lower.num)
+  })
+
+  test("nested retained layers preserve hit targets while mouse tracking is disabled", async () => {
+    const outer = new TestRenderable(testRenderer, { id: "outer", retained: "static", width: 10, height: 2 })
+    const inner = new TestRenderable(testRenderer, { id: "inner", retained: "static", width: 10, height: 1 })
+    const target = new CountingRenderable(testRenderer, { id: "target", width: 10, height: 1 })
+    inner.add(target)
+    outer.add(inner)
+    testRenderer.root.add(outer)
+
+    await renderOnce()
+    testRenderer.useMouse = false
+    outer.requestRender()
+    await renderOnce()
+    testRenderer.useMouse = true
+    await renderOnce()
+
+    expect(testRenderer.hitTest(0, 0)).toBe(target.num)
+  })
+
+  test("focused descendants keep retained subtrees dynamic", async () => {
+    const layer = new TestRenderable(testRenderer, { id: "layer", retained: "static", width: 10, height: 2 })
+    const child = new TestFocusableRenderable(testRenderer, { id: "child", width: 10, height: 1 })
+    const renderSpy = spyOn(child, "render")
+    layer.add(child)
+    testRenderer.root.add(layer)
+
+    child.focus()
+    await renderOnce()
+    const initial = renderSpy.mock.calls.length
+    testRenderer.requestRender()
+    await renderOnce()
+
+    expect(renderSpy.mock.calls.length).toBeGreaterThan(initial)
+  })
+
   test("can insert child at specific index", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child1 = new TestRenderable(testRenderer, { id: "child1" })

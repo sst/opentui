@@ -108,6 +108,11 @@ export interface RenderContext extends EventEmitter {
   pushHitGridScissorRect: (x: number, y: number, width: number, height: number) => void
   popHitGridScissorRect: () => void
   clearHitGridScissorRects: () => void
+  createHitGridLayer: () => Uint32Array
+  beginHitGridLayer: (layer: Uint32Array) => void
+  endHitGridLayer: () => void
+  drawHitGridLayer: (layer: Uint32Array) => void
+  resetHitGridLayers: () => void
   width: number
   height: number
   terminalWidth?: number

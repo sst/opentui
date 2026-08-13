@@ -1,6 +1,7 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
+import { RGBA } from "./lib/RGBA.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
 import type { Selection } from "./lib/selection.js"
@@ -100,6 +101,8 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   zIndex?: number
   visible?: boolean
   buffered?: boolean
+  /** Cache this subtree between frames. Descendants must update through normal renderable setters or requestRender(). */
+  retained?: "static"
   live?: boolean
   opacity?: number
 
@@ -243,6 +246,9 @@ export abstract class Renderable extends BaseRenderable {
   public selectable: boolean = false
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
+  private retained: boolean
+  private retainedBuffer: OptimizedBuffer | null = null
+  private retainedHitGrid: Uint32Array | null = null
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
@@ -307,6 +313,7 @@ export abstract class Renderable extends BaseRenderable {
     this._zIndex = options.zIndex ?? 0
     this._visible = options.visible !== false
     this.buffered = options.buffered ?? false
+    this.retained = options.retained === "static"
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
@@ -488,6 +495,7 @@ export abstract class Renderable extends BaseRenderable {
       const delta = value ? 1 : -1
       this.propagateLiveCount(delta)
     }
+    this.requestRender()
   }
 
   protected propagateLiveCount(delta: number): void {
@@ -511,7 +519,47 @@ export abstract class Renderable extends BaseRenderable {
 
   public requestRender() {
     this.markDirty()
+    let retainedInvalidated = this.retained
+    let parent = this.parent
+    while (parent) {
+      if (parent.retained) {
+        parent.markDirty()
+        retainedInvalidated = true
+      }
+      parent = parent.parent
+    }
+    if (retainedInvalidated) bumpRenderListRevision(this._ctx)
     this._ctx.requestRender()
+  }
+
+  public invalidateRetainedDescendants(): void {
+    let invalidated = false
+    const pending = [...this._childrenInLayoutOrder]
+    while (pending.length > 0) {
+      const child = pending.pop()
+      if (!child) continue
+      if (child.retained) {
+        child.markDirty()
+        invalidated = true
+      }
+      pending.push(...child._childrenInLayoutOrder)
+    }
+    if (invalidated) bumpRenderListRevision(this._ctx)
+  }
+
+  private getRetainedBuffer(): OptimizedBuffer {
+    if (!this.retainedBuffer) {
+      this.retainedBuffer = OptimizedBuffer.create(this._ctx.width, this._ctx.height, this._ctx.widthMethod, {
+        respectAlpha: true,
+        id: `retained-${this.id}`,
+      })
+      return this.retainedBuffer
+    }
+    if (this.retainedBuffer.width !== this._ctx.width || this.retainedBuffer.height !== this._ctx.height) {
+      this.retainedBuffer.resize(this._ctx.width, this._ctx.height)
+      this.markDirty()
+    }
+    return this.retainedBuffer
   }
 
   public get translateX(): number {
@@ -1097,6 +1145,8 @@ export abstract class Renderable extends BaseRenderable {
 
     const oldX = this._x
     const oldY = this._y
+    const oldScreenX = this._screenX
+    const oldScreenY = this._screenY
     const oldWidth = this._widthValue
     const oldHeight = this._heightValue
 
@@ -1124,6 +1174,8 @@ export abstract class Renderable extends BaseRenderable {
     if (positionChanged) {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
+    if (this.retained && (!Object.is(oldScreenX, this._screenX) || !Object.is(oldScreenY, this._screenY)))
+      this.markDirty()
   }
 
   protected onLayoutResize(width: number, height: number): void {
@@ -1410,6 +1462,14 @@ export abstract class Renderable extends BaseRenderable {
     // Check again after updateFromLayout, which calls onResize/onSizeChange
     if (this._isDestroyed) return
 
+    if (this.retained && this.retainedBuffer && !this.isDirty && this.liveCount === 0 && !this.hasFocusedDescendant) {
+      renderList.push({ action: "beginRetained", renderable: this })
+      renderList.push({ action: "endRetained", renderable: this })
+      return
+    }
+
+    if (this.retained) renderList.push({ action: "beginRetained", renderable: this })
+
     // Push opacity BEFORE rendering this element so it affects this element and all children
     const shouldPushOpacity = this._opacity < 1.0
     if (shouldPushOpacity) {
@@ -1462,9 +1522,10 @@ export abstract class Renderable extends BaseRenderable {
     if (shouldPushOpacity) {
       renderList.push({ action: "popOpacity" })
     }
+    if (this.retained) renderList.push({ action: "endRetained", renderable: this })
   }
 
-  public render(buffer: OptimizedBuffer, deltaTime: number): void {
+  public render(buffer: OptimizedBuffer, deltaTime: number, draw: boolean = true): void {
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
@@ -1472,13 +1533,13 @@ export abstract class Renderable extends BaseRenderable {
 
     // Layout and culling are already finalized for this frame. These hooks are
     // only safe for drawing into the buffer; avoid renderable/reactive mutations.
-    if (this.renderBefore) {
+    if (draw && this.renderBefore) {
       this.renderBefore.call(this, renderBuffer, deltaTime)
     }
 
-    this.renderSelf(renderBuffer, deltaTime)
+    if (draw) this.renderSelf(renderBuffer, deltaTime)
 
-    if (this.renderAfter) {
+    if (draw && this.renderAfter) {
       this.renderAfter.call(this, renderBuffer, deltaTime)
     }
 
@@ -1487,12 +1548,37 @@ export abstract class Renderable extends BaseRenderable {
     const screenX = this._screenX
     const screenY = this._screenY
 
-    this.markClean()
+    if (draw) this.markClean()
     this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
-    if (this.buffered && this.frameBuffer) {
+    if (draw && this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
+  }
+
+  public beginRetainedFrame(): { buffer: OptimizedBuffer; draw: boolean } {
+    const buffer = this.getRetainedBuffer()
+    const draw = this.isDirty || this.liveCount > 0 || this.hasFocusedDescendant
+    if (draw) {
+      buffer.clearScissorRects()
+      buffer.clearOpacity()
+      buffer.clear(RGBA.fromValues(0, 0, 0, 0))
+    }
+    return { buffer, draw }
+  }
+
+  public getRetainedHitGrid(): Uint32Array {
+    if (!this.retainedHitGrid || this.retainedHitGrid.length !== this._ctx.width * this._ctx.height) {
+      this.retainedHitGrid = this._ctx.createHitGridLayer()
+      this.markDirty()
+    }
+    return this.retainedHitGrid
+  }
+
+  public endRetainedFrame(buffer: OptimizedBuffer, composite: boolean): void {
+    if (!this.retainedBuffer) return
+    if (composite) buffer.drawFrameBuffer(0, 0, this.retainedBuffer)
+    this.markClean()
   }
 
   protected _hasVisibleChildFilter(): boolean {
@@ -1557,6 +1643,8 @@ export abstract class Renderable extends BaseRenderable {
       this.frameBuffer.destroy()
       this.frameBuffer = null
     }
+    this.retainedBuffer?.destroy()
+    this.retainedBuffer = null
 
     for (const child of [...this._childrenInLayoutOrder]) {
       this.remove(child)
@@ -1700,7 +1788,14 @@ export abstract class Renderable extends BaseRenderable {
 }
 
 interface RenderCommandBase {
-  action: "render" | "pushScissorRect" | "popScissorRect" | "pushOpacity" | "popOpacity"
+  action:
+    | "render"
+    | "pushScissorRect"
+    | "popScissorRect"
+    | "pushOpacity"
+    | "popOpacity"
+    | "beginRetained"
+    | "endRetained"
 }
 
 interface RenderCommandPushScissorRect extends RenderCommandBase {
@@ -1731,12 +1826,19 @@ interface RenderCommandPopOpacity extends RenderCommandBase {
   action: "popOpacity"
 }
 
+interface RenderCommandRetained extends RenderCommandBase {
+  action: "beginRetained" | "endRetained"
+  renderable: Renderable
+  endIndex?: number
+}
+
 export type RenderCommand =
   | RenderCommandPushScissorRect
   | RenderCommandPopScissorRect
   | RenderCommandRender
   | RenderCommandPushOpacity
   | RenderCommandPopOpacity
+  | RenderCommandRetained
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
@@ -1816,10 +1918,22 @@ export class RootRenderable extends Renderable {
       this.appliedLayoutGeneration = layoutGeneration
       this.appliedRenderListRevision = getRenderListRevision(this._ctx)
       this.renderListReusable = this.canReuseCurrentRenderList()
+      const retainedCommands: RenderCommandRetained[] = []
+      for (let index = 0; index < this.renderList.length; index++) {
+        const command = this.renderList[index]
+        if (command.action === "beginRetained") retainedCommands.push(command)
+        if (command.action !== "endRetained") continue
+        const begin = retainedCommands.pop()
+        if (!begin) throw new Error("Unbalanced retained render commands")
+        begin.endIndex = index
+      }
     }
 
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
+    let renderBuffer = buffer
+    let draw = true
+    const retainedFrames: Array<{ buffer: OptimizedBuffer; draw: boolean }> = []
     for (let i = 1; i < this.renderList.length; i++) {
       const command = this.renderList[i]
       switch (command.action) {
@@ -1827,24 +1941,49 @@ export class RootRenderable extends Renderable {
           // Skip if renderable was destroyed during a previous render callback
           if (!command.renderable.isDestroyed) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            command.renderable.render(renderBuffer, deltaTime, draw)
             this._currentRenderable = undefined
           }
           break
         case "pushScissorRect":
-          buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          if (draw) renderBuffer.pushScissorRect(command.x, command.y, command.width, command.height)
           this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
           break
         case "popScissorRect":
-          buffer.popScissorRect()
+          if (draw) renderBuffer.popScissorRect()
           this._ctx.popHitGridScissorRect()
           break
         case "pushOpacity":
-          buffer.pushOpacity(command.opacity)
+          if (draw) renderBuffer.pushOpacity(command.opacity)
           break
         case "popOpacity":
-          buffer.popOpacity()
+          if (draw) renderBuffer.popOpacity()
           break
+        case "beginRetained": {
+          const frame = command.renderable.beginRetainedFrame()
+          const hitGrid = command.renderable.getRetainedHitGrid()
+          if (!frame.draw) {
+            command.renderable.endRetainedFrame(renderBuffer, draw)
+            this._ctx.drawHitGridLayer(hitGrid)
+            if (command.endIndex === undefined) throw new Error("Missing retained end command")
+            i = command.endIndex
+            break
+          }
+          this._ctx.beginHitGridLayer(hitGrid)
+          retainedFrames.push({ buffer: renderBuffer, draw })
+          renderBuffer = frame.buffer
+          draw = frame.draw
+          break
+        }
+        case "endRetained": {
+          const parent = retainedFrames.pop()
+          if (!parent) throw new Error("Unbalanced retained render commands")
+          command.renderable.endRetainedFrame(parent.buffer, parent.draw)
+          this._ctx.endHitGridLayer()
+          renderBuffer = parent.buffer
+          draw = parent.draw
+          break
+        }
       }
     }
   }

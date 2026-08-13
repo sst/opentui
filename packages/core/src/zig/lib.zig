@@ -1632,6 +1632,11 @@ export fn addToHitGrid(renderer_handle: NativeHandle, x: i32, y: i32, width: u32
     object_ptr.addToHitGrid(x, y, width, height, id);
 }
 
+export fn drawHitGridLayer(renderer_handle: NativeHandle, layer: [*]const u32, length: u32, excluded_id: u32) void {
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.drawHitGridLayer(layer, length, excluded_id);
+}
+
 export fn clearCurrentHitGrid(renderer_handle: NativeHandle) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.clearCurrentHitGrid();

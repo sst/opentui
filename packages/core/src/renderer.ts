@@ -483,6 +483,13 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
   public popHitGridScissorRect(): void {}
   public clearHitGridScissorRects(): void {}
+  public createHitGridLayer(): Uint32Array {
+    return new Uint32Array(this.width * this.height)
+  }
+  public beginHitGridLayer(_layer: Uint32Array): void {}
+  public endHitGridLayer(): void {}
+  public drawHitGridLayer(_layer: Uint32Array): void {}
+  public resetHitGridLayers(): void {}
   public requestRender(): void {}
   public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
   public setCursorStyle(_options: CursorStyleOptions): void {}
@@ -1413,24 +1420,81 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
     this.capturedRenderable = renderable
+    this.root.invalidateRetainedDescendants()
+    this.root.requestRender()
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
-    if (!this._useMouse) return
-    if (id !== this.capturedRenderable?.num) {
+    const captured = id === this.capturedRenderable?.num
+    if (!captured && this.hitGridLayers.length > 0) {
+      const scissor = this.hitGridScissors.at(-1)
+      const startX = Math.max(0, x, scissor?.x ?? 0)
+      const startY = Math.max(0, y, scissor?.y ?? 0)
+      const endX = Math.min(this.width, x + width, scissor ? scissor.x + scissor.width : this.width)
+      const endY = Math.min(this.height, y + height, scissor ? scissor.y + scissor.height : this.height)
+      for (let row = startY; row < endY; row++) {
+        for (const layer of this.hitGridLayers) layer.fill(id, row * this.width + startX, row * this.width + endX)
+      }
+    }
+    if (this._useMouse && !captured) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
   }
 
+  private hitGridLayers: Uint32Array[] = []
+  private hitGridScissors: Array<{ x: number; y: number; width: number; height: number }> = []
+
+  public createHitGridLayer(): Uint32Array {
+    return new Uint32Array(this.width * this.height)
+  }
+
+  public beginHitGridLayer(layer: Uint32Array): void {
+    layer.fill(0)
+    this.hitGridLayers.push(layer)
+  }
+
+  public endHitGridLayer(): void {
+    this.hitGridLayers.pop()
+  }
+
+  public drawHitGridLayer(layer: Uint32Array): void {
+    for (const parent of this.hitGridLayers) {
+      for (let index = 0; index < layer.length; index++) {
+        if (layer[index] !== 0) parent[index] = layer[index]
+      }
+    }
+    if (!this._useMouse) return
+    this.lib.drawHitGridLayer(this.rendererPtr, layer, this.capturedRenderable?.num ?? 0)
+  }
+
+  public resetHitGridLayers(): void {
+    this.hitGridLayers.length = 0
+    this.hitGridScissors.length = 0
+    this.lib.hitGridClearScissorRects(this.rendererPtr)
+  }
+
   public pushHitGridScissorRect(x: number, y: number, width: number, height: number): void {
+    const parent = this.hitGridScissors.at(-1)
+    const startX = Math.max(x, parent?.x ?? x)
+    const startY = Math.max(y, parent?.y ?? y)
+    const endX = Math.min(x + width, parent ? parent.x + parent.width : x + width)
+    const endY = Math.min(y + height, parent ? parent.y + parent.height : y + height)
+    this.hitGridScissors.push({
+      x: startX,
+      y: startY,
+      width: Math.max(0, endX - startX),
+      height: Math.max(0, endY - startY),
+    })
     this.lib.hitGridPushScissorRect(this.rendererPtr, x, y, width, height)
   }
 
   public popHitGridScissorRect(): void {
+    this.hitGridScissors.pop()
     this.lib.hitGridPopScissorRect(this.rendererPtr)
   }
 
   public clearHitGridScissorRects(): void {
+    this.hitGridScissors.length = 0
     this.lib.hitGridClearScissorRects(this.rendererPtr)
   }
 
@@ -2333,6 +2397,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       })
     } catch (error) {
       renderFailed = true
+      this.nextRenderBuffer.clearScissorRects()
+      this.nextRenderBuffer.clearOpacity()
+      this.resetHitGridLayers()
       snapshotBuffer?.destroy()
       throw error
     } finally {

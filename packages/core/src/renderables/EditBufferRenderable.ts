@@ -953,7 +953,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.nativeRenderable = nativeRenderable
   }
 
-  render(buffer: OptimizedBuffer, deltaTime: number): void {
+  render(buffer: OptimizedBuffer, deltaTime: number, draw: boolean = true): void {
     if (!this.visible) return
     if (this.isDestroyed) return
     // Editor rendering/cursor placement reads absolute coordinates multiple
@@ -964,6 +964,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.markClean()
     this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
+    if (!draw) {
+      this.renderCursor(buffer)
+      return
+    }
     this.renderSelf(buffer)
     this.renderCursor(buffer)
   }

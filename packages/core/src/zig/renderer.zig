@@ -2832,6 +2832,13 @@ pub const CliRenderer = struct {
         }
     }
 
+    pub fn drawHitGridLayer(self: *CliRenderer, layer: [*]const u32, length: u32, excluded_id: u32) void {
+        const size = @min(self.nextHitGrid.len, length);
+        for (0..size) |index| {
+            if (layer[index] != 0 and layer[index] != excluded_id) self.nextHitGrid[index] = layer[index];
+        }
+    }
+
     /// Clear currentHitGrid before an immediate rebuild.
     ///
     /// Used by syncHitGridIfNeeded in TypeScript when scroll/translate changes

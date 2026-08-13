@@ -712,6 +712,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "i32", "i32", "u32", "u32", "u32"],
       returns: "void",
     },
+    drawHitGridLayer: {
+      args: ["u32", "ptr", "u32", "u32"],
+      returns: "void",
+    },
     clearCurrentHitGrid: {
       args: ["u32"],
       returns: "void",
@@ -2494,6 +2498,7 @@ export interface RenderLib extends AudioEngineLib {
   clipboardOperationDestroy: (operation: ClipboardOperationHandle) => NativeClipboardDestroyStatus
   triggerNotification: (renderer: RendererHandle, message: string, title?: string) => boolean
   addToHitGrid: (renderer: RendererHandle, x: number, y: number, width: number, height: number, id: number) => void
+  drawHitGridLayer: (renderer: RendererHandle, layer: Uint32Array, excludedId: number) => void
   clearCurrentHitGrid: (renderer: RendererHandle) => void
   hitGridPushScissorRect: (renderer: RendererHandle, x: number, y: number, width: number, height: number) => void
   hitGridPopScissorRect: (renderer: RendererHandle) => void
@@ -4088,6 +4093,10 @@ class FFIRenderLib implements RenderLib {
 
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
     this.opentui.symbols.addToHitGrid(renderer, x, y, width, height, id)
+  }
+
+  public drawHitGridLayer(renderer: Pointer, layer: Uint32Array, excludedId: number) {
+    this.opentui.symbols.drawHitGridLayer(renderer, layer, layer.length, excludedId)
   }
 
   public clearCurrentHitGrid(renderer: Pointer) {

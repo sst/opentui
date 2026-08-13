@@ -666,6 +666,19 @@ describe("borrowed pointer call sites", () => {
     })
   })
 
+  test("drawHitGridLayer passes the typed array owner as an object value", () => {
+    withStubbedSymbol("drawHitGridLayer", (calls) => {
+      const layer = new Uint32Array([0, 1, 2])
+
+      lib.drawHitGridLayer(0 as any, layer, 2)
+
+      expect(calls).toHaveLength(1)
+      expect(calls[0]![1]).toBe(layer)
+      expect(calls[0]![2]).toBe(layer.length)
+      expect(calls[0]![3]).toBe(2)
+    })
+  })
+
   test("image calls pass transient buffer owners directly", () => {
     const names = [
       "bufferDrawImage",

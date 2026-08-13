@@ -73,6 +73,29 @@ test("a one-shot render can request recovery from an error listener", async () =
   }
 })
 
+test("retained render errors reset semantic layer state", async () => {
+  const { renderer, waitFor } = await createTestRenderer({ useMouse: true })
+  const layer = new ThrowingRenderable(renderer, { retained: "static", width: 2, height: 1 })
+  const child = new ThrowingRenderable(renderer, { width: 1, height: 1 })
+  child.shouldThrow = false
+  const errors: CliRendererErrorEvent[] = []
+
+  try {
+    layer.add(child)
+    renderer.root.add(layer)
+    renderer.on(CliRenderEvents.RENDER_ERROR, (event) => {
+      errors.push(event)
+      layer.shouldThrow = false
+      renderer.requestRender()
+    })
+
+    renderer.requestRender()
+    await waitFor(() => errors.length === 1 && renderer.hitTest(0, 0) === child.num)
+  } finally {
+    renderer.destroy()
+  }
+})
+
 test("reports an unobserved render error", async () => {
   const { renderer, waitFor } = await createTestRenderer({ openConsoleOnError: false })
   const target = new ThrowingRenderable(renderer, { width: 1, height: 1 }, "render failed")

@@ -453,7 +453,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBufferView.getSelection()
   }
 
-  render(buffer: OptimizedBuffer, deltaTime: number): void {
+  render(buffer: OptimizedBuffer, deltaTime: number, draw: boolean = true): void {
     if (!this.visible) return
     // Text views do enough per-frame work that avoiding recursive x/y lookups is
     // measurable; use the layout cache for hit-grid and draw entry points.
@@ -463,6 +463,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.markClean()
     this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
+    if (!draw) return
     this.renderSelf(buffer)
 
     if (this.buffered && this.frameBuffer) {

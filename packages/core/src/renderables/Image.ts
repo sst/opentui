@@ -166,9 +166,9 @@ export class ImageRenderable extends Renderable {
     return this._loadError
   }
 
-  public override render(buffer: OptimizedBuffer, deltaTime: number): void {
-    if (this.buffered) this.frameBuffer?.clear(TRANSPARENT)
-    super.render(buffer, deltaTime)
+  public override render(buffer: OptimizedBuffer, deltaTime: number, draw: boolean = true): void {
+    if (draw && this.buffered) this.frameBuffer?.clear(TRANSPARENT)
+    super.render(buffer, deltaTime, draw)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
