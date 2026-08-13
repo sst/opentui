@@ -2,9 +2,10 @@
 interface Props {
   title: string
   description: string
+  wide?: boolean
 }
 
-const { title, description } = Astro.props
+const { title, description, wide = false } = Astro.props
 ---
 
 <!doctype html>
@@ -22,7 +23,7 @@ const { title, description } = Astro.props
     </script>
   </head>
   <body>
-    <div class="page">
+    <div class:list={["page", { wide }]}>
       <slot />
     </div>
   </body>
@@ -91,6 +92,11 @@ const { title, description } = Astro.props
   .page {
     width: min(100%, var(--content-width));
     margin-inline: auto;
+  }
+
+  /* Wide pages (documentation): 13rem nav + 3rem gap + 48rem content. */
+  .page.wide {
+    width: min(100%, 64rem);
   }
 
   h1 {

@@ -3,6 +3,7 @@ import type { ComponentProps } from "astro/types"
 import SiteFooter from "../components/SiteFooter.astro"
 import SiteNav from "../components/SiteNav.astro"
 import Minimal from "./Minimal.astro"
+import "../styles/prose.css"
 
 interface Props {
   title: string
@@ -40,29 +41,5 @@ const { title, description, footerLinks = false, footerAnimation } = Astro.props
   :global(.devlog-meta) {
     margin: 0;
     color: GrayText;
-  }
-
-  :global(.devlog-content h2) {
-    margin-block: 2.5rem 0.75rem;
-  }
-
-  :global(.devlog-content p),
-  :global(.devlog-content ul) {
-    margin-block: 0 1rem;
-  }
-
-  :global(.devlog-content pre) {
-    max-width: 100%;
-    overflow-x: auto;
-  }
-
-  :global(.devlog-content code) {
-    font-family: inherit;
-  }
-
-  :global(.devlog-content hr) {
-    margin-block: 2rem 1rem;
-    border: 0;
-    border-block-start: 1px solid;
   }
 </style>

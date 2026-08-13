@@ -45,6 +45,15 @@ const currentValue = (href: string, section: string) => {
     background: var(--page-background);
   }
 
+  /* Content scrolling under the nav stays faintly visible. */
+  @supports (backdrop-filter: blur(1px)) {
+    header {
+      background: color-mix(in srgb, var(--page-background) 72%, transparent);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+    }
+  }
+
   .brand {
     display: block;
     color: inherit;

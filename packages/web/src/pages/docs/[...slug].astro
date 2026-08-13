@@ -1,5 +1,7 @@
 ---
 import { getCollection, render } from "astro:content"
+import ProseCode from "../../components/ProseCode.astro"
+import ProseTable from "../../components/ProseTable.astro"
 import Docs from "../../layouts/Docs.astro"
 
 export async function getStaticPaths() {
@@ -14,6 +16,6 @@ const { entry } = Astro.props
 const { Content } = await render(entry)
 ---
 
-<Docs title={entry.data.title} description={entry.data.description}>
-  <Content />
+<Docs title={entry.data.title} description={entry.data.description} slug={entry.id}>
+  <Content components={{ pre: ProseCode, table: ProseTable }} />
 </Docs>

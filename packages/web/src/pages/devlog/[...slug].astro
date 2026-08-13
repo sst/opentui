@@ -1,5 +1,7 @@
 ---
 import { getCollection, render, type CollectionEntry } from "astro:content"
+import ProseCode from "../../components/ProseCode.astro"
+import ProseTable from "../../components/ProseTable.astro"
 import Devlog from "../../layouts/Devlog.astro"
 
 export async function getStaticPaths() {
@@ -35,8 +37,8 @@ const date = entry.data.date.toISOString().slice(0, 10)
       </p>
     </header>
 
-    <div class="devlog-content">
-      <Content />
+    <div class="prose">
+      <Content components={{ pre: ProseCode, table: ProseTable }} />
     </div>
   </article>
 </Devlog>

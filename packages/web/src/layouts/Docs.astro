@@ -1,156 +1,137 @@
 ---
-import Base from "./Base.astro"
-import OpenTUILogo from "../components/OpenTUILogo.astro"
-import { buildDocsIndex } from "../lib/docs-index"
+import DocsNav from "../components/DocsNav.astro"
+import SiteFooter from "../components/SiteFooter.astro"
+import SiteNav from "../components/SiteNav.astro"
+import { buildDocsIndex, getPrevNextDocs } from "../lib/docs-index"
+import Minimal from "./Minimal.astro"
+import "../styles/prose.css"
 
 interface Props {
   title: string
   description?: string
+  slug: string
 }
 
-const { title, description } = Astro.props
+const { title, description, slug } = Astro.props
 const docsIndex = await buildDocsIndex()
-
-const currentPath = Astro.url.pathname
-const isActive = (path: string) => currentPath === path || currentPath === `${path}/`
+const { prev, next } = getPrevNextDocs(docsIndex, slug)
 ---
 
-<Base title={title} description={description}>
-  <div class="docs-page">
-    <div class="docs-container">
-      <!-- Header -->
-      <header class="header">
-        <div class="header-content">
-          <a href="/" class="logo" aria-label="OpenTUI">
-            <OpenTUILogo class="editorial-logo-mark" />
-          </a>
-          <button
-            class="mobile-menu-btn"
-            aria-label="Open navigation menu"
-            aria-expanded="false"
-            aria-controls="mobile-nav"
-          >
-            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="8" width="14" height="2"></rect>
-              <rect x="5" y="14" width="14" height="2"></rect>
-            </svg>
-            <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
-              <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
-            </svg>
-          </button>
-          <nav class="nav">
-            <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="/docs/getting-started">Docs</a>
-            <a href="/devlog">Devlog</a>
+<Minimal title={`${title} | OpenTUI Docs`} description={description ?? "OpenTUI documentation."} wide>
+  <a class="skip" href="#docs-content">Skip to content</a>
+
+  <SiteNav />
+
+  <div class="docs">
+    <aside>
+      <DocsNav />
+    </aside>
+
+    <details>
+      <summary>Contents</summary>
+      <div class="contents-list">
+        <DocsNav />
+      </div>
+    </details>
+
+    <main id="docs-content">
+      <article class="prose">
+        <slot />
+      </article>
+
+      {
+        (prev || next) && (
+          <nav class="pager" aria-label="Documentation pages">
+            {prev && (
+              <a rel="prev" href={prev.url}>
+                &larr; {prev.navTitle}
+              </a>
+            )}
+            {next && (
+              <a rel="next" href={next.url}>
+                {next.navTitle} &rarr;
+              </a>
+            )}
           </nav>
-        </div>
-      </header>
-
-      <main class="main">
-        <div class="mobile-nav-overlay" aria-hidden="true"></div>
-        <div class="docs-layout">
-          <aside class="sidebar" id="mobile-nav">
-            {
-              docsIndex.sections.map((section) => (
-                <div class="sidebar-section">
-                  <div class="sidebar-title">{section.title}</div>
-                  <ul class="sidebar-links">
-                    {section.pages.map((page) => (
-                      <li>
-                        <a href={page.url} class:list={{ active: isActive(page.url) }}>{page.navTitle}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            }
-          </aside>
-
-          <article class="content">
-            <slot />
-          </article>
-        </div>
-      </main>
-
-      <footer class="footer">
-        <div class="footer-content">
-          <span>OpenTUI - Terminal UIs</span>
-          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-      </footer>
-    </div>
+        )
+      }
+    </main>
   </div>
 
-  <script>
-    // Mobile menu toggle
-    const menuBtn = document.querySelector('.mobile-menu-btn')
-    const sidebar = document.querySelector('.sidebar')
-    const overlay = document.querySelector('.mobile-nav-overlay')
+  <SiteFooter />
+</Minimal>
 
-    function openMenu() {
-      document.body.classList.add('mobile-nav-open')
-      menuBtn?.setAttribute('aria-expanded', 'true')
-      menuBtn?.setAttribute('aria-label', 'Close navigation menu')
+<style>
+  .skip {
+    position: absolute;
+    left: -100vw;
+  }
+
+  .skip:focus {
+    position: static;
+    display: inline-block;
+  }
+
+  .docs {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 48rem);
+    column-gap: 3rem;
+    align-items: start;
+    margin-block: 2.5rem 2rem;
+  }
+
+  aside {
+    /* Stays below the sticky SiteNav (1.875rem wordmark + 2rem padding). */
+    position: sticky;
+    top: 3.875rem;
+    max-height: calc(100vh - 3.875rem);
+    overflow-y: auto;
+    padding-block-end: 2rem;
+  }
+
+  details {
+    display: none;
+  }
+
+  main {
+    min-width: 0;
+  }
+
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    max-width: var(--content-width);
+    margin-block-start: 3rem;
+  }
+
+  .pager a[rel="next"] {
+    margin-inline-start: auto;
+    text-align: right;
+  }
+
+  @media (max-width: 60rem) {
+    .docs {
+      display: block;
+      margin-block-start: 2rem;
     }
 
-    function closeMenu() {
-      document.body.classList.remove('mobile-nav-open')
-      menuBtn?.setAttribute('aria-expanded', 'false')
-      menuBtn?.setAttribute('aria-label', 'Open navigation menu')
+    aside {
+      display: none;
     }
 
-    menuBtn?.addEventListener('click', () => {
-      const isOpen = document.body.classList.contains('mobile-nav-open')
-      if (isOpen) {
-        closeMenu()
-      } else {
-        openMenu()
-      }
-    })
+    details {
+      display: block;
+      margin-block-end: 2.5rem;
+    }
 
-    overlay?.addEventListener('click', closeMenu)
+    summary {
+      cursor: pointer;
+      width: fit-content;
+    }
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
-        closeMenu()
-      }
-    })
-
-    // Close menu when clicking a link (for navigation)
-    sidebar?.querySelectorAll('a').forEach((link) => {
-      link.addEventListener('click', closeMenu)
-    })
-
-    // Wrap tables in scrollable containers
-    document.querySelectorAll('.content table').forEach((table) => {
-      const wrapper = document.createElement('div')
-      wrapper.className = 'table-wrapper'
-      table.parentNode?.insertBefore(wrapper, table)
-      wrapper.appendChild(table)
-    })
-
-    document.querySelectorAll('pre[data-code]').forEach((pre) => {
-      const btn = document.createElement('button')
-      btn.className = 'copy-btn'
-      btn.setAttribute('aria-label', 'Copy code')
-      btn.innerHTML = `
-        <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-      `
-      pre.appendChild(btn)
-
-      btn.addEventListener('click', async () => {
-        const code = pre.dataset.code || ''
-        await navigator.clipboard.writeText(code)
-        btn.classList.add('copied')
-        setTimeout(() => btn.classList.remove('copied'), 1500)
-      })
-    })
-  </script>
-</Base>
+    .contents-list {
+      margin-block-start: 0.75rem;
+    }
+  }
+</style>

@@ -1,0 +1,25 @@
+---
+// Wraps markdown code fences (mapped via `<Content components={{ pre: ProseCode }} />`).
+// The wrapper anchors the copy button outside the scrollable pre, and the
+// button reads the raw source from data-code (see astro.config.mjs).
+const props = Astro.props
+---
+
+<div class="code-block"><pre {...props}><slot /></pre><button class="copy-code" type="button">copy</button></div>
+
+<script>
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return
+    const button = event.target.closest("button.copy-code")
+    if (!(button instanceof HTMLButtonElement)) return
+    const pre = button.closest(".code-block")?.querySelector("pre")
+    const code = pre?.dataset.code
+    if (code === undefined) return
+    navigator.clipboard.writeText(code).then(() => {
+      button.textContent = "copied"
+      window.setTimeout(() => {
+        button.textContent = "copy"
+      }, 1500)
+    })
+  })
+</script>

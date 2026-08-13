@@ -19,9 +19,17 @@ can do the same work.
 - Use the standard browser link color (but not the visited color) for links.
 - Use Berkeley Mono as the primary typeface.
 - Use the OpenTUI wordmark as the main brand element.
-- Use one centered content column with a clear left edge for content, for
-  documentation full width is acceptable.
+- Use one centered content column with a clear left edge for content.
+  Documentation may use a wider bounded composition (`64rem`) for navigation
+  plus content.
 - Keep normal content at a narrow reading measure. Use `36rem` as the default maximum width.
+- Use GrayText for structural hairlines (code borders, table rows) and the
+  text color for rules that carry content weight (table header, callout edge).
+- Use monochrome syntax highlighting: plain identifiers, bold keywords, gray
+  literals, fainter gray italic comments. Do not introduce hues for code.
+- A sticky navigation header uses a translucent page background with backdrop
+  blur so passing content stays faintly visible. Keep it opaque where
+  `backdrop-filter` is unsupported.
 - Let an interactive composition expand only when its content needs more space.
 - Keep expanded compositions bounded. They must have visible space on both sides.
 - Use whitespace to separate ideas.
@@ -59,6 +67,9 @@ can do the same work.
 
 - Use the narrow column for the closed state at every viewport size.
 - Use side-by-side media only when both panes keep a useful width and the composition keeps outer gutters.
+- Show side-by-side navigation only while the content column keeps at least
+  the reading measure. Below that, replace it with a native disclosure above
+  the content.
 - Stack media above its related text when the side-by-side layout cannot meet those conditions.
 - Keep the stacked media width equal to the content width.
 - Keep the text width unchanged after the media opens in a stacked layout.
@@ -93,6 +104,10 @@ can do the same work.
 
 - Build shared page primitives from these rules. Do not copy landing-page CSS
   into each route.
+- Keep shared article-content styles (headings, code, tables, callouts) in one
+  stylesheet used by documentation and devlog.
+- Wrap markdown output (code fences, tables) with shared components at build
+  time. Do not rewrite the rendered DOM with scripts.
 - Use design tokens only for repeated values such as width, spacing, type,
   color, and motion duration.
 - Keep the token set small. A token must represent a design decision, not one
@@ -116,6 +131,16 @@ Density does not permit decoration.
 - Use borders only when they define structure or state.
 - Use callouts only for information that needs special attention.
 - Do not force reference material into the landing page’s short-list format.
+- Keep prose at the `36rem` measure inside the wider docs column. Let code
+  blocks and tables grow only when their content needs the width, up to the
+  content column.
+- Scroll wide code and tables inside their own container, never the page.
+- Mark the current page in navigation with the text color, not the link color.
+- End each page with previous and next links.
+- Make the code copy control text-only. Reveal it on hover or focus; keep it
+  visible on touch.
+- Prefer monospace box-drawing diagrams in code blocks to image files. They
+  inherit the typeface and both themes.
 
 ## Exceptions
 
