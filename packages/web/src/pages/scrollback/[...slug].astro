@@ -33,7 +33,6 @@ const date = entry.data.date.toISOString().slice(0, 10)
       <h1>{entry.data.title}</h1>
       <p class="scrollback-meta">
         <time datetime={date}>{date}</time>
-        {entry.data.author && ` · ${entry.data.author}`}
       </p>
     </header>
 

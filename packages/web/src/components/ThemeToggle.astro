@@ -24,6 +24,8 @@
     const theme = isDark() ? "light" : "dark"
     document.documentElement.dataset.theme = theme
     localStorage.setItem("theme", theme)
+    const color = theme === "dark" ? "#000000" : "#ffffff"
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = color
     updateLabel()
   })
 

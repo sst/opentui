@@ -42,13 +42,12 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10)
     list-style: none;
   }
 
+  /* Rows set solid on the line grid, like a terminal listing; the gray
+   * date column keeps the rows apart. The column gap is two character
+   * cells, like two spaces in terminal output. */
   li {
     display: flex;
-    gap: 1rem;
-  }
-
-  li + li {
-    margin-block-start: 0.5rem;
+    gap: 2ch;
   }
 
   time {

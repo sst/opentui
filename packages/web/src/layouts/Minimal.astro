@@ -1,4 +1,6 @@
 ---
+import SocialMeta from "../components/SocialMeta.astro"
+
 interface Props {
   title: string
   description: string
@@ -15,11 +17,20 @@ const { title, description, wide = false } = Astro.props
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
     <title>{title}</title>
+    <SocialMeta {title} {description} />
+    <!-- Paint the first frame with the right canvas color, before CSS loads. -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
       const theme = localStorage.getItem("theme")
-      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      if (theme === "light" || theme === "dark") {
+        document.documentElement.dataset.theme = theme
+        const color = theme === "dark" ? "#000000" : "#ffffff"
+        for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = color
+      }
     </script>
   </head>
   <body>
@@ -76,7 +87,7 @@ const { title, description, wide = false } = Astro.props
      * and anchored headings offset by this height. */
     --site-nav-height: 3.875rem;
     /* Sticky chrome veil: the share of page background layered over the
-     * backdrop blur. Dark pages need a thinner veil for the same effect. */
+     * backdrop blur. */
     --chrome-veil: 72%;
     --motion-step: 75ms;
   }
@@ -111,9 +122,12 @@ const { title, description, wide = false } = Astro.props
     width: min(100%, var(--frame-width));
   }
 
+  /* The document title matches the wordmark's 1.875rem height, anchoring
+   * the page without out-weighing the brand. Its 2.25rem line box stays
+   * on the half-line grid, with display leading tighter than body text. */
   h1 {
-    font-size: 1.5rem;
-    line-height: 1.3;
+    font-size: 1.875rem;
+    line-height: 2.25rem;
   }
 
   h2 {
@@ -134,12 +148,13 @@ const { title, description, wide = false } = Astro.props
     text-decoration: underline;
   }
 
+  /* Dark ink is off-white: pure white on pure black halates around glyphs
+   * and tires the eye in long reading. Links lighten for the same reason. */
   :root[data-theme="dark"] {
     color-scheme: dark;
     --page-background: #000;
-    --page-color: #fff;
-    --link-color: #0088ff;
-    --chrome-veil: 50%;
+    --page-color: #ededed;
+    --link-color: #4da2ff;
   }
 
   :root[data-theme="light"] {
@@ -152,9 +167,8 @@ const { title, description, wide = false } = Astro.props
     :root:not([data-theme]) {
       color-scheme: dark;
       --page-background: #000;
-      --page-color: #fff;
-      --link-color: #0088ff;
-      --chrome-veil: 50%;
+      --page-color: #ededed;
+      --link-color: #4da2ff;
     }
   }
 

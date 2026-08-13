@@ -48,7 +48,7 @@ const codeLight = grayscaleTheme({
 const codeDark = grayscaleTheme({
   name: "opentui-dark",
   type: "dark",
-  foreground: "#ffffff",
+  foreground: "#ededed",
   background: "#000000",
   literal: "#b0b0b0",
   comment: "#8a8a8a",

@@ -86,6 +86,7 @@ const hasMenu = Astro.slots.has("menu")
   }
 
   .bar {
+    position: relative;
     width: min(100%, var(--frame-width));
     margin-inline: auto;
     display: flex;
@@ -125,6 +126,10 @@ const hasMenu = Astro.slots.has("menu")
     flex-wrap: wrap;
     align-items: baseline;
     gap: 1.5rem;
+  }
+
+  nav > a,
+  .menu > summary {
     position: relative;
     inset-block-start: calc(1.875rem / -6);
   }
@@ -144,6 +149,10 @@ const hasMenu = Astro.slots.has("menu")
 
   .menu summary::-webkit-details-marker {
     display: none;
+  }
+
+  .menu > summary {
+    color: var(--link-color);
   }
 
   /* The panel anchors below the bar with absolute positioning against the
