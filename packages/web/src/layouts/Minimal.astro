@@ -122,9 +122,12 @@ const { title, description, wide = false } = Astro.props
     width: min(100%, var(--frame-width));
   }
 
+  /* The document title carries the page. Display size takes display
+   * leading: 1.25, tighter than the 1.5 body text and the 4/3 heading
+   * boxes (see styles/prose.css). */
   h1 {
-    font-size: 1.5rem;
-    line-height: 1.3;
+    font-size: 2.25rem;
+    line-height: 1.25;
   }
 
   h2 {
@@ -176,6 +179,10 @@ const { title, description, wide = false } = Astro.props
 
     body {
       padding-block: 1.25rem 2rem;
+    }
+
+    h1 {
+      font-size: 1.875rem;
     }
   }
 </style>

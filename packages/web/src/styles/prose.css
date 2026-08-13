@@ -7,6 +7,12 @@
  * Code blocks and tables may grow past the measure to the full column,
  * then scroll. Structural hairlines use GrayText; content-level rules
  * use the text color.
+ *
+ * Vertical rhythm sits on the 1.5rem body line grid, like blank lines in
+ * a terminal: one line (1.5rem) between blocks, two lines (3rem) above a
+ * heading or thematic break, half a line (0.75rem) between list items.
+ * Below a section heading, half a line binds it to the text it
+ * introduces; the document title stands apart with two lines below.
  */
 
 .prose {
@@ -22,20 +28,27 @@
 }
 
 .prose h1 {
-  margin-block: 0 1rem;
+  margin-block: 0 3rem;
 }
 
 .prose h2 {
-  margin-block: 2.5rem 0.75rem;
+  margin-block: 3rem 0.75rem;
+  line-height: 1.5rem;
 }
 
 .prose h3 {
-  margin-block: 2rem 0.5rem;
+  margin-block: 3rem 0.75rem;
 }
 
 .prose h4 {
   font-size: 1rem;
-  margin-block: 1.5rem 0.5rem;
+  margin-block: 3rem 0.75rem;
+}
+
+/* A heading directly under a larger heading belongs to it: one blank
+ * line, as in the markdown source, instead of a section break. */
+.prose :is(h2, h3) + :is(h3, h4) {
+  margin-block-start: 1.5rem;
 }
 
 /* Anchored headings land below the sticky site header, plus the docs
@@ -64,12 +77,16 @@
 .prose p,
 .prose ul,
 .prose ol {
-  margin-block: 0 1rem;
+  margin-block: 0 1.5rem;
 }
 
 .prose ul,
 .prose ol {
   padding-inline-start: 1.5rem;
+}
+
+.prose li + li {
+  margin-block-start: 0.75rem;
 }
 
 .prose code {
@@ -82,13 +99,13 @@
 }
 
 .prose hr {
-  margin-block: 2rem 1rem;
+  margin-block: 3rem 1.5rem;
   border: 0;
   border-block-start: 1px solid;
 }
 
 .prose blockquote {
-  margin: 0 0 1rem;
+  margin: 0 0 1.5rem;
   padding-inline-start: 1rem;
   border-inline-start: 2px solid;
 }
@@ -99,7 +116,7 @@
   width: fit-content;
   min-width: min(100%, var(--content-width));
   max-width: 100%;
-  margin-block: 0 1rem;
+  margin-block: 0 1.5rem;
   padding: 0.75rem 1rem;
   border: 1px solid GrayText;
   overflow-x: auto;
@@ -110,7 +127,7 @@
   width: fit-content;
   min-width: min(100%, var(--content-width));
   max-width: 100%;
-  margin-block: 0 1rem;
+  margin-block: 0 1.5rem;
 }
 
 .prose .code-block pre {
@@ -169,7 +186,7 @@
   width: fit-content;
   min-width: min(100%, var(--content-width));
   max-width: 100%;
-  margin-block: 0 1rem;
+  margin-block: 0 1.5rem;
   overflow-x: auto;
 }
 
