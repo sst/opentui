@@ -1,0 +1,58 @@
+---
+import { getCollection } from "astro:content"
+import Scrollback from "../layouts/Scrollback.astro"
+
+const posts = (await getCollection("scrollback"))
+  .filter((post) => (import.meta.env.PROD ? !post.data.draft : true))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+
+const isoDate = (date: Date) => date.toISOString().slice(0, 10)
+---
+
+<Scrollback title="Scrollback | OpenTUI" description="Development notes from OpenTUI.">
+  <h1 class="sr-only">Scrollback</h1>
+
+  <ul>
+    {
+      posts.map((post) => (
+        <li>
+          <time datetime={isoDate(post.data.date)}>{isoDate(post.data.date)}</time>
+          <a href={`/scrollback/${post.id}`}>{post.data.title}</a>
+        </li>
+      ))
+    }
+  </ul>
+</Scrollback>
+
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  ul {
+    margin-block: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    gap: 1rem;
+  }
+
+  li + li {
+    margin-block-start: 0.5rem;
+  }
+
+  time {
+    flex-shrink: 0;
+    color: GrayText;
+  }
+</style>

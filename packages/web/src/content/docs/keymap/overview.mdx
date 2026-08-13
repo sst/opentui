@@ -44,7 +44,51 @@ A binding can target a named command, an inline handler, or a specific key event
 ]
 ```
 
-![Keymap Engine Concept Overview](/keymap-engine-overview.svg)
+How the pieces fit together:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ HOST — OpenTUI, HTML, or a custom adapter                       │
+│ supplies targets, focus state, key events and lifecycle         │
+└────────────────────────────────────────────────┬────────────────┘
+                                                 │ key input
+┌────────────────────────────┐   ┌───────────────┴────────────────┐
+│ REGISTER                   │   │ DISPATCH                       │
+│ layers, tokens and addons  │   │ 1 run intercepts (key / raw)   │
+│ compile bindings such as   │   │ 2 resolve event match keys     │
+│ "ctrl+x" "dd" "<leader>s"  │   │ 3 walk layers + sequence tree  │
+│ into sequence trees        │   │ 4 disambiguate exact / prefix  │
+│ registerLayer()            │   │ 5 resolve command chain        │
+│ registerToken()            │   │ 6 run command in app space     │
+└─────────────┬──────────────┘   └───────────────┬────────────────┘
+┌─────────────┴──────────────┐                   │
+│ ADDONS                     │                   │
+│ parsers, field compilers,  │                   │
+│ command resolvers, tokens, │                   │
+│ intercepts; each returns   │                   │
+│ a disposer                 │                   │
+└─────────────┬──────────────┘                   │
+              ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYERS                                                          │
+│ bindings: key + cmd + fields · commands: name + handler         │
+│ sorted by priority; the active set follows focus, conditions,   │
+│ matchers, runtime data and pending-sequence state               │
+└─────────────┬──────────────────────────────────┬────────────────┘
+              ▼                                  ▼
+┌────────────────────────────┐   ┌────────────────────────────────┐
+│ QUERY                      │   │ EVENTS                         │
+│ read the current state     │   │ batched derived-state signals  │
+│ getActiveKeys()            │   │ and diagnostics                │
+│ getCommands()              │   │ on("state")                    │
+│ getPendingSequence()       │   │ on("pendingSequence")          │
+│ runCommand()               │   │ on("warning") / on("error")    │
+└─────────────┬──────────────┘   └───────────────┬────────────────┘
+              ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ APP / UI                                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Register
 

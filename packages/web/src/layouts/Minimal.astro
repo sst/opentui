@@ -1,0 +1,170 @@
+---
+interface Props {
+  title: string
+  description: string
+  wide?: boolean
+}
+
+const { title, description, wide = false } = Astro.props
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      const theme = localStorage.getItem("theme")
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+    </script>
+  </head>
+  <body>
+    <slot name="nav" />
+    <div class:list={["page", { wide }]}>
+      <slot />
+    </div>
+  </body>
+</html>
+
+<style is:global>
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Oblique.woff2") format("woff2");
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Berkeley Mono";
+    src: url("/BerkeleyMono-Bold-Oblique.woff2") format("woff2");
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+  }
+
+  :root {
+    color-scheme: light;
+    --page-background: #fff;
+    --page-color: #000;
+    --link-color: LinkText;
+    --content-width: 36rem;
+    /* Widest bounded composition: site chrome and wide pages align to it. */
+    --frame-width: 64rem;
+    --page-gutter: 1.5rem;
+    /* Sticky header: 1.875rem wordmark + 2rem block padding. Sticky sidebars
+     * and anchored headings offset by this height. */
+    --site-nav-height: 3.875rem;
+    /* Sticky chrome veil: the share of page background layered over the
+     * backdrop blur. Dark pages need a thinner veil for the same effect. */
+    --chrome-veil: 72%;
+    --motion-step: 75ms;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: var(--page-background);
+    /* Keep the centered layout stable between pages with and without a
+     * scrollbar. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    padding: 4rem var(--page-gutter);
+    background: var(--page-background);
+    color: var(--page-color);
+    font-family: "Berkeley Mono", monospace;
+    line-height: 1.5;
+  }
+
+  .page {
+    width: min(100%, var(--content-width));
+    margin-inline: auto;
+  }
+
+  /* Wide pages (documentation): 13rem nav + 3rem gap + 48rem content. */
+  .page.wide {
+    width: min(100%, var(--frame-width));
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  h2 {
+    font-size: 1.125rem;
+  }
+
+  h3 {
+    font-size: 1rem;
+  }
+
+  a,
+  a:visited {
+    color: var(--link-color);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page-background: #000;
+    --page-color: #fff;
+    --link-color: #0088ff;
+    --chrome-veil: 50%;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page-background: #fff;
+    --page-color: #000;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      color-scheme: dark;
+      --page-background: #000;
+      --page-color: #fff;
+      --link-color: #0088ff;
+      --chrome-veil: 50%;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    :root {
+      --page-gutter: 1rem;
+    }
+
+    body {
+      padding-block: 1.25rem 2rem;
+    }
+  }
+</style>
