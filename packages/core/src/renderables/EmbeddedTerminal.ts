@@ -59,7 +59,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
 
     try {
       this.handle = this.lib.createEmbeddedTerminal({ cols, rows, maxScrollback: options.maxScrollback })
-      this.setupMouse()
+      this.setupMouse(options)
     } catch (error) {
       this.destroy()
       throw error
@@ -227,12 +227,8 @@ export class EmbeddedTerminalRenderable extends Renderable {
     if (this.focused) this.blur()
   }
 
-  private setupMouse(): void {
-    const onMouseDown = this.onMouseDown
-    const onMouseUp = this.onMouseUp
-    const onMouseMove = this.onMouseMove
-    const onMouseDrag = this.onMouseDrag
-    const onMouseScroll = this.onMouseScroll
+  private setupMouse(options: EmbeddedTerminalOptions): void {
+    const { onMouseDown, onMouseUp, onMouseMove, onMouseDrag, onMouseScroll } = options
     this.onMouseDown = (event) => {
       this.forwardMouse(event, "press")
       onMouseDown?.(event)
