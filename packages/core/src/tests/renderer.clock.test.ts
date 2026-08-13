@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { SystemClock } from "../lib/clock.js"
 import { TextRenderable } from "../renderables/Text.js"
+import { CliRenderEvents } from "../renderer.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
 
@@ -33,6 +34,25 @@ test("renderer init does not pre-schedule frames when size is unchanged", async 
   await Promise.resolve()
 
   expect(frameCalls).toBe(0)
+})
+
+test("SIGWINCH refreshes terminal dimensions after the resize debounce", () => {
+  const stdout = (renderer as unknown as { stdout: { columns: number; rows: number; _refreshSize?: () => void } })
+    .stdout
+  const dimensions: Array<[number, number]> = []
+  renderer.on(CliRenderEvents.RESIZE, (width, height) => dimensions.push([width, height]))
+  stdout._refreshSize = () => {
+    stdout.columns = 60
+    stdout.rows = 18
+  }
+
+  // @ts-expect-error - invoke the private signal handler in a regression test
+  renderer.sigwinchHandler()
+  clock.advance(100)
+
+  expect(renderer.width).toBe(60)
+  expect(renderer.height).toBe(18)
+  expect(dimensions).toEqual([[60, 18]])
 })
 
 test("requestRender() does not stall after a backward clock jump", async () => {
