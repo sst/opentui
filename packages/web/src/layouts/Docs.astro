@@ -1,158 +1,338 @@
 ---
-import Base from "./Base.astro"
-import { buildDocsIndex } from "../lib/docs-index"
+import type { MarkdownHeading } from "astro"
+import DocsNav from "../components/DocsNav.astro"
+import DocsToc from "../components/DocsToc.astro"
+import SiteFooter from "../components/SiteFooter.astro"
+import SiteNav from "../components/SiteNav.astro"
+import { buildDocsIndex, getPrevNextDocs } from "../lib/docs-index"
+import Minimal from "./Minimal.astro"
+import "../styles/prose.css"
 
 interface Props {
   title: string
   description?: string
+  slug: string
+  headings?: MarkdownHeading[]
 }
 
-const { title, description } = Astro.props
+const { title, description, slug, headings = [] } = Astro.props
 const docsIndex = await buildDocsIndex()
-
-const currentPath = Astro.url.pathname
-const isActive = (path: string) => currentPath === path || currentPath === `${path}/`
+const { prev, next } = getPrevNextDocs(docsIndex, slug)
+const hasSections = headings.some((heading) => heading.depth === 2)
 ---
 
-<Base title={title} description={description}>
-  <div class="docs-page">
-    <div class="docs-container">
-      <!-- Header -->
-      <header class="header">
-        <div class="header-content">
-          <a href="/" class="logo">
-            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="3" width="20" height="18" fill="currentColor" />
-              <rect x="6" y="8" width="3" height="8" fill="hsl(0, 20%, 99%)" />
-            </svg>
-            OpenTUI
-          </a>
-          <button
-            class="mobile-menu-btn"
-            aria-label="Open navigation menu"
-            aria-expanded="false"
-            aria-controls="mobile-nav"
-          >
-            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="8" width="14" height="2"></rect>
-              <rect x="5" y="14" width="14" height="2"></rect>
-            </svg>
-            <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
-              <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
-            </svg>
-          </button>
-          <nav class="nav">
-            <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="/docs/getting-started">Docs</a>
-          </nav>
-        </div>
-      </header>
+<Minimal title={`${title} | OpenTUI Docs`} description={description ?? "OpenTUI documentation."} wide>
+  <Fragment slot="nav">
+    <a class="skip" href="#docs-content">Skip to content</a>
 
-      <main class="main">
-        <div class="mobile-nav-overlay" aria-hidden="true"></div>
-        <div class="docs-layout">
-          <aside class="sidebar" id="mobile-nav">
-            {
-              docsIndex.sections.map((section) => (
-                <div class="sidebar-section">
-                  <div class="sidebar-title">{section.title}</div>
-                  <ul class="sidebar-links">
-                    {section.pages.map((page) => (
-                      <li>
-                        <a href={page.url} class:list={{ active: isActive(page.url) }}>{page.navTitle}</a>
-                      </li>
-                    ))}
-                  </ul>
+    <SiteNav>
+      <DocsNav slot="menu" />
+      {
+        hasSections && (
+          <div class="subnav" slot="subnav">
+            <div class="bar">
+              <details class="onpage">
+                <summary>
+                  On this page<span class="current-section" data-current-section />
+                </summary>
+                <div class="pane">
+                  <div class="pane-content">
+                    <DocsToc headings={headings} />
+                  </div>
                 </div>
-              ))
-            }
-          </aside>
+              </details>
+            </div>
+          </div>
+        )
+      }
+    </SiteNav>
+  </Fragment>
 
-          <article class="content">
-            <slot />
-          </article>
-        </div>
-      </main>
+  <div class:list={["docs", { "has-subnav": hasSections }]}>
+    <aside class="docs-pages">
+      <DocsNav />
+    </aside>
 
-      <footer class="footer">
-        <div class="footer-content">
-          <span>OpenTUI - Terminal UIs</span>
-          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-      </footer>
-    </div>
+    <main id="docs-content">
+      <article class="prose">
+        <slot />
+      </article>
+
+      {
+        (prev || next) && (
+          <nav class="pager" aria-label="Documentation pages">
+            {prev && (
+              <a rel="prev" href={prev.url}>
+                &larr; {prev.navTitle}
+              </a>
+            )}
+            {next && (
+              <a rel="next" href={next.url}>
+                {next.navTitle} &rarr;
+              </a>
+            )}
+          </nav>
+        )
+      }
+    </main>
+
+    {
+      hasSections && (
+        <aside class="docs-onpage">
+          <nav aria-labelledby="onpage-label">
+            <span class="label" id="onpage-label">
+              On this page
+            </span>
+            <DocsToc headings={headings} />
+          </nav>
+        </aside>
+      )
+    }
   </div>
 
-  <script>
-    // Mobile menu toggle
-    const menuBtn = document.querySelector('.mobile-menu-btn')
-    const sidebar = document.querySelector('.sidebar')
-    const overlay = document.querySelector('.mobile-nav-overlay')
+  <SiteFooter />
+</Minimal>
 
-    function openMenu() {
-      document.body.classList.add('mobile-nav-open')
-      menuBtn?.setAttribute('aria-expanded', 'true')
-      menuBtn?.setAttribute('aria-label', 'Close navigation menu')
+<style is:global>
+  /* Scroll lock and bar handoff while a docs panel is open (see the toggle
+   * script below). */
+  body.docs-pane-open {
+    overflow: hidden;
+  }
+
+  /* The subnav row collapses while the header menu is open so the menu
+   * pane meets the site bar exactly. */
+  body.docs-menu-open .subnav {
+    display: none;
+  }
+</style>
+
+<style>
+  .skip {
+    position: absolute;
+    left: -100vw;
+  }
+
+  .skip:focus {
+    position: static;
+    display: inline-block;
+  }
+
+  .docs {
+    --subnav-height: 0rem;
+    position: relative;
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 48rem);
+    column-gap: 3rem;
+    align-items: start;
+    margin-block: 2.5rem 2rem;
+  }
+
+  .docs-pages {
+    position: sticky;
+    top: calc(var(--site-nav-height) + var(--subnav-height));
+    max-height: calc(100vh - var(--site-nav-height) - var(--subnav-height));
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-block-end: 2rem;
+  }
+
+  main {
+    min-width: 0;
+  }
+
+  /* The page outline sits in the whitespace beside the frame and appears
+   * only when that margin has room for it. */
+  .docs-onpage {
+    display: none;
+  }
+
+  /* The "On this page" bar: a second chrome row inside the sticky site
+   * header (see the SiteNav "subnav" slot), so both rows share one
+   * translucent surface. */
+  .subnav {
+    height: 2.75rem;
+  }
+
+  .subnav .bar {
+    width: min(100%, var(--frame-width));
+    margin-inline: auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .subnav summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.875rem;
+    width: fit-content;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .subnav summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .subnav .current-section {
+    color: GrayText;
+    margin-inline-start: 0.75rem;
+  }
+
+  /* The panel anchors below the chrome band with absolute positioning
+   * against the sticky header. The open panel fills the viewport: the
+   * toggle script docks the sticky chrome first and locks the page scroll. */
+  .subnav .pane {
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
+    height: calc(100vh - var(--site-nav-height) - 2.75rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--page-background);
+    padding: 1.5rem var(--page-gutter) 2rem;
+  }
+
+  .subnav .pane-content {
+    width: min(100%, var(--frame-width));
+    margin-inline: auto;
+  }
+
+  .docs.has-subnav {
+    --subnav-height: 2.75rem;
+  }
+
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    max-width: var(--content-width);
+    margin-block-start: 3rem;
+    padding-block-start: 1rem;
+    border-block-start: 1px solid GrayText;
+  }
+
+  .pager a[rel="next"] {
+    margin-inline-start: auto;
+    text-align: right;
+  }
+
+  /* Wide viewports: the outline replaces the bar. It uses the margin beside
+   * the frame and grows with it, keeping clear space at the viewport edge. */
+  @media (min-width: 90rem) {
+    .subnav {
+      display: none;
     }
 
-    function closeMenu() {
-      document.body.classList.remove('mobile-nav-open')
-      menuBtn?.setAttribute('aria-expanded', 'false')
-      menuBtn?.setAttribute('aria-label', 'Open navigation menu')
+    .docs.has-subnav {
+      --subnav-height: 0rem;
     }
 
-    menuBtn?.addEventListener('click', () => {
-      const isOpen = document.body.classList.contains('mobile-nav-open')
-      if (isOpen) {
-        closeMenu()
-      } else {
-        openMenu()
+    .docs-onpage {
+      display: block;
+      position: absolute;
+      inset-block: 0;
+      left: calc(100% + 2rem);
+      width: clamp(8.5rem, calc((100vw - 72rem) / 2), 13rem);
+    }
+
+    .docs-onpage nav {
+      position: sticky;
+      top: var(--site-nav-height);
+      max-height: calc(100vh - var(--site-nav-height));
+      overflow-y: auto;
+      scrollbar-width: thin;
+      padding-block-end: 2rem;
+    }
+
+    .docs-onpage .label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 700;
+      line-height: 1.6;
+      margin-block-end: 0.25rem;
+    }
+  }
+
+  @media (max-width: 60rem) {
+    .docs {
+      display: block;
+      margin-block-start: 2rem;
+    }
+
+    .docs-pages {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  // Keep the current page visible inside the sidebar's own scroll area
+  // without moving the document.
+  const aside = document.querySelector(".docs-pages")
+  const link = aside?.querySelector("a[aria-current='page']")
+  if (aside instanceof HTMLElement && link instanceof HTMLElement) {
+    const linkTop = link.getBoundingClientRect().top - aside.getBoundingClientRect().top
+    if (linkTop < 0 || linkTop > aside.clientHeight - 48) {
+      aside.scrollTop += linkTop - aside.clientHeight / 3
+    }
+  }
+
+  // The header menu and "On this page" disclosures open full-height panels
+  // below the site chrome. Opening one closes the other, docks the header,
+  // and locks the page scroll; following a link, clicking outside, or Escape
+  // closes them again.
+  const panels = Array.from(document.querySelectorAll<HTMLDetailsElement>("details.menu, details.onpage"))
+  const header = document.querySelector("body > header")
+
+  function sync() {
+    document.body.classList.toggle(
+      "docs-pane-open",
+      panels.some((panel) => panel.open),
+    )
+    document.body.classList.toggle(
+      "docs-menu-open",
+      panels.some((panel) => panel.open && panel.classList.contains("menu")),
+    )
+  }
+
+  function closeAll() {
+    for (const panel of panels) panel.open = false
+    sync()
+  }
+
+  for (const panel of panels) {
+    panel.addEventListener("toggle", () => {
+      if (panel.open) {
+        for (const other of panels) {
+          if (other !== panel) other.open = false
+        }
+        // Dock the sticky header so the fixed panel meets it exactly.
+        const offset = header?.getBoundingClientRect().top ?? 0
+        if (offset > 0) window.scrollBy(0, offset)
       }
+      sync()
+    })
+  }
+
+  if (panels.length > 0) {
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return
+      const inside = panels.some((panel) => panel.contains(event.target as Element))
+      if (inside && !event.target.closest("a")) return
+      closeAll()
     })
 
-    overlay?.addEventListener('click', closeMenu)
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
-        closeMenu()
-      }
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return
+      const open = panels.find((panel) => panel.open)
+      if (!open) return
+      open.open = false
+      sync()
+      open.querySelector("summary")?.focus()
     })
-
-    // Close menu when clicking a link (for navigation)
-    sidebar?.querySelectorAll('a').forEach((link) => {
-      link.addEventListener('click', closeMenu)
-    })
-
-    // Wrap tables in scrollable containers
-    document.querySelectorAll('.content table').forEach((table) => {
-      const wrapper = document.createElement('div')
-      wrapper.className = 'table-wrapper'
-      table.parentNode?.insertBefore(wrapper, table)
-      wrapper.appendChild(table)
-    })
-
-    document.querySelectorAll('pre[data-code]').forEach((pre) => {
-      const btn = document.createElement('button')
-      btn.className = 'copy-btn'
-      btn.setAttribute('aria-label', 'Copy code')
-      btn.innerHTML = `
-        <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-      `
-      pre.appendChild(btn)
-
-      btn.addEventListener('click', async () => {
-        const code = pre.dataset.code || ''
-        await navigator.clipboard.writeText(code)
-        btn.classList.add('copied')
-        setTimeout(() => btn.classList.remove('copied'), 1500)
-      })
-    })
-  </script>
-</Base>
+  }
+</script>
