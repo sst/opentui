@@ -106,11 +106,15 @@ const hasSections = headings.some((heading) => heading.depth === 2)
     display: none;
   }
 
-  @media (max-width: 60rem) {
-    body:not(.docs-scrolled) .subnav {
-      display: none;
-    }
+  /* The "On this page" bar stays hidden at the top of the page and
+   * appears once the reader scrolls into the content. Wide viewports
+   * (90rem and up) show the outline beside the frame instead and never
+   * render the bar. */
+  body:not(.docs-scrolled) .subnav {
+    display: none;
+  }
 
+  @media (max-width: 60rem) {
     body.docs-scrolled:not(.docs-menu-open) > header {
       padding-block-end: 0;
     }
