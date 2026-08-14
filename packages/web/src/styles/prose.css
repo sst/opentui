@@ -216,6 +216,8 @@
   padding-inline-end: 0;
 }
 
-.prose th {
+/* Column headers carry content weight; row headers keep the GrayText
+ * hairline of their row. */
+.prose thead th {
   border-block-end-color: currentColor;
 }

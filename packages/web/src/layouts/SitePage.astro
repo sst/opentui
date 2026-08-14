@@ -1,0 +1,35 @@
+---
+import type { ComponentProps } from "astro/types"
+import SiteFooter from "../components/SiteFooter.astro"
+import SiteNav from "../components/SiteNav.astro"
+import Minimal from "./Minimal.astro"
+import "../styles/prose.css"
+
+interface Props {
+  title: string
+  description: string
+  /** Let the page use the full 64rem frame instead of the reading column. */
+  wide?: boolean
+  footerLinks?: boolean
+  footerAnimation?: ComponentProps<typeof SiteFooter>["animation"]
+}
+
+const { title, description, wide = false, footerLinks = false, footerAnimation } = Astro.props
+---
+
+<Minimal {title} {description} wide>
+  <SiteNav slot="nav" />
+  <main class:list={[{ wide }]}><slot /></main>
+  <SiteFooter links={footerLinks} animation={footerAnimation} />
+</Minimal>
+
+<style>
+  main {
+    max-width: var(--content-width);
+    margin-block: 3rem;
+  }
+
+  main.wide {
+    max-width: none;
+  }
+</style>

@@ -1,0 +1,49 @@
+---
+id: opentui-ssh
+name: OpenTUI SSH
+summary: SSH server integration for OpenTUI applications.
+kind: integration
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/ssh
+surfaces:
+  - name: TypeScript
+    language: typescript
+    import: "@opentui/ssh"
+    docs: /docs/reference/ssh
+distributions:
+  - type: npm
+    identifier: "@opentui/ssh"
+    install: bun add @opentui/ssh
+links:
+  docs: /docs/reference/ssh
+categories:
+  - integrations
+---
+
+OpenTUI SSH serves a terminal application over the network. Users connect with the `ssh`
+client they already have, and nothing installs on their machine:
+
+```bash
+ssh -p 2222 localhost
+```
+
+Each accepted connection becomes its own live renderer whose size follows the client's
+terminal. You write a session handler the way you write a request handler on a web
+server, and the package carries the transport concerns:
+
+- Host keys, generated and persisted on first use.
+- Public-key, password, and keyboard-interactive authentication with typed identities.
+- Middleware that can gate, log, or enrich a session before a renderer exists.
+- Session limits, idle and absolute timeouts, and resize forwarding.
+- Renderer cleanup on disconnect.
+
+The package depends only on [OpenTUI Core](/packages/opentui-core), so the handler
+chooses the UI API: imperative renderables, [React](/packages/opentui-react), or
+[Solid](/packages/opentui-solid). Hand the session's renderer to the binding, and the
+application that runs locally now runs per connection.
+
+The server runs on Bun >= 1.3.0 and Node.js 26.4.0, built on `ssh2`. The
+[SSH reference](/docs/reference/ssh) starts with a complete server and documents the
+rest.

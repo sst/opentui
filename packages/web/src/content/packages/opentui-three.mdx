@@ -1,0 +1,40 @@
+---
+id: opentui-three
+name: OpenTUI Three
+summary: Three.js WebGPU renderer for OpenTUI.
+kind: renderer
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/three
+surfaces:
+  - name: TypeScript
+    language: typescript
+    import: "@opentui/three"
+    docs: /docs/reference/three
+distributions:
+  - type: npm
+    identifier: "@opentui/three"
+    install: bun add @opentui/three three
+links:
+  docs: /docs/reference/three
+categories:
+  - rendering
+---
+
+OpenTUI Three puts real-time 3D in a terminal application. A Three.js scene renders
+headlessly on the GPU, and the result becomes terminal cells: a 3D viewport that sits in
+a normal OpenTUI layout next to text and inputs, or fills the whole screen. By default
+the scene renders at twice the cell resolution and downsamples, which keeps the output
+sharp at terminal geometry.
+
+Place a scene in the renderable tree with `ThreeRenderable`, or draw into a buffer you
+manage with `ThreeCliRenderer`. Beyond rendering, the package carries what a small game
+or visualization needs: texture loading, sprite sheets, instanced sprites, sprite
+animation, particles and explosions, and adapters for the Rapier and Planck physics
+engines. The 3D & Physics demos in [OpenTUI Examples](/packages/opentui-examples) show
+all of it running.
+
+The package is Bun-only: it drives the GPU through `bun-webgpu` and depends on `three`
+0.177.0 directly. The [Three.js WebGPU reference](/docs/reference/three) documents the
+API.

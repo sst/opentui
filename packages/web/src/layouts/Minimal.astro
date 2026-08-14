@@ -144,6 +144,19 @@ const { title, description, wide = false, robots } = Astro.props
     font-size: 1rem;
   }
 
+  /* Visually hidden, available to assistive tech: page titles on list
+   * pages that the navigation already names. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   a,
   a:visited {
     color: var(--link-color);

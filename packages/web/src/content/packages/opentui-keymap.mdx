@@ -1,0 +1,40 @@
+---
+id: opentui-keymap
+name: OpenTUI Keymap
+summary: Key binding and command routing library for terminal and browser applications.
+kind: library
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/keymap
+surfaces:
+  - name: TypeScript
+    language: typescript
+    import: "@opentui/keymap"
+    docs: /docs/keymap/overview
+distributions:
+  - type: npm
+    identifier: "@opentui/keymap"
+    install: bun add @opentui/keymap
+links:
+  docs: /docs/keymap/overview
+categories:
+  - input
+---
+
+OpenTUI Keymap gives an application the key handling of a modal editor: leader keys,
+multi-stroke sequences such as `dd`, counts such as `5j`, named commands, and layers of
+bindings that activate and deactivate with focus, mode, and application state.
+
+Bindings are data, not scattered event listeners, and the features build on that: the
+engine lists every command for a command palette, projects the next reachable keys for
+which-key hints, and rebinds or disables keys at runtime. Addons add behaviors one at a
+time, from vim-style ex commands such as `:write` to Neovim-style timed disambiguation
+between `g` and `gg`.
+
+The engine is plain JavaScript and host-agnostic. One adapter drives a terminal app
+built on [OpenTUI Core](/packages/opentui-core), and another drives a browser UI
+([live demo](/demos/keymap-html/)). A custom host implements one small contract. React
+and Solid providers expose the keymap to components.
+
+The [keymap docs](/docs/keymap/overview) cover bindings, commands, hosts, and addons.
