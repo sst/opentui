@@ -39,7 +39,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 | Intent(s)                                                                                                                | Start here                                  |
 | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `getting-started`, `installation`, `quickstart`, `intro`                                                                 | `docs/getting-started.mdx`                  |
+| `getting-started`, `installation`, `quickstart`, `intro`, `examples`, `agent-skill`                                      | `docs/getting-started.mdx`                  |
 | `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`                                                                | `docs/core-concepts/renderer.mdx`           |
 | `audio`, `native-audio`, `sound`, `playback`, `capture`, `microphone`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft` | `docs/core-concepts/audio.mdx`              |
 | `keymap`, `keybindings`, `shortcuts`, `commands`, `leader`, `ex-commands`                                                | `docs/keymap/overview.mdx`                  |
