@@ -16,8 +16,11 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10)
     {
       posts.map((post) => (
         <li>
-          <time datetime={isoDate(post.data.date)}>{isoDate(post.data.date)}</time>
-          <a href={`/scrollback/${post.id}`}>{post.data.title}</a>
+          <p class="title">
+            <a href={`/scrollback/${post.id}`}>{post.data.title}</a>
+            <time datetime={isoDate(post.data.date)}>{isoDate(post.data.date)}</time>
+          </p>
+          {post.data.description && <p class="excerpt">{post.data.description}</p>}
         </li>
       ))
     }
@@ -42,16 +45,37 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10)
     list-style: none;
   }
 
-  /* Rows set solid on the line grid, like a terminal listing; the gray
-   * date column keeps the rows apart. The column gap is two character
-   * cells, like two spaces in terminal output. */
-  li {
-    display: flex;
-    gap: 2ch;
+  /* Each entry is two lines: the title with its gray date trailing on
+   * the same line, then the excerpt. Whitespace alone keeps entries
+   * apart. The gap is two character cells, like two spaces in terminal
+   * output. */
+  li + li {
+    margin-block-start: 2rem;
   }
 
-  time {
-    flex-shrink: 0;
+  .title {
+    margin: 0;
+  }
+
+  .title a {
+    font-weight: bold;
+  }
+
+  .title time {
+    margin-inline-start: 2ch;
     color: GrayText;
+  }
+
+  /* On the narrowest screens an inline date crowds the title, so it
+   * drops to its own line. */
+  @media (max-width: 30rem) {
+    .title time {
+      display: block;
+      margin-inline-start: 0;
+    }
+  }
+
+  .excerpt {
+    margin-block: 0.5rem 0;
   }
 </style>
