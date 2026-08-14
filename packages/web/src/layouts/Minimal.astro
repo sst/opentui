@@ -148,6 +148,25 @@ const { title, description, wide = false } = Astro.props
     text-decoration: underline;
   }
 
+  /* Site navigation links (header and footer) are bold and never underline
+   * at rest, in any theme: the current item carries a border marker. */
+  :is(nav[aria-label="Site"], nav[aria-label="Primary"]) > a,
+  :is(nav[aria-label="Site"], nav[aria-label="Primary"]) > a:hover,
+  :root[data-theme="blue"] :is(nav[aria-label="Site"], nav[aria-label="Primary"]) > a {
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  /* Hover: footer links underline; header links preview the current-item
+   * border marker. */
+  nav[aria-label="Primary"] > a:hover {
+    text-decoration: underline;
+  }
+
+  nav[aria-label="Site"] > a:hover {
+    border-bottom: 1px solid currentColor;
+  }
+
   /* Dark ink is off-white: pure white on pure black halates around glyphs
    * and tires the eye in long reading. Links lighten for the same reason. */
   :root[data-theme="dark"] {
