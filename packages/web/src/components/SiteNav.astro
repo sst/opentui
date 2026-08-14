@@ -93,6 +93,12 @@ const hasMenu = Astro.slots.has("menu")
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0.5rem 1.5rem;
+    /* Pin the bar to the wordmark height so the header equals
+     * --site-nav-height exactly. Baseline alignment would otherwise add
+     * the links' line-box descent below the wordmark and push the real
+     * header height past the token that sticky offsets rely on; the
+     * descenders paint into the header padding instead. */
+    height: 1.875rem;
   }
 
   /* Content scrolling under the chrome stays faintly visible. */
@@ -134,8 +140,16 @@ const hasMenu = Astro.slots.has("menu")
     inset-block-start: calc(1.875rem / -6);
   }
 
+  .menu > summary,
+  .site-links a {
+    font-weight: 700;
+  }
+
+  /* The current item keeps the link color; a rule under the text marks it.
+   * A border, not text-decoration, so it stays distinct from hover
+   * underlines and from the blue theme's always-underlined links. */
   nav a[aria-current] {
-    color: inherit;
+    border-bottom: 1px solid currentColor;
   }
 
   .menu {
