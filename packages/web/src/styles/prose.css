@@ -173,6 +173,11 @@
   color: var(--shiki-dark) !important;
 }
 
+:root[data-theme="blue"] .prose .astro-code,
+:root[data-theme="blue"] .prose .astro-code span {
+  color: var(--shiki-blue) !important;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .prose .astro-code,
   :root:not([data-theme]) .prose .astro-code span {
