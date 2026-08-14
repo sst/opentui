@@ -154,7 +154,9 @@ const { title, description, wide = false } = Astro.props
     color-scheme: dark;
     --page-background: #000;
     --page-color: #ededed;
-    --link-color: #4da2ff;
+    /* The blue theme's ink family at the original link's vibrancy:
+     * hsl(218, 100%, 65%), 6.6:1 on black. */
+    --link-color: #4d8eff;
   }
 
   :root[data-theme="light"] {
@@ -181,7 +183,7 @@ const { title, description, wide = false } = Astro.props
       color-scheme: dark;
       --page-background: #000;
       --page-color: #ededed;
-      --link-color: #4da2ff;
+      --link-color: #4d8eff;
     }
   }
 
