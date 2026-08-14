@@ -64,6 +64,24 @@ describe("EmbeddedTerminalRenderable", () => {
     expect(mouseDowns).toBe(1)
   })
 
+  test("participates in renderer selection and returns terminal text", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("hello\r\nwide: 界")
+    await setup.renderOnce()
+
+    setup.renderer.startSelection(terminal, terminal.x + 1, terminal.y)
+    setup.renderer.updateSelection(terminal, terminal.x + 3, terminal.y, { finishDragging: true })
+
+    expect(terminal.hasSelection()).toBe(true)
+    expect(terminal.getSelectedText()).toBe("ell")
+    expect(setup.renderer.getSelection()?.getSelectedText()).toBe("ell")
+
+    setup.renderer.clearSelection()
+    expect(terminal.hasSelection()).toBe(false)
+    expect(terminal.getSelectedText()).toBe("")
+  })
+
   test("encodes keys and bracketed paste", () => {
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
     setup.renderer.root.add(terminal)

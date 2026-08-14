@@ -4,6 +4,7 @@ pub const Terminal = vt.Terminal;
 pub const TerminalStream = vt.TerminalStream;
 pub const Coordinate = vt.Coordinate;
 pub const RenderState = vt.RenderState;
+pub const Selection = vt.Selection;
 
 pub const Key = struct {
     action: vt.input.KeyAction = .press,

@@ -251,6 +251,45 @@ export fn embeddedTerminalScroll(handle: NativeHandle, delta: i32) i32 {
     return 0;
 }
 
+export fn embeddedTerminalSetSelection(
+    handle: NativeHandle,
+    start_x: u16,
+    start_y: u16,
+    end_x: u16,
+    end_y: u16,
+) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.setSelection(
+        .{ .x = start_x, .y = start_y },
+        .{ .x = end_x, .y = end_y },
+    ) catch |err| return embeddedTerminalStatus(err);
+    return 0;
+}
+
+export fn embeddedTerminalClearSelection(handle: NativeHandle) i32 {
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    terminal_value.clearSelection();
+    return 0;
+}
+
+export fn embeddedTerminalGetSelectedText(
+    handle: NativeHandle,
+    out_ptr: ?[*]u8,
+    out_len: u32,
+    out_required_ptr: ?*u32,
+) i32 {
+    const out_required = out_required_ptr orelse return EmbeddedTerminalStatus.invalid;
+    out_required.* = 0;
+    const terminal_value = acquireEmbeddedTerminal(handle) orelse return EmbeddedTerminalStatus.invalid;
+    const output = embeddedTerminalOutput(out_ptr, out_len) orelse return EmbeddedTerminalStatus.invalid;
+    const text = terminal_value.selectedText() catch |err| return embeddedTerminalStatus(err);
+    defer terminal_value.freeSelectedText(text);
+    out_required.* = std.math.cast(u32, text.len) orelse return EmbeddedTerminalStatus.out_of_memory;
+    if (text.len > output.len) return EmbeddedTerminalStatus.out_of_space;
+    @memcpy(output[0..text.len], text);
+    return @intCast(text.len);
+}
+
 export fn embeddedTerminalCompose(
     handle: NativeHandle,
     buffer_handle: NativeHandle,

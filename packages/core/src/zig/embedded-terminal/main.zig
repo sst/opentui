@@ -95,6 +95,27 @@ pub const EmbeddedTerminal = struct {
         self.terminal.scrollViewport(.{ .delta = delta });
     }
 
+    pub fn setSelection(self: *EmbeddedTerminal, start: ghostty.Coordinate, end: ghostty.Coordinate) Error!void {
+        const screen = self.terminal.screens.active;
+        const start_pin = screen.pages.pin(.{ .viewport = start }) orelse return error.InvalidValue;
+        const end_pin = screen.pages.pin(.{ .viewport = end }) orelse return error.InvalidValue;
+        try screen.select(ghostty.Selection.init(start_pin, end_pin, false));
+    }
+
+    pub fn clearSelection(self: *EmbeddedTerminal) void {
+        self.terminal.screens.active.clearSelection();
+    }
+
+    pub fn selectedText(self: *EmbeddedTerminal) Error![:0]const u8 {
+        const screen = self.terminal.screens.active;
+        const selection = screen.selection orelse return try self.allocator.dupeZ(u8, "");
+        return try screen.selectionString(self.allocator, .{ .sel = selection });
+    }
+
+    pub fn freeSelectedText(self: *EmbeddedTerminal, text: [:0]const u8) void {
+        self.allocator.free(text);
+    }
+
     pub fn invalidate(self: *EmbeddedTerminal) void {
         self.force_redraw = true;
     }

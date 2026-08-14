@@ -5,6 +5,7 @@ import type { RenderContext } from "../types.js"
 import type { MouseEvent } from "../renderer.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { resolveRenderLib, type EmbeddedTerminalHandle, type EmbeddedTerminalMouse, type RenderLib } from "../zig.js"
+import { convertGlobalToLocalSelection, type Selection } from "../lib/selection.js"
 
 export type EmbeddedTerminalDataSource = "input" | "response"
 
@@ -15,6 +16,7 @@ export interface EmbeddedTerminalOptions extends RenderableOptions<EmbeddedTermi
   onData?: (data: Uint8Array, source: EmbeddedTerminalDataSource) => void
   onTerminalResize?: (cols: number, rows: number) => void
   onScreenChange?: () => void
+  selectable?: boolean
 }
 
 export type EmbeddedTerminalScreen = {
@@ -37,6 +39,7 @@ const MOD_CAPS_LOCK = 1 << 4
 const MOD_NUM_LOCK = 1 << 5
 
 export class EmbeddedTerminalRenderable extends Renderable {
+  public selectable: boolean = true
   private readonly lib: RenderLib
   private handle: EmbeddedTerminalHandle | null = null
   private _onData?: (data: Uint8Array, source: EmbeddedTerminalDataSource) => void
@@ -44,6 +47,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
   private _onScreenChange?: () => void
   private keyreleaseHandler: ((key: KeyEvent) => void) | null = null
   private hadRenderHooks = false
+  private selection = false
 
   constructor(ctx: RenderContext, options: EmbeddedTerminalOptions) {
     const cols = options.cols ?? (typeof options.width === "number" ? options.width : 80)
@@ -58,6 +62,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
     this._onData = options.onData
     this._onTerminalResize = options.onTerminalResize
     this._onScreenChange = options.onScreenChange
+    this.selectable = options.selectable ?? true
     this.lib = resolveRenderLib()
 
     try {
@@ -149,6 +154,48 @@ export class EmbeddedTerminalRenderable extends Renderable {
   public encodePaste(bytes: Uint8Array): Uint8Array {
     if (!this.handle) return new Uint8Array()
     return this.lib.embeddedTerminalEncodePaste(this.handle, bytes)
+  }
+
+  public shouldStartSelection(x: number, y: number): boolean {
+    if (!this.selectable) return false
+    const localX = x - this.x
+    const localY = y - this.y
+    return localX >= 0 && localX < this.width && localY >= 0 && localY < this.height
+  }
+
+  public onSelectionChanged(selection: Selection | null): boolean {
+    if (!this.handle) return false
+    const local = convertGlobalToLocalSelection(selection, this.x, this.y)
+    if (!local?.isActive) {
+      if (!this.selection) return false
+      this.lib.embeddedTerminalClearSelection(this.handle)
+      this.selection = false
+      this.requestRender()
+      return false
+    }
+
+    const point = (x: number, y: number) => {
+      if (y < 0) return { x: 0, y: 0 }
+      if (y >= this.height) return { x: this.width - 1, y: this.height - 1 }
+      return { x: Math.max(0, Math.min(this.width - 1, x)), y }
+    }
+    this.lib.embeddedTerminalSetSelection(
+      this.handle,
+      point(local.anchorX, local.anchorY),
+      point(local.focusX, local.focusY),
+    )
+    this.selection = true
+    this.requestRender()
+    return true
+  }
+
+  public hasSelection(): boolean {
+    return this.selection
+  }
+
+  public getSelectedText(): string {
+    if (!this.handle || !this.selection) return ""
+    return new TextDecoder().decode(this.lib.embeddedTerminalGetSelectedText(this.handle))
   }
 
   public focus(): void {
