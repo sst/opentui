@@ -97,6 +97,33 @@ test "embedded terminal supports lifecycle, resize, and viewport scroll" {
     try std.testing.expectError(error.InvalidValue, EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 0, .rows = 24 }));
 }
 
+test "embedded terminal selects rendered cells and extracts text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 8, 2, .{ .pool = pool });
+    defer target.deinit();
+
+    const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 8, .rows = 2 });
+    defer terminal.deinit();
+    try terminal.write("hello");
+    try terminal.setSelection(.{ .x = 1, .y = 0 }, .{ .x = 3, .y = 0 });
+
+    const selected = try terminal.selectedText();
+    defer terminal.freeSelectedText(selected);
+    try std.testing.expectEqualStrings("ell", selected);
+
+    try terminal.compose(target, 0, 0);
+    const unselected = target.get(0, 0).?;
+    const highlighted = target.get(1, 0).?;
+    try std.testing.expect(ansi.red(unselected.fg) > ansi.red(unselected.bg));
+    try std.testing.expect(ansi.red(highlighted.fg) < ansi.red(highlighted.bg));
+
+    terminal.clearSelection();
+    try terminal.compose(target, 0, 0);
+    const cleared = target.get(1, 0).?;
+    try std.testing.expect(ansi.red(cleared.fg) > ansi.red(cleared.bg));
+}
+
 test "embedded terminal preserves parser state and provides mode-aware input" {
     const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();

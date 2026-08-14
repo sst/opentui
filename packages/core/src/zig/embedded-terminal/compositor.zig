@@ -18,6 +18,7 @@ pub fn compose(
     const rows = state.row_data.slice();
     const row_dirty = rows.items(.dirty);
     const row_cells = rows.items(.cells);
+    const row_selection = rows.items(.selection);
     for (0..state.rows) |y| {
         if (dirty == .partial and !row_dirty[y]) continue;
 
@@ -27,6 +28,7 @@ pub fn compose(
             try composeRow(
                 allocator,
                 row_cells[y].slice(),
+                row_selection[y],
                 target,
                 origin_x,
                 @intCast(dest_y),
@@ -59,6 +61,7 @@ fn clearRow(target: *buffer.OptimizedBuffer, origin_x: i32, y: u32, cols: u16, f
 fn composeRow(
     allocator: std.mem.Allocator,
     cells: anytype,
+    selection: ?[2]u16,
     target: *buffer.OptimizedBuffer,
     origin_x: i32,
     dest_y: u32,
@@ -78,6 +81,9 @@ fn composeRow(
         var fg = style.fg(.{ .default = colors.foreground, .palette = &colors.palette });
         var bg = style.bg(&raw, &colors.palette) orelse colors.background;
         if (style.flags.inverse) std.mem.swap(@TypeOf(fg), &fg, &bg);
+        if (selection) |range| {
+            if (x >= range[0] and x <= range[1]) std.mem.swap(@TypeOf(fg), &fg, &bg);
+        }
 
         var stack: [128]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&stack);

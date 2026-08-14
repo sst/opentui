@@ -411,6 +411,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "i32"],
       returns: "i32",
     },
+    embeddedTerminalSetSelection: {
+      args: ["u32", "u16", "u16", "u16", "u16"],
+      returns: "i32",
+    },
+    embeddedTerminalClearSelection: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    embeddedTerminalGetSelectedText: {
+      args: ["u32", "ptr", "u32", "ptr"],
+      returns: "i32",
+    },
     embeddedTerminalCompose: {
       args: ["u32", "u32", "i32", "i32"],
       returns: "i32",
@@ -3067,6 +3079,13 @@ export interface RenderLib extends AudioEngineLib {
   embeddedTerminalResize: (handle: EmbeddedTerminalHandle, cols: number, rows: number) => void
   embeddedTerminalInvalidate: (handle: EmbeddedTerminalHandle) => void
   embeddedTerminalScroll: (handle: EmbeddedTerminalHandle, delta: number) => void
+  embeddedTerminalSetSelection: (
+    handle: EmbeddedTerminalHandle,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ) => void
+  embeddedTerminalClearSelection: (handle: EmbeddedTerminalHandle) => void
+  embeddedTerminalGetSelectedText: (handle: EmbeddedTerminalHandle) => Uint8Array
   embeddedTerminalCompose: (handle: EmbeddedTerminalHandle, target: OptimizedBufferHandle, x: number, y: number) => void
   embeddedTerminalCursor: (handle: EmbeddedTerminalHandle) => EmbeddedTerminalCursor
   embeddedTerminalEncodeKey: (handle: EmbeddedTerminalHandle, key: EmbeddedTerminalKey) => Uint8Array
@@ -3209,6 +3228,40 @@ class FFIRenderLib implements RenderLib {
       this.opentui.symbols.embeddedTerminalScroll(handle, embeddedTerminalI32(delta, "scroll delta")),
       "scroll",
     )
+  }
+
+  public embeddedTerminalSetSelection(
+    handle: EmbeddedTerminalHandle,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ): void {
+    embeddedTerminalResult(
+      this.opentui.symbols.embeddedTerminalSetSelection(
+        handle,
+        embeddedTerminalDimension(start.x + 1, "selection start x") - 1,
+        embeddedTerminalDimension(start.y + 1, "selection start y") - 1,
+        embeddedTerminalDimension(end.x + 1, "selection end x") - 1,
+        embeddedTerminalDimension(end.y + 1, "selection end y") - 1,
+      ),
+      "selection update",
+    )
+  }
+
+  public embeddedTerminalClearSelection(handle: EmbeddedTerminalHandle): void {
+    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalClearSelection(handle), "selection clear")
+  }
+
+  public embeddedTerminalGetSelectedText(handle: EmbeddedTerminalHandle): Uint8Array {
+    const required = new Uint32Array(1)
+    const read = (output: Uint8Array) =>
+      this.opentui.symbols.embeddedTerminalGetSelectedText(handle, ptrOrNull(output), output.byteLength, required)
+    const initial = new Uint8Array(256)
+    const status = read(initial)
+    if (status >= 0) return initial.slice(0, status)
+    if (status !== -4 || required[0] <= initial.byteLength) embeddedTerminalResult(status, "selection query")
+    const output = new Uint8Array(required[0])
+    const length = embeddedTerminalResult(read(output), "selection query")
+    return output.slice(0, length)
   }
 
   public embeddedTerminalCompose(

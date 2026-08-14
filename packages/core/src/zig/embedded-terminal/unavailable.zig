@@ -26,6 +26,14 @@ pub const EmbeddedTerminal = struct {
         return error.Unsupported;
     }
     pub fn scroll(_: *EmbeddedTerminal, _: i32) void {}
+    pub fn setSelection(_: *EmbeddedTerminal, _: anytype, _: anytype) Error!void {
+        return error.Unsupported;
+    }
+    pub fn clearSelection(_: *EmbeddedTerminal) void {}
+    pub fn selectedText(_: *EmbeddedTerminal) Error![:0]const u8 {
+        return error.Unsupported;
+    }
+    pub fn freeSelectedText(_: *EmbeddedTerminal, _: [:0]const u8) void {}
     pub fn invalidate(_: *EmbeddedTerminal) void {}
     pub fn compose(_: *EmbeddedTerminal, _: *buffer.OptimizedBuffer, _: i32, _: i32) Error!void {
         return error.Unsupported;
