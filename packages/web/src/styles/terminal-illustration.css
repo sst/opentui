@@ -112,7 +112,7 @@
 }
 
 .terminal-illustration[data-illustration-controls="below"] .terminal-illustration__caption {
-  color: GrayText;
+  color: var(--muted-color);
   font-size: 0.8125rem;
   opacity: 1;
   order: -1;
@@ -159,6 +159,7 @@
   appearance: none;
   background: color-mix(in srgb, currentColor 30%, transparent);
   border: 0;
+  color: inherit;
   cursor: pointer;
   flex: 0 0 auto;
   height: 5px;

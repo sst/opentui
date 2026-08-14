@@ -82,6 +82,9 @@ const { title, description, wide = false, robots } = Astro.props
     --page-background: #fff;
     --page-color: #000;
     --link-color: LinkText;
+    /* Muted text: dates, meta lines, captions. Themes with a tinted ink
+     * override it so secondary text stays in the same hue. */
+    --muted-color: GrayText;
     --content-width: 36rem;
     /* Widest bounded composition: site chrome and wide pages align to it. */
     --frame-width: 64rem;
@@ -188,12 +191,14 @@ const { title, description, wide = false, robots } = Astro.props
   }
 
   /* Blue tint: white paper, blue ink (~8:1 on white). Links share the ink
-   * and are marked by a permanent underline, keeping the page one hue. */
+   * and are marked by a permanent underline, keeping the page one hue.
+   * Muted text is a lighter cut of the same ink. */
   :root[data-theme="blue"] {
     color-scheme: light;
     --page-background: #fff;
     --page-color: #1131e9;
     --link-color: #1131e9;
+    --muted-color: #6e8bff;
   }
 
   :root[data-theme="blue"] a {
