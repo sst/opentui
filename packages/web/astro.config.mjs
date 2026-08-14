@@ -54,6 +54,16 @@ const codeDark = grayscaleTheme({
   comment: "#8a8a8a",
 })
 
+// Blue tint: the grayscale ramp shifted onto the ink hue.
+const codeBlue = grayscaleTheme({
+  name: "opentui-blue",
+  type: "light",
+  foreground: "#1131e9",
+  background: "#ffffff",
+  literal: "#475ac2",
+  comment: "#7783c5",
+})
+
 export default defineConfig({
   integrations: [mdx()],
   site: "https://opentui.com",
@@ -65,6 +75,7 @@ export default defineConfig({
       themes: {
         light: codeLight,
         dark: codeDark,
+        blue: codeBlue,
       },
       transformers: [copyButtonTransformer],
     },
