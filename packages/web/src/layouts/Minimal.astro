@@ -5,9 +5,10 @@ interface Props {
   title: string
   description: string
   wide?: boolean
+  robots?: string
 }
 
-const { title, description, wide = false } = Astro.props
+const { title, description, wide = false, robots } = Astro.props
 ---
 
 <!doctype html>
@@ -16,6 +17,7 @@ const { title, description, wide = false } = Astro.props
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    {robots && <meta name="robots" content={robots} />}
     <meta name="google-site-verification" content="W0svAZmnPHtyNgZWhzY7v8j2IJBnMD6TX7XB7QV0itE" />
     <title>{title}</title>
     <SocialMeta {title} {description} />

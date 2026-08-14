@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config"
 import mdx from "@astrojs/mdx"
+import sitemap from "@astrojs/sitemap"
 
 const copyButtonTransformer = {
   name: "copy-button",
@@ -65,7 +66,12 @@ const codeBlue = grayscaleTheme({
 })
 
 export default defineConfig({
-  integrations: [mdx()],
+  integrations: [
+    mdx(),
+    sitemap({
+      filter: (page) => !["/404/", "/docs/"].includes(new URL(page).pathname),
+    }),
+  ],
   site: "https://opentui.com",
   redirects: {
     "/docs": "/docs/getting-started",

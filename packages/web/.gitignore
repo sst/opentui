@@ -5,3 +5,5 @@ src/examples/*.js
 
 # Raw terminal captures; only the built story JSON in public/recordings ships
 scripts/recordings/*.cast
+
+!public/robots.txt

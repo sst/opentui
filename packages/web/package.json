@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
+    "@astrojs/sitemap": "^3.7.3",
     "@opentui/core": "workspace:*",
     "@opentui/keymap": "workspace:*",
     "astro": "^7.1.6"
