@@ -49,6 +49,21 @@ describe("EmbeddedTerminalRenderable", () => {
     expect(setup.captureCharFrame()).toBe(first)
   })
 
+  test("preserves mouse callbacks supplied through options", async () => {
+    let mouseDowns = 0
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onMouseDown: () => mouseDowns++,
+    })
+    setup.renderer.root.add(terminal)
+    await setup.renderOnce()
+
+    await setup.mockMouse.pressDown(1, 1)
+
+    expect(mouseDowns).toBe(1)
+  })
+
   test("encodes keys and bracketed paste", () => {
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
     setup.renderer.root.add(terminal)
