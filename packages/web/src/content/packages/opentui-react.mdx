@@ -1,0 +1,55 @@
+---
+id: opentui-react
+name: OpenTUI React
+summary: React renderer for building terminal user interfaces with OpenTUI Core.
+kind: renderer
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/react
+surfaces:
+  - name: React
+    language: typescript
+    import: "@opentui/react"
+    docs: /docs/bindings/react
+  - name: Test utilities
+    language: typescript
+    import: "@opentui/react/test-utils"
+distributions:
+  - type: npm
+    identifier: "@opentui/react"
+    install: bun add @opentui/react react
+links:
+  docs: /docs/bindings/react
+categories:
+  - frameworks
+  - rendering
+---
+
+OpenTUI React lets you build a terminal UI the way you build a web UI. It is a real
+React renderer: components, props, state, hooks, and context work as in any React app.
+Only the elements change, from DOM nodes to terminal ones.
+
+```tsx
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
+
+function App() {
+  return <text>Hello, world!</text>
+}
+
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
+```
+
+The element set mirrors [OpenTUI Core](/packages/opentui-core): boxes with borders and
+flexbox layout, styled text, inputs and selects, scroll areas, code and diff viewers,
+markdown, and images. Hooks cover the terminal concerns a web app does not have, such as
+keyboard input, paste, focus, resize, and text selection.
+
+The root attaches to any live renderer, so the same app runs locally or over the
+network: [OpenTUI SSH](/packages/opentui-ssh) hands each connection's renderer to
+`createRoot()`. For tests, a test-utils entry mounts components on the core test
+renderer, and a test asserts on the exact frame a user would see.
+
+The [React binding docs](/docs/bindings/react) cover setup, the elements, and the hooks.

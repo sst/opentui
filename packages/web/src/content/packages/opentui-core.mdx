@@ -1,0 +1,68 @@
+---
+id: opentui-core
+name: OpenTUI Core
+summary: Native terminal UI library with a C ABI and TypeScript bindings.
+kind: native-library
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/core
+surfaces:
+  - name: TypeScript
+    language: typescript
+    import: "@opentui/core"
+    docs: /docs/getting-started
+  - name: Testing
+    language: typescript
+    import: "@opentui/core/testing"
+    docs: /docs/core-concepts/testing
+  - name: Zig
+    language: zig
+  - name: C ABI
+    language: c
+distributions:
+  - type: npm
+    identifier: "@opentui/core"
+    install: bun add @opentui/core
+links:
+  docs: /docs/getting-started
+  issues: https://github.com/anomalyco/opentui/issues
+  changelog: https://github.com/anomalyco/opentui/releases
+categories:
+  - rendering
+---
+
+OpenTUI Core is the base library of the OpenTUI ecosystem. You describe a terminal UI as
+a tree of components: boxes, text, inputs, selects, scroll areas, code and diff viewers,
+markdown, images. A flexbox engine lays the tree out, and a native renderer written in
+Zig diffs each frame and writes only the cells that changed. OpenTUI powers OpenCode in
+production.
+
+```typescript
+import { createCliRenderer, Text } from "@opentui/core"
+
+const renderer = await createCliRenderer({ exitOnCtrlC: true })
+
+renderer.root.add(Text({ content: "Hello, OpenTUI!", fg: "#00FF00" }))
+```
+
+The core owns the terminal so the application does not have to: raw mode, alternate
+screen, keyboard protocols, mouse events, text selection, clipboard, images,
+notifications, audio, and resize. Input arrives as structured events, not escape
+sequences. A built-in console captures `console.log` output and shows it inside the UI
+instead of corrupting the frame. A split-footer mode pins the UI to the bottom of the
+screen while output flows into the terminal's real scrollback.
+
+You can write against the TypeScript API directly, and the
+[React](/packages/opentui-react) and [Solid](/packages/opentui-solid) bindings build on
+the same renderer. The native core sits behind a C ABI, so other languages can bind it
+too.
+
+Applications built on the core are testable without a terminal: the testing entry runs
+the real render pipeline into memory, so tests assert on the frames a user would see.
+
+OpenTUI runs on Bun and on Node.js 26.4.0 with experimental FFI. Prebuilt native
+binaries install for the platforms listed below, and a finished application compiles
+into a [single executable](/docs/reference/standalone-executables).
+
+[Getting started](/docs/getting-started) walks through the first application.

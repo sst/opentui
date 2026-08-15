@@ -1,0 +1,44 @@
+---
+id: opentui-examples
+name: OpenTUI Examples
+summary: Example applications and a standalone examples executable for OpenTUI.
+kind: examples
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/examples
+distributions:
+  - type: source
+    identifier: anomalyco/opentui
+categories:
+  - documentation
+---
+
+OpenTUI Examples shows what OpenTUI can do before you write code. It is one program: an
+example browser that lists about seventy demos in a filterable menu and runs each in
+place. The demos span every component, input and editing, scrolling, text and documents,
+rendering effects, terminal integration, and 3D and physics.
+
+Each demo is one source file, so the package doubles as a pattern library: find the demo
+that does what you want and read its file.
+
+Try it without a clone. On macOS, Linux, WSL, and Git Bash:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh
+```
+
+On Windows, download the latest release from
+[GitHub Releases](https://github.com/anomalyco/opentui/releases/latest).
+
+From a clone of the repository:
+
+```bash
+bun install
+cd packages/examples
+bun run dev
+```
+
+The package is private to the monorepo: it installs from source or as the release
+executable, not from npm. The 3D demos require Bun, and the Node.js bundle disables
+them.

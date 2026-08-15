@@ -1,0 +1,51 @@
+---
+id: opentui-solid
+name: OpenTUI Solid
+summary: SolidJS renderer for building terminal user interfaces with OpenTUI Core.
+kind: renderer
+official: true
+source:
+  url: https://github.com/anomalyco/opentui
+  directory: packages/solid
+surfaces:
+  - name: Solid
+    language: typescript
+    import: "@opentui/solid"
+    docs: /docs/bindings/solid
+  - name: Components
+    language: typescript
+    import: "@opentui/solid/components"
+distributions:
+  - type: npm
+    identifier: "@opentui/solid"
+    install: bun add @opentui/solid solid-js
+links:
+  docs: /docs/bindings/solid
+categories:
+  - frameworks
+  - rendering
+---
+
+OpenTUI Solid brings Solid's fine-grained reactivity to the terminal. Components run
+once, and signals connect directly to the renderables: a changing value updates only the
+property it touches. There is no virtual DOM and no re-render.
+
+```tsx
+import { render } from "@opentui/solid"
+
+const App = () => <text>Hello, World!</text>
+
+render(App)
+```
+
+The element set mirrors [OpenTUI Core](/packages/opentui-core): boxes with borders and
+flexbox layout, styled text, inputs and selects, scroll areas, code and diff viewers,
+markdown, and images. Primitives cover keyboard input, paste, focus, resize, text
+selection, and animation.
+
+`render()` also adopts an existing renderer, so a Solid app serves over
+[SSH](/packages/opentui-ssh) unchanged. Bun runs the JSX directly through a preload
+plugin; Node.js runs compiled output.
+
+The [Solid binding docs](/docs/bindings/solid) cover setup on both runtimes, the
+elements, and testing.
