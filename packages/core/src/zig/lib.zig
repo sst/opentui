@@ -31,6 +31,7 @@ const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
 const native_image = @import("image.zig");
+const clipboard = @import("clipboard/host.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -371,6 +372,133 @@ export fn destroyAudioEngine(engine_handle: NativeHandle) void {
     const token = handles.beginDestroy(engine_handle, .audio_engine, native_audio.Engine) orelse return;
     native_audio.destroy(token.ptr);
     handles.finishDestroy(token.handle);
+}
+
+export fn clipboardServiceCreate(
+    max_operations: u32,
+    max_provider_transfers: u32,
+    wayland_seat_pointer: ?[*]const u8,
+    wayland_seat_length: u32,
+) NativeHandle {
+    return clipboard.createService(
+        globalAllocator,
+        max_operations,
+        max_provider_transfers,
+        wayland_seat_pointer,
+        wayland_seat_length,
+    );
+}
+
+export fn clipboardServiceBeginShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.beginServiceShutdown(service_handle));
+}
+
+export fn clipboardServicePollShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollServiceShutdown(service_handle));
+}
+
+export fn clipboardServiceDestroy(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyService(service_handle));
+}
+
+export fn clipboardServiceDrain(service_handle: NativeHandle) u8 {
+    return clipboard.drainService(service_handle);
+}
+
+export fn clipboardReadOperationStart(
+    service_handle: NativeHandle,
+    request_pointer: ?[*]const u8,
+    request_length: u32,
+    selection: u8,
+    max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startReadOperation(
+        service_handle,
+        request_pointer,
+        request_length,
+        selection,
+        max_bytes,
+        max_image_pixels,
+        max_conversion_bytes,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardWriteOperationStart(
+    service_handle: NativeHandle,
+    text_pointer: ?[*]const u8,
+    text_length: u32,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startWriteOperation(
+        service_handle,
+        text_pointer,
+        text_length,
+        selection,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardClearOperationStart(
+    service_handle: NativeHandle,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startClearOperation(
+        service_handle,
+        selection,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardOperationPoll(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollOperation(operation_handle));
+}
+
+export fn clipboardOperationCancel(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.cancelOperation(operation_handle));
+}
+
+export fn clipboardOperationResultMimeLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultMimeLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultMimeCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultMimeCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultDataLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDataLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDataCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDataCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultErrorCode(operation_handle: NativeHandle, out_error_code: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultErrorCode(operation_handle, out_error_code));
+}
+
+export fn clipboardOperationResultDiagnosticLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDiagnosticCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationDestroy(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyOperation(operation_handle));
 }
 
 export fn audioRefreshPlaybackDevices(engine_handle: NativeHandle) i32 {
@@ -2884,6 +3012,15 @@ export fn imageDestroy(image_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
+export fn imageRetain(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (image.ref_count == std.math.maxInt(u32)) return @intFromEnum(native_image.Status.memory_limit);
+    image.retain();
+    return @intFromEnum(insertImage(image, output));
+}
+
 export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_info orelse return @intFromEnum(native_image.Status.invalid_argument);
@@ -2905,6 +3042,12 @@ export fn imageMaterialize(image_handle: NativeHandle) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     if (image.ref_count != 1) return @intFromEnum(native_image.Status.invalid_argument);
     _ = image.ensurePixels() catch |err| return @intFromEnum(native_image.statusFromError(err));
+    return @intFromEnum(native_image.Status.ok);
+}
+
+export fn imageEnsureEncodedPng(image_handle: NativeHandle) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    _ = image.ensureEncodedPng() catch |err| return @intFromEnum(native_image.statusFromError(err));
     return @intFromEnum(native_image.Status.ok);
 }
 
@@ -2966,6 +3109,51 @@ test "imageGetPixelsPtr requires exclusive ownership and invalidates encoded sta
     try std.testing.expect(imageGetPixelsPtr(handle) != null);
     try std.testing.expectEqual(@as(?[]u8, null), value.encoded_png);
     try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+}
+
+test "imageEnsureEncodedPng attaches an encoding that pixel mutation discards" {
+    const pixels = [_]u8{ 1, 2, 3, 255, 4, 5, 6, 255 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 2, 1, 8, &handle),
+    );
+    defer imageDestroy(handle);
+
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.invalid_handle)),
+        imageEnsureEncodedPng(INVALID_HANDLE),
+    );
+    try std.testing.expectEqual(@as(u32, @intFromEnum(native_image.Status.ok)), imageEnsureEncodedPng(handle));
+    const image = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(image.encoded_png != null);
+
+    try std.testing.expect(imageGetPixelsPtr(handle) != null);
+    try std.testing.expectEqual(@as(?[]u8, null), image.encoded_png);
+}
+
+test "imageRetain creates independently disposable handles without copying pixels" {
+    const pixels = [_]u8{ 1, 2, 3, 255 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 1, 1, 4, &handle),
+    );
+    defer imageDestroy(handle);
+
+    var retained_handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageRetain(handle, &retained_handle),
+    );
+    defer imageDestroy(retained_handle);
+    try std.testing.expect(handle != retained_handle);
+    const image = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(image, acquireImage(retained_handle));
+
+    imageDestroy(handle);
+    try std.testing.expect(acquireImage(handle) == null);
+    try std.testing.expectEqual(image, acquireImage(retained_handle));
 }
 
 export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filter: u32, out_handle: ?*NativeHandle) u32 {

@@ -216,6 +216,43 @@ test("ScrollbackSurface.settle waits for code highlighting before commit", async
   }
 })
 
+test("ScrollbackSurface.settle renders a queued streaming highlight", async () => {
+  const { renderer } = await createSplitFooterRenderer()
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const mockTreeSitterClient = createMockTreeSitterClient()
+  const highlightCalls: string[] = []
+  const highlightOnce = mockTreeSitterClient.highlightOnce.bind(mockTreeSitterClient)
+  mockTreeSitterClient.highlightOnce = async (content, filetype) => {
+    highlightCalls.push(content)
+    return highlightOnce(content, filetype)
+  }
+  const code = new CodeRenderable(surface.renderContext, {
+    id: "surface-code-streaming",
+    content: "initial",
+    filetype: "typescript",
+    syntaxStyle,
+    streaming: true,
+    treeSitterClient: mockTreeSitterClient,
+    width: "100%",
+  })
+
+  surface.root.add(code)
+  surface.render()
+  code.content = "latest"
+
+  const settlePromise = surface.settle()
+  void settlePromise.catch(() => {})
+  expect(highlightCalls).toEqual(["initial"])
+
+  mockTreeSitterClient.resolveHighlightOnce()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  expect(highlightCalls).toEqual(["initial", "latest"])
+
+  mockTreeSitterClient.resolveHighlightOnce()
+  await settlePromise
+})
+
 test("ScrollbackSurface works with MarkdownRenderable top-level blocks", async () => {
   const { renderer } = await createSplitFooterRenderer()
   const surface = renderer.createScrollbackSurface({ startOnNewLine: true })

@@ -173,6 +173,24 @@ test "kitty transmission uses RGB only when every pixel is opaque" {
     try std.testing.expect(std.mem.find(u8, rgba.written(), ";AQIDBA==\x1b\\") != null);
 }
 
+test "kitty transmission prefers PNG passthrough after ensureEncodedPng" {
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer value.deinit();
+    var raw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer raw.deinit();
+    try terminal_image.writeKittyTransmit(&raw.writer, value, 5, false);
+    try std.testing.expect(std.mem.find(u8, raw.written(), "f=24") != null);
+
+    const encoded = try value.ensureEncodedPng();
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try terminal_image.writeKittyTransmit(&output.writer, value, 5, false);
+    try std.testing.expect(std.mem.find(u8, output.written(), "a=t,f=100,i=5") != null);
+    const decoded = try decodeKittyChunks(output.written());
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, encoded, decoded);
+}
+
 test "kitty transmission sends retained PNG bytes as f=100" {
     const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
     const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);

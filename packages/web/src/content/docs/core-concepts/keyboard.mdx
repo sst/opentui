@@ -174,6 +174,9 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 
 ## Paste events
 
+Paste events deliver text the terminal sends to your application. To read or write the clipboard directly, use the
+[clipboard service](/docs/core-concepts/clipboard).
+
 Handle pasted bytes separately from individual keypresses. Decode them explicitly when you expect text:
 
 ```typescript

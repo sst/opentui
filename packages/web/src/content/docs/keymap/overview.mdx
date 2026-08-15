@@ -20,7 +20,7 @@ bun add @opentui/keymap
 
 The keymap package contains only JavaScript. You can import it in Node.js without installing Bun or enabling native FFI.
 You can also import the OpenTUI host helpers. However, creating a native renderer in Node.js requires Node.js 26.4.0 with
-experimental FFI. For details, see [Getting started](/docs/getting-started#runtime-support).
+experimental FFI. For details, see [Getting started](/docs/getting-started#installation).
 
 Live demo: [HTML keymap demo](/demos/keymap-html/)
 
@@ -44,7 +44,51 @@ A binding can target a named command, an inline handler, or a specific key event
 ]
 ```
 
-![Keymap Engine Concept Overview](/keymap-engine-overview.svg)
+How the pieces fit together:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ HOST — OpenTUI, HTML, or a custom adapter                       │
+│ supplies targets, focus state, key events and lifecycle         │
+└────────────────────────────────────────────────┬────────────────┘
+                                                 │ key input
+┌────────────────────────────┐   ┌───────────────┴────────────────┐
+│ REGISTER                   │   │ DISPATCH                       │
+│ layers, tokens and addons  │   │ 1 run intercepts (key / raw)   │
+│ compile bindings such as   │   │ 2 resolve event match keys     │
+│ "ctrl+x" "dd" "<leader>s"  │   │ 3 walk layers + sequence tree  │
+│ into sequence trees        │   │ 4 disambiguate exact / prefix  │
+│ registerLayer()            │   │ 5 resolve command chain        │
+│ registerToken()            │   │ 6 run command in app space     │
+└─────────────┬──────────────┘   └───────────────┬────────────────┘
+┌─────────────┴──────────────┐                   │
+│ ADDONS                     │                   │
+│ parsers, field compilers,  │                   │
+│ command resolvers, tokens, │                   │
+│ intercepts; each returns   │                   │
+│ a disposer                 │                   │
+└─────────────┬──────────────┘                   │
+              ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYERS                                                          │
+│ bindings: key + cmd + fields · commands: name + handler         │
+│ sorted by priority; the active set follows focus, conditions,   │
+│ matchers, runtime data and pending-sequence state               │
+└─────────────┬──────────────────────────────────┬────────────────┘
+              ▼                                  ▼
+┌────────────────────────────┐   ┌────────────────────────────────┐
+│ QUERY                      │   │ EVENTS                         │
+│ read the current state     │   │ batched derived-state signals  │
+│ getActiveKeys()            │   │ and diagnostics                │
+│ getCommands()              │   │ on("state")                    │
+│ getPendingSequence()       │   │ on("pendingSequence")          │
+│ runCommand()               │   │ on("warning") / on("error")    │
+└─────────────┬──────────────┘   └───────────────┬────────────────┘
+              ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ APP / UI                                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Register
 

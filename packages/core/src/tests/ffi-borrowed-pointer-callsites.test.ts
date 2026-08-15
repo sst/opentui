@@ -26,17 +26,29 @@ import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
 const lib = resolveRenderLib()
 const symbols = (lib as any).opentui.symbols as Record<string, (...args: any[]) => any>
 
-function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
-  const calls: any[][] = []
-  const original = symbols[name]
-  symbols[name] = (...args: any[]) => {
-    calls.push(args)
+function withStubbedSymbols(
+  replacements: Record<string, (...args: any[]) => any>,
+  fn: (calls: Record<string, any[][]>) => void,
+): void {
+  const originals: Record<string, (...args: any[]) => any> = {}
+  const calls: Record<string, any[][]> = {}
+  for (const [name, replacement] of Object.entries(replacements)) {
+    originals[name] = symbols[name]!
+    calls[name] = []
+    symbols[name] = (...args: any[]) => {
+      calls[name]!.push(args)
+      return replacement(...args)
+    }
   }
   try {
     fn(calls)
   } finally {
-    symbols[name] = original
+    for (const [name, original] of Object.entries(originals)) symbols[name] = original
   }
+}
+
+function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
+  withStubbedSymbols({ [name]: () => undefined }, (calls) => fn(calls[name]!))
 }
 
 async function forceGc(): Promise<void> {
@@ -661,6 +673,7 @@ describe("borrowed pointer call sites", () => {
       "imageDecode",
       "imageCreateFromRgba",
       "imageGetInfo",
+      "imageRetain",
       "imageClone",
       "imageCopyPixels",
       "imageResize",
@@ -693,6 +706,7 @@ describe("borrowed pointer call sites", () => {
       lib.imageDecode(data)
       lib.imageCreateFromRgba(pixels, 1, 1, 4)
       lib.imageGetInfo(handle)
+      lib.imageRetain(handle)
       lib.imageClone(handle)
       lib.imageCopyPixels(handle, destination, 4, false)
       lib.imageResize(handle, 1, 1, 0)
@@ -720,6 +734,7 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageCreateFromRgba")![0]).toBe(pixels)
       expect(calls.get("imageCreateFromRgba")![5]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageRetain")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageCopyPixels")![1]).toBe(destination)
       expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
@@ -757,6 +772,48 @@ describe("borrowed pointer call sites", () => {
       })
       expect(calls).toHaveLength(0)
     })
+  })
+
+  test("clipboard calls pass transient request and output buffers as object values", () => {
+    withStubbedSymbols(
+      {
+        clipboardServiceCreate: () => 1,
+        clipboardServiceDestroy: () => 0,
+        clipboardReadOperationStart: () => 0,
+        clipboardWriteOperationStart: () => 0,
+        clipboardClearOperationStart: () => 0,
+        clipboardOperationResultMimeLength: () => 0,
+        clipboardOperationResultMimeCopy: () => 0,
+        clipboardOperationResultDataCopy: () => 0,
+        clipboardOperationResultErrorCode: () => 0,
+        clipboardOperationResultDiagnosticCopy: () => 0,
+      },
+      (calls) => {
+        const service = lib.clipboardServiceCreate(4, 5, "seat0")!
+        lib.clipboardReadOperationStart(service, Uint8Array.of(1, 2), 0, 16, 32, 64, 100)
+        lib.clipboardWriteOperationStart(service, Uint8Array.of(3, 4), 0, 100)
+        lib.clipboardClearOperationStart(service, 0, 100)
+        lib.clipboardOperationResultMimeLength(1 as any)
+        lib.clipboardOperationResultMimeCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultDataCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultErrorCode(1 as any)
+        lib.clipboardOperationResultDiagnosticCopy(1 as any, new Uint8Array(2))
+        lib.clipboardServiceDestroy(service)
+
+        expect(calls.clipboardServiceCreate![0]![2]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]!.slice(4, 8)).toEqual([16, 32, 64, 100])
+        expect(calls.clipboardReadOperationStart![0]![8]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardWriteOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardWriteOperationStart![0]![5]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardClearOperationStart![0]![3]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeLength![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultDataCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultErrorCode![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultDiagnosticCopy![0]![1]).toBeInstanceOf(Uint8Array)
+      },
+    )
   })
 })
 

@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { ImageLoadError } from "../image.js"
+import { ImageLoadError, NativeImage } from "../image.js"
 import { createCliRenderer } from "../renderer.js"
 import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Image.js"
 import { TextRenderable } from "../renderables/Text.js"
@@ -115,6 +115,60 @@ describe("ImageRenderable image loading", () => {
       renderable.destroy()
     }
     expect(() => image.info()).toThrow("disposed")
+  })
+
+  test("retains native image sources synchronously and loads them asynchronously", async () => {
+    const source = NativeImage.fromRgba(Uint8Array.of(12, 34, 56, 255), 1, 1)
+    let loaded = false
+    const renderable = new ImageRenderable(renderer, {
+      source,
+      onLoad: () => {
+        loaded = true
+      },
+    })
+
+    expect(loaded).toBe(false)
+    expect(() => source.takeRaw()).toThrow("native buffers retain the image")
+    source.dispose()
+    await renderable.loadPromise
+    try {
+      expect(loaded).toBe(true)
+      expect([...renderable.image!.raw().data]).toEqual([12, 34, 56, 255])
+    } finally {
+      renderable.destroy()
+    }
+  })
+
+  test("releases retained native sources on replacement and destruction", async () => {
+    const first = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const second = NativeImage.fromRgba(Uint8Array.of(4, 5, 6, 255), 1, 1)
+    const renderable = new ImageRenderable(renderer, { source: first })
+    await renderable.loadPromise
+
+    renderable.source = second
+    await renderable.loadPromise
+    const firstRaw = first.takeRaw()
+    firstRaw.dispose()
+    renderable.destroy()
+    const secondRaw = second.takeRaw()
+    secondRaw.dispose()
+  })
+
+  test("reports disposed native image sources asynchronously", async () => {
+    const source = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    source.dispose()
+    const errors: unknown[] = []
+    const renderable = new ImageRenderable(renderer, { source, onError: (error) => errors.push(error) })
+
+    expect(errors).toHaveLength(0)
+    await renderable.loadPromise
+    try {
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toBeInstanceOf(Error)
+      expect(renderable.image).toBeNull()
+    } finally {
+      renderable.destroy()
+    }
   })
 
   test("dumps image cells with their fallback glyphs", async () => {

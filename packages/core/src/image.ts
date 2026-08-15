@@ -481,6 +481,10 @@ export class NativeImage {
     return this.wrap(this.lib.imageClone(this.guard()))
   }
 
+  public retain(): NativeImage {
+    return this.wrap(this.lib.imageRetain(this.guard()))
+  }
+
   public resize(options: ResizeOptions): NativeImage {
     if (!options || (options.width === undefined && options.height === undefined)) {
       throw new TypeError("resize requires width, height, or both")
@@ -553,6 +557,10 @@ export class NativeImage {
         Math.round(opacity * 255),
       ),
     )
+  }
+
+  public ensureEncodedPng(): void {
+    checkStatus(this.lib.imageEnsureEncodedPng(this.guard()))
   }
 
   public raw(format: PixelFormat = "rgba8"): RawImage {

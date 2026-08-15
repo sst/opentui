@@ -1,0 +1,53 @@
+---
+import type { ComponentProps } from "astro/types"
+import BlockDivider from "./BlockDivider.astro"
+import ThemeToggle from "./ThemeToggle.astro"
+
+interface Props {
+  links?: boolean
+  divider?: boolean
+  animation?: ComponentProps<typeof BlockDivider>["animation"]
+}
+
+const { links = false, divider = false, animation = "hopper" } = Astro.props
+---
+
+{
+  divider && (
+    <div class="divider">
+      <BlockDivider {animation} />
+    </div>
+  )
+}
+
+{
+  links && (
+    <nav aria-label="Primary">
+      <a href="/docs/getting-started">Documentation</a>
+      <a href="/scrollback">Scrollback</a>
+      <a href="https://github.com/anomalyco/opentui">GitHub</a>
+    </nav>
+  )
+}
+
+<footer>
+  <p><ThemeToggle /> MIT license. &copy; 2026 <a href="https://anoma.ly/">Anomaly</a>.</p>
+</footer>
+
+<style>
+  .divider,
+  nav,
+  footer {
+    max-width: var(--content-width);
+    margin-block-start: 1.5rem;
+  }
+
+  nav a {
+    display: block;
+    width: fit-content;
+  }
+
+  footer p {
+    margin: 0;
+  }
+</style>

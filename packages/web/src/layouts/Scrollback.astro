@@ -1,0 +1,48 @@
+---
+import type { ComponentProps } from "astro/types"
+import SiteFooter from "../components/SiteFooter.astro"
+import SiteNav from "../components/SiteNav.astro"
+import Minimal from "./Minimal.astro"
+import "../styles/prose.css"
+
+interface Props {
+  title: string
+  description: string
+  footerLinks?: boolean
+  footerAnimation?: ComponentProps<typeof SiteFooter>["animation"]
+}
+
+const { title, description, footerLinks = false, footerAnimation } = Astro.props
+---
+
+<Minimal {title} {description} wide>
+  <SiteNav slot="nav" />
+
+  <main>
+    <slot />
+  </main>
+
+  <SiteFooter links={footerLinks} divider={footerLinks} animation={footerAnimation} />
+</Minimal>
+
+<style>
+  main {
+    max-width: var(--content-width);
+    margin-block: 3rem;
+  }
+
+  /* The title and its gray meta line read as one unit; two blank lines
+   * separate the document header from the text. */
+  :global(.scrollback-post header) {
+    margin-block-end: 3rem;
+  }
+
+  :global(.scrollback-post h1) {
+    margin-block: 0;
+  }
+
+  :global(.scrollback-meta) {
+    margin: 0;
+    color: var(--muted-color);
+  }
+</style>

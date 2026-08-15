@@ -1,0 +1,76 @@
+---
+title: Rendering pipeline
+description: How OpenTUI resolves layout, represents cells, diffs frames, and falls back between image protocols
+order: 13
+---
+
+# Rendering pipeline
+
+This page describes what happens between `renderer.root.add(...)` and the bytes OpenTUI writes to the terminal: layout
+resolution, the terminal's cell representation, frame diffing, and image protocol fallback. It is a draft internals
+overview; see [Renderer](/docs/core-concepts/renderer), [Layout system](/docs/core-concepts/layout), and
+[Testing](/docs/core-concepts/testing) for the maintained reference docs on each part.
+
+## Layout resolution
+
+For ordinary layout, you position nothing by hand. You set `flexDirection`, `flexGrow`, `padding`, and percentage sizes
+on containers, and Yoga, the Flexbox layout engine, resolves the tree against the terminal's current width and height;
+absolute positioning remains available when you need it. When the terminal is resized, the same tree is resolved
+against the new constraints; your components do not change.
+
+The resolved bounds determine more than where a border is drawn. They determine where text wraps, how much of a
+scrollable region is visible, and where mouse interaction lands. Layout is continuous while it is being described and
+discrete when it reaches the terminal: the result must occupy whole columns and rows. A percentage width is continuous
+until it is resolved; it becomes a fixed span of whole columns. Resize the terminal and the same tree resolves again
+against the new constraints — the components themselves do not change.
+
+Layout also establishes where interaction can happen. When a component has focus, keyboard events route to it;
+`renderer.keyInput` emits structured key events with the parsed key name, modifiers, and the original terminal
+sequence, and paste arrives as its own event. Mouse events follow the resolved bounds of whatever is beneath the
+pointer. Parsing, focus, and routing happen inside the same renderer that draws the frame, not a separate input layer.
+
+## The logical cell
+
+The native buffer represents a terminal frame through parallel character, color, and attribute data. You set `content`
+on a text renderable and move on; OpenTUI's job is to make that honest on a cell grid, because a cell is not the same
+thing as a character in a JavaScript string. A grapheme is not a byte, a code point, or a UTF-16 code unit: several
+code points can form one grapheme, and a wide grapheme can begin in one column and continue through another.
+
+OpenTUI keeps those distinctions in the frame. The character field can identify a direct scalar, a grapheme stored
+elsewhere, an image cell, or a continuation. Foreground and background colors and text attributes travel with it. This
+is why wrapping, truncation, and cursor movement stay correct when your strings contain emoji, CJK text, or combining
+marks — and why tests can capture the frame as plain text or inspect structured spans containing text, width, colors,
+and attributes.
+
+## Frame diffing
+
+You change state — a label, a cursor position, one row of results — and you are done. You do not schedule redraws,
+track damage, or decide what to repaint. OpenTUI composes the next frame as a complete surface, compares it with the
+previous one, and writes output only for what changed.
+
+Changed runs carry the cursor movement, color and attribute state, and encoded text needed to update those positions.
+An unchanged render can produce no cell updates; a resize or screen-mode transition can require more work than a small
+cell diff. The useful property is not an absolute promise of "no redraws." It is that the frame and its update are
+both explicit objects you can inspect: tests capture frames with `createTestRenderer`, and frame-buffer operations
+such as 4x4 color-matrix transforms act on the frame directly without touching your component tree.
+
+## Image protocol resolution
+
+You add an image component and point it at a file. Which bytes reach the terminal depends on the terminal: some
+emulators accept Kitty graphics, some accept Sixel, and every environment reports different capabilities during
+startup, resize, remote transport, or multiplexing.
+
+OpenTUI keeps that decision at the image-rendering boundary so your component does not change per terminal. In
+automatic mode, the documented order is the global override, then Kitty, then Sixel, then Unicode blocks. Sixel
+requires terminal pixel geometry and temporarily falls back to blocks when that geometry is unavailable; tmux and
+overlapping images introduce additional constraints documented with the image component. The block path is not an
+error state — it maps sampled image colors into the same foreground, background, and cell grid used by the rest of
+the frame.
+
+## The renderer boundary
+
+These mechanisms meet at `CliRenderer`. It manages the terminal session, input events, the render loop, and the output
+boundary while loading the native Zig rendering library underneath. A renderer takes responsibility for the terminal,
+then gives it back: it enters the selected screen mode, configures terminal features, receives input, writes frames,
+and restores the terminal's state during cleanup. The details differ across local terminals, custom streams, and SSH
+sessions; the boundary remains explicit.

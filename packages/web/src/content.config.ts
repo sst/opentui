@@ -19,6 +19,19 @@ const docs = defineCollection({
   }),
 })
 
+const scrollback = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/scrollback" }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    date: z.coerce.date(),
+    author: z.string().optional(),
+    tags: z.array(z.string().trim().min(1)).default([]),
+    draft: z.boolean().default(false),
+  }),
+})
+
 export const collections = {
   docs,
+  scrollback,
 }
