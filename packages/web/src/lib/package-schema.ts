@@ -1,18 +1,9 @@
 import { z } from "astro/zod"
 
-export const PACKAGE_CATEGORIES = [
-  "components",
-  "developer-tools",
-  "documentation",
-  "frameworks",
-  "input",
-  "integrations",
-  "rendering",
-  "testing",
-  "utilities",
-] as const
-
-const packageId = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "must be a lowercase, hyphenated package ID")
+export const packageId = z
+  .string()
+  .max(128)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "must be a lowercase, hyphenated package ID")
 const nonemptyString = z.string().trim().min(1)
 const absoluteUrl = z.url().refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
   message: "must be an HTTP(S) URL",
@@ -33,6 +24,12 @@ const gitUrl = z.string().refine((value) => {
 }, "must be a git URL")
 const unique = <T extends z.ZodType>(schema: T) =>
   z.array(schema).refine((values) => new Set(values).size === values.length, "must not contain duplicates")
+const packageCategory = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((value) => [...value].length <= 32, "must contain at most 32 characters")
 
 export const packageEntrySchema = z
   .strictObject({
@@ -53,6 +50,7 @@ export const packageEntrySchema = z
     official: z.boolean(),
     maintainers: unique(nonemptyString.regex(/^@?[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$/, "must be a GitHub handle"))
       .min(1)
+      .max(16)
       .optional(),
     source: z.strictObject({
       url: gitUrl,
@@ -69,6 +67,7 @@ export const packageEntrySchema = z
           docs: sitePathOrUrl.optional(),
         }),
       )
+      .max(32)
       .optional(),
     distributions: z
       .array(
@@ -78,7 +77,8 @@ export const packageEntrySchema = z
           install: nonemptyString.optional(),
         }),
       )
-      .min(1),
+      .min(1)
+      .max(8),
     links: z
       .strictObject({
         homepage: absoluteUrl.optional(),
@@ -87,7 +87,7 @@ export const packageEntrySchema = z
         changelog: sitePathOrUrl.optional(),
       })
       .optional(),
-    categories: unique(z.enum(PACKAGE_CATEGORIES)).optional(),
+    categories: unique(packageCategory).min(1).max(3).optional(),
     status: z.enum(["active", "archived", "deprecated"]).default("active"),
   })
   .superRefine((entry, context) => {
@@ -129,4 +129,9 @@ export function githubRepository(source: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+export function githubRepositoryIdentifier(value: string): string | undefined {
+  const repository = githubRepository(value) ?? value.replace(/\.git$/, "")
+  return /^[^/\s]+\/[^/\s]+$/.test(repository) ? repository : undefined
 }

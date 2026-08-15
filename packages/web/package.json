@@ -18,7 +18,7 @@
     "validate:docs:examples": "bun scripts/verify-doc-examples.ts",
     "validate:docs": "bun run validate:docs:metadata && bun run validate:docs:links && bun run validate:docs:skill && bun run validate:docs:examples",
     "validate:packages": "bun scripts/validate-packages.ts src/content/packages",
-    "test:packages": "bun test src/lib/package-facts.test.ts"
+    "test:packages": "bun test src/lib/package-facts.test.ts src/lib/package-schema.test.ts src/lib/remote-package-facts.test.ts"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
