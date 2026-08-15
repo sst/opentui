@@ -30,7 +30,7 @@ jobs:
         with:
           path: ./packages/web
           package-manager: bun@1.3.14
-          node-version: 22
+          node-version: 26
 
   deploy:
     needs: build

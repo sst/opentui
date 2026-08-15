@@ -5,11 +5,17 @@ import ProseH2 from "../../components/ProseH2.astro"
 import ProseH3 from "../../components/ProseH3.astro"
 import ProseTable from "../../components/ProseTable.astro"
 import SitePage from "../../layouts/SitePage.astro"
-import { loadFirstPartyPackageFacts, type PlatformFact } from "../../lib/package-facts"
+import { loadFirstPartyPackageFacts, type PackageFacts, type PlatformFact } from "../../lib/package-facts"
+import { loadRemotePackageFacts, type RemotePackageFact } from "../../lib/remote-package-facts"
+
+type PagePackageFacts = RemotePackageFact & Partial<Omit<PackageFacts, "id">>
 
 export async function getStaticPaths() {
   const entries = await getCollection("packages")
-  const facts = new Map((await loadFirstPartyPackageFacts()).map((fact) => [fact.id, fact]))
+  const facts = new Map<string, PagePackageFacts>((await loadRemotePackageFacts()).map((fact) => [fact.id, fact]))
+  for (const fact of await loadFirstPartyPackageFacts()) {
+    facts.set(fact.id, { ...facts.get(fact.id), ...fact })
+  }
 
   return entries.map((entry) => ({
     params: { id: entry.id },
@@ -19,7 +25,7 @@ export async function getStaticPaths() {
 
 interface Props {
   entry: CollectionEntry<"packages">
-  fact?: Awaited<ReturnType<typeof loadFirstPartyPackageFacts>>[number]
+  fact?: PagePackageFacts
 }
 
 const { entry, fact } = Astro.props
@@ -65,14 +71,9 @@ function groupPlatforms(platforms: PlatformFact[]) {
     <p class="facts">
       <span>{entry.id}</span>
       <span>[{entry.data.official ? "official" : "community"}]</span>
-      {
-        entry.data.official && (
-          <>
-            {fact?.license && <span>{fact.license}</span>}
-            {fact?.version && <span>{fact.version}</span>}
-          </>
-        )
-      }
+      {fact?.license && <span>{fact.license}</span>}
+      {fact?.version && <span>{fact.version}</span>}
+      {fact?.stars !== undefined && <span>{fact.stars.toLocaleString("en-US")} GitHub stars</span>}
       {entry.data.status !== "active" && <span>{entry.data.status}</span>}
     </p>
     <h1>{entry.data.name}</h1>
