@@ -31,12 +31,17 @@
   margin-block: 0 3rem;
 }
 
+/* Heading sizes step 1.25rem / 1.125rem / 1rem so an h3 stays distinct
+ * from bold body labels. Line boxes stay on the 1.5rem grid. */
 .prose h2 {
+  font-size: 1.25rem;
   margin-block: 3rem 0.75rem;
   line-height: 1.5rem;
 }
 
 .prose h3 {
+  font-size: 1.125rem;
+  line-height: 1.5rem;
   margin-block: 3rem 0.75rem;
 }
 
@@ -93,6 +98,14 @@
   font-family: inherit;
 }
 
+/* Inline code carries API names. A faint fill of the text color marks
+ * token boundaries without adding hue; code inside pre keeps the page
+ * surface. */
+.prose :not(pre) > code {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  padding: 0.0625rem 0.4ch;
+}
+
 .prose img {
   max-width: 100%;
   height: auto;
@@ -112,6 +125,10 @@
 
 /* Code blocks */
 
+/* Without an explicit font, pre falls back to the browser's default
+ * fixed font and size, not the page typeface. Code sits at 0.875rem,
+ * matching tables: denser than prose, and ~90 characters fit the
+ * documentation column before scrolling. */
 .prose pre {
   width: fit-content;
   min-width: min(100%, var(--content-width));
@@ -120,6 +137,8 @@
   padding: 0.75rem 1rem;
   border: 1px solid GrayText;
   overflow-x: auto;
+  font-family: inherit;
+  font-size: 0.875rem;
 }
 
 .prose .code-block {

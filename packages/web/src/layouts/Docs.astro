@@ -108,7 +108,7 @@ const hasSections = headings.some((heading) => heading.depth === 2)
 
   /* The "On this page" bar stays hidden at the top of the page and
    * appears once the reader scrolls into the content. Wide viewports
-   * (90rem and up) show the outline beside the frame instead and never
+   * (96rem and up) show the outline beside the frame instead and never
    * render the bar. */
   body:not(.docs-scrolled) .subnav {
     display: none;
@@ -235,8 +235,10 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   }
 
   /* Wide viewports: the outline replaces the bar. It uses the margin beside
-   * the frame and grows with it, keeping clear space at the viewport edge. */
-  @media (min-width: 90rem) {
+   * the frame and grows with it, keeping clear space at the viewport edge.
+   * 96rem is the first width that gives the rail 12rem, enough for one
+   * identifier per line; below that the bar serves the outline. */
+  @media (min-width: 96rem) {
     .subnav {
       display: none;
     }
@@ -250,7 +252,7 @@ const hasSections = headings.some((heading) => heading.depth === 2)
       position: absolute;
       inset-block: 0;
       left: calc(100% + 2rem);
-      width: clamp(8.5rem, calc((100vw - 72rem) / 2), 13rem);
+      width: clamp(12rem, calc((100vw - 72rem) / 2), 13rem);
     }
 
     .docs-onpage nav {
