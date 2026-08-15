@@ -47,6 +47,9 @@ for (const heading of Astro.props.headings) {
   .toc-list {
     font-size: 0.875rem;
     line-height: 1.6;
+    /* Section titles quote code identifiers; wrap them mid-token rather
+     * than clipping at the rail edge. */
+    overflow-wrap: anywhere;
   }
 
   ul {
