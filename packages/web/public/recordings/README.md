@@ -14,6 +14,7 @@ Each story can set these options:
 - `tone="recorded"` uses the recorded foreground colors.
 - `background="transparent"` does not paint cell backgrounds.
 - `background="recorded"` paints recorded backgrounds and restores the recorded default foreground.
+- `padding={false}` removes the terminal-colored margin added around a recorded background.
 - `fadeTop`, `fadeRight`, `fadeBottom`, and `fadeLeft` set an edge fade from `0` to `1`.
 - `title` and `caption` supply text for the controls.
 
@@ -56,19 +57,6 @@ import ScrollbackRecording from "../../components/ScrollbackRecording.astro"
 ```
 
 Use `controls="below"` when chapter captions are part of the article.
-
-## Current Recordings
-
-Commit each build config at `scripts/recordings/<name>.story.config.json`. Do not commit the raw `.cast` files.
-
-`opencode-markdown-table.json` has no local build config. It came from the simonklee.dk repository.
-
-| File                           |                    Size | Use                                                                |
-| ------------------------------ | ----------------------: | ------------------------------------------------------------------ |
-| `dispersive-prism.json`        |    `200x46`, 26 seconds | Use `tone="recorded"` because color conveys the dispersion data.   |
-| `color-space-explorer.json`    |    `190x50`, 26 seconds | Use `tone="recorded"` because color conveys the diagrams.          |
-| `anomaly.json`                 |   `210x40`, 3.3 seconds | Use `tone="inherit"`, or use a recorded tone and background.       |
-| `opencode-markdown-table.json` | `80x25`, three chapters | Use a recorded tone and background to preserve inverse-video text. |
 
 ## Record A Cast
 
