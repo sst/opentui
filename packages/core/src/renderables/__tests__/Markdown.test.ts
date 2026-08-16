@@ -2168,6 +2168,7 @@ const x = 1;
 })
 
 test("custom code block renderable updates when fenced content changes", async () => {
+  let initial: TextRenderable | undefined
   const md = createMarkdownRenderable({
     id: "custom-code-update",
     content: "```widget\nfirst\n```",
@@ -2175,11 +2176,13 @@ test("custom code block renderable updates when fenced content changes", async (
     renderNode: (node, ctx) => {
       if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
 
-      return new TextRenderable(renderer, {
-        id: "custom-widget",
-        content: `WIDGET: ${node.text}`,
-        width: "100%",
-      })
+      const renderable =
+        ctx.previous instanceof TextRenderable
+          ? ctx.previous
+          : new TextRenderable(renderer, { id: "custom-widget", content: "", width: "100%" })
+      renderable.content = `WIDGET: ${node.text}`
+      initial ??= renderable
+      return renderable
     },
   })
 
@@ -2193,6 +2196,35 @@ test("custom code block renderable updates when fenced content changes", async (
   const frame = captureFrame()
   expect(frame).toContain("WIDGET: second")
   expect(frame).not.toContain("WIDGET: first")
+  expect(md.getRenderable("custom-widget")).toBe(initial)
+})
+
+test("custom code block renderable keeps its state when content is prepended", async () => {
+  const source = `\`\`\`widget\n${"wide content ".repeat(10)}\n\`\`\``
+  const md = createMarkdownRenderable({
+    id: "custom-code-move",
+    content: source,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: (node, ctx) => {
+      if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
+      return ctx.previous instanceof TextRenderable
+        ? ctx.previous
+        : new TextRenderable(renderer, { id: "movable-widget", content: node.text, width: "100%", wrapMode: "none" })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md.getRenderable("movable-widget") as TextRenderable
+  initial.scrollX = 4
+
+  md.content = `Intro\n\n${source}`
+  await renderMarkdownRenderable(md)
+
+  expect(md.getRenderable("movable-widget")).toBe(initial)
+  expect(initial.scrollX).toBe(4)
+  expect(captureFrame()).toContain("Intro")
 })
 
 test("createMarkdownCodeBlockRenderer dispatches fenced code by language", async () => {
@@ -2395,11 +2427,14 @@ test("custom renderNode output survives top-level spacing updates", async () => 
     internalBlockMode: "top-level",
     renderNode: (node, ctx) => {
       if (node.type === "heading") {
-        return new TextRenderable(renderer, {
-          id: "custom-text-spacing",
-          content: "CUSTOM",
-          width: "100%",
-        })
+        return ctx.previous instanceof TextRenderable
+          ? ctx.previous
+          : new TextRenderable(renderer, {
+              id: "custom-text-spacing",
+              content: "CUSTOM",
+              width: "100%",
+              marginTop: 0,
+            })
       }
 
       return ctx.defaultRender()
@@ -2421,6 +2456,7 @@ test("custom renderNode output survives top-level spacing updates", async () => 
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Paragraph
+
     CUSTOM"
   `)
 })

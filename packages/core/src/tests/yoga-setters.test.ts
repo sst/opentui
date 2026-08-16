@@ -624,6 +624,7 @@ describe("Yoga Prop Setters - marginBottom", () => {
     expect(() => {
       renderable.marginBottom = 10
     }).not.toThrow()
+    expect(renderable.marginBottom).toBe(10)
   })
 
   test("accepts null", () => {

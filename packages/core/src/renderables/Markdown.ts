@@ -124,6 +124,10 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 }
 
 export interface RenderNodeContext {
+  /** Previous custom renderable for the same block, when it may be updated and returned in place. */
+  previous?: Renderable
+  /** Whether this Markdown renderable currently treats its trailing blocks as streaming content. */
+  streaming: boolean
   syntaxStyle: SyntaxStyle
   conceal: boolean
   concealCode: boolean
@@ -143,6 +147,29 @@ export type MarkdownCodeBlockRendererMap =
 
 type MarkdownRenderNode = NonNullable<MarkdownOptions["renderNode"]> & {
   codeBlockOnly?: boolean
+}
+
+type RemainingBlockCounts = Map<string, Map<string, number>>
+
+function countRemainingBlocks(tokens: readonly MarkedToken[]): RemainingBlockCounts {
+  const counts: RemainingBlockCounts = new Map()
+  for (const token of tokens) {
+    const byRaw = counts.get(token.type) ?? new Map<string, number>()
+    byRaw.set(token.raw, (byRaw.get(token.raw) ?? 0) + 1)
+    counts.set(token.type, byRaw)
+  }
+  return counts
+}
+
+function consumeRemainingBlock(counts: RemainingBlockCounts, token: MarkedToken): void {
+  const byRaw = counts.get(token.type)
+  const count = byRaw?.get(token.raw) ?? 0
+  if (count <= 1) byRaw?.delete(token.raw)
+  else byRaw!.set(token.raw, count - 1)
+}
+
+function hasRemainingBlock(counts: RemainingBlockCounts, token: MarkedToken): boolean {
+  return (counts.get(token.type)?.get(token.raw) ?? 0) > 0
 }
 
 function normalizeMarkdownCodeBlockRenderers(
@@ -230,6 +257,10 @@ const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/
 function colorsEqual(left?: RGBA, right?: RGBA): boolean {
   if (!left || !right) return left === right
   return left.equals(right)
+}
+
+function numericMargin(value: unknown): number {
+  return typeof value === "number" ? value : 0
 }
 
 export interface BlockState {
@@ -1533,7 +1564,7 @@ export class MarkdownRenderable extends Renderable {
       typeof custom.renderable.marginTop === "number"
         ? Math.max(custom.renderable.marginTop, block.marginTop)
         : block.marginTop
-    this.applyMargins(custom.renderable, marginTop, 0)
+    this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
 
     return {
       renderable: custom.renderable,
@@ -1588,8 +1619,9 @@ export class MarkdownRenderable extends Renderable {
     token: MarkedToken,
     index: number,
     nextToken: MarkedToken | undefined,
+    previous?: Renderable,
   ): CustomRenderableResult {
-    const custom = this.renderCustomNode(token, () => {
+    const custom = this.renderCustomNode(token, previous, () => {
       return { renderable: this.createDefaultRenderable(token, index, nextToken) }
     })
     if (!custom.renderable) {
@@ -1605,8 +1637,12 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private createTopLevelCustomRenderable(block: MarkdownRenderBlock, index: number): CustomRenderableResult {
-    const custom = this.renderCustomNode(block.token, () => {
+  private createTopLevelCustomRenderable(
+    block: MarkdownRenderBlock,
+    index: number,
+    previous?: Renderable,
+  ): CustomRenderableResult {
+    const custom = this.renderCustomNode(block.token, previous, () => {
       return this.createTopLevelDefaultRenderable(block, index)
     })
     if (!custom.renderable) {
@@ -1623,11 +1659,17 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private renderCustomNode(token: MarkedToken, createDefault: () => CustomRenderDefaultResult): RenderNodeResult {
+  private renderCustomNode(
+    token: MarkedToken,
+    previous: Renderable | undefined,
+    createDefault: () => CustomRenderDefaultResult,
+  ): RenderNodeResult {
     if (!this._renderNode) return {}
 
     let defaultResult: CustomRenderDefaultResult | undefined
     const custom = this._renderNode(token, {
+      previous,
+      streaming: this._streaming,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
       concealCode: this._concealCode,
@@ -1756,11 +1798,13 @@ export class MarkdownRenderable extends Renderable {
 
   private updateTopLevelBlocks(tokens: MarkedToken[], forceTableRefresh: boolean): void {
     const blocks = this.buildTopLevelRenderBlocks(tokens)
+    const remaining = countRemainingBlocks(blocks.map((block) => block.token))
     this._stableBlockCount = this.getStableBlockCount(blocks, this._parseState?.stableTokenCount ?? 0)
 
     let blockIndex = 0
     for (let i = 0; i < blocks.length; i += 1) {
       const block = blocks[i]
+      consumeRemainingBlock(remaining, block.token)
       const existing = this._blockStates[blockIndex]
 
       if (existing && existing.token === block.token && !forceTableRefresh) {
@@ -1800,7 +1844,7 @@ export class MarkdownRenderable extends Renderable {
               typeof custom.renderable.marginTop === "number"
                 ? Math.max(custom.renderable.marginTop, block.marginTop)
                 : block.marginTop
-            this.applyMargins(custom.renderable, marginTop, 0)
+            this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
             if (custom.renderable !== existing.renderable) {
               existing.renderable.destroyRecursively()
               this.add(custom.renderable, blockIndex)
@@ -1820,22 +1864,44 @@ export class MarkdownRenderable extends Renderable {
         }
 
         this.updateBlockRenderable(existing, block.token, blockIndex, blocks[i + 1]?.token)
-        existing.renderable.marginBottom = 0
         if (existing.marginTop !== block.marginTop) {
-          this.applyMargins(existing.renderable, block.marginTop, 0)
+          this.applyMargins(
+            existing.renderable,
+            Math.max(numericMargin(existing.renderable.marginTop), block.marginTop),
+            numericMargin(existing.renderable.marginBottom),
+          )
         }
         this.syncTopLevelBlockState(existing, block)
         blockIndex++
         continue
       }
 
-      if (existing) {
-        existing.renderable.destroyRecursively()
+      const existingMoved = existing ? hasRemainingBlock(remaining, existing.token) : false
+      const custom = this._renderNode
+        ? this.createTopLevelCustomRenderable(block, blockIndex, existingMoved ? undefined : existing?.renderable)
+        : undefined
+      if (existingMoved) this._blockStates.splice(blockIndex, 0, existing!)
+      else if (existing && custom?.renderable !== existing.renderable) existing.renderable.destroyRecursively()
+
+      if (custom?.renderable) {
+        const marginTop =
+          typeof custom.renderable.marginTop === "number"
+            ? Math.max(custom.renderable.marginTop, block.marginTop)
+            : block.marginTop
+        this.applyMargins(custom.renderable, marginTop, numericMargin(custom.renderable.marginBottom))
       }
 
-      const next = this.createTopLevelRenderable(block, blockIndex)
+      const next = custom?.renderable
+        ? {
+            renderable: custom.renderable,
+            tableContentCache: custom.tableContentCache,
+            canUpdateInPlace: custom.canUpdateInPlace,
+          }
+        : custom
+          ? this.createTopLevelDefaultRenderable(block, blockIndex)
+          : this.createTopLevelRenderable(block, blockIndex)
       if (next.renderable) {
-        this.add(next.renderable, blockIndex)
+        if (next.renderable !== existing?.renderable) this.add(next.renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token: block.token,
           tokenRaw: block.token.raw,
@@ -1903,9 +1969,11 @@ export class MarkdownRenderable extends Renderable {
 
     this._stableBlockCount = 0
     const blockTokens = this.buildRenderableTokens(tokens)
+    const remaining = countRemainingBlocks(blockTokens)
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
+      consumeRemainingBlock(remaining, token)
       const nextToken = blockTokens[i + 1]
       const existing = this._blockStates[blockIndex]
 
@@ -1961,21 +2029,24 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
-      if (existing) {
-        existing.renderable.destroyRecursively()
-      }
-
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
       let tracksInterBlockMargin = true
       let canUpdateInPlace = true
 
-      const custom = this.createCustomRenderable(token, blockIndex, nextToken)
+      const existingMoved = existing ? hasRemainingBlock(remaining, existing.token) : false
+      const custom = this.createCustomRenderable(
+        token,
+        blockIndex,
+        nextToken,
+        existingMoved ? undefined : existing?.renderable,
+      )
       if (custom.renderable) {
         renderable = custom.renderable
         tracksInterBlockMargin = custom.tracksInterBlockMargin
         canUpdateInPlace = custom.canUpdateInPlace
       }
+      if (existing && renderable !== existing.renderable) existing.renderable.destroyRecursively()
 
       if (!renderable) {
         if (token.type === "table") {
@@ -1997,7 +2068,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (renderable) {
-        this.add(renderable, blockIndex)
+        if (renderable !== existing?.renderable) this.add(renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token,
           tokenRaw: token.raw,

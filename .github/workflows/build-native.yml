@@ -52,6 +52,8 @@ jobs:
           bun run build:lib
           cd ../qrcode
           bun run build
+          cd ../mermaid
+          bun run build
           cd ../three
           bun run build
           cd ../react
@@ -88,6 +90,8 @@ jobs:
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
           test -d packages/qrcode/dist || (echo "❌ qrcode dist missing!" && exit 1)
           test -f packages/qrcode/dist/package.json || (echo "❌ qrcode dist/package.json missing!" && exit 1)
+          test -d packages/mermaid/dist || (echo "❌ mermaid dist missing!" && exit 1)
+          test -f packages/mermaid/dist/package.json || (echo "❌ mermaid dist/package.json missing!" && exit 1)
           test -d packages/three/dist || (echo "❌ three dist missing!" && exit 1)
           test -f packages/three/dist/package.json || (echo "❌ three dist/package.json missing!" && exit 1)
           test -d packages/react/dist || (echo "❌ react dist missing!" && exit 1)
@@ -99,7 +103,7 @@ jobs:
           test -d packages/ssh/dist || (echo "❌ ssh dist missing!" && exit 1)
           test -f packages/ssh/dist/package.json || (echo "❌ ssh dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (8 native targets, 7 package dists)"
+          echo "✅ All required build outputs verified (8 native targets, 8 package dists)"
 
       - name: Stage native license notices
         run: |
@@ -229,6 +233,10 @@ jobs:
           echo "Packaging qrcode dist..."
           cp -r packages/qrcode/dist artifacts/npm-packages/qrcode-dist
           test -f artifacts/npm-packages/qrcode-dist/package.json || (echo "❌ qrcode dist/package.json missing after copy!" && exit 1)
+
+          echo "Packaging mermaid dist..."
+          cp -r packages/mermaid/dist artifacts/npm-packages/mermaid-dist
+          test -f artifacts/npm-packages/mermaid-dist/package.json || (echo "❌ mermaid dist/package.json missing after copy!" && exit 1)
 
           echo "Packaging core native packages..."
           mkdir -p artifacts/npm-packages/core-native-packages

@@ -64,6 +64,7 @@ jobs:
           bun run build:native --all
           bun run build:lib
           cd ../qrcode && bun run build
+          cd ../mermaid && bun run build
           cd ../three && bun run build
           cd ../solid && bun run build
           cd ../react && bun run build
@@ -73,6 +74,8 @@ jobs:
       - name: Run packed Node smoke tests
         run: |
           cd packages/core
+          bun run test:dist --skip-build
+          cd ../mermaid
           bun run test:dist --skip-build
           cd ../solid
           bun run test:dist --skip-build

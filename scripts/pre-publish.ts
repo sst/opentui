@@ -49,6 +49,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     requiresCore: true,
   },
   {
+    name: "@opentui/mermaid",
+    rootDir: join(rootDir, "packages", "mermaid"),
+    distDir: join(rootDir, "packages", "mermaid", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
