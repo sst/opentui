@@ -12,6 +12,9 @@ interface StoryConfig {
   // "recorded" paints the recording's own captured cell backgrounds, i.e. it
   // looks like an actual terminal screen sitting on the page.
   background?: "transparent" | "recorded"
+  // Add terminal-colored space around a recorded background. Disable this
+  // when the recording already owns its outer spacing.
+  padding?: boolean
   // Convenience for inkShadow = inkHighlight = the same color. Ignored when
   // tone is "recorded". Left undefined by default so mono stories fall back
   // to this element's own computed `color`.
@@ -58,6 +61,7 @@ interface Props {
   // Multiplier applied to the fit-computed font size, for minor art-direction
   // nudges (bigger/smaller dots) without reintroducing cropping.
   scale?: number
+  padding?: boolean
   gamma?: number
   minAlpha?: number
   maxAlpha?: number
@@ -78,6 +82,7 @@ const {
   controls = "hidden",
   fit = "contain",
   scale = 1,
+  padding = true,
   gamma = 2.2,
   minAlpha = 0.02,
   maxAlpha = 1,
@@ -92,7 +97,7 @@ const {
 
 const config = JSON.stringify({
   stories,
-  defaults: { fit, scale, gamma, minAlpha, maxAlpha, holdMs, fadeTop, fadeRight, fadeBottom, fadeLeft },
+  defaults: { fit, scale, padding, gamma, minAlpha, maxAlpha, holdMs, fadeTop, fadeRight, fadeBottom, fadeLeft },
 })
 ---
 

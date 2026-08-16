@@ -16,7 +16,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 ## Reading order by area
 
-- Getting started: `/docs/getting-started`
+- Getting started: `/docs/getting-started`, `/docs/getting-started/quickstart`
 - Core: `/docs/core-concepts/renderer`
 - Testing: `/docs/core-concepts/testing`
 - Audio: `/docs/core-concepts/audio`
@@ -39,7 +39,8 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 | Intent(s)                                                                                                                | Start here                                  |
 | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `getting-started`, `installation`, `quickstart`, `intro`, `examples`, `agent-skill`                                      | `docs/getting-started.mdx`                  |
+| `getting-started`, `intro`, `examples`, `agent-skill`                                                                    | `docs/getting-started.mdx`                  |
+| `installation`, `quickstart`                                                                                             | `docs/getting-started/quickstart.mdx`       |
 | `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`                                                                | `docs/core-concepts/renderer.mdx`           |
 | `audio`, `native-audio`, `sound`, `playback`, `capture`, `microphone`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft` | `docs/core-concepts/audio.mdx`              |
 | `keymap`, `keybindings`, `shortcuts`, `commands`, `leader`, `ex-commands`                                                | `docs/keymap/overview.mdx`                  |
@@ -66,6 +67,7 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 ## Current skill entry pages
 
 - `docs/getting-started.mdx`
+- `docs/getting-started/quickstart.mdx`
 - `docs/core-concepts/renderer.mdx`
 - `docs/core-concepts/audio.mdx`
 - `docs/core-concepts/testing.mdx`

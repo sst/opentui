@@ -187,6 +187,10 @@
     // shrink the content.
     var padCols = pad ? 4 : 0
     var padRows = pad ? 3 : 0
+    // Story files omit trailing default-background cells. Keep the screen at
+    // the recorded grid width so those cells remain visible and alignment does
+    // not depend on the longest painted row.
+    screen.style.width = cols + "ch"
     screen.style.padding = pad ? 1.5 * lineToEm + "em 2ch" : ""
 
     if (box.hasAttribute("data-recording-aspect-ratio")) {
@@ -282,6 +286,7 @@
       inkHighlight: inkHighlightHex ? toRgb(inkHighlightHex) : brandInk,
       fit: story.fit || defaults.fit,
       scale: numOr(story.scale, defaults.scale),
+      padding: typeof story.padding === "boolean" ? story.padding : defaults.padding,
       holdMs: numOr(story.holdMs, defaults.holdMs),
       fadeTop: numOr(story.fadeTop, defaults.fadeTop),
       fadeRight: numOr(story.fadeRight, defaults.fadeRight),
@@ -304,6 +309,7 @@
         background: "transparent",
         fit: "contain",
         scale: 1,
+        padding: true,
         gamma: 2.2,
         minAlpha: 0.02,
         maxAlpha: 1,
@@ -482,7 +488,7 @@
         timeline.rows,
         activeOptions().fit,
         activeOptions().scale,
-        activeOptions().background === "recorded",
+        activeOptions().background === "recorded" && activeOptions().padding,
       )
       // background: "recorded" only paints per-cell backgrounds (runHtml),
       // which can leave a hairline seam of whatever's *behind* the screen

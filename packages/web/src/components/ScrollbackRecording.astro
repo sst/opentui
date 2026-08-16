@@ -8,8 +8,9 @@ interface Props {
   label: string
   stories: Story[]
   // "visible" (default) overlays play/pause on the recording. "below" renders
-  // chapter captions and navigation in the page flow under it.
-  controls?: "visible" | "below"
+  // chapter captions and navigation in the page flow under it. "hidden" shows
+  // only the recording.
+  controls?: "hidden" | "visible" | "below"
 }
 
 const { label, stories, controls = "visible" } = Astro.props

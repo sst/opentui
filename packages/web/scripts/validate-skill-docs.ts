@@ -218,7 +218,7 @@ function validateSkillDoc(sourcePath: string, content: string): Violation[] {
   for (const [index, line] of content.replace(/\r\n/g, "\n").split("\n").entries()) {
     const lineNumber = index + 1
     const trimmed = line.trim()
-    const disableMatch = trimmed.match(/^<!--\s*docs-lint-disable\s+([a-z0-9-]+)\s*-->$/)
+    const disableMatch = trimmed.match(/^(?:<!--|\{\/\*)\s*docs-lint-disable\s+([a-z0-9-]+)\s*(?:-->|\*\/\})$/)
 
     if (disableMatch) {
       pendingDisables.push(disableMatch[1])
