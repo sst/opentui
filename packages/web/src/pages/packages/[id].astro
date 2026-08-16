@@ -31,24 +31,24 @@ interface Props {
 const { entry, fact } = Astro.props
 const { Content } = await render(entry)
 const installCommands = entry.data.distributions.flatMap(({ install }) => (install ? [install] : []))
-const npmPackages = entry.data.distributions.filter(
-  (distribution): distribution is typeof distribution & { identifier: string } =>
-    distribution.type === "npm" && Boolean(distribution.identifier),
-)
 const repositoryUrl = entry.data.source.url.replace(/\.git$/, "")
+// npm registry and issue-tracker links stay off this row: the install
+// commands already show each package identifier, and the source link
+// reaches the tracker. The row carries only destinations with no other
+// path on the page.
 const linkItems = [
   { label: "Source", href: repositoryUrl },
-  ...npmPackages.map(({ identifier }) => ({ label: "npm", href: `https://www.npmjs.com/package/${identifier}` })),
   ...(entry.data.links?.homepage ? [{ label: "Homepage", href: entry.data.links.homepage }] : []),
   ...(entry.data.links?.docs ? [{ label: "Docs", href: entry.data.links.docs }] : []),
-  ...(entry.data.links?.issues ? [{ label: "Issues", href: entry.data.links.issues }] : []),
   ...(entry.data.links?.changelog ? [{ label: "Changelog", href: entry.data.links.changelog }] : []),
 ]
 const surfaces = entry.data.surfaces ?? []
 const maintainers = entry.data.official ? [] : (entry.data.maintainers ?? [])
 const platformRows = fact?.platforms ? groupPlatforms(fact.platforms) : []
 const platformPackageCount = fact?.platformPackages?.length ?? 0
-const hasAside = installCommands.length > 0 || surfaces.length > 0 || platformRows.length > 0 || maintainers.length > 0
+const hasFacts = Boolean(fact?.license || fact?.version || fact?.stars !== undefined)
+const hasAside =
+  hasFacts || installCommands.length > 0 || surfaces.length > 0 || platformRows.length > 0 || maintainers.length > 0
 
 function groupPlatforms(platforms: PlatformFact[]) {
   const labels = { linux: "Linux", macos: "macOS", windows: "Windows" } as const
@@ -71,9 +71,6 @@ function groupPlatforms(platforms: PlatformFact[]) {
     <p class="facts">
       <span>{entry.id}</span>
       <span>[{entry.data.official ? "official" : "community"}]</span>
-      {fact?.license && <span>{fact.license}</span>}
-      {fact?.version && <span>{fact.version}</span>}
-      {fact?.stars !== undefined && <span>{fact.stars.toLocaleString("en-US")} GitHub stars</span>}
       {entry.data.status !== "active" && <span>{entry.data.status}</span>}
     </p>
     <h1>{entry.data.name}</h1>
@@ -86,6 +83,13 @@ function groupPlatforms(platforms: PlatformFact[]) {
     {
       hasAside && (
         <aside class="side">
+          {hasFacts && (
+            <p class="meta">
+              {fact?.license && <span>{fact.license}</span>}
+              {fact?.version && <span>{fact.version}</span>}
+              {fact?.stars !== undefined && <span>{fact.stars.toLocaleString("en-US")} GitHub stars</span>}
+            </p>
+          )}
           {installCommands.map((install) => (
             <ProseCode data-code={install}>
               <code>{install}</code>
@@ -149,17 +153,24 @@ function groupPlatforms(platforms: PlatformFact[]) {
    * level with the body, on one shared datum below the page header. */
 
   .facts,
-  .links {
+  .links,
+  .side .meta {
     display: flex;
     flex-wrap: wrap;
     gap: 0 2ch;
   }
 
   /* Facts read like the list page's meta line: muted, with ownership as
-   * a bracketed label. */
+   * a bracketed label. The sidebar's license/version/star count is the
+   * same kind of fact, kept out of the header line so it reads with the
+   * install command and reference tables instead of crowding the title. */
+  .facts,
+  .side .meta {
+    color: var(--muted-color);
+  }
+
   .facts {
     margin-block: 0 0.75rem;
-    color: var(--muted-color);
   }
 
   .package > h1 {
