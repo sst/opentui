@@ -288,23 +288,23 @@ export class EmbeddedTerminalRenderable extends Renderable {
     const { onMouseDown, onMouseUp, onMouseMove, onMouseDrag, onMouseScroll } = options
     this.onMouseDown = (event) => {
       this.forwardMouse(event, "press")
-      onMouseDown?.(event)
+      onMouseDown?.call(this, event)
     }
     this.onMouseUp = (event) => {
       this.forwardMouse(event, "release")
-      onMouseUp?.(event)
+      onMouseUp?.call(this, event)
     }
     this.onMouseMove = (event) => {
       this.forwardMouse(event, "motion")
-      onMouseMove?.(event)
+      onMouseMove?.call(this, event)
     }
     this.onMouseDrag = (event) => {
       this.forwardMouse(event, "motion")
-      onMouseDrag?.(event)
+      onMouseDrag?.call(this, event)
     }
     this.onMouseScroll = (event) => {
       this.forwardMouse(event, "press")
-      onMouseScroll?.(event)
+      onMouseScroll?.call(this, event)
     }
   }
 

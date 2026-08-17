@@ -49,12 +49,16 @@ describe("EmbeddedTerminalRenderable", () => {
     expect(setup.captureCharFrame()).toBe(first)
   })
 
-  test("preserves mouse callbacks supplied through options", async () => {
+  test("preserves mouse callbacks and their renderable context", async () => {
     let mouseDowns = 0
+    let callbackThis: EmbeddedTerminalRenderable | undefined
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
       width: 20,
       height: 4,
-      onMouseDown: () => mouseDowns++,
+      onMouseDown: function () {
+        mouseDowns++
+        callbackThis = this
+      },
     })
     setup.renderer.root.add(terminal)
     await setup.renderOnce()
@@ -62,6 +66,7 @@ describe("EmbeddedTerminalRenderable", () => {
     await setup.mockMouse.pressDown(1, 1)
 
     expect(mouseDowns).toBe(1)
+    expect(callbackThis).toBe(terminal)
   })
 
   test("participates in renderer selection and returns terminal text", async () => {
