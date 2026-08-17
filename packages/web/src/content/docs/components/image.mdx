@@ -1,7 +1,6 @@
 ---
 title: Image
 description: Load and render images with Kitty, Sixel, or Unicode blocks
-order: 19
 skill:
   entry: true
   intents: [image, image-renderable, image-display, kitty, sixel]
@@ -9,7 +8,19 @@ skill:
 
 # Image
 
-`ImageRenderable` loads PNG, JPEG, WebP, GIF, or encoded bytes into a native image and renders it with Kitty graphics, Sixel, or a Unicode block fallback.
+`ImageRenderable` displays PNG, JPEG, WebP, or GIF data from an encoded source. It also accepts an existing `NativeImage`. The renderable uses Kitty graphics, Sixel, or a Unicode block fallback.
+
+Use [`NativeImage`](/docs/reference/native-image) when you need to decode, inspect, or transform image pixels before display.
+
+## Availability
+
+| Field           | Availability          |
+| --------------- | --------------------- |
+| Package         | `@opentui/core`       |
+| Core renderable | `ImageRenderable`     |
+| React           | `<image>` (automatic) |
+| Solid           | `<image>` (automatic) |
+| Status          | Built in              |
 
 ## Renderable API
 
@@ -31,7 +42,7 @@ renderer.root.add(image)
 await image.loadPromise
 ```
 
-`source` accepts a path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer`. Format detection uses the encoded bytes. See [Native images](/docs/reference/native-image) for formats, decoding, pixel access, and limits.
+`source` accepts every `ImageSource` form: a path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer`. It also accepts `NativeImage`. Format detection uses encoded bytes when the source needs decoding. `ImageRenderable` retains an existing `NativeImage`. You still own and must dispose the source reference.
 
 ## React
 
@@ -58,13 +69,13 @@ await render(
 )
 ```
 
-The `source`, callbacks, fit, and protocol props can be updated after construction. Replacing `source` keeps the current image visible until the replacement succeeds, cancels obsolete loading, and disposes stale native images. Setting `source` to `undefined` clears it; clearing `fit` or `protocol` restores `"fit"` or `"auto"`.
+You can update `source`, callbacks, fit, and protocol after construction. Replacing `source` keeps the current image visible until the replacement succeeds. It cancels obsolete loading and disposes stale native images. Setting `source` to `undefined` clears it. Clearing `fit` or `protocol` restores `"fit"` or `"auto"`.
 
 ## Sizing
 
 | `fit`   | Behavior                                                     |
 | ------- | ------------------------------------------------------------ |
-| `fit`   | Contain and center the full image; preserve aspect (default) |
+| `fit`   | Contain and center the full image. Preserve aspect (default) |
 | `cover` | Fill the renderable, preserve aspect ratio, and center-crop  |
 | `fill`  | Fill the renderable and allow stretching                     |
 
@@ -76,18 +87,18 @@ Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallb
 | ---------- | ------------------------------------------------------------------- |
 | `auto`     | Global override, then Kitty, then Sixel, then Unicode blocks        |
 | `kitty`    | Force Kitty graphics                                                |
-| `sixel`    | Force Sixel; falls back to blocks without terminal pixel resolution |
+| `sixel`    | Force Sixel. Falls back to blocks without terminal pixel resolution |
 | `blocks`   | Portable Unicode quadrant-block rendering                           |
 
 With global and per-image protocols set to `auto`, tmux uses blocks. Explicit Kitty, or Sixel with pixel resolution, uses tmux passthrough.
 
-Overlapping images must use the same effective protocol. Layering and alpha composition across different effective protocols are not supported; leave overlapping images on `auto` or give them the same explicit `protocol`. Non-overlapping images may use different protocols.
+Overlapping images must use the same effective protocol. OpenTUI does not support layering or alpha composition across different effective protocols. Leave overlapping images on `auto` or give them the same explicit `protocol`. Non-overlapping images can use different protocols.
 
-Kitty preserves image alpha, Sixel treats alpha below 128 as transparent, and blocks blend sampled alpha. Placement opacity scales Kitty and block alpha; Sixel dims toward cell backgrounds. Direct, unbuffered fills, text, and box borders cover images at whole-cell granularity without blending.
+Kitty preserves image alpha, Sixel treats alpha below 128 as transparent, and blocks blend sampled alpha. Placement opacity scales Kitty and block alpha. Sixel dims toward cell backgrounds. Direct, unbuffered fills, text, and box borders cover images at whole-cell granularity without blending.
 
 Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. See [Environment variables](/docs/reference/env-vars).
 
-Split-footer scrollback snapshots follow the same protocol resolution as live images: Kitty placement, Sixel with detected pixel geometry, or Unicode quadrant blocks. Snapshots containing mixed effective protocols, overlapping images, or covered Sixel image cells use blocks. Native scrollback placement starts once the footer is pinned and the image rectangle is addressable. Await `loadPromise` before rendering an image into a `ScrollbackSurface`; see [Writing to scrollback](/docs/core-concepts/renderer#writing-to-scrollback).
+Split-footer scrollback snapshots use the same protocol resolution as live images. They use Kitty placement, Sixel with detected pixel geometry, or Unicode quadrant blocks. Snapshots with mixed effective protocols, overlapping images, or covered Sixel cells use blocks. Native scrollback placement starts when the footer is pinned and the image rectangle is addressable. Await `loadPromise` before rendering an image into a `ScrollbackSurface`. See [Writing to scrollback](/docs/core-concepts/renderer#writing-to-scrollback).
 
 `resolveImageRenderProtocol(requested, capabilities, hasResolution)` exposes the same protocol-resolution policy for code that needs it without constructing a renderable.
 
@@ -95,7 +106,7 @@ Split-footer scrollback snapshots follow the same protocol resolution as live im
 
 | Member               | Type                                                        | Description                                                     |
 | -------------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| `source`             | `ImageSource`                                               | Image source; optional                                          |
+| `source`             | `ImageRenderableSource`                                     | Encoded image source or `NativeImage`. Optional                 |
 | `fit`                | `"fit" \| "cover" \| "fill"`                                | Destination sizing                                              |
 | `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"`                  | Requested rendering protocol                                    |
 | `onLoad`             | `(image: NativeImage) => void`                              | Called after the current source loads                           |
@@ -104,8 +115,12 @@ Split-footer scrollback snapshots follow the same protocol resolution as live im
 | `loading`            | `boolean`                                                   | Whether the current source is loading                           |
 | `loadError`          | `unknown`                                                   | Current load error, otherwise `null`                            |
 | `loadPromise`        | `Promise<void> \| null`                                     | Settles after the current load attempt                          |
-| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Current resolved protocol; may change with capabilities or size |
+| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Current resolved protocol. Can change with capabilities or size |
 | `cellAspectRatio`    | `number`                                                    | Physical or fallback cell aspect ratio                          |
-| `getFittedSize(...)` | `(width, height, cellAspect?, sourceWidth?, sourceHeight?)` | Resolve destination cells; omitted overrides use current values |
+| `getFittedSize(...)` | `(width, height, cellAspect?, sourceWidth?, sourceHeight?)` | Resolve destination cells. Omitted overrides use current values |
 
-The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Successful replacement, clearing, and destruction release owned images; failed replacement keeps the current image.
+The renderable owns `image` and the `NativeImage` passed to `onLoad`. Do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Successful replacement, clearing, and destruction release owned images. A failed replacement keeps the current image.
+
+## Related components
+
+Use [FrameBuffer](/docs/components/frame-buffer) when you need direct cell drawing or `OptimizedBuffer.drawImage()`. Use [QR code](/docs/components/qr-code) for text encoded as a scannable symbol.

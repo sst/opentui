@@ -1,12 +1,21 @@
 ---
 title: Slider
-description: A draggable slider for continuous values
-order: 9
+description: Choose a continuous value with a mouse-dragged slider
 ---
 
 # Slider
 
-A draggable slider for continuous values. Supports vertical and horizontal orientations.
+`Slider` selects a continuous value by dragging a horizontal or vertical thumb. Use [Select](/docs/components/select) for discrete choices.
+
+## Availability
+
+| Field           | Availability             |
+| --------------- | ------------------------ |
+| Package         | `@opentui/core`          |
+| Core renderable | `SliderRenderable`       |
+| React           | Unavailable              |
+| Solid           | Unavailable              |
+| Status          | Built-in Core renderable |
 
 ## Basic usage
 
@@ -46,10 +55,6 @@ const slider = new SliderRenderable(renderer, {
 })
 ```
 
-## Construct API
-
-> Not available yet. Use `SliderRenderable` for now.
-
 ## Properties
 
 | Property          | Type                         | Default                          | Description                                    |
@@ -62,3 +67,7 @@ const slider = new SliderRenderable(renderer, {
 | `backgroundColor` | `ColorInput`                 | `"#252527"`                      | Track color                                    |
 | `foregroundColor` | `ColorInput`                 | `"#9a9ea3"`                      | Thumb color                                    |
 | `onChange`        | `(value: number) => void`    | -                                | Called when the stored value changes           |
+
+## Related components
+
+[ScrollBar](/docs/components/scrollbar) uses the same track-and-thumb model for a scroll position. Read [Interaction, focus, and selection](/docs/core-concepts/interaction) for pointer input and event behavior.

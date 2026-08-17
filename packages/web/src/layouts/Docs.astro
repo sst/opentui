@@ -4,7 +4,7 @@ import DocsNav from "../components/DocsNav.astro"
 import DocsToc from "../components/DocsToc.astro"
 import SiteFooter from "../components/SiteFooter.astro"
 import SiteNav from "../components/SiteNav.astro"
-import { buildDocsIndex, getPrevNextDocs } from "../lib/docs-index"
+import { buildDocsIndex, getPrevNextDocSequences } from "../lib/docs-index"
 import Minimal from "./Minimal.astro"
 import "../styles/prose.css"
 
@@ -17,7 +17,7 @@ interface Props {
 
 const { title, description, slug, headings = [] } = Astro.props
 const docsIndex = await buildDocsIndex()
-const { prev, next } = getPrevNextDocs(docsIndex, slug)
+const sequencePagers = getPrevNextDocSequences(docsIndex, slug).filter(({ prev, next }) => prev || next)
 const hasSections = headings.some((heading) => heading.depth === 2)
 ---
 
@@ -59,20 +59,25 @@ const hasSections = headings.some((heading) => heading.depth === 2)
       </article>
 
       {
-        (prev || next) && (
-          <nav class="pager" aria-label="Documentation pages">
+        sequencePagers.map(({ prev, next, sequence }, index) => (
+          <nav
+            class="pager"
+            aria-label={sequence.title}
+            data-doc-sequence={sequence.id}
+            hidden={index > 0}
+          >
             {prev && (
-              <a rel="prev" href={prev.url}>
-                &larr; {prev.navTitle}
+              <a rel={index === 0 ? "prev" : undefined} data-direction="prev" href={`${prev.url}?path=${sequence.id}`}>
+                &larr; {prev.title}
               </a>
             )}
             {next && (
-              <a rel="next" href={next.url}>
-                {next.navTitle} &rarr;
+              <a rel={index === 0 ? "next" : undefined} data-direction="next" href={`${next.url}?path=${sequence.id}`}>
+                {next.title} &rarr;
               </a>
             )}
           </nav>
-        )
+        ))
       }
     </main>
 
@@ -229,6 +234,10 @@ const hasSections = headings.some((heading) => heading.depth === 2)
     border-block-start: 1px solid GrayText;
   }
 
+  .pager[hidden] {
+    display: none;
+  }
+
   .pager a[rel="next"] {
     margin-inline-start: auto;
     text-align: right;
@@ -303,6 +312,19 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   // closes them again.
   const panels = Array.from(document.querySelectorAll<HTMLDetailsElement>("details.menu, details.onpage"))
   const header = document.querySelector("body > header")
+
+  const sequencePagers = Array.from(document.querySelectorAll<HTMLElement>("[data-doc-sequence]"))
+  const requestedSequence = new URL(window.location.href).searchParams.get("path")
+  const activePager = sequencePagers.find((pager) => pager.dataset.docSequence === requestedSequence)
+  if (activePager) {
+    for (const pager of sequencePagers) {
+      pager.hidden = pager !== activePager
+      for (const link of pager.querySelectorAll("a")) {
+        if (pager === activePager) link.rel = link.dataset.direction ?? ""
+        else link.removeAttribute("rel")
+      }
+    }
+  }
 
   function syncScrolled() {
     document.body.classList.toggle("docs-scrolled", window.scrollY > 0)
