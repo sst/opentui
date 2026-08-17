@@ -1,7 +1,7 @@
 ---
 id: opentui-solid
 name: OpenTUI Solid
-summary: SolidJS renderer for building terminal user interfaces with OpenTUI Core.
+summary: Solid renderer for building terminal user interfaces with OpenTUI Core.
 kind: renderer
 official: true
 source:
@@ -18,7 +18,7 @@ surfaces:
 distributions:
   - type: npm
     identifier: "@opentui/solid"
-    install: bun add @opentui/solid solid-js
+    install: bun add @opentui/solid solid-js@1.9.12
 links:
   docs: /docs/bindings/solid
 categories:
@@ -26,26 +26,23 @@ categories:
   - rendering
 ---
 
-OpenTUI Solid brings Solid's fine-grained reactivity to the terminal. Components run
-once, and signals connect directly to the renderables: a changing value updates only the
-property it touches. There is no virtual DOM and no re-render.
+`@opentui/solid` is a Solid renderer for OpenTUI. It requires `solid-js` 1.9.12 exactly.
+
+Solid components run once. Signals update renderable properties without a virtual DOM.
 
 ```tsx
+import { createCliRenderer } from "@opentui/core"
 import { render } from "@opentui/solid"
 
-const App = () => <text>Hello, World!</text>
+const renderer = await createCliRenderer({ exitOnCtrlC: true })
 
-render(App)
+await render(() => <text>Hello, Solid!</text>, renderer)
 ```
 
-The element set mirrors [OpenTUI Core](/packages/opentui-core): boxes with borders and
-flexbox layout, styled text, inputs and selects, scroll areas, code and diff viewers,
-markdown, and images. Primitives cover keyboard input, paste, focus, resize, text
-selection, and animation.
+`render()` adopts this renderer. The code that creates the renderer owns `renderer.destroy()`.
 
-`render()` also adopts an existing renderer, so a Solid app serves over
-[SSH](/packages/opentui-ssh) unchanged. Bun runs the JSX directly through a preload
-plugin; Node.js runs compiled output.
+Bun can transform Solid TSX through the package preload. Node.js requires compiled Solid TSX.
 
-The [Solid binding docs](/docs/bindings/solid) cover setup on both runtimes, the
-elements, and testing.
+Read the [Solid bindings](/docs/bindings/solid), [components overview](/docs/components),
+[runtime and platform support](/docs/getting-started/runtime-support), and
+[package entry points](/docs/reference/package-entrypoints).

@@ -9,8 +9,7 @@ const docs = defineCollection({
   schema: z.object({
     title: z.string(),
     description: z.string().optional(),
-    order: z.number().int().positive(),
-    navTitle: z.string().optional(),
+    draft: z.boolean().default(false),
     skill: z
       .object({
         include: z.boolean().default(true),

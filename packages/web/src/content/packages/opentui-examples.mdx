@@ -10,28 +10,18 @@ source:
 distributions:
   - type: source
     identifier: anomalyco/opentui
+  - type: github-release
+    identifier: anomalyco/opentui
 categories:
   - documentation
 ---
 
-OpenTUI Examples shows what OpenTUI can do before you write code. It is one program: an
-example browser that lists about seventy demos in a filterable menu and runs each in
-place. The demos span every component, input and editing, scrolling, text and documents,
-rendering effects, terminal integration, and 3D and physics.
+`@opentui/examples` is the repository's private example browser and examples executable.
 
-Each demo is one source file, so the package doubles as a pattern library: find the demo
-that does what you want and read its file.
+Browse the [example source](https://github.com/anomalyco/opentui/tree/main/packages/examples/src). Most demos have one
+main source file. Some demos also use shared modules, assets, or other support files.
 
-Try it without a clone. On macOS, Linux, WSL, and Git Bash:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh
-```
-
-On Windows, download the latest release from
-[GitHub Releases](https://github.com/anomalyco/opentui/releases/latest).
-
-From a clone of the repository:
+Run the example browser from a repository clone:
 
 ```bash
 bun install
@@ -39,6 +29,10 @@ cd packages/examples
 bun run dev
 ```
 
-The package is private to the monorepo: it installs from source or as the release
-executable, not from npm. The 3D demos require Bun, and the Node.js bundle disables
-them.
+The package is not published to npm. Get the examples executable from
+[GitHub Releases](https://github.com/anomalyco/opentui/releases/latest). Releases supply macOS x64 and arm64, Linux x64,
+and Windows x64 executables. On Linux arm64 or Windows arm64, build the executable from source.
+
+Read [Getting started](/docs#explore-the-examples) for the installer. Read
+[runtime and platform support](/docs/getting-started/runtime-support) for runtime requirements. Read [Deploy an OpenTUI
+application](/docs/ship/deploy) for release formats.

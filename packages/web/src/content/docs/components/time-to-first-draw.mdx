@@ -1,16 +1,25 @@
 ---
 title: TimeToFirstDraw
-description: Display the performance timestamp captured on the first draw
-order: 18
+description: Display the runtime-relative timestamp captured on the first draw
 skill:
-  intents: [time-to-first-draw, first-draw, startup-timing, performance]
+  intents: [time-to-first-draw, first-draw, performance-timestamp, performance]
 ---
 
 # TimeToFirstDraw
 
-`TimeToFirstDrawRenderable` captures and displays a `performance.now()` reading the first time it draws. OpenTUI exports the renderable from core and wrapper components from both React and Solid.
+`TimeToFirstDrawRenderable` captures and displays a `performance.now()` reading the first time it draws. Use it only as a [rendering diagnostic](/docs/test-and-debug/rendering-diagnostics).
 
 Despite its name and default label, the displayed value is the first-draw timestamp from the runtime's performance time origin. The implementation does not subtract renderer creation time or application start time, so it is **not an elapsed startup duration**.
+
+## Availability
+
+| Field           | Availability                                                   |
+| --------------- | -------------------------------------------------------------- |
+| Package         | `@opentui/core`                                                |
+| Core renderable | `TimeToFirstDrawRenderable`                                    |
+| React           | `TimeToFirstDraw` wrapper and automatic `<time-to-first-draw>` |
+| Solid           | `TimeToFirstDraw` wrapper and automatic `<time_to_first_draw>` |
+| Status          | Built-in diagnostic                                            |
 
 ## Core API
 
@@ -26,7 +35,7 @@ const firstDraw = new TimeToFirstDrawRenderable(renderer, {
 renderer.root.add(firstDraw)
 ```
 
-On its first `renderSelf()` call, the renderable stores `performance.now()` in `runtimeMs`. Later draws continue to display that same value. `reset()` clears it and requests another render; the next draw captures a new timestamp.
+On its first `renderSelf()` call, the renderable stores `performance.now()` in `runtimeMs`. Later draws continue to display that same value. `reset()` clears it and requests another render. The next draw captures a new timestamp.
 
 ```typescript
 console.log(firstDraw.runtimeMs) // null before the first draw
@@ -44,7 +53,7 @@ function App() {
 }
 ```
 
-The React binding exports `TimeToFirstDraw` and `TimeToFirstDrawProps`. It also registers the `time-to-first-draw` intrinsic element internally; the exported component is the direct public wrapper.
+The React binding exports `TimeToFirstDraw` and `TimeToFirstDrawProps`. It also registers the `time-to-first-draw` intrinsic element automatically. The exported component is the direct public wrapper.
 
 ## Solid
 
@@ -54,7 +63,7 @@ import { TimeToFirstDraw } from "@opentui/solid"
 const App = () => <TimeToFirstDraw label="First draw timestamp" precision={1} fg="#94a3b8" />
 ```
 
-The Solid binding exports `TimeToFirstDraw` and `TimeToFirstDrawProps`. It also registers the `time_to_first_draw` intrinsic element internally; the exported component is the direct public wrapper.
+The Solid binding exports `TimeToFirstDraw` and `TimeToFirstDrawProps`. It also registers the `time_to_first_draw` intrinsic element automatically. The exported component is the direct public wrapper.
 
 ## Options
 
@@ -64,25 +73,28 @@ The core renderable and both framework wrappers accept these options in addition
 | ------------ | ---------------- | ---------------------- | ----------------------------------------------------------------------- |
 | `fg`         | `ColorInput`     | `"#AAAAAA"`            | Text color                                                              |
 | `label`      | `string`         | `"Time to first draw"` | Text before the timestamp                                               |
-| `precision`  | `number`         | `2`                    | Decimal places passed to `toFixed()`; use an integer from 0 through 100 |
+| `precision`  | `number`         | `2`                    | Decimal places passed to `toFixed()`. Use an integer from 0 through 100 |
 | `width`      | layout dimension | `"100%"`               | Renderable width                                                        |
 | `height`     | layout dimension | `1`                    | Renderable height                                                       |
 | `flexShrink` | `number`         | `0`                    | Layout shrink factor                                                    |
 | `alignSelf`  | layout alignment | `"center"`             | Cross-axis alignment                                                    |
 
-User-supplied layout values override the width, height, shrink, and alignment defaults. `precision` is floored and clamped to zero; a non-finite value becomes `2`. The implementation does not clamp the upper bound, so values above JavaScript's `toFixed()` limit of 100 throw when the renderable draws.
+User-supplied layout values override the width, height, shrink, and alignment defaults. The Core constructor floors
+`precision` and clamps it to zero. A non-finite Core value becomes `2`. React and Solid currently assign the prop
+directly after construction and bypass that normalization. Pass an integer from 0 through 100 to either wrapper.
+Negative and infinite wrapper values can throw when the component draws, and `NaN` produces zero decimal places.
 
-The rendered line is `${label}: ${runtimeMs.toFixed(precision)}ms`. It is centered within the renderable width and truncated when it exceeds that width.
+The rendered line is `${label}: ${runtimeMs.toFixed(precision)}ms`. OpenTUI centers it by display-cell width and truncates it at a grapheme boundary.
 
 ## Runtime properties
 
 | Member              | Description                                                        |
 | ------------------- | ------------------------------------------------------------------ |
-| `runtimeMs`         | Read-only `number \| null`; first-draw `performance.now()` reading |
+| `runtimeMs`         | Read-only `number \| null`. First-draw `performance.now()` reading |
 | `fg = value`        | Change the text color and request a render                         |
 | `color = value`     | Alias for the `fg` setter                                          |
 | `textLabel = value` | Change the displayed label                                         |
 | `decimals = value`  | Change the normalized display precision                            |
-| `reset()`           | Clear `runtimeMs`; capture another timestamp on the next draw      |
+| `reset()`           | Clear `runtimeMs` and capture another timestamp on the next draw   |
 
-The constructor/JSX option names are `label` and `precision`; the corresponding post-construction setter names are `textLabel` and `decimals`.
+The constructor and JSX option names are `label` and `precision`. The post-construction setter names are `textLabel` and `decimals`.

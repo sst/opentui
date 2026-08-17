@@ -1,8 +1,6 @@
 ---
 title: Getting started
-description: Learn what OpenTUI provides and choose where to begin
-order: 1
-navTitle: Introduction
+description: Start with one OpenTUI quickstart, then choose a framework
 skill:
   entry: true
   intents: [getting-started, intro, examples, agent-skill]
@@ -12,37 +10,42 @@ skill:
 
 OpenTUI is a native terminal UI core written in Zig with TypeScript bindings.
 
-It renders a component tree, lays it out with Flexbox, handles terminal input, and updates the cells that changed. The
-native core exposes a C ABI for other language bindings. OpenTUI powers OpenCode in production.
+It renders a component tree, lays it out with Flexbox, handles terminal input, and updates the cells that changed.
+OpenTUI's TypeScript packages call the native Zig library through an internal ABI. OpenTUI powers OpenCode in production.
 
-## Start here
+## Start with the quickstart
 
 [Build your first app in the quickstart](/docs/getting-started/quickstart). You will create a project from an empty
 directory, compose a small interface, handle keyboard input, and run it in your terminal.
 
-The quickstart uses `@opentui/core` directly. The same renderer and components support the React and Solid bindings.
+The quickstart uses `@opentui/core` directly to teach the renderer, component tree, input, and layout model once. You
+do not need to choose a framework before you complete it.
 
-## Choose an API
+Check [Runtime and platform support](/docs/getting-started/runtime-support) before you use Node.js, cross-compile, or
+deploy to another target.
 
-- [`@opentui/core`](/docs/core-concepts/renderer) uses TypeScript factories, renderables, and events directly.
+## Choose a framework
+
+- [`@opentui/core`](/docs/core-concepts/renderables) uses imperative renderables and events directly.
 - [`@opentui/react`](/docs/bindings/react) uses React components, hooks, and state.
 - [`@opentui/solid`](/docs/bindings/solid) uses Solid components, signals, and effects.
 
-Start with core when you want direct control or are learning how OpenTUI works. Use a framework binding when your app
-already uses that framework or benefits from its state model.
+If you use Core, read [Renderables](/docs/core-concepts/renderables) after the quickstart.
 
 ## Find a topic
 
-- [Renderer](/docs/core-concepts/renderer) covers terminal setup, rendering, and cleanup.
-- [Layout](/docs/core-concepts/layout) covers Flexbox sizing and positioning.
-- [Constructs](/docs/core-concepts/constructs) covers the declarative component API.
-- [Text](/docs/components/text) and [Box](/docs/components/box) display and arrange content.
-- [Input](/docs/components/input) and [Select](/docs/components/select) accept user input.
+- [Components](/docs/components) compares component availability across Core, React, and Solid.
+- [Renderer](/docs/core-concepts/renderer) covers terminal setup, the root, scheduling, and central events.
+- [Layout](/docs/core-concepts/layout) covers Yoga-based sizing and positioning.
+- [Interaction, focus, and selection](/docs/core-concepts/interaction) explains shared pointer and focus behavior.
 - [Testing](/docs/core-concepts/testing) renders apps in memory for assertions and snapshots.
+- [Package entry points](/docs/reference/package-entrypoints) lists supported import paths.
+- [Lifecycle and cleanup](/docs/core-concepts/lifecycle) owns terminal restoration and resource release.
 
 ## Explore the examples
 
-Run the OpenTUI example browser without cloning the repository. On macOS, Linux, WSL, and Git Bash:
+Run the OpenTUI example browser without cloning the repository. Release executables support macOS x64 and arm64,
+Linux x64, and Windows x64. On those targets, including x64 WSL and Git Bash:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh

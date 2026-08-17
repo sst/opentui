@@ -1,14 +1,23 @@
 ---
 title: ASCIIFont
-description: Display text using ASCII art fonts
-order: 14
+description: Display text with a bundled ASCII art font
 ---
 
 # ASCIIFont
 
-Display text using ASCII art fonts with multiple font styles available. Great for titles, headers, and decorative text.
+`ASCIIFont` draws short text with bundled ASCII art fonts. Use [Text](/docs/components/text) for normal labels and prose.
 
-## Basic Usage
+## Availability
+
+| Field           | Availability               |
+| --------------- | -------------------------- |
+| Package         | `@opentui/core`            |
+| Core renderable | `ASCIIFontRenderable`      |
+| React           | `<ascii-font>` (automatic) |
+| Solid           | `<ascii_font>` (automatic) |
+| Status          | Built in                   |
+
+## Basic usage
 
 ### Renderable API
 
@@ -27,23 +36,7 @@ const title = new ASCIIFontRenderable(renderer, {
 renderer.root.add(title)
 ```
 
-### Construct API
-
-```typescript
-import { ASCIIFont, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  ASCIIFont({
-    text: "HELLO",
-    font: "block",
-    color: "#00FF00",
-  }),
-)
-```
-
-## Available Fonts
+## Available fonts
 
 OpenTUI includes several ASCII art font styles:
 
@@ -117,31 +110,35 @@ const title = new ASCIIFontRenderable(renderer, {
 | `bottom`          | number, `"auto"`, or percentage string | -               | Bottom position offset     |
 | `left`            | number, `"auto"`, or percentage string | -               | Left position offset       |
 
-## Example: Welcome Screen
+## Example: welcome screen
 
 ```typescript
-import { Box, ASCIIFont, Text, createCliRenderer } from "@opentui/core"
+import { ASCIIFontRenderable, BoxRenderable, TextRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const welcomeScreen = Box(
-  {
-    width: "100%",
-    height: "100%",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ASCIIFont({
+const welcomeScreen = new BoxRenderable(renderer, {
+  width: "100%",
+  height: "100%",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+})
+welcomeScreen.add(
+  new ASCIIFontRenderable(renderer, {
     text: "OPENTUI",
     font: "huge",
     color: "#00FFFF",
   }),
-  Text({
+)
+welcomeScreen.add(
+  new TextRenderable(renderer, {
     content: "Terminal UI Framework",
     fg: "#888888",
   }),
-  Text({
+)
+welcomeScreen.add(
+  new TextRenderable(renderer, {
     content: "Press any key to continue...",
     fg: "#444444",
   }),
@@ -150,7 +147,7 @@ const welcomeScreen = Box(
 renderer.root.add(welcomeScreen)
 ```
 
-## Dynamic Text
+## Dynamic text
 
 Update the text content dynamically:
 
@@ -169,16 +166,17 @@ setInterval(() => {
 }, 1000)
 ```
 
-## Color Effects
+## Color effects
 
 Create a shadow by overlaying two ASCII fonts:
 
 ```typescript
-import { Box, ASCIIFont } from "@opentui/core"
+import { ASCIIFontRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
 
-const shadowTitle = Box(
-  { position: "relative" },
-  ASCIIFont({
+const renderer = await createCliRenderer()
+const shadowTitle = new BoxRenderable(renderer, { position: "relative" })
+shadowTitle.add(
+  new ASCIIFontRenderable(renderer, {
     text: "HELLO",
     font: "block",
     color: "#880000",
@@ -187,11 +185,18 @@ const shadowTitle = Box(
     top: 1,
     zIndex: 0,
   }),
-  ASCIIFont({
+)
+shadowTitle.add(
+  new ASCIIFontRenderable(renderer, {
     text: "HELLO",
     font: "block",
     color: "#FF0000",
     zIndex: 1,
   }),
 )
+renderer.root.add(shadowTitle)
 ```
+
+## Related concepts
+
+See [Layout](/docs/core-concepts/layout) for positioning and [Colors](/docs/core-concepts/colors) for accepted color values. Use [FrameBuffer](/docs/components/frame-buffer) for graphics that need direct cell drawing.

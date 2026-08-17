@@ -1,60 +1,41 @@
 ---
 title: NativeSpanFeed
-description: Low-level native-to-JavaScript byte transport used for custom renderer output
-order: 6
+description: Attach, drain, backpressure, and close the borrowed native byte feed used by custom renderer output
 skill:
   intents: [native-span-feed, custom-stdout, output-transport, backpressure]
 ---
 
 # NativeSpanFeed
 
-`NativeSpanFeed` is a zero-copy wrapper around a native Zig byte feed. `CliRenderer` uses it internally to deliver native frame bytes to a custom `stdout` while respecting asynchronous `Writable` callbacks.
+`NativeSpanFeed` is an advanced borrowed-memory bridge from a native Zig byte feed to JavaScript callbacks. It is not
+a Node.js stream and has no `read()`, `write()`, or `pipe()` method.
 
-Most applications should not create a feed directly. Pass streams to [`createCliRenderer()`](/docs/core-concepts/renderer#custom-streams) instead:
+Most applications must not create one. Pass streams to `createCliRenderer()` as described in
+[Renderer custom output](/docs/core-concepts/renderer#custom-streams). The renderer owns feed setup, write-callback
+backpressure, shutdown drains, and destruction.
+
+Direct use is for a native integration that already produces bytes through a native span-feed pointer.
+
+## Renderer-managed use
 
 ```typescript
 const renderer = await createCliRenderer({
   stdin,
   stdout,
-  width: cols,
+  width: columns,
   height: rows,
   exitOnCtrlC: false,
   exitSignals: [],
 })
 ```
 
-When `stdout` is not `process.stdout` and `bufferedOutput` is not `"memory"`, the renderer creates the feed, forwards each borrowed byte view to the original `stdout.write`, and keeps the native chunk pinned until the write callback runs. The renderer also drains and closes the feed during destruction.
+When `stdout` is not `process.stdout` and `bufferedOutput` is not `"memory"`, the renderer creates a feed. It passes
+each borrowed view to the original `stdout.write()` and keeps the native chunk pinned until the write callback runs.
 
-## Low-level use
+During destruction, the renderer drains existing spans, destroys the native renderer, drains shutdown bytes, removes
+handlers, and closes the feed.
 
-Direct use is intended for native integrations that already produce data through a native span-feed pointer. `NativeSpanFeed` is not a Node stream and does not expose `read()`, `write()`, or `pipe()`.
-
-```typescript
-import { NativeSpanFeed } from "@opentui/core"
-
-const feed = NativeSpanFeed.create({
-  chunkSize: 64 * 1024,
-  initialChunks: 2,
-})
-
-const chunks: Uint8Array[] = []
-const offData = feed.onData((bytes) => {
-  // Copy data that must outlive this synchronous handler.
-  chunks.push(bytes.slice())
-})
-
-try {
-  // A native producer that accepts NativeSpanFeed uses feed.streamPtr.
-  await feed.idle()
-} finally {
-  offData()
-  feed.close()
-}
-```
-
-The wrapper owns the attached feed after `create()` or `attach()` succeeds. Calling `close()` unregisters the callback and destroys the native feed. Do not use `streamPtr` or previously received views afterward.
-
-## Public API
+## Public wrapper API
 
 ```typescript
 type DataHandler = (data: Uint8Array) => void | Promise<void>
@@ -74,18 +55,48 @@ class NativeSpanFeed {
 }
 ```
 
-`attach()` wraps an existing native feed pointer and registers the JavaScript callback. Its current `options` parameter is accepted but not applied; configure the native feed when it is created.
+`create()` allocates, registers, and attaches a native feed. If attach fails, it unregisters the callback and destroys
+the new native feed.
 
-`onData()` and `onError()` return unsubscribe functions. If committed data arrives before a data handler exists, the feed marks it pending and drains it when the first handler is added.
+`attach()` registers and attaches an existing pointer. After attach succeeds, the wrapper owns that feed and
+`close()` destroys it. If attach fails, the wrapper unregisters its callback but does not destroy the caller's pointer.
 
-`drainAll()` synchronously drains all currently queued spans in batches. Data-available callbacks normally invoke it automatically when handlers are registered.
+The `options` argument to `attach()` is currently ignored. Configure an existing native feed before attachment.
 
-## Options
+## Low-level example
+
+```typescript
+import { NativeSpanFeed } from "@opentui/core"
+
+const feed = NativeSpanFeed.create({
+  chunkSize: 64 * 1024,
+  initialChunks: 2,
+  maxBytes: 8n * 1024n * 1024n,
+})
+
+const ownedChunks: Uint8Array[] = []
+const offData = feed.onData((bytes) => {
+  ownedChunks.push(bytes.slice())
+})
+
+try {
+  // Pass feed.streamPtr to the native producer here.
+  await feed.idle()
+} finally {
+  offData()
+  feed.close()
+}
+```
+
+The wrapper does not expose a producer API. A native producer or the lower-level library facade writes, reserves, and
+commits spans through `streamPtr`.
+
+## Options and defaults
 
 ```typescript
 type GrowthPolicy = "grow" | "block"
 
-type NativeSpanFeedOptions = {
+interface NativeSpanFeedOptions {
   chunkSize?: number
   initialChunks?: number
   maxBytes?: bigint
@@ -95,36 +106,116 @@ type NativeSpanFeedOptions = {
 }
 ```
 
-| Option              | Default     | Description                                                                                           |
-| ------------------- | ----------- | ----------------------------------------------------------------------------------------------------- |
-| `chunkSize`         | `64 * 1024` | Bytes allocated for each native chunk                                                                 |
-| `initialChunks`     | `2`         | Chunks allocated at creation                                                                          |
-| `maxBytes`          | `0n`        | Allocation cap; `0n` means no cap                                                                     |
-| `growthPolicy`      | `"grow"`    | Add capacity when all available chunks or span slots are occupied; `"block"` reports no space instead |
-| `autoCommitOnFull`  | `true`      | Let the native producer commit a chunk automatically when it fills                                    |
-| `spanQueueCapacity` | `0`         | Native default sentinel, normalized to `4096` span entries                                            |
+| Option              | Default     | Native behavior                                                                   |
+| ------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `chunkSize`         | `64 * 1024` | Bytes in each chunk. An explicit `0` normalizes to 64 KiB.                        |
+| `initialChunks`     | `2`         | Chunks allocated at creation. An explicit `0` normalizes to one.                  |
+| `maxBytes`          | `0n`        | Cap on chunk bytes. Zero means no cap.                                            |
+| `growthPolicy`      | `"grow"`    | Adds chunks and doubles the span ring. `"block"` returns no-space status instead. |
+| `autoCommitOnFull`  | `true`      | Commits a full chunk while a copy write continues.                                |
+| `spanQueueCapacity` | `0`         | Zero selects the native default of 4096 span entries.                             |
 
-An explicit `chunkSize: 0` normalizes to 64 KiB. An explicit `initialChunks: 0` normalizes to one chunk. An explicit `spanQueueCapacity: 0` selects the native capacity of 4096.
+`maxBytes` limits chunk allocation only. It does not cap the span-ring allocation. Under `"grow"`, the ring doubles
+when it fills and has no separate byte limit.
 
-## Borrowed data and backpressure
+Default renderer-managed feeds are growable and uncapped. This lets shutdown control bytes publish while earlier
+chunks remain pinned. A direct integration should set a finite `maxBytes` when it needs a memory bound.
 
-Each `onData` argument is a `Uint8Array` view into native chunk memory, not an owned copy.
+## Borrowed callback memory
 
-- A synchronous handler must copy the bytes if it retains them after returning.
-- If a handler returns a promise, the chunk remains pinned until all promises returned for that span settle.
-- Promise rejection still releases the native chunk; it is not delivered to `onError` by this wrapper.
-- `isBackpressured()` is true while async handlers are pending, committed data is waiting for a handler, or native chunks remain pinned.
-- `idle()` resolves when no callback or drain is active, no async handlers or pending data remain, and no chunks are pinned.
-- `close()` is idempotent after destruction. If called during a callback, drain, or async handler, final destruction is deferred until that work settles.
+Each `onData` argument aliases native chunk memory. It is not an owned copy.
 
-Renderer-managed custom output uses these rules to turn the `stdout.write(..., callback)` lifetime into feed backpressure. During `renderer.destroy()`, OpenTUI drains existing frames, destroys the native renderer so it can commit shutdown bytes, drains those bytes, detaches handlers, and closes the feed. If an application immediately destroys its underlying transport after `renderer.destroy()`, allow a microtask for pending asynchronous write callbacks to finish.
+- A synchronous handler can use the view only during that handler. Copy it before returning if data must survive.
+- A handler that returns a promise can use the view until that promise settles.
+- A chunk remains pinned until all promises returned for that span settle.
+- Promise rejection still releases the chunk.
+- `close()` and native destruction invalidate all old views and `streamPtr`.
+
+Handlers receive the same mutable view. A handler can change bytes seen by later handlers. Treat the view as readonly.
+
+The native state buffer uses one `u8` reference count per chunk. At 255 pending spans for one chunk, the producer moves
+to another chunk instead of increasing that count further.
+
+## Drain and backpressure
+
+Committed spans normally trigger `drainAll()` when at least one data handler exists. Data committed before a handler
+sets a pending flag. Adding the first handler then drains it.
+
+`drainAll()` synchronously drains batches of 256 span descriptors until the current queue is empty. A reentrant
+`drainAll()` call from a handler does nothing while the outer drain is active.
+
+`isBackpressured()` is true when any of these states exists:
+
+- An asynchronous data handler is pending.
+- Committed data waits for a data handler.
+- A native chunk still has a nonzero reference count.
+
+This JavaScript state does not force the native producer to block under the default `"grow"` policy. The producer can
+allocate more chunks until `maxBytes`, allocation failure, or another native limit stops it.
+
+`idle()` resolves when no callback or drain is active, no asynchronous handler or pending-data flag remains, and no
+chunk is pinned. If data waits without a handler, `idle()` does not resolve until a handler drains it or the feed closes.
+
+## Handler errors
+
+A synchronous handler exception does not skip the remaining handlers for that span. OpenTUI records the first
+exception and releases the chunk reference.
+
+In Bun, the wrapper can throw that exception from the native callback. In Node.js, an exception cannot cross the FFI
+callback safely, so the wrapper throws it from a queued microtask. Code around the native producer call cannot catch
+that later Node.js exception.
+
+Rejected handler promises are consumed through `Promise.allSettled()`. The wrapper releases the chunk but does not
+send the rejection to `onError()`.
+
+`onError()` exposes native Error-event plumbing. The current Zig feed does not emit that event. Do not rely on
+`onError()` for no-space, allocation, handler, or promise errors.
+
+## Native producer statuses
+
+The native feed maps producer failures to integer statuses:
+
+| Status | Meaning                                                   |
+| ------ | --------------------------------------------------------- |
+| `0`    | Success                                                   |
+| `-1`   | No space under block policy or an unavailable reservation |
+| `-2`   | The next chunk would exceed `maxBytes`                    |
+| `-3`   | Invalid pointer, state, or argument                       |
+| `-4`   | Allocation failed                                         |
+| `-5`   | A reservation or pending write makes the operation busy   |
+
+Copy writes with `autoCommitOnFull: false` return no space if the write crosses the remaining chunk boundary. A write
+that exactly fills the chunk succeeds. The producer must explicitly commit a partial chunk.
+
+Only one zero-copy reservation can exist. The producer must call the native reserved-commit operation, including on
+its failure paths, before close can succeed.
+
+## Close and destruction
+
+`close()` is idempotent after destruction. It unregisters the callback and destroys the native feed after native close
+succeeds.
+
+If a callback, drain, or asynchronous handler is active, `close()` defers final destruction. It queues a microtask and
+retries after active asynchronous handlers settle.
+
+If native close returns a nonzero status, the wrapper currently leaves the feed alive and returns without throwing.
+This can occur while a native reservation is active. Commit the reservation, including with zero bytes when needed.
+Then call `close()` again. The wrapper has no method that completes a native reservation.
+
+Calling `close()` from a data handler stops after the current span and can drop queued spans when final destruction
+runs. Drain required data before closing.
+
+After `renderer.destroy()` returns, a custom writable can still have callback promises in the microtask queue. Let
+those write callbacks settle before destroying the underlying transport.
+
+Read [Lifecycle and cleanup](/docs/core-concepts/lifecycle) for renderer shutdown ordering.
 
 ## Stats type
 
 `@opentui/core` exports the native data shape:
 
 ```typescript
-type NativeSpanFeedStats = {
+interface NativeSpanFeedStats {
   bytesWritten: bigint
   spansCommitted: bigint
   chunks: number
@@ -132,4 +223,20 @@ type NativeSpanFeedStats = {
 }
 ```
 
-`NativeSpanFeed` itself has no public stats method. Do not call a nonexistent `feed.getStats()` or `feed.stats` property.
+`NativeSpanFeed` has no public stats method. Do not call `feed.getStats()` or read `feed.stats`. The lower-level library
+facade can query native stats, but that facade is not the wrapper API documented here.
+
+## Runtime and diagnostics
+
+The wrapper uses native callbacks and borrowed native memory. It follows the Bun and Node.js FFI support in
+[Runtime and platform support](/docs/getting-started/runtime-support).
+
+Use [Troubleshooting](/docs/test-and-debug/troubleshooting) for stalled custom output, shutdown bytes, or callback
+failures. Use [API and symbol index](/docs/reference/api-index) to distinguish the wrapper from lower-level exports.
+
+## Next
+
+- [Renderer custom output](/docs/core-concepts/renderer#custom-streams) is the supported normal-use path.
+- [Lifecycle and cleanup](/docs/core-concepts/lifecycle) defines renderer and transport shutdown.
+- [Runtime and platform support](/docs/getting-started/runtime-support) defines native FFI support.
+- [Troubleshooting](/docs/test-and-debug/troubleshooting) covers output and terminal restoration failures.
