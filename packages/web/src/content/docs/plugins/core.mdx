@@ -35,7 +35,7 @@ Core hosts use `@opentui/core/runtime-plugin-support` when contributions come fr
 | `id`      | `string`                                          | yes      | Unique identifier. Duplicate ids throw.                                                    |
 | `order`   | `number`                                          | no       | Sort priority (ascending). Defaults to `0`.                                                |
 | `setup`   | `(ctx, renderer) => void`                         | no       | Called once at registration time. If it throws, the plugin is not registered.              |
-| `dispose` | `() => void`                                      | no       | OpenTUI calls it when the registry unregisters the plugin or clears all plugins.            |
+| `dispose` | `() => void`                                      | no       | OpenTUI calls it when the registry unregisters the plugin or clears all plugins.           |
 | `slots`   | `Partial<Record<SlotName, CoreSlotContribution>>` | yes      | Each value is a renderer function or a [managed slot object](#managed-slot-contributions). |
 
 A `CoreSlotContribution` is a plain renderer `(ctx, data) => BaseRenderable` or a `CoreManagedSlot` with node ownership
@@ -198,11 +198,11 @@ registerCorePlugin(registry, {
 
 ### `CoreManagedSlot` interface
 
-| Field          | Type                            | Required | Description                                              |
-| -------------- | ------------------------------- | -------- | -------------------------------------------------------- |
-| `render`       | `(ctx, data) => BaseRenderable` | yes      | Creates the renderable node for this slot                |
-| `onActivate`   | `(ctx) => void`                 | no       | Runs when the contribution becomes active in the slot    |
-| `onDeactivate` | `(ctx) => void`                 | no       | Runs when the contribution is no longer active           |
+| Field          | Type                            | Required | Description                                                             |
+| -------------- | ------------------------------- | -------- | ----------------------------------------------------------------------- |
+| `render`       | `(ctx, data) => BaseRenderable` | yes      | Creates the renderable node for this slot                               |
+| `onActivate`   | `(ctx) => void`                 | no       | Runs when the contribution becomes active in the slot                   |
+| `onDeactivate` | `(ctx) => void`                 | no       | Runs when the contribution is no longer active                          |
 | `onDispose`    | `(ctx) => void`                 | no       | Runs when the registry removes the plugin or the host destroys the slot |
 
 ### Node ownership
