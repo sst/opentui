@@ -55,6 +55,28 @@ test("SIGWINCH refreshes terminal dimensions after the resize debounce", () => {
   expect(dimensions).toEqual([[60, 18]])
 })
 
+test("SIGWINCH reads dimensions from a TTY stdin when stdout is piped", () => {
+  const streams = renderer as unknown as {
+    stdout: { columns?: number; rows?: number; isTTY?: boolean }
+    stdin: { columns?: number; rows?: number; isTTY?: boolean; _refreshSize?: () => void }
+  }
+  streams.stdout.isTTY = false
+  streams.stdout.columns = undefined
+  streams.stdout.rows = undefined
+  streams.stdin.isTTY = true
+  streams.stdin._refreshSize = () => {
+    streams.stdin.columns = 132
+    streams.stdin.rows = 44
+  }
+
+  // @ts-expect-error - invoke the private signal handler in a regression test
+  renderer.sigwinchHandler()
+  clock.advance(100)
+
+  expect(renderer.width).toBe(132)
+  expect(renderer.height).toBe(44)
+})
+
 test("requestRender() does not stall after a backward clock jump", async () => {
   clock.setTime(10_000)
   // @ts-expect-error - inspect private renderer timing state in regression test

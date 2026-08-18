@@ -3909,11 +3909,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._isDestroyed) return
     const resize = () => {
       const stdout = this.stdout as NodeJS.WriteStream & { _refreshSize?: () => void }
+      const stdin = this.stdin as NodeJS.ReadStream & {
+        columns?: number
+        rows?: number
+        isTTY?: boolean
+        _refreshSize?: () => void
+      }
+      const sizeSource = !stdout.isTTY && stdin.isTTY ? stdin : stdout
       // PTY bridges can deliver SIGWINCH before the stream's cached dimensions reflect the new window size.
-      stdout._refreshSize?.()
-      const width = stdout.columns
-      const height = stdout.rows
-      if (width > 0 && height > 0) this.processResize(width, height)
+      sizeSource._refreshSize?.()
+      const width = sizeSource.columns
+      const height = sizeSource.rows
+      if (width && width > 0 && height && height > 0) this.processResize(width, height)
     }
     if (this._splitHeight > 0) {
       resize()
