@@ -54,6 +54,15 @@ interface ReusableParserState {
   }
 }
 
+// Serialize parse(): Asyncify makes it re-entrant and shared C globals corrupt.
+let parseQueue: Promise<unknown> = Promise.resolve()
+function serializeParse<T>(fn: () => T | Promise<T>): Promise<T> {
+  const prev = parseQueue
+  const next = prev.catch(() => {}).then(() => fn())
+  parseQueue = next
+  return next as Promise<T>
+}
+
 class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
@@ -345,7 +354,7 @@ class ParserWorker {
 
     const parser = new Parser()
     parser.setLanguage(filetypeParser.language)
-    const tree = parser.parse(content)
+    const tree = await serializeParse(() => parser.parse(content))
     if (!tree) {
       postWorkerMessage({
         type: "PARSER_INIT_RESPONSE",
@@ -480,7 +489,7 @@ class ParserWorker {
           })
 
           const injectionContent = this.getNodeText(injectionNode, content)
-          const tree = parser.parse(injectionContent)
+          const tree = await serializeParse(() => parser.parse(injectionContent))
 
           if (tree) {
             const matches = injectedParser.queries.highlights.captures(tree.rootNode)
@@ -563,7 +572,7 @@ class ParserWorker {
 
     const startParse = performance.now()
 
-    const newTree = parserState.parser.parse(content, parserState.tree)
+    const newTree = await serializeParse(() => parserState.parser.parse(content, parserState.tree))
 
     const endParse = performance.now()
     const parseTime = endParse - startParse
@@ -786,7 +795,7 @@ class ParserWorker {
 
     parserState.content = content
 
-    const newTree = parserState.parser.parse(content)
+    const newTree = await serializeParse(() => parserState.parser.parse(content))
 
     if (!newTree) {
       return { error: "Failed to parse buffer during reset" }
@@ -834,7 +843,7 @@ class ParserWorker {
     // The tree-sitter markdown parser only creates closing delimiter nodes when followed by newline
     const parseContent = filetype === "markdown" && content.endsWith("```") ? content + "\n" : content
 
-    const tree = reusableState.parser.parse(parseContent)
+    const tree = await serializeParse(() => reusableState.parser.parse(parseContent))
 
     if (!tree) {
       postWorkerMessage({

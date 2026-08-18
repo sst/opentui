@@ -621,6 +621,26 @@ describe("TreeSitterClient", () => {
     expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
   }, 15000)
 
+  test("should not hang under many parallel highlightOnce calls (Asyncify re-entrancy regression)", async () => {
+    await client.initialize()
+
+    const md =
+      "# heading\n\n" +
+      Array.from({ length: 20 }, (_, i) => `- item ${i} with \`inline code\`\n`).join("") +
+      "\n```ts\nconst x: number = 1\nfunction f(): string { return `hi` }\n```\n"
+
+    const N = 100
+    const results = await Promise.all(
+      Array.from({ length: N }, (_, i) => client.highlightOnce(md + `\n<!-- ${i} -->`, "markdown")),
+    )
+
+    expect(results).toHaveLength(N)
+    for (const r of results) {
+      expect(r.error).toBeUndefined()
+      expect(r.highlights).toBeDefined()
+    }
+  }, 30000)
+
   test("should reuse canonical parser assets for aliased filetypes", async () => {
     const workerLogs: string[] = []
 
