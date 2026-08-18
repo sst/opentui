@@ -4322,6 +4322,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       },
       true,
     )
+    if (this.stdin === process.stdin && this._usesProcessStdout) this.disableMouse()
     this._useMouse = false
     this.setCapturedRenderable(undefined)
 
@@ -4449,10 +4450,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
+    const discardInput = this._terminalIsSetup && this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
     try {
-      this.lib.destroyRenderer(this.rendererPtr)
+      this.lib.destroyRenderer(this.rendererPtr, discardInput && this.stdin === process.stdin)
     } catch (e) {
       console.error("Error in lib.destroyRenderer during destroy:", e)
+    }
+    if (discardInput) {
+      const bufferedInput = this.stdin.readableLength
+      if (bufferedInput > 0) this.stdin.read(bufferedInput)
     }
     rendererTracker.renderers.delete(this)
     if (rendererTracker.renderers.size === 0) {
