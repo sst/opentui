@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
@@ -846,11 +847,34 @@ export fn setClearOnShutdown(renderer_handle: NativeHandle, clear: bool) void {
     object_ptr.setClearOnShutdown(clear);
 }
 
-export fn destroyRenderer(renderer_handle: NativeHandle) void {
+export fn destroyRenderer(renderer_handle: NativeHandle, flush_input: bool) void {
     const token = handles.beginDestroy(renderer_handle, .renderer, renderer.CliRenderer) orelse return;
     handles.invalidateChildren(token.handle);
     token.ptr.destroy();
+    if (flush_input) flushTerminalInput();
     handles.finishDestroy(token.handle);
+}
+
+fn flushTerminalInput() void {
+    if (builtin.os.tag == .windows) {
+        const WindowsConsole = struct {
+            extern "kernel32" fn GetStdHandle(handle: std.os.windows.DWORD) callconv(.winapi) std.os.windows.HANDLE;
+            extern "kernel32" fn FlushConsoleInputBuffer(handle: std.os.windows.HANDLE) callconv(.winapi) std.os.windows.BOOL;
+        };
+        const stdin_handle = WindowsConsole.GetStdHandle(@bitCast(@as(i32, -10)));
+        _ = WindowsConsole.FlushConsoleInputBuffer(stdin_handle);
+        return;
+    }
+
+    const tciflush = switch (builtin.os.tag) {
+        .linux => 0,
+        .macos => 1,
+        else => return,
+    };
+    const PosixTerminal = struct {
+        extern "c" fn tcflush(fd: c_int, queue_selector: c_int) c_int;
+    };
+    _ = PosixTerminal.tcflush(0, tciflush);
 }
 
 export fn setBackgroundColor(renderer_handle: NativeHandle, color: [*]const u16) void {
