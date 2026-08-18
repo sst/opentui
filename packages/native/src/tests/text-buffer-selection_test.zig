@@ -1426,3 +1426,38 @@ test "occupancy - offset selection clears stored endpoints" {
     view.setSelectionOccupancy(.boundary);
     try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
 }
+
+test "Selection - vertical bounds take precedence over negative x" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    _ = view.setLocalSelection(2, 0, -3, 5, null, null);
+    var range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(-3, 5, 2, 0, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+    _ = view.updateLocalSelection(2, 0, -3, 5, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(5, 1, -2, 1, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 13), range.end);
+}
