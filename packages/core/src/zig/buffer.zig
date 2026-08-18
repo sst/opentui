@@ -2375,6 +2375,7 @@ pub const OptimizedBuffer = struct {
             if (borderSides.top and isAtActualTop) {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
+                    if (!self.isPointInScissor(drawX, startY)) continue;
                     if (startY >= 0 and startY < @as(i32, @intCast(self.height))) {
                         if (titleLayout.shouldDraw and drawX >= titleLayout.startX and drawX <= titleLayout.endX) {
                             continue;
@@ -2411,6 +2412,7 @@ pub const OptimizedBuffer = struct {
             if (borderSides.bottom and isAtActualBottom) {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
+                    if (!self.isPointInScissor(drawX, endY)) continue;
                     if (endY >= 0 and endY < @as(i32, @intCast(self.height))) {
                         if (bottomTitleLayout.shouldDraw and drawX >= bottomTitleLayout.startX and drawX <= bottomTitleLayout.endX) {
                             continue;
@@ -2452,7 +2454,7 @@ pub const OptimizedBuffer = struct {
             var drawY = verticalStartY;
             while (drawY <= verticalEndY) : (drawY += 1) {
                 // Left border
-                if (borderSides.left and isAtActualLeft and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
+                if (borderSides.left and isAtActualLeft and self.isPointInScissor(startX, drawY) and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(startX), @intCast(drawY));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
@@ -2474,7 +2476,7 @@ pub const OptimizedBuffer = struct {
                 }
 
                 // Right border
-                if (borderSides.right and isAtActualRight and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
+                if (borderSides.right and isAtActualRight and self.isPointInScissor(endX, drawY) and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(endX), @intCast(drawY));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
