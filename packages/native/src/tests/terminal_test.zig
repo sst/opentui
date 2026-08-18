@@ -509,6 +509,7 @@ test "processCapabilityResponse captures startup cursor report before home probe
     var term = Terminal.init(.{});
     term.startup_cursor_query_pending = true;
     term.startup_cursor_query_captured = false;
+    term.explicit_width_probe_reports_pending = 2;
 
     term.processCapabilityResponse("\x1b[7;11R\x1b[1;2R\x1b[1;3R");
 
@@ -519,6 +520,32 @@ test "processCapabilityResponse captures startup cursor report before home probe
     try testing.expect(!term.startup_cursor_query_pending);
     try testing.expect(term.caps.explicit_width);
     try testing.expect(term.caps.scaled_text);
+}
+
+test "processCapabilityResponse only accepts exact ordered explicit width probe reports" {
+    var unrelated = Terminal.init(.{});
+    unrelated.processCapabilityResponse("\x1b[1;5R");
+    try testing.expect(!unrelated.caps.explicit_width);
+    try testing.expect(!unrelated.caps.scaled_text);
+
+    var startup_on_row_one = Terminal.init(.{});
+    startup_on_row_one.startup_cursor_query_pending = true;
+    startup_on_row_one.startup_cursor_query_captured = false;
+    startup_on_row_one.explicit_width_probe_reports_pending = 2;
+    startup_on_row_one.processCapabilityResponse("\x1b[1;5R\x1b[1;2R\x1b[1;3R");
+    const cursor = startup_on_row_one.getCursorPosition();
+    try testing.expectEqual(@as(u32, 5), cursor.x);
+    try testing.expectEqual(@as(u32, 1), cursor.y);
+    try testing.expect(startup_on_row_one.caps.explicit_width);
+    try testing.expect(startup_on_row_one.caps.scaled_text);
+
+    var echoed = Terminal.init(.{});
+    echoed.startup_cursor_query_pending = true;
+    echoed.startup_cursor_query_captured = false;
+    echoed.explicit_width_probe_reports_pending = 2;
+    echoed.processCapabilityResponse("\x1b[7;11R\x1b[1;12R\x1b[1;8R");
+    try testing.expect(!echoed.caps.explicit_width);
+    try testing.expect(!echoed.caps.scaled_text);
 }
 
 test "environment variables - should be overridden by xtversion" {

@@ -165,6 +165,7 @@ sixel_query_pending: bool = false,
 capability_queries_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
+explicit_width_probe_reports_pending: u8 = 0,
 
 state: struct {
     alt_screen: bool = false,
@@ -342,12 +343,15 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     }
 
     if (!self.skip_explicit_width_query) {
+        self.explicit_width_probe_reports_pending = 2;
         try tty.writeAll(ansi.ANSI.home ++
             ansi.ANSI.explicitWidthQuery ++
             ansi.ANSI.cursorPositionRequest ++
             ansi.ANSI.home ++
             ansi.ANSI.scaledTextQuery ++
             ansi.ANSI.cursorPositionRequest);
+    } else {
+        self.explicit_width_probe_reports_pending = 0;
     }
 
     try tty.writeAll(ansi.ANSI.restoreCursorState);
@@ -1263,13 +1267,14 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
             self.setCursorPosition(col, row, self.state.cursor.visible);
             self.startup_cursor_query_captured = true;
             self.startup_cursor_query_pending = false;
-        }
+        } else if (self.explicit_width_probe_reports_pending > 0) {
+            const probe_index = 2 - self.explicit_width_probe_reports_pending;
+            self.explicit_width_probe_reports_pending -= 1;
 
-        if (row == 1) {
-            if (col >= 2) {
+            if (row == 1 and probe_index == 0 and col == 2) {
                 self.caps.explicit_width = true;
-            }
-            if (col >= 3) {
+            } else if (row == 1 and probe_index == 1 and col == 3) {
+                self.caps.explicit_width = true;
                 self.caps.scaled_text = true;
             }
         }
