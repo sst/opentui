@@ -75,6 +75,7 @@ import * as audioCaptureDemo from "./audio-capture-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
 import * as nativeImageDemo from "./native-image-demo.js"
+import * as embeddedTerminalDemo from "./embedded-terminal-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -584,6 +585,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
     },
   ]),
   section("Terminal & Native", [
+    {
+      name: "Embedded Terminal Demo",
+      description: "Interactive shell backed by a Bun PTY with input, scrollback, and resize handling",
+      run: embeddedTerminalDemo.run,
+      destroy: embeddedTerminalDemo.destroy,
+    },
     {
       name: "Audio Capture Demo",
       description: "Native microphone capture with a bounded PCM level meter and buffer telemetry",

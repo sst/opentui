@@ -3,6 +3,8 @@ const vt = @import("../ghostty-vt.zig").vt;
 pub const Terminal = vt.Terminal;
 pub const TerminalStream = vt.TerminalStream;
 pub const Coordinate = vt.Coordinate;
+pub const RenderState = vt.RenderState;
+pub const Selection = vt.Selection;
 
 pub const Key = struct {
     action: vt.input.KeyAction = .press,
@@ -44,10 +46,7 @@ pub const Mouse = struct {
     }
 };
 
-pub const KeyEncodeOptions = vt.input.KeyEncodeOptions;
 pub const MouseEncodeOptions = vt.input.MouseEncodeOptions;
-pub const PasteOptions = vt.input.PasteOptions;
-pub const FocusEvent = vt.input.FocusEvent;
 pub const encodeKey = vt.input.encodeKey;
 pub const encodeMouse = vt.input.encodeMouse;
 pub const encodePaste = vt.input.encodePaste;

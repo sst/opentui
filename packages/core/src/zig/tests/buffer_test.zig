@@ -706,6 +706,20 @@ test "OptimizedBuffer - drawText with ASCII" {
     try std.testing.expectEqual(@as(u32, 'e'), cell_e.char);
 }
 
+test "OptimizedBuffer - drawGrapheme preserves authoritative width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{ .pool = pool, .id = "grapheme-width-buffer" });
+    defer buf.deinit();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+
+    try buf.drawGrapheme("A", 2, 0, 0, fg, bg, 0);
+    try std.testing.expect(gp.isGraphemeChar(buf.get(0, 0).?.char));
+    try std.testing.expect(gp.isContinuationChar(buf.get(1, 0).?.char));
+}
+
 test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
