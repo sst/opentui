@@ -28,6 +28,7 @@ const ghostty_vt = if (ghostty_vt_available) @import("ghostty-vt.zig") else stru
     const vt = struct {};
 };
 const native_renderable = @import("native-renderable.zig");
+const terminal_input_drain = @import("terminal-input-drain.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
@@ -855,6 +856,8 @@ export fn destroyRenderer(renderer_handle: NativeHandle, flush_input: bool) void
     handles.finishDestroy(token.handle);
 }
 
+// Caller contract: the TS layer paused stdin before destroyRenderer, so the
+// runtime is no longer reading fd 0 and cannot steal the sentinel reply.
 fn flushTerminalInput() void {
     if (builtin.os.tag == .windows) {
         const WindowsConsole = struct {
@@ -863,18 +866,9 @@ fn flushTerminalInput() void {
         };
         const stdin_handle = WindowsConsole.GetStdHandle(@bitCast(@as(i32, -10)));
         _ = WindowsConsole.FlushConsoleInputBuffer(stdin_handle);
-        return;
+    } else {
+        _ = terminal_input_drain.drainStaleInput(std.posix.STDIN_FILENO, std.posix.STDOUT_FILENO, .{});
     }
-
-    const tciflush = switch (builtin.os.tag) {
-        .linux => 0,
-        .macos => 1,
-        else => return,
-    };
-    const PosixTerminal = struct {
-        extern "c" fn tcflush(fd: c_int, queue_selector: c_int) c_int;
-    };
-    _ = PosixTerminal.tcflush(0, tciflush);
 }
 
 export fn setBackgroundColor(renderer_handle: NativeHandle, color: [*]const u16) void {
