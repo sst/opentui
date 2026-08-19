@@ -8,7 +8,7 @@ skill:
 
 # Embedded terminal
 
-`EmbeddedTerminalRenderable` parses VT output and draws a terminal screen in the OpenTUI tree. OpenTUI links Ghostty's VT library into the native Core artifact. A normal `@opentui/core` install includes this surface.
+`EmbeddedTerminalRenderable` parses VT output and draws a terminal screen in the render tree. The parser is Ghostty's VT library, linked into the native artifact. You do not need an extra install.
 
 The renderable is not a process and not a PTY. You write child output into it. You send encoded input back to the child.
 
@@ -22,7 +22,7 @@ The renderable is not a process and not a PTY. You write child output into it. Y
 | Solid           | Unavailable                  |
 | Status          | Built-in Core renderable     |
 
-OpenTUI links Ghostty VT on `x86_64` and `aarch64` for macOS, Linux glibc, Linux musl, and Windows GNU. Other targets throw `Embedded terminal creation failed: embedded terminal support is unavailable`.
+The native artifact includes Ghostty VT on `x86_64` and `aarch64` for macOS, Linux glibc, Linux musl, and Windows GNU. Other targets throw `Embedded terminal creation failed: embedded terminal support is unavailable`.
 
 ## I/O model
 
@@ -54,7 +54,7 @@ The renderable owns a VT parser, a screen, scrollback, and input encoders. It do
                 ╚══════════════════════════════════════╝
 ```
 
-Both `onData` sources belong on the child stdin path. Use `source` when you log or filter them. A query such as DSR produces `"response"`. A key or mouse event produces `"input"`.
+Write both `onData` sources to the child's stdin. Use `source` only when you log or filter. A query such as DSR produces `"response"`. A key or mouse event produces `"input"`.
 
 ## Draw VT output
 
@@ -73,9 +73,9 @@ renderer.root.add(terminal)
 terminal.focus()
 ```
 
-`write()` accepts a string or `Uint8Array`. The parser keeps incomplete escape sequences across calls. After `write()` or a resize, OpenTUI drains generated replies. Nonempty reply bytes go to `onData` with source `"response"`.
+`write()` accepts a string or `Uint8Array`. The parser keeps incomplete escape sequences across calls. After `write()` or a resize, the renderable drains generated replies. Nonempty reply bytes go to `onData` with source `"response"`.
 
-`screen()` reads the private cell buffer from the last paint. Call it after a render pass. `screen()` trims each line at the end and drops trailing empty rows. `columns` and `rows` are the renderable's current layout size. Cursor state is also from the last compose, not from `write()` alone.
+`screen()` reads the private cell buffer from the last paint. Call it after a render pass. It trims the end of each line and drops trailing empty rows. `columns` and `rows` are the renderable's current layout size. Cursor state also comes from the last compose, not from `write()` alone.
 
 ## Attach a process
 
@@ -102,7 +102,7 @@ function attachChild(
 
 If `width` or `height` is a percentage or flex size, the native grid starts at `cols` and `rows`. Those values default to `80` and `24` when the layout size is not a number. Create the child at that starting grid.
 
-OpenTUI resizes the emulator only when the computed size changes while the renderable is visible. That path also drains replies and calls `onTerminalResize`. A numeric `width` or `height` that already matches the first layout does not fire the callback.
+A computed size change resizes the emulator only while the renderable is visible. That path also drains replies and calls `onTerminalResize`. A numeric `width` or `height` that already matches the first layout does not fire the callback.
 
 Set `TERM` and `COLORTERM` on the child when you want a typical xterm-compatible session. The examples app includes an embedded shell demo that uses `Bun.spawn` with `terminal`.
 
@@ -118,15 +118,15 @@ Destroy the renderable and close the child together. `destroy()` releases the na
 | `height`        | `rows`                           | Layout height. A later size change resizes the emulator.                                          |
 | `maxScrollback` | `10000`                          | Scrollback budget in bytes, not lines. `0` stores no history. The value must fit in a native u32. |
 
-`maxScrollback` is constructor-only. A visible size change floors the computed width and height and caps the native grid at 65535. It then invalidates the next paint, drains replies, and calls `onTerminalResize`. Layout size and `screen()` dimensions are not capped. OpenTUI ignores non-finite or non-positive sizes. Hidden size changes update layout only.
+`maxScrollback` is constructor-only. A visible size change floors the computed width and height and caps the native grid at 65535. It then invalidates the next paint, drains replies, and calls `onTerminalResize`. The cap does not apply to layout size or `screen()` dimensions. The renderable ignores non-finite and non-positive sizes. Hidden size changes update layout only.
 
 ## Focus and keyboard
 
-The renderable is focusable. A left-button press inside it calls `focus()`. While the renderable has focus, OpenTUI routes keys and paste events to it.
+The renderable is focusable. A left-button press inside it calls `focus()`. While the renderable has focus, the renderer routes keys and paste events to it.
 
-`handleKeyPress()` encodes the key with the child's current keyboard mode. It sends nonempty bytes as `"input"` and returns `true` when it produced bytes. The renderable forwards Kitty releases only while it has focus. `meta` encodes as Super, not Alt.
+`handleKeyPress()` encodes the key with the child's current keyboard mode. It sends nonempty bytes as `"input"` and returns `true` when it produces bytes. The renderable forwards Kitty releases only while it has focus. `meta` encodes as Super, not Alt.
 
-`handlePaste()` encodes the paste with the current paste mode. Bracketed paste wraps the payload when the child enabled it. Encoding replaces selected control bytes with spaces. Without bracketed paste, newlines become carriage returns.
+`handlePaste()` encodes the paste with the current paste mode. Bracketed paste wraps the payload when the child enabled it. Encoding replaces certain control bytes with spaces. Without bracketed paste, newlines become carriage returns.
 
 If the child enabled focus events, `focus()` and `blur()` send the matching sequences as `"input"`. If `onData` throws during `focus()`, the renderable leaves focus. `blur()` still finishes cleanup if `onData` throws.
 
@@ -134,35 +134,35 @@ Renderer `keyInput` listeners run before the focused renderable. Use that path f
 
 ## Mouse and local scroll
 
-When the child enables a cell-based mouse protocol, OpenTUI sends nonempty encoded pointer events as `"input"`. OpenTUI then stops those events. Duplicate motion and mode 1016 pixel mouse encode to empty bytes. OpenTUI does not stop those empty encodings. OpenTUI has cell coordinates only.
+When the child enables a cell-based mouse protocol, the renderable encodes pointer events, sends nonempty bytes as `"input"`, and stops those events. Duplicate motion and mode 1016 pixel mouse encode to empty bytes and do not stop the event. The renderable has cell coordinates only.
 
 When the child does not encode a wheel event, the renderable scrolls its own viewport by 3 rows and stops the event. Your `onMouseDown` and related handlers still run after this forwarding.
 
 ## Selection
 
-`selectable` defaults to `true`. The renderable joins the renderer selection. The renderable clamps drag endpoints to the visible grid. Selected cells invert on paint. `getSelectedText()` returns the emulator selection, and the renderer selection uses that same text.
+`selectable` defaults to `true`. The renderable joins the renderer selection and clamps drag endpoints to the visible grid. Selected cells invert on paint. `getSelectedText()` returns the emulator selection, and the renderer selection uses that same text.
 
 The renderer starts host selection before it dispatches the mouse event. Encoded mouse bytes still go to the child. `preventDefault()` does not cancel that selection. The same gesture can update host selection and send mouse input.
 
 ## Cursor and paint
 
-The renderable is always buffered. The renderable composes dirty rows into that private buffer. Wide graphemes use their grid width. Bold, dim, italic, underline, blink, hidden, and strikethrough map to OpenTUI cell attributes. Inverse style and selection swap foreground and background.
+The renderable is always buffered and composes dirty rows into its private buffer. Wide graphemes use their grid width. Bold, dim, italic, underline, blink, hidden, and strikethrough map to cell attributes. Inverse style and selection swap foreground and background.
 
-Child Kitty graphics and Sixel images are not composed. The paint path draws the character grid only.
+The paint path does not compose child Kitty graphics or Sixel images. It draws the character grid only.
 
-While the renderable has focus, OpenTUI moves the host cursor to the emulator cursor. OpenTUI applies bar, block, and underline styles. Hollow block becomes block. OpenTUI applies blink and RGB cursor color when present. A wide-glyph tail shifts the host cursor one cell left.
+While the renderable has focus, the host cursor follows the emulator cursor. It takes the bar, block, or underline style. Hollow block becomes block. It takes blink and RGB cursor color when present. A wide-glyph tail shifts the host cursor one cell left.
 
 `blur()` and `destroy()` hide the host cursor.
 
 `render()` runs `renderBefore`, then compose, then `renderAfter`. If either hook exists, or existed on the previous frame, compose redraws the full grid. That redraw replaces `renderBefore` output. Use `renderAfter` to draw over the terminal cells.
 
-`onScreenChange` runs after every successful compose while the renderable is visible. It is not a dirty-content signal. Do not start work that must run only when the screen changes.
+`onScreenChange` runs after every successful compose while the renderable is visible. It is not a dirty-content signal. Do not use it to start work that must run only when the screen content changes.
 
 `invalidate()` forces a full redraw on the next compose.
 
 ## Limits and failures
 
-The reply queue keeps at most 1 MiB. OpenTUI drops an overflowing reply. `write()` still delivers replies that were already queued. It does not throw.
+The reply queue keeps at most 1 MiB and drops an overflowing reply. `write()` still delivers replies that were already queued and does not throw.
 
 Construction validates `cols`, `rows`, and `maxScrollback` before native allocation. A failed constructor destroys the renderable and rethrows. `destroy()` and a failed constructor hide the host cursor. If the renderable has focus, `destroy()` can send a focus-lost sequence to `onData` before it frees the handle. After that, methods return without writing. Encoders return empty bytes.
 
