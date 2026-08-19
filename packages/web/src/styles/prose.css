@@ -149,6 +149,28 @@
   margin-block: 0 1.5rem;
 }
 
+/* Box-drawing figures use the article typeface at body size. They are
+ * not code: no frame, no copy control. Overflow stays in the figure. */
+.prose .box-figure {
+  width: fit-content;
+  min-width: min(100%, var(--content-width));
+  max-width: 100%;
+  margin-block: 0 1.5rem;
+  overflow-x: auto;
+}
+
+.prose .box-figure pre {
+  width: max-content;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  font-size: inherit;
+  line-height: 1.2;
+  font-variant-ligatures: none;
+}
+
 .prose .code-block pre {
   width: 100%;
   min-width: 0;

@@ -111,7 +111,8 @@ Documentation can be dense, but it must use the same restrained design language.
 - Use plain text for disclosure controls and remove the native summary marker.
 - End each page with previous and next links.
 - Use text only for the code copy control. Show it on hover or focus, and keep it visible on touch devices.
-- Prefer monospace box-drawing diagrams in code blocks to images. They inherit the typeface and both themes.
+- Prefer monospace box-drawing diagrams to images. Set them in a `text` fence that starts with a box-drawing corner.
+- Those fences use the article typeface at body size. They have no code frame and no copy control.
 
 ## Exceptions
 

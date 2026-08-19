@@ -22,7 +22,7 @@ Inside the OpenTUI repository, this skill root is `packages/web/src/content/`. T
 - Start: `/docs`, `/docs/getting-started/quickstart`, `/docs/getting-started/runtime-support`
 - Frameworks: `/docs/bindings/react`, `/docs/bindings/solid`
 - Core: `/docs/core-concepts/renderer`, `/docs/core-concepts/layout`, `/docs/core-concepts/keyboard`
-- Components: `/docs/components`, `/docs/components/text`, `/docs/components/input`, `/docs/components/image`
+- Components: `/docs/components`, `/docs/components/text`, `/docs/components/input`, `/docs/components/image`, `/docs/components/embedded-terminal`
 - Application APIs: `/docs/core-concepts/clipboard`, `/docs/core-concepts/audio`, `/docs/application-apis/audio-streaming`, `/docs/application-apis/audio-capture`, `/docs/application-apis/animation`
 - Test and debug: `/docs/core-concepts/testing`, `/docs/test-and-debug/troubleshooting`
 - Extensions: `/docs/plugins/slots`, `/docs/extend/runtime-plugins`
@@ -47,6 +47,7 @@ Inside the OpenTUI repository, this skill root is `packages/web/src/content/`. T
 | `text`, `styling`, `content`, `selection`                                                                            | `docs/components/text.mdx`                  |
 | `input`, `form`, `editing`, `focus`                                                                                  | `docs/components/input.mdx`                 |
 | `image`, `image-renderable`, `image-display`, `kitty`, `sixel`                                                       | `docs/components/image.mdx`                 |
+| `embedded-terminal`, `terminal-renderable`, `ghostty`, `vt`, `pty`                                                   | `docs/components/embedded-terminal.mdx`     |
 | `clipboard`, `copy`, `osc52`, `host-clipboard`                                                                       | `docs/core-concepts/clipboard.mdx`          |
 | `audio`, `native-audio`, `sound`, `playback`, `mixer`, `devices`, `tap`                                              | `docs/core-concepts/audio.mdx`              |
 | `audio-streaming`, `audio-stream`, `radio`, `mp3`, `flac`, `icy`, `backpressure`, `reconnect`                        | `docs/application-apis/audio-streaming.mdx` |
@@ -84,6 +85,7 @@ details, start at `docs/plugins/slots.mdx`, then open the Core, React, or Solid 
 - `docs/components/text.mdx`
 - `docs/components/input.mdx`
 - `docs/components/image.mdx`
+- `docs/components/embedded-terminal.mdx`
 - `docs/core-concepts/clipboard.mdx`
 - `docs/core-concepts/audio.mdx`
 - `docs/application-apis/audio-streaming.mdx`
