@@ -2,15 +2,11 @@
 // Wraps markdown code fences (mapped via `<Content components={{ pre: ProseCode }} />`).
 // The wrapper anchors the copy button outside the scrollable pre, and the
 // button reads the raw source from data-code (see astro.config.mjs).
-// A `diagram` fence is a box-drawing figure: same typeface as the article,
-// no code frame, no copy control.
+// A text fence that starts with a box-drawing corner is a figure: same
+// typeface as the article, no code frame, no copy control.
 const props = Astro.props
-const className = String(props.class ?? props.className ?? "")
 const source = String(props["data-code"] ?? "")
-const isDiagram =
-  props["data-language"] === "diagram" ||
-  /\blanguage-diagram\b/.test(className) ||
-  source.trimStart().startsWith("┌")
+const isDiagram = /^[┌╭┏╔]/.test(source.trimStart())
 ---
 
 {

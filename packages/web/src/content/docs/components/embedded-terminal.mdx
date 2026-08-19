@@ -28,16 +28,30 @@ OpenTUI links Ghostty VT on `x86_64` and `aarch64` for macOS, Linux glibc, Linux
 
 The renderable owns a VT parser, a screen, scrollback, and input encoders. It does not own the child.
 
-```diagram
-┌─ child ────────────┐                ┌─ EmbeddedTerminalRenderable ────────┐
-│ stdout             ├── write() ─────┤ VT parser                           │
-│                    │                │      │                              │
-│                    │                │      ▼                              │
-│                    │                │ cells, cursor, scrollback           │
-│                    │                │                                     │
-│ stdin              ┤◄── "input" ────├ encode key, mouse, paste, focus     │
-│                    ┤◄─ "response" ──├ drain replies after write/resize    │
-└────────────────────┘                └─────────────────────────────────────┘
+```text
+                ╔══ child ═════════════════════════════╗
+                ║                                      ║
+                ║  stdout                              ║
+                ║                                      ║
+┌─ "input" ────▶║  stdin                               ║
+├─ "response" ─▶║                                      ║
+│               ╚══════════════════╤═══════════════════╝
+│                                  │                    
+│                                  │ write()            
+│                                  ▼                    
+│               ╔══ EmbeddedTerminalRenderable ════════╗
+│               ║                                      ║
+│               ║  ┏━━ VT parser ━━━━━━━━━━━━━━━━━━━┓  ║
+│               ║  ┗━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┛  ║
+│               ║                   ▼                  ║
+│               ║  ┏━━ screen ━━━━━━━━━━━━━━━━━━━━━━┓  ║
+│               ║  ┃  cells, cursor, scrollback     ┃  ║
+│               ║  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ║
+│               ║                                      ║
+├───────────────╢  encode                              ║
+└───────────────╢  drain                               ║
+                ║                                      ║
+                ╚══════════════════════════════════════╝
 ```
 
 Both `onData` sources belong on the child stdin path. Use `source` when you log or filter them. A query such as DSR produces `"response"`. A key or mouse event produces `"input"`.
