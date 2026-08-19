@@ -20,3 +20,14 @@ export * from "./terminal-palette.js"
 export * from "./paste.js"
 export * from "./clipboard.js"
 export { detectLinks } from "./detect-links.js"
+export {
+  type KeyBinding as InternalKeyBinding,
+  type KeyBindingLike,
+  type KeyBindingLookup,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
+  mergeKeyBindings,
+  buildKeyBindingsMap,
+  getKeyBindingAction,
+} from "./keybinding.internal.js"

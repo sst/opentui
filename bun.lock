@@ -47,6 +47,7 @@
       "dependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
         "@opentui/core": "workspace:*",
+        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@opentui/qrcode": "workspace:*",
         "@opentui/three": "workspace:*",
@@ -62,6 +63,31 @@
         "@types/three": "0.177.0",
         "typescript": "^5",
       },
+    },
+    "packages/forms": {
+      "name": "@opentui/forms",
+      "version": "0.0.0",
+      "dependencies": {
+        "@opentui/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@opentui/react": "workspace:*",
+        "@opentui/solid": "workspace:*",
+        "@types/bun": "latest",
+        "@types/node": "^24.0.0",
+        "@types/react": "^19.2.0",
+        "react": ">=19.2.0",
+        "solid-js": "1.9.12",
+      },
+      "peerDependencies": {
+        "@opentui/react": "workspace:*",
+        "@opentui/solid": "workspace:*",
+        "typescript": "^5",
+      },
+      "optionalPeers": [
+        "@opentui/react",
+        "@opentui/solid",
+      ],
     },
     "packages/keymap": {
       "name": "@opentui/keymap",
@@ -557,6 +583,8 @@
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.5.4", "", { "os": "win32", "cpu": "x64" }, "sha512-2/6dPPPJ9xL/bWz9jh+lZeV2g/tbxZ9N4FBIqwhnqSfIYy5jOnscsPZpcN4X6PstfJAo2yf0Ebk/tLTOzOS6TQ=="],
 
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
+
+    "@opentui/forms": ["@opentui/forms@workspace:packages/forms"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
 

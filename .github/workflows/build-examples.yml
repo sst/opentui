@@ -97,6 +97,11 @@ jobs:
             echo "✅ Solid dist copied"
           fi
 
+          if [ -d "npm-packages/forms-dist" ]; then
+            cp -r npm-packages/forms-dist packages/forms/dist
+            echo "✅ Forms dist copied"
+          fi
+
           echo ""
           echo "Package extraction complete:"
           ls -lah packages/core/dist/

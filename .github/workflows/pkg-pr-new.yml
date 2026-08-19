@@ -86,6 +86,10 @@ jobs:
         run: bun run build
         working-directory: packages/ssh
 
+      - name: Build forms
+        run: bun run build
+        working-directory: packages/forms
+
       - name: Publish preview packages
         run: |
           npx pkg-pr-new publish --no-template --commentWithSha --bun \
@@ -96,4 +100,5 @@ jobs:
             './packages/react/dist' \
             './packages/solid/dist' \
             './packages/keymap/dist' \
-            './packages/ssh/dist'
+            './packages/ssh/dist' \
+            './packages/forms/dist'

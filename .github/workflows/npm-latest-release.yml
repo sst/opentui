@@ -110,6 +110,11 @@ jobs:
             echo "Copied ssh dist"
           fi
 
+          if [ -d "npm-packages/forms-dist" ]; then
+            cp -r npm-packages/forms-dist packages/forms/dist
+            echo "Copied forms dist"
+          fi
+
           echo "Package extraction complete"
 
       - name: Run packed Node smoke tests
@@ -163,6 +168,10 @@ jobs:
           echo ""
           echo "📦 Checking @opentui/ssh..."
           cd ../../ssh/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/forms..."
+          cd ../../forms/dist && npm pack --dry-run
 
           echo ""
           echo "=========================================="

@@ -62,6 +62,8 @@ jobs:
           bun run build
           cd ../ssh
           bun run build
+          cd ../forms
+          bun run build
 
       - name: Verify build outputs
         run: |
@@ -98,8 +100,10 @@ jobs:
           test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
           test -d packages/ssh/dist || (echo "❌ ssh dist missing!" && exit 1)
           test -f packages/ssh/dist/package.json || (echo "❌ ssh dist/package.json missing!" && exit 1)
+          test -d packages/forms/dist || (echo "❌ forms dist missing!" && exit 1)
+          test -f packages/forms/dist/package.json || (echo "❌ forms dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (8 native targets, 7 package dists)"
+          echo "✅ All required build outputs verified (8 native targets, 8 package dists)"
 
       - name: Stage native license notices
         run: |
@@ -273,6 +277,13 @@ jobs:
             echo "✅ SSH dist packaged"
           else
             echo "⚠️  SSH dist not found (skipping)"
+          fi
+
+          if [ -d packages/forms/dist ]; then
+            cp -r packages/forms/dist artifacts/npm-packages/forms-dist
+            echo "✅ Forms dist packaged"
+          else
+            echo "⚠️  Forms dist not found (skipping)"
           fi
 
           cd artifacts
