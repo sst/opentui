@@ -130,6 +130,10 @@ pub const UnifiedTextBufferView = struct {
     view_id: u32,
     selection: ?TextSelection,
     selection_anchor_offset: ?u32,
+    /// Focus (moving end) of the current local selection. Stored explicitly
+    /// because inclusive selection extends `selection.end` past the focus
+    /// grapheme, so the focus can no longer be inferred from start/end.
+    selection_focus_offset: ?u32,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -188,6 +192,7 @@ pub const UnifiedTextBufferView = struct {
             .view_id = view_id,
             .selection = null,
             .selection_anchor_offset = null,
+            .selection_focus_offset = null,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -590,6 +595,7 @@ pub const UnifiedTextBufferView = struct {
             const had_selection = self.selection != null;
             self.selection = null;
             self.selection_anchor_offset = null;
+            self.selection_focus_offset = null;
             return had_selection;
         }
 
@@ -604,6 +610,7 @@ pub const UnifiedTextBufferView = struct {
                 const had_selection = self.selection != null;
                 self.selection = null;
                 self.selection_anchor_offset = null;
+                self.selection_focus_offset = null;
                 return had_selection;
             };
 
@@ -616,16 +623,17 @@ pub const UnifiedTextBufferView = struct {
                 const had_selection = self.selection != null;
                 self.selection = null;
                 self.selection_anchor_offset = null;
+                self.selection_focus_offset = null;
                 return had_selection;
             };
 
         self.selection_anchor_offset = anchor_offset;
+        self.selection_focus_offset = focus_offset;
 
-        const new_start = @min(anchor_offset, focus_offset);
-        const new_end = @max(anchor_offset, focus_offset);
+        const range = self.inclusiveSelectionRange(anchor_offset, focus_offset, text_end_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
-        const new_selection = selectionFromStyle(new_start, new_end, style);
+        const new_selection = selectionFromStyle(range.start, range.end, style);
 
         const selection_changed = if (self.selection) |old_sel|
             old_sel.start != new_selection.start or old_sel.end != new_selection.end
@@ -669,21 +677,33 @@ pub const UnifiedTextBufferView = struct {
         else
             self.coordsToCharOffset(focusX, focusY) orelse return false;
 
-        const new_start = @min(anchor_offset, focus_col_offset);
-        var new_end = @max(anchor_offset, focus_col_offset);
+        self.selection_focus_offset = focus_col_offset;
 
-        if (focus_col_offset < anchor_offset) {
-            new_end = @min(new_end + 1, text_end_offset);
-        }
-
-        self.selection = selectionFromStyle(new_start, new_end, style);
+        const range = self.inclusiveSelectionRange(anchor_offset, focus_col_offset, text_end_offset);
+        self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
+    }
+
+    /// Inclusive (Vim visual) selection range: both endpoint cells are part of
+    /// the selection, so the end extends past the grapheme under the max
+    /// endpoint. This is symmetric in drag direction: the cell under the
+    /// cursor and the cell under the anchor are both selected. A zero-width
+    /// selection (anchor == focus) stays empty so a plain press selects
+    /// nothing until the focus moves to another cell.
+    fn inclusiveSelectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
+        const start = @min(anchor_offset, focus_offset);
+        var end = @max(anchor_offset, focus_offset);
+        if (anchor_offset != focus_offset) {
+            end = @min(end + self.text_buffer.graphemeWidthAtOffset(end), text_end_offset);
+        }
+        return .{ .start = start, .end = end };
     }
 
     pub fn resetLocalSelection(self: *Self) void {
         self.selection = null;
         self.selection_anchor_offset = null;
+        self.selection_focus_offset = null;
     }
 
     fn getTextEndOffset(self: *Self) u32 {

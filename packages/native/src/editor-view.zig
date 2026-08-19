@@ -338,15 +338,10 @@ pub const EditorView = struct {
     pub fn syncCursorToSelectionFocus(self: *EditorView) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
-        const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {
-            if (anchor == selection.start) {
-                break :blk selection.end;
-            } else {
-                break :blk selection.start;
-            }
-        } else blk: {
-            break :blk selection.end;
-        };
+        // The stored focus offset is authoritative: with inclusive selection,
+        // `selection.end` extends past the focus grapheme, so the focus cannot
+        // be inferred from the normalized start/end pair.
+        const focus_offset = self.text_buffer_view.selection_focus_offset orelse selection.end;
 
         const focus_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), focus_offset) orelse return;
 

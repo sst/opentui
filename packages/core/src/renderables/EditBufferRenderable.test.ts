@@ -206,8 +206,10 @@ describe("EditBufferRenderable", () => {
     textarea.cursorOffset = 2
     textarea.moveCursorRight({ select: true })
 
-    expect(textarea.getSelection()).toEqual({ start: 2, end: 3 })
-    expect(textarea.getSelectedText()).toBe("c")
+    // Inclusive selection: the anchor cell and the cell under the moved
+    // cursor are both selected (Vim v+l).
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("cd")
   })
 
   test("sets cursor through renderable api", async () => {

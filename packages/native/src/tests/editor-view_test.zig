@@ -3451,3 +3451,58 @@ test "EditorView - mouse selection focus outside buffer bounds clamps correctly"
     // Cursor should be clamped to last line (line 9)
     try std.testing.expectEqual(@as(u32, 9), cursor.row);
 }
+
+test "EditorView - cursor syncs to focus not selection end for inclusive forward selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    // Forward selection from cell 0 to cell 5: inclusive end is 6, but the
+    // cursor must land on the focus (5), not the extended end.
+    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, true);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}
+
+test "EditorView - backward selection keeps anchor cell and cursor at focus" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    // Press at cell 8, drag left to cell 6: cells 6..8 selected = "Wor",
+    // cursor at the focus cell 6.
+    _ = ev.setLocalSelection(8, 0, 8, 0, null, null, true);
+    _ = ev.updateLocalSelection(8, 0, 6, 0, null, null, true);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Wor", out_buffer[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}

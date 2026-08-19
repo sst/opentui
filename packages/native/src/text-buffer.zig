@@ -158,6 +158,15 @@ pub const UnifiedTextBuffer = struct {
         return iter_mod.getPrevGraphemeWidth(@constCast(&self._rope), &self.mem_registry, row, col, self.tab_width, self.width_method);
     }
 
+    /// Display width of the grapheme at a display-width offset.
+    /// Returns 0 when no grapheme starts at or spans the offset (end of line,
+    /// newline position, or end of text), so callers can extend a selection
+    /// end by the returned width without special-casing boundaries.
+    pub fn graphemeWidthAtOffset(self: *const Self, offset: u32) u32 {
+        const coords = iter_mod.offsetToCoords(@constCast(&self._rope), offset) orelse return 0;
+        return self.getGraphemeWidthAt(coords.row, coords.col);
+    }
+
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
         return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
     }
