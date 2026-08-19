@@ -6,6 +6,7 @@ const copyButtonTransformer = {
   name: "copy-button",
   pre(node) {
     node.properties["data-code"] = this.source
+    if (this.options?.lang) node.properties["data-language"] = this.options.lang
   },
 }
 

@@ -24,6 +24,9 @@ describe("documentation index", () => {
     const components = index.sections.find((section) => section.id === "components")
 
     expect(components?.pages.find((page) => page.slug === "components/input")?.group).toBe("Input and selection")
+    expect(components?.pages.find((page) => page.slug === "components/embedded-terminal")?.group).toBe(
+      "Graphics and media",
+    )
     expect(components?.pages.some((page) => page.slug === "components/time-to-first-draw")).toBe(false)
     expect(index.pagesBySlug["components/time-to-first-draw"].primaryNav).toBe(false)
   })

@@ -2,10 +2,28 @@
 // Wraps markdown code fences (mapped via `<Content components={{ pre: ProseCode }} />`).
 // The wrapper anchors the copy button outside the scrollable pre, and the
 // button reads the raw source from data-code (see astro.config.mjs).
+// A text fence that starts with a box-drawing corner is a figure: same
+// typeface as the article, no code frame, no copy control.
 const props = Astro.props
+const source = String(props["data-code"] ?? "")
+const isDiagram = /^[┌╭┏╔]/.test(source.trimStart())
 ---
 
-<div class="code-block"><pre {...props}><slot /></pre><button class="copy-code" type="button">copy</button></div>
+{
+  isDiagram ? (
+    <figure
+      class="box-figure"
+      aria-label="Diagram"
+    >
+      <pre {...props} aria-hidden="true"><slot /></pre>
+    </figure>
+  ) : (
+    <div class="code-block">
+      <pre {...props}><slot /></pre>
+      <button class="copy-code" type="button">copy</button>
+    </div>
+  )
+}
 
 <script>
   document.addEventListener("click", (event) => {

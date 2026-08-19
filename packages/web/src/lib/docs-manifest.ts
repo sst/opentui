@@ -243,7 +243,13 @@ export const DOC_MANIFEST = {
   "components/overview": page("components", 1, "Overview", "reference", {
     slug: "components",
     availability: FRAMEWORKS,
-    searchSymbols: ["TextRenderable", "BoxRenderable", "InputRenderable", "ImageRenderable"],
+    searchSymbols: [
+      "TextRenderable",
+      "BoxRenderable",
+      "InputRenderable",
+      "ImageRenderable",
+      "EmbeddedTerminalRenderable",
+    ],
     related: ["core-concepts/renderables", "bindings/react", "bindings/solid"],
   }),
   "components/text": page("components", 2, "Text", "component-reference", {
@@ -492,6 +498,29 @@ export const DOC_MANIFEST = {
     },
     searchSymbols: ["QRCodeRenderable", "QRCode", "qrCode"],
     related: ["reference/qr-encoder", "components/image"],
+  }),
+  "components/embedded-terminal": page("components", 20, "Embedded terminal", "component-reference", {
+    group: "Graphics and media",
+    availability: CORE_ONLY,
+    status: "Built-in Core renderable",
+    component: {
+      purpose: "Parses VT output and draws a child terminal screen in the render tree.",
+      coreRenderable: "EmbeddedTerminalRenderable",
+      react: "Unavailable",
+      solid: "Unavailable",
+    },
+    searchSymbols: [
+      "EmbeddedTerminalRenderable",
+      "EmbeddedTerminalOptions",
+      "EmbeddedTerminalScreen",
+      "EmbeddedTerminalDataSource",
+    ],
+    related: [
+      "core-concepts/interaction",
+      "core-concepts/keyboard",
+      "core-concepts/testing",
+      "extend/custom-renderables",
+    ],
   }),
 
   "core-concepts/clipboard": page("application-apis", 1, "Clipboard", "task-guide", {
