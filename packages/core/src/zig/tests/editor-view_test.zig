@@ -3451,3 +3451,58 @@ test "EditorView - mouse selection focus outside buffer bounds clamps correctly"
     // Cursor should be clamped to last line (line 9)
     try std.testing.expectEqual(@as(u32, 9), cursor.row);
 }
+
+test "EditorView - backward local selection uses boundary semantics" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("Hello World");
+
+    // Press at boundary 8, extend left to boundary 6: the press placed the
+    // caret at 8, so the selection is [6, 8) = "Wo", not [6, 9) = "Wor".
+    _ = ev.setLocalSelection(8, 0, 8, 0, null, null, false);
+    _ = ev.updateLocalSelection(8, 0, 6, 0, null, null, false);
+
+    const packed_info = ev.packSelectionInfo();
+    try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
+
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 6), start);
+    try std.testing.expectEqual(@as(u32, 8), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Wo", out_buffer[0..len]);
+}
+
+test "EditorView - single-step backward selection selects exactly one char" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("Hello World");
+
+    // Click at column 5 then shift+left: exactly "o" [4, 5), not "o " [4, 6).
+    _ = ev.setLocalSelection(5, 0, 5, 0, null, null, false);
+    _ = ev.updateLocalSelection(5, 0, 4, 0, null, null, false);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("o", out_buffer[0..len]);
+}

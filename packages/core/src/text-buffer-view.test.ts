@@ -368,6 +368,15 @@ describe("TextBufferView", () => {
       expect(changed).toBe(true)
       expect(view.getSelectedText()).toBe("World")
     })
+
+    it("should keep the anchor cell selected in backward selection (cell semantics)", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(8, 0, 8, 0)
+      view.updateLocalSelection(8, 0, 6, 0)
+      expect(view.getSelectedText()).toBe("Wor")
+    })
   })
 
   describe("getPlainText", () => {

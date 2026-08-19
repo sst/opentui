@@ -67,6 +67,10 @@ pub const EditorView = struct {
         const text_buffer = edit_buffer.getTextBuffer();
         const text_buffer_view = UnifiedTextBufferView.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
         errdefer text_buffer_view.deinit();
+        // Edit buffers use boundary (caret) selection semantics: a press places
+        // the cursor at a column boundary, so a backward extension selects
+        // [focus, anchor) rather than including the anchor cell.
+        text_buffer_view.cell_selection = false;
 
         self.* = .{
             .text_buffer_view = text_buffer_view,

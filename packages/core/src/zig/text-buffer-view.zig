@@ -130,6 +130,18 @@ pub const UnifiedTextBufferView = struct {
     view_id: u32,
     selection: ?TextSelection,
     selection_anchor_offset: ?u32,
+    /// Backward-selection (focus < anchor) semantics for focus-only selection
+    /// updates (updateLocalSelectionFocusOnly; setLocalSelectionStyle always
+    /// stores plain [min, max) in either mode).
+    /// true  = cell semantics (xterm-style copy selection): the pressed cell
+    ///         stays highlighted when dragging left of it, so the selection end
+    ///         is extended one column past the anchor.
+    /// false = boundary semantics (editor caret selection): a press lands on a
+    ///         column boundary, so a backward extension selects exactly
+    ///         [focus, anchor).
+    /// Static text views default to cell semantics; EditorView opts into
+    /// boundary semantics at construction.
+    cell_selection: bool,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -188,6 +200,7 @@ pub const UnifiedTextBufferView = struct {
             .view_id = view_id,
             .selection = null,
             .selection_anchor_offset = null,
+            .cell_selection = true,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -672,7 +685,12 @@ pub const UnifiedTextBufferView = struct {
         const new_start = @min(anchor_offset, focus_col_offset);
         var new_end = @max(anchor_offset, focus_col_offset);
 
-        if (focus_col_offset < anchor_offset) {
+        // Cell semantics: keep the pressed cell highlighted when dragging left
+        // of it. This intentionally also applies when the focus arrived clamped
+        // (above/left of this view) so multi-renderable reverse drags keep the
+        // anchor cell selected in the anchor renderable. Boundary-semantics
+        // views (edit buffers) select exactly [focus, anchor) instead.
+        if (self.cell_selection and focus_col_offset < anchor_offset) {
             new_end = @min(new_end + 1, text_end_offset);
         }
 

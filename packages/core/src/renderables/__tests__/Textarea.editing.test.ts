@@ -1417,10 +1417,9 @@ describe("Textarea - Editing Tests", () => {
       const selection = editor.getSelection()
       expect(selection).not.toBeNull()
       expect(selection!.start).toBe(0) // Selection starts at buffer start
-      // Selection should include everything from buffer start to original cursor position
+      // Selection covers everything from buffer start to the cursor boundary:
       // gotoLine(1) positions at end of line, moveCursorRight 3 times goes to col 3 of next line
-      // Selection from buffer start to cursor includes "Line 1\nLine" (one more than "Lin" due to cursor position)
-      expect(editor.getSelectedText()).toBe("Line 1\nLine")
+      expect(editor.getSelectedText()).toBe("Line 1\nLin")
     })
 
     it("should select from cursor to buffer end with End+Shift", async () => {

@@ -943,7 +943,7 @@ test "Selection - updateLocalSelection backward selection" {
     _ = view.setLocalSelection(11, 0, 11, 0, null, null);
 
     // Move focus backward to (6, 0) - start of "World"
-    // Backward selection adds +1 to make it inclusive, so [6, 12) = "World!"
+    // Cell selection semantics add +1 so the anchor cell stays selected: [6, 12) = "World!"
     const changed = view.updateLocalSelection(11, 0, 6, 0, null, null);
     try std.testing.expect(changed);
 
@@ -957,6 +957,38 @@ test "Selection - updateLocalSelection backward selection" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
     try std.testing.expectEqualStrings("World!", text);
+}
+
+test "Selection - updateLocalSelection backward with clamped focus keeps anchor cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // Anchor on the 'W' cell (col 6). The drag continues into a renderable
+    // above this view, so the focus arrives clamped (focusY < 0). Cell
+    // semantics must keep the anchor cell selected: [0, 7) = "Hello W".
+    _ = view.setLocalSelection(6, 0, 6, 0, null, null);
+    const changed = view.updateLocalSelection(6, 0, 0, -1, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 7), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello W", out_buffer[0..len]);
 }
 
 test "Selection - updateLocalSelection with wrapped lines" {

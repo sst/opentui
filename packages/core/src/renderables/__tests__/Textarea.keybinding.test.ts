@@ -2974,7 +2974,7 @@ describe("Textarea - Keybinding Tests", () => {
       kittyMockInput.pressKey("a", { ctrl: true, shift: true })
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello W")
+      expect(editor.getSelectedText()).toBe("Hello ")
     })
 
     it("should select to line end from middle with ctrl+shift+e", async () => {
@@ -3005,7 +3005,7 @@ describe("Textarea - Keybinding Tests", () => {
 
       // Select to start of line 2
       kittyMockInput.pressKey("a", { ctrl: true, shift: true })
-      expect(editor.getSelectedText()).toBe("Line ")
+      expect(editor.getSelectedText()).toBe("Line")
 
       // Clear selection and move to same position
       editor.editBuffer.setCursor(1, 4)
@@ -3026,9 +3026,9 @@ describe("Textarea - Keybinding Tests", () => {
       // At end of line 1
       editor.editBuffer.setCursor(0, 6)
 
-      // First ctrl+shift+a from EOL selects through the line break at EOL
+      // ctrl+shift+a from EOL selects the whole line up to the cursor boundary
       kittyMockInput.pressKey("a", { ctrl: true, shift: true })
-      expect(editor.getSelectedText()).toBe("Line 1\n")
+      expect(editor.getSelectedText()).toBe("Line 1")
 
       // Reset
       editor.editBuffer.setCursor(0, 0)
@@ -3205,7 +3205,7 @@ describe("Textarea - Keybinding Tests", () => {
 
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
-      expect(selectedText.length).toBe(6) // From col 20 to 26 (includes char at 25)
+      expect(selectedText.length).toBe(5) // From col 20 to the cursor boundary at 25
     })
 
     it("should select to visual line end with meta+shift+e", async () => {
@@ -3238,7 +3238,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.editBuffer.setCursor(0, 6)
 
       kittyMockInput.pressKey("a", { meta: true, shift: true })
-      expect(editor.getSelectedText()).toBe("Hello W")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       editor.editBuffer.setCursor(0, 6)
       kittyMockInput.pressKey("e", { meta: true, shift: true })
@@ -3259,7 +3259,7 @@ describe("Textarea - Keybinding Tests", () => {
       // meta+shift+a selects to visual line start
       kittyMockInput.pressKey("a", { meta: true, shift: true })
       const visualSelection = editor.getSelectedText()
-      expect(visualSelection.length).toBe(6) // From 20 to 26
+      expect(visualSelection.length).toBe(5) // From 20 to the cursor boundary at 25
 
       // Reset
       editor.editBuffer.setCursor(0, 25)
@@ -3267,7 +3267,7 @@ describe("Textarea - Keybinding Tests", () => {
       // ctrl+shift+a selects to logical line start
       kittyMockInput.pressKey("a", { ctrl: true, shift: true })
       const logicalSelection = editor.getSelectedText()
-      expect(logicalSelection.length).toBe(26) // From 0 to 26
+      expect(logicalSelection.length).toBe(25) // From 0 to the cursor boundary at 25
 
       expect(visualSelection).not.toBe(logicalSelection)
     })

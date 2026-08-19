@@ -714,8 +714,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (!select && this.hasSelection()) {
       const selection = this.getSelection()!
-      const targetOffset = this.cursorOffset === selection.start ? selection.end - 1 : selection.end
-      this.editBuffer.setCursorByOffset(targetOffset)
+      this.editBuffer.setCursorByOffset(selection.end)
       this._ctx.clearSelection()
       this.requestRender()
       return true

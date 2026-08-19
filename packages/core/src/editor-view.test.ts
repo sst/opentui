@@ -275,6 +275,16 @@ describe("EditorView", () => {
       expect(view.getSelectedText()).toBe("World")
     })
 
+    it("should not include the anchor character in backward selection (boundary semantics)", () => {
+      buffer.setText("Hello World")
+
+      view.setLocalSelection(8, 0, 8, 0)
+      const changed = view.updateLocalSelection(8, 0, 6, 0)
+      expect(changed).toBe(true)
+      expect(view.getSelection()).toEqual({ start: 6, end: 8 })
+      expect(view.getSelectedText()).toBe("Wo")
+    })
+
     it("should handle wrapped lines with updateLocalSelection", () => {
       buffer.setText("ABCDEFGHIJKLMNOPQRST")
 

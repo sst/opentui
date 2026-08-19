@@ -189,6 +189,25 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("World")
     })
 
+    it("should not extend a backward mouse drag past the press boundary", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Press at boundary 9 (between 'r' and 'l'), drag left to 6.
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      const sel = editor.getSelection()
+      expect(sel).not.toBe(null)
+      expect(sel!.start).toBe(6)
+      expect(sel!.end).toBe(9)
+      expect(editor.getSelectedText()).toBe("Wor")
+    })
+
     it("should render selection properly when drawing to buffer", async () => {
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
@@ -564,6 +583,43 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("World")
     })
 
+    it("should select exactly one character with shift+left from mid-line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursorToLineCol(0, 5)
+
+      currentMockInput.pressArrow("left", { shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("o")
+    })
+
+    it("should collapse a backward selection to the press boundary with right arrow", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("Wor")
+
+      currentMockInput.pressArrow("right")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(9)
+    })
+
     it("should select with shift+down", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
@@ -615,7 +671,7 @@ describe("Textarea - Selection Tests", () => {
       currentMockInput.pressKey("HOME", { shift: true })
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello W")
+      expect(editor.getSelectedText()).toBe("Hello ")
     })
 
     it("should select to line end with shift+end", async () => {
