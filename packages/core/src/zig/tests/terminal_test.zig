@@ -1329,16 +1329,16 @@ test "writeClipboard - chunks large payload through GNU Screen passthrough" {
     try term.writeClipboard(&writer, .clipboard, payload);
 
     const output = writer.getWritten();
-    try testing.expect(countSubstring(output, ansi.ANSI.screenDcsStart) > 1);
-    try testing.expect(std.mem.endsWith(u8, output, ansi.ANSI.screenDcsEnd));
-
-    var frame_start: usize = 0;
-    while (std.mem.findPos(u8, output, frame_start, ansi.ANSI.screenDcsStart)) |start| {
-        const content_start = start + ansi.ANSI.screenDcsStart.len;
-        const next_start = std.mem.findPos(u8, output, content_start, ansi.ANSI.screenDcsStart) orelse output.len;
-        try testing.expect(next_start - content_start <= Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE + ansi.ANSI.screenDcsEnd.len);
-        frame_start = next_start;
-    }
+    const forwarded_buffer = try testing.allocator.alloc(u8, output.len);
+    defer testing.allocator.free(forwarded_buffer);
+    const forwarded = try forwardScreenDcs(output, forwarded_buffer);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const expected = try testing.allocator.alloc(u8, "\x1b]52;c;".len + encoded_len + 1);
+    defer testing.allocator.free(expected);
+    @memcpy(expected[0.."\x1b]52;c;".len], "\x1b]52;c;");
+    _ = std.base64.standard.Encoder.encode(expected["\x1b]52;c;".len .. expected.len - 1], payload);
+    expected[expected.len - 1] = '\x07';
+    try testing.expectEqualSlices(u8, expected, forwarded);
 }
 
 test "writeClipboard - base64 encodes raw UTF-8 bytes" {
@@ -1431,7 +1431,7 @@ test "writeClipboard - Screen framing crosses the 252-byte boundary" {
     try env.put("STY", "12345.pts-0.hostname");
     var term = Terminal.init(.{ .env_map = &env });
 
-    const payload_one_chunk = [_]u8{'A'} ** 180;
+    const payload_one_chunk = [_]u8{'A'} ** 183;
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
     try term.writeClipboard(&writer, .clipboard, &payload_one_chunk);
@@ -1439,7 +1439,7 @@ test "writeClipboard - Screen framing crosses the 252-byte boundary" {
     try testing.expectEqual(try term.clipboardSequenceSize(payload_one_chunk.len), writer.getWritten().len);
 
     writer.reset();
-    const payload_two_chunks = [_]u8{'A'} ** 181;
+    const payload_two_chunks = [_]u8{'A'} ** 184;
     try term.writeClipboard(&writer, .clipboard, &payload_two_chunks);
     try testing.expectEqual(@as(usize, 2), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
     try testing.expectEqual(try term.clipboardSequenceSize(payload_two_chunks.len), writer.getWritten().len);
@@ -1477,21 +1477,13 @@ test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
     try env.put("STY", "12345.pts-0.hostname");
 
     var term = Terminal.init(.{ .env_map = &env });
-    term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
     try term.writeClipboard(&writer, .clipboard, "test");
 
-    const output = writer.getWritten();
-    // Should start with DCS (but not tmux prefix)
-    try testing.expect(std.mem.startsWith(u8, output, "\x1bP"));
-    try testing.expect(!std.mem.startsWith(u8, output, "\x1bPtmux;"));
-    // Should end with DCS terminator
-    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
-    // Should have doubled ESC characters
-    try testing.expect(std.mem.find(u8, output, "\x1b\x1b") != null);
+    try testing.expectEqualStrings("\x1bP\x1b]52;c;dGVzdA==\x07\x1b\\", writer.getWritten());
 }
 
 test "writeClipboard - handles tmux sessions" {
@@ -1540,6 +1532,27 @@ fn countSubstring(haystack: []const u8, needle: []const u8) usize {
         }
     }
     return count;
+}
+
+fn forwardScreenDcs(input: []const u8, output: []u8) ![]const u8 {
+    var input_offset: usize = 0;
+    var output_offset: usize = 0;
+    while (input_offset < input.len) {
+        if (!std.mem.startsWith(u8, input[input_offset..], ansi.ANSI.screenDcsStart)) {
+            return error.InvalidScreenDcsStart;
+        }
+        const content_start = input_offset + ansi.ANSI.screenDcsStart.len;
+        const end_offset = std.mem.find(u8, input[content_start..], ansi.ANSI.screenDcsEnd) orelse {
+            return error.MissingScreenDcsEnd;
+        };
+        const content = input[content_start .. content_start + end_offset];
+        if (content.len > Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE) return error.ScreenDcsPayloadTooLarge;
+        if (output_offset + content.len > output.len) return error.ScreenDcsOutputTooSmall;
+        @memcpy(output[output_offset .. output_offset + content.len], content);
+        output_offset += content.len;
+        input_offset = content_start + end_offset + ansi.ANSI.screenDcsEnd.len;
+    }
+    return output[0..output_offset];
 }
 
 test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {

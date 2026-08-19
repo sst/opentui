@@ -412,6 +412,28 @@ test "renderer honors per-placement protocol overrides" {
     try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") == null);
 }
 
+test "renderer does not send forced Sixel to Kitty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1bP>|kitty(0.48.2)\x1b\\");
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.find(u8, output, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, output, "█") != null);
+}
+
 test "renderer honors global image protocol override for auto placements" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1026,13 +1048,13 @@ test "renderer - clipboard chunks OSC 52 in screen DCS passthrough" {
     const payload = [_]u8{'A'} ** 2048;
     try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
 
-    // Escaped sequence: base64 (2732) + OSC 52 framing (9) + doubled ESC bytes
-    // (+2) = 2743 bytes, split into 11 chunks of at most 252 bytes, each wrapped
-    // in "\x1bP" .. "\x1b\\" (+4 per chunk) = 2787 total.
+    // Sequence: base64 (2732) + OSC 52 framing with BEL (8) = 2740 bytes,
+    // split into 11 chunks of at most 252 bytes, each wrapped in
+    // "\x1bP" .. "\x1b\\" (+4 per chunk) = 2784 total.
     const output = test_renderer.lastOutput();
-    try std.testing.expectEqual(@as(usize, 2787), output.len);
-    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b\x1b]52;c;QUFB"));
-    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+    try std.testing.expectEqual(@as(usize, 2784), output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x07\x1b\\"));
 
     // ESC only precedes 'P' at envelope starts, so this counts the chunks.
     try std.testing.expectEqual(@as(usize, 11), std.mem.count(u8, output, "\x1bP"));

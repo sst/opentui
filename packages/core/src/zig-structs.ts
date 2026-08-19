@@ -192,6 +192,30 @@ export const CursorStateStruct = defineStruct([
   ["a", "f32"],
 ])
 
+export const EmbeddedTerminalCursorStruct = defineStruct([
+  ["x", "u16"],
+  ["y", "u16"],
+  ["hasValue", "bool_u8"],
+  ["visible", "bool_u8"],
+  ["blinking", "bool_u8"],
+  ["wideTail", "bool_u8"],
+  ["style", "u8"],
+  ["colorHasValue", "bool_u8"],
+  ["colorR", "u8"],
+  ["colorG", "u8"],
+  ["colorB", "u8"],
+  ["padding", "u8"],
+])
+
+export const EmbeddedTerminalKeyOptionsStruct = defineStruct([
+  ["action", "u8"],
+  ["composing", "u8"],
+  ["mods", "u16"],
+  ["consumedMods", "u16"],
+  ["padding", "u16"],
+  ["unshiftedCodepoint", "u32"],
+])
+
 export const CursorStyleOptionsStruct = defineStruct([
   ["style", "u8", { default: 255 }],
   ["blinking", "u8", { default: 255 }],

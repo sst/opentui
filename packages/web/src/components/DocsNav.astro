@@ -14,12 +14,15 @@ const current = normalize(Astro.url.pathname)
         <li>
           <span class="section">{section.title}</span>
           <ul>
-            {section.pages.map((page) => (
-              <li>
-                <a href={page.url} aria-current={current === page.url ? "page" : undefined}>
-                  {page.navTitle}
-                </a>
-              </li>
+            {section.pages.map((page, index) => (
+              <>
+                {page.group && page.group !== section.pages[index - 1]?.group && <li class="group">{page.group}</li>}
+                <li>
+                  <a href={page.url} aria-current={current === page.url ? "page" : undefined}>
+                    {page.navTitle}
+                  </a>
+                </li>
+              </>
             ))}
           </ul>
         </li>
@@ -46,6 +49,12 @@ const current = normalize(Astro.url.pathname)
 
   .section {
     font-weight: 700;
+  }
+
+  .group {
+    font-weight: 700;
+    font-size: 0.75rem;
+    margin-block-start: 0.75rem;
   }
 
   a {

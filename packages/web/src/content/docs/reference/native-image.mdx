@@ -1,17 +1,23 @@
 ---
-title: Native images
-description: Decode and manipulate PNG, JPEG, WebP, GIF, and RGBA pixels
-order: 10
+title: NativeImage
+description: Decode, inspect, transform, share, and dispose native PNG, JPEG, WebP, GIF, and RGBA pixel data
 skill:
   entry: true
   intents: [native-image, image-decode, png, jpeg, webp, gif, rgba, pixels, resize]
 ---
 
-# Native images
+# NativeImage
 
-`NativeImage` decodes and manipulates images through OpenTUI's native library. Every decoded image uses top-left, straight-alpha, sRGB RGBA8 pixels.
+The [Image component](/docs/components/image) owns display and terminal-protocol selection. `NativeImage` owns image
+decode, transformed pixels, and native image handles.
 
-## Decode WebP to RGBA
+This advanced API is for code that must inspect or transform pixels before display. Use the Image component to load and
+display an encoded source without direct pixel ownership.
+
+Every materialized image uses top-left, straight-alpha, sRGB RGBA8 pixels. The API is supported in the Bun and Node.js
+runtimes listed in [Runtime and platform support](/docs/getting-started/runtime-support).
+
+## Load and dispose an image
 
 ```typescript
 import { NativeImage } from "@opentui/core"
@@ -19,119 +25,219 @@ import { NativeImage } from "@opentui/core"
 const image = await NativeImage.load("./image.webp")
 
 try {
-  const { data, width, height, stride } = image.raw("rgba8")
-  console.log({ data, width, height, stride })
+  const raw = image.raw("rgba8")
+  console.log(raw.width, raw.height, raw.stride, raw.data)
 } finally {
   image.dispose()
 }
 ```
 
-`data` is a `Uint8Array` in row-major RGBA order. Use `raw("bgra8")` for BGRA. The returned `RawImage` also contains `width`, `height`, `stride`, `format`, `colorSpace: "srgb"`, and `alpha: "straight"`.
+`raw()` returns an owned JavaScript copy. Disposing `image` does not invalidate that copy.
 
-## Inputs and formats
+## Accepted sources
 
-| API                         | Input                                                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `NativeImage.load(source)`  | Path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer` |
-| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                                                |
-| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride                                |
-| `imageInfo(data)`           | Encoded `Uint8Array` or `ArrayBuffer`; returns metadata without retaining an image handle            |
+| API                                                    | Accepted input                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `NativeImage.load(source, options?)`                   | Path string, `file:`, HTTP(S), `blob:`, or `data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer` |
+| `NativeImage.decode(data)`                             | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
+| `NativeImage.fromRgba(pixels, width, height, stride?)` | Straight-alpha sRGB RGBA8 `Uint8Array`                                                                            |
+| `imageInfo(data)`                                      | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
 
-Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
-`imageInfo()` validates encoded metadata and decodes when pixel inspection is required. `decode()` and `fromRgba()` copy their inputs and do not retain caller buffers.
+Format detection reads encoded bytes. It does not trust a filename, URL suffix, response header, or file extension.
 
-| Format | Behavior                                                                   |
-| ------ | -------------------------------------------------------------------------- |
-| PNG    | Supports alpha, sRGB and embedded ICC color metadata, and EXIF orientation |
-| JPEG   | Decodes opaque RGBA8; applies EXIF orientation                             |
-| WebP   | Decodes lossy, lossless, and alpha images; animated WebP is rejected       |
-| GIF    | Decodes the first displayed frame on the logical canvas                    |
+`decode()` and `fromRgba()` copy caller data into native ownership. `imageInfo()` returns metadata without retaining an
+image handle. It can decode pixels when validation needs pixel inspection.
 
-`load()` accepts `{ signal, fetch }`. `signal` cancels source acquisition; `fetch` replaces `globalThis.fetch` for fetched URLs. Paths, blobs, and response bodies are buffered before native decoding.
+`fromRgba()` defaults `stride` to `width * 4`. The stride must fit one complete row. The input must contain every row,
+including stride padding.
 
-## Metadata and pixels
-
-`image.info()` returns:
-
-| Field                         | Description                                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| `width`, `height`             | Decoded, orientation-corrected dimensions                                                        |
-| `sourceWidth`, `sourceHeight` | Original input dimensions; before orientation for encoded inputs and preserved by derived images |
-| `format`                      | `png`, `jpeg`, `webp`, `gif`, or `raw-rgba`                                                      |
-| `colorStatus`                 | `explicit-srgb` or `assumed-srgb`                                                                |
-| `orientation`                 | `1` after decode; `imageInfo()` reports encoded orientation                                      |
-| `hasAlpha`                    | Whether decoded pixels contain transparency                                                      |
-
-| Method                          | Result                                                           |
-| ------------------------------- | ---------------------------------------------------------------- |
-| `raw(format?)`                  | Allocates and returns RGBA8 or BGRA8 pixels and image metadata   |
-| `takeRaw()`                     | Transfers ownership of the native RGBA8 pixels without copying   |
-| `copyTo(destination, options?)` | Copies pixels into an existing `Uint8Array`                      |
-| `width`, `height`               | Decoded dimensions                                               |
-| `ptr`                           | Opaque native `ImageHandle`, valid until disposal or `takeRaw()` |
-
-`copyTo()` defaults to RGBA8 with stride `width * 4`; BGRA8 and custom strides are supported. A custom stride must fit one row, and the destination must fit every row.
-
-`takeRaw()` consumes an exclusively owned `NativeImage`; it throws while a native render buffer retains the image. Later accessors and operations throw, while `dispose()` remains a safe no-op. The returned `OwnedRawImage.data` directly views native memory. Dispose it only after every consumer has finished, because explicit disposal frees the native allocation and invalidates the view:
+### Load options
 
 ```typescript
-const image = await NativeImage.load(new Blob([encodedImage]))
-const raw = image.takeRaw()
-
-try {
-  consumeRgba(raw.data, raw.width, raw.height, raw.stride)
-} finally {
-  raw.dispose()
+interface ImageLoadOptions {
+  signal?: AbortSignal
+  fetch?: (input: URL, init?: RequestInit) => Promise<Response>
 }
 ```
 
-`OwnedRawImage.dispose()` is idempotent and required. Keep the owner alive for as long as any consumer uses `data`.
+`signal` cancels file, response-body, or fetch acquisition. An abort throws `signal.reason`. `fetch` replaces
+`globalThis.fetch` for fetched URLs.
 
-## Operations
+Paths, blobs, and response bodies are fully buffered before native decode. `load()` rejects a non-success HTTP status
+before it reads the body.
 
-Operations are immutable: each returns a new `NativeImage`; the source remains unchanged.
+## Format behavior
 
-| Method                                  | Description                                          |
-| --------------------------------------- | ---------------------------------------------------- |
-| `clone()`                               | Copy the image                                       |
-| `resize({ width?, height?, kernel? })`  | Resize; one omitted dimension preserves aspect ratio |
-| `extract({ left, top, width, height })` | Crop a rectangle                                     |
-| `extend(options?)`                      | Add RGBA padding                                     |
-| `rotate(90 \| 180 \| 270)`              | Rotate clockwise                                     |
-| `flip()` / `flop()`                     | Flip vertically / horizontally                       |
-| `composite(overlay, options?)`          | Composite in linear light                            |
+| Format   | Decode behavior                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| PNG      | Supports alpha, sRGB chunks, supported cICP, RGB or grayscale ICC v2/v4 profiles, and EXIF orientation |
+| JPEG     | Produces opaque RGBA8 and applies EXIF orientation                                                     |
+| WebP     | Supports lossy, lossless, and alpha images. Animated WebP is rejected.                                 |
+| GIF      | Decodes the first displayed frame on the logical canvas                                                |
+| Raw RGBA | Uses caller-supplied straight-alpha sRGB RGBA8 pixels                                                  |
 
-Resize kernels are `area` (the default), `default`, `triangle`, `cubic-bspline`, `catmull-rom`, `mitchell`, and `nearest`. Blend modes are `source-over` (the default), `source`, and `destination-over`; opacity is `0..1`.
-`extend()` defaults omitted sides to zero and its background to transparent RGBA. `composite()` defaults to offset `(0, 0)`, `source-over`, and opacity `1`; negative offsets are clipped to the base image.
+`NativeImage` does not expose animation frames or timing. GIF becomes one image. Animated WebP reports an unsupported
+feature.
 
-Dispose every image you own, including operation results:
+## Metadata
+
+`image.info()` and `imageInfo()` return `ImageInfo`:
+
+| Field                         | Meaning                                                              |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `width`, `height`             | Decoded and orientation-corrected dimensions                         |
+| `sourceWidth`, `sourceHeight` | Original input dimensions retained through derived images            |
+| `format`                      | `"png"`, `"jpeg"`, `"webp"`, `"gif"`, or `"raw-rgba"`                |
+| `colorStatus`                 | `"explicit-srgb"` or `"assumed-srgb"`                                |
+| `orientation`                 | Encoded orientation from `imageInfo()`. A decoded image reports `1`. |
+| `hasAlpha`                    | Whether decoded pixels contain transparency                          |
+
+`explicit-srgb` means the source supplied supported color metadata or the image came from explicit RGBA pixels.
+`assumed-srgb` means OpenTUI treated untagged source values as sRGB.
+
+For PNG, supported sRGB cICP takes precedence. Otherwise, `iCCP` takes precedence over `sRGB`, `gAMA`, and `cHRM`.
+Unsupported cICP falls through to lower-priority metadata. OpenTUI converts supported RGB or grayscale ICC monitor
+profiles to sRGB with Little CMS.
+
+## Pixel access
+
+| API                             | Result and ownership                                                       |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `raw(format = "rgba8")`         | Allocates and returns a copied `RawImage` in `"rgba8"` or `"bgra8"` order  |
+| `copyTo(destination, options?)` | Copies into an existing `Uint8Array` with optional `stride` and `format`   |
+| `takeRaw()`                     | Transfers exclusive ownership of native RGBA8 pixels to an `OwnedRawImage` |
+| `width`, `height`               | Read decoded dimensions while the handle is valid                          |
+| `ptr`                           | Read the opaque native `ImageHandle` while the handle is valid             |
+
+Both raw result types include `data`, `width`, `height`, `stride`, `format`, `colorSpace: "srgb"`, and
+`alpha: "straight"`.
+
+`copyTo()` defaults to RGBA8 with stride `width * 4`. A custom stride must fit a row. The destination must fit all rows.
+
+### Transfer native pixels
+
+```typescript
+const image = await NativeImage.load(new Blob([encodedImage]))
+
+try {
+  const raw = image.takeRaw()
+  try {
+    consumeRgba(raw.data, raw.width, raw.height, raw.stride)
+  } finally {
+    raw.dispose()
+  }
+} finally {
+  image.dispose()
+}
+```
+
+`takeRaw()` consumes the `NativeImage`. Later image access throws, while `image.dispose()` remains a safe no-op.
+
+`OwnedRawImage.data` aliases native memory. Keep the owner alive while any consumer uses the view.
+`OwnedRawImage.dispose()` is idempotent and required. It frees the native allocation and invalidates `data`.
+
+`takeRaw()` requires one exclusive native reference. It throws while another retained handle or a native buffer keeps
+the image alive. Dispose extra handles and clear or destroy those buffers first.
+
+## Share or copy a handle
+
+| Method      | Behavior                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `retain()`  | Returns an independently disposable handle to the same native image without copying pixels |
+| `clone()`   | Returns a new native image with copied image storage                                       |
+| `dispose()` | Releases one handle. The call is idempotent.                                               |
+
+Dispose every retained, cloned, decoded, and transformed handle separately. Disposing one retained handle does not
+invalidate another retained handle.
+
+## Transform images
+
+Operations do not mutate the source. Each successful operation returns a new `NativeImage`.
+
+| Method                                  | Behavior                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `resize({ width?, height?, kernel? })`  | Resizes to positive dimensions. One omitted dimension preserves aspect ratio. |
+| `extract({ left, top, width, height })` | Crops an in-bounds pixel rectangle                                            |
+| `extend(options = {})`                  | Adds top, right, bottom, and left padding                                     |
+| `rotate(90 \| 180 \| 270)`              | Rotates clockwise                                                             |
+| `flip()`                                | Flips vertically                                                              |
+| `flop()`                                | Flips horizontally                                                            |
+| `composite(overlay, options = {})`      | Composites an overlay in linear light                                         |
+
+Resize kernels are `"area"`, `"default"`, `"triangle"`, `"cubic-bspline"`, `"catmull-rom"`, `"mitchell"`, and
+`"nearest"`. The default is `"area"`.
+
+`extend()` defaults all sides to zero and the background to transparent `[0, 0, 0, 0]`. Each background channel is an
+integer from 0 through 255.
+
+Composite options default to `left: 0`, `top: 0`, `blend: "source-over"`, and `opacity: 1`. Blend modes are
+`"source-over"`, `"source"`, and `"destination-over"`. Opacity must be finite and in `0..1`. Negative offsets clip
+the overlay to the base image.
 
 ```typescript
 const source = await NativeImage.load("photo.jpg")
-const thumbnail = source.resize({ width: 320 })
 
 try {
-  console.log(thumbnail.raw().data)
+  const thumbnail = source.resize({ width: 320 })
+  try {
+    useImage(thumbnail)
+  } finally {
+    thumbnail.dispose()
+  }
 } finally {
-  thumbnail.dispose()
   source.dispose()
 }
 ```
 
-`dispose()` is idempotent. Other methods throw after disposal.
+## Encoded PNG retention
+
+`ensureEncodedPng()` makes encoded PNG data available for low-level native consumers. Raw and transformed images can
+need an encode at this point. The method returns `void` and leaves the image usable.
+
+Opaque, orientation-free PNG input can retain its original encoded bytes without decoding pixels immediately. A
+direct unchanged Kitty placement can use those bytes. Any pixel read, pixel operation, Sixel or block rendering, or
+Kitty crop, resize, or opacity operation materializes pixels.
+
+This lazy path means corrupt PNG pixel data can pass initial metadata validation and fail when the first pixel path
+runs.
 
 ## Errors and limits
 
-`ImageLoadError` exposes `code`, `source`, and optional HTTP `status`; codes are `file-read`, `network`, `http-status`, and `unsupported-url-scheme`. Aborts rethrow `AbortSignal.reason`.
+`ImageLoadError` covers source acquisition. It exposes `code`, `source`, and optional HTTP `status`.
 
-`ImageError` exposes numeric `status` and `code`: `invalid-handle`, `unsupported-format`, `unsupported-color-space`, `malformed-data`, `dimension-limit`, `memory-limit`, `invalid-argument`, `out-of-memory`, `output-too-small`, `internal-error`, or `unsupported-feature`. JavaScript argument validation uses `TypeError` and `RangeError`.
+| Code                     | Source failure                                   |
+| ------------------------ | ------------------------------------------------ |
+| `file-read`              | Path or file URL read                            |
+| `network`                | Fetch or response-body read                      |
+| `http-status`            | Non-success HTTP status                          |
+| `unsupported-url-scheme` | URL outside file, HTTP(S), blob, or data support |
 
-Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB of RGBA storage per image. Decompressed ICC profiles are limited to 8,000,000 bytes.
+`ImageError` covers native decode and operations. It exposes numeric `status` and one of these codes:
 
-Supported sRGB `cICP` takes precedence over other PNG color chunks. Otherwise RGB or grayscale ICC v2/v4 monitor profiles are converted to sRGB with Little CMS. `iCCP` takes precedence over `sRGB`, `gAMA`, and `cHRM`; unsupported `cICP` falls through to lower-priority metadata.
+- `invalid-handle`, `unsupported-format`, `unsupported-color-space`, or `malformed-data`
+- `dimension-limit`, `memory-limit`, `invalid-argument`, or `out-of-memory`
+- `output-too-small`, `internal-error`, or `unsupported-feature`
 
-OpenTUI keeps the eight most recently used validated ICC profiles and sRGB transforms. Profiles are matched by complete decompressed ICC bytes and RGB/grayscale mode, then cleared when the native library is unloaded.
+JavaScript option and geometry validation uses `TypeError` and `RangeError`. All image methods except `dispose()` throw
+after disposal or transfer.
 
-Opaque, orientation-free PNGs retain their encoded bytes without decoding pixels immediately. Unchanged Kitty rendering sends the original PNG, including its ICC profile, as `f=100`; the terminal performs PNG decoding and color management. Pixel decoding and ICC conversion occur once on demand for `raw()`, pixel copying, image operations, Sixel, blocks, or a Kitty crop, resize, or opacity change. Consequently, corrupt IDAT data can be accepted for direct Kitty passthrough and fail only if a decoded-pixel path is later requested.
+| Limit                    | Value           |
+| ------------------------ | --------------- |
+| Encoded input            | 64 MiB          |
+| Width or height          | 16,384 pixels   |
+| Total pixels             | 25 million      |
+| RGBA storage per image   | 100 MiB         |
+| Decompressed ICC profile | 8,000,000 bytes |
 
-To load and display an encoded source, see [Image](/docs/components/image). To draw an existing or transformed `NativeImage`, use [`OptimizedBuffer.drawImage()`](/docs/components/frame-buffer#drawimage).
+OpenTUI keeps the eight most recently used validated ICC profiles and sRGB transforms. The cache key includes complete
+decompressed profile bytes and RGB or grayscale mode. The native library clears the cache when its final client
+releases it.
+
+## Next
+
+- [Image](/docs/components/image) owns normal display and protocol choice.
+- [FrameBuffer](/docs/components/frame-buffer) displays an existing or transformed image.
+- [Buffer API](/docs/reference/buffer-api) defines `drawImage()` placement ownership.
+- [Lifecycle and cleanup](/docs/core-concepts/lifecycle) defines native-handle cleanup.
+- [Runtime and platform support](/docs/getting-started/runtime-support) lists native targets.
+- [API and symbol index](/docs/reference/api-index) lists every image export.

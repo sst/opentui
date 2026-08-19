@@ -69,12 +69,14 @@ export default defineConfig({
   integrations: [
     mdx(),
     sitemap({
-      filter: (page) => !["/404/", "/docs/"].includes(new URL(page).pathname),
+      filter: (page) => new URL(page).pathname !== "/404/",
     }),
   ],
   site: "https://opentui.com",
   redirects: {
-    "/docs": "/docs/getting-started",
+    "/docs/getting-started": "/docs",
+    "/docs/core-concepts/constructs": "/docs/core-concepts/renderables",
+    "/docs/core-concepts/renderables-vs-constructs": "/docs/core-concepts/renderables",
   },
   markdown: {
     shikiConfig: {

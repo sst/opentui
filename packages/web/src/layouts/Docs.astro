@@ -4,7 +4,7 @@ import DocsNav from "../components/DocsNav.astro"
 import DocsToc from "../components/DocsToc.astro"
 import SiteFooter from "../components/SiteFooter.astro"
 import SiteNav from "../components/SiteNav.astro"
-import { buildDocsIndex, getPrevNextDocs } from "../lib/docs-index"
+import { buildDocsIndex, getPrevNextDocSequences } from "../lib/docs-index"
 import Minimal from "./Minimal.astro"
 import "../styles/prose.css"
 
@@ -17,7 +17,7 @@ interface Props {
 
 const { title, description, slug, headings = [] } = Astro.props
 const docsIndex = await buildDocsIndex()
-const { prev, next } = getPrevNextDocs(docsIndex, slug)
+const sequencePagers = getPrevNextDocSequences(docsIndex, slug).filter(({ prev, next }) => prev || next)
 const hasSections = headings.some((heading) => heading.depth === 2)
 ---
 
@@ -59,20 +59,25 @@ const hasSections = headings.some((heading) => heading.depth === 2)
       </article>
 
       {
-        (prev || next) && (
-          <nav class="pager" aria-label="Documentation pages">
+        sequencePagers.map(({ prev, next, sequence }, index) => (
+          <nav
+            class="pager"
+            aria-label={sequence.title}
+            data-doc-sequence={sequence.id}
+            hidden={index > 0}
+          >
             {prev && (
-              <a rel="prev" href={prev.url}>
-                &larr; {prev.navTitle}
+              <a rel={index === 0 ? "prev" : undefined} data-direction="prev" href={`${prev.url}?path=${sequence.id}`}>
+                &larr; {prev.title}
               </a>
             )}
             {next && (
-              <a rel="next" href={next.url}>
-                {next.navTitle} &rarr;
+              <a rel={index === 0 ? "next" : undefined} data-direction="next" href={`${next.url}?path=${sequence.id}`}>
+                {next.title} &rarr;
               </a>
             )}
           </nav>
-        )
+        ))
       }
     </main>
 
@@ -108,7 +113,7 @@ const hasSections = headings.some((heading) => heading.depth === 2)
 
   /* The "On this page" bar stays hidden at the top of the page and
    * appears once the reader scrolls into the content. Wide viewports
-   * (90rem and up) show the outline beside the frame instead and never
+   * (96rem and up) show the outline beside the frame instead and never
    * render the bar. */
   body:not(.docs-scrolled) .subnav {
     display: none;
@@ -229,14 +234,20 @@ const hasSections = headings.some((heading) => heading.depth === 2)
     border-block-start: 1px solid GrayText;
   }
 
+  .pager[hidden] {
+    display: none;
+  }
+
   .pager a[rel="next"] {
     margin-inline-start: auto;
     text-align: right;
   }
 
   /* Wide viewports: the outline replaces the bar. It uses the margin beside
-   * the frame and grows with it, keeping clear space at the viewport edge. */
-  @media (min-width: 90rem) {
+   * the frame and grows with it, keeping clear space at the viewport edge.
+   * 96rem is the first width that gives the rail 12rem, enough for one
+   * identifier per line; below that the bar serves the outline. */
+  @media (min-width: 96rem) {
     .subnav {
       display: none;
     }
@@ -250,7 +261,7 @@ const hasSections = headings.some((heading) => heading.depth === 2)
       position: absolute;
       inset-block: 0;
       left: calc(100% + 2rem);
-      width: clamp(8.5rem, calc((100vw - 72rem) / 2), 13rem);
+      width: clamp(12rem, calc((100vw - 72rem) / 2), 13rem);
     }
 
     .docs-onpage nav {
@@ -301,6 +312,19 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   // closes them again.
   const panels = Array.from(document.querySelectorAll<HTMLDetailsElement>("details.menu, details.onpage"))
   const header = document.querySelector("body > header")
+
+  const sequencePagers = Array.from(document.querySelectorAll<HTMLElement>("[data-doc-sequence]"))
+  const requestedSequence = new URL(window.location.href).searchParams.get("path")
+  const activePager = sequencePagers.find((pager) => pager.dataset.docSequence === requestedSequence)
+  if (activePager) {
+    for (const pager of sequencePagers) {
+      pager.hidden = pager !== activePager
+      for (const link of pager.querySelectorAll("a")) {
+        if (pager === activePager) link.rel = link.dataset.direction ?? ""
+        else link.removeAttribute("rel")
+      }
+    }
+  }
 
   function syncScrolled() {
     document.body.classList.toggle("docs-scrolled", window.scrollY > 0)

@@ -1,16 +1,25 @@
 ---
 title: TextTable
 description: Render styled, wrapping, and selectable tabular text
-order: 17
 skill:
   intents: [text-table, table, tabular-data, styled-cells, table-selection]
 ---
 
 # TextTable
 
-`TextTableRenderable` lays out a two-dimensional array of styled text cells. It supports intrinsic or full-width columns, constrained wrapping, independent inner and outer borders, cell padding, and text selection.
+`TextTableRenderable` lays out a two-dimensional array of styled text cells. Use [Markdown](/docs/components/markdown) when the table starts as Markdown source.
 
-TextTable currently has an imperative renderable API. It is not registered as a built-in React or Solid component.
+It supports intrinsic or full-width columns, constrained wrapping, independent borders, cell padding, and text selection.
+
+## Availability
+
+| Field           | Availability             |
+| --------------- | ------------------------ |
+| Package         | `@opentui/core`          |
+| Core renderable | `TextTableRenderable`    |
+| React           | Unavailable              |
+| Solid           | Unavailable              |
+| Status          | Built-in Core renderable |
 
 ## Basic usage
 
@@ -45,9 +54,9 @@ type TextTableCellContent = TextChunk[] | null | undefined
 type TextTableContent = TextTableCellContent[][]
 ```
 
-Use styled-text helpers such as `bold()`, `fg()`, and `bg()` to build each cell's `TextChunk[]`. `null`, `undefined`, and missing cells render as empty text. Rows may have different lengths; the table uses the longest row's column count and fills missing cells with empty content.
+Use styled-text helpers such as `bold()`, `fg()`, and `bg()` to build each cell's `TextChunk[]`. `null`, `undefined`, and missing cells render as empty text. Rows can have different lengths. The table uses the longest row's column count and fills missing cells with empty content.
 
-The first row has no special behavior. Styling it as a header is a convention; TextTable has no header option or separate header model.
+The first row has no special behavior. Styling it as a header is a convention. TextTable has no header option or separate header model.
 
 Replace the table data through the `content` setter:
 
@@ -84,7 +93,7 @@ const table = new TextTableRenderable(renderer, {
 
 ## Borders and spacing
 
-`border` controls separators between cells. `outerBorder` controls the boundary around the table. When `outerBorder` is omitted, it follows the initial `border` value and later `border` assignments. Assigning `outerBorder` to a different value makes it independent; assigning its current value is a no-op and leaves that relationship unchanged.
+`border` controls separators between cells. `outerBorder` controls the boundary around the table. When omitted, `outerBorder` follows the initial `border` value and later assignments. Assigning a different `outerBorder` value makes it independent. Assigning its current value is a no-op and keeps that relationship unchanged.
 
 ```typescript
 // Outer border without inner cell separators
@@ -97,13 +106,14 @@ const table = new TextTableRenderable(renderer, {
 
 `showBorders: false` suppresses border glyph painting without removing the space reserved by enabled inner or outer borders. `columnGap` adds space between columns only when inner vertical borders are disabled.
 
-`cellPadding` sets both axes. `cellPaddingX` and `cellPaddingY` override that value per axis. Padding and gap values are floored and clamped to zero; non-finite values use the default `0`.
+`cellPadding` sets both axes. `cellPaddingX` and `cellPaddingY` override that value per axis. OpenTUI floors padding and gap values and clamps them to zero. Non-finite values use the default `0`.
 
 ## Selection
 
-Selection starts only within cell content, not on border glyphs. Selection within one cell can be partial. A vertical drag that remains in the anchor column selects that column; moving into another column changes to grid selection.
+Selection starts only within cell content, not on border glyphs. Selection within one cell can be partial. A vertical drag in the anchor column selects that column. Moving into another column changes to grid selection.
 
-`getSelectedText()` joins selected cells in a row with tabs and joins selected rows with newlines, excluding table borders:
+`getSelectedText()` joins nonempty selected cells in a row with tabs. It joins selected rows with newlines and excludes
+table borders. A selected blank cell does not add an empty tab field.
 
 ```typescript
 renderer.on("selection", () => {
@@ -119,7 +129,7 @@ Selection-related methods are:
 | `onSelectionChanged(selection)` | Applies a renderer selection and reports whether text is selected |
 | `hasSelection()`                | Whether any cell has a selection                                  |
 | `getSelection()`                | The first selected cell's `{ start, end }` range, or `null`       |
-| `getSelectedText()`             | Tab/newline-delimited selected cell text                          |
+| `getSelectedText()`             | Tab/newline-delimited nonempty selected cell text                 |
 
 ## Options
 
@@ -151,3 +161,7 @@ TextTable also accepts the standard [renderable layout options](/docs/core-conce
 | `flexShrink`            | `number`                                       | `0`              | Inherited layout shrink factor                          |
 
 The renderable always uses a buffered surface. The mutable table-specific properties are `content`, `wrapMode`, `columnWidthMode`, `columnFitter`, `cellPadding`, `cellPaddingX`, `cellPaddingY`, `columnGap`, `showBorders`, `border`, `outerBorder`, `borderStyle`, and `borderColor`.
+
+## Related components
+
+Use [Markdown](/docs/components/markdown) for document tables. Use [Code](/docs/components/code) for syntax-highlighted source and [Diff](/docs/components/diff) for patches. [Line number gutter](/docs/components/line-number) applies to line-aware content instead of table rows.

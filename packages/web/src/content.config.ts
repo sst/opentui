@@ -1,14 +1,15 @@
 import { defineCollection } from "astro:content"
 import { glob } from "astro/loaders"
 import { z } from "astro/zod"
+import { packageLoader } from "./lib/package-loader"
+import { packageEntrySchema } from "./lib/package-schema"
 
 const docs = defineCollection({
   loader: glob({ pattern: "**/*.mdx", base: "./src/content/docs" }),
   schema: z.object({
     title: z.string(),
     description: z.string().optional(),
-    order: z.number().int().positive(),
-    navTitle: z.string().optional(),
+    draft: z.boolean().default(false),
     skill: z
       .object({
         include: z.boolean().default(true),
@@ -31,7 +32,13 @@ const scrollback = defineCollection({
   }),
 })
 
+const packages = defineCollection({
+  loader: packageLoader(),
+  schema: packageEntrySchema,
+})
+
 export const collections = {
   docs,
+  packages,
   scrollback,
 }

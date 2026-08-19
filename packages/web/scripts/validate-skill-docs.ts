@@ -75,23 +75,26 @@ function validateSkillIndex(index: DocsIndex, content: string): Violation[] {
 
   const readingCounts = new Map<string, number>()
   for (const { lineNumber, text } of readingOrder) {
-    for (const match of text.matchAll(/`\/docs\/(.+?)`/g)) {
-      const slug = match[1]
-      readingCounts.set(slug, (readingCounts.get(slug) ?? 0) + 1)
-      const page = index.pagesBySlug[slug]
+    for (const match of text.matchAll(/`(\/docs(?:\/[^`]+)?)`/g)) {
+      const url = normalizeDocUrl(match[1])
+      const page = index.pagesByUrl[url]
       if (!page) {
         violations.push({
           rule: "skill-reading-target",
           sourcePath: SKILL_SOURCE_PATH,
           lineNumber,
-          message: `reading-order target /docs/${slug} does not exist`,
+          message: `reading-order target ${url} does not exist`,
         })
-      } else if (!page.skill.entry) {
+        continue
+      }
+
+      readingCounts.set(page.slug, (readingCounts.get(page.slug) ?? 0) + 1)
+      if (!page.skill.entry) {
         violations.push({
           rule: "skill-reading-entry",
           sourcePath: SKILL_SOURCE_PATH,
           lineNumber,
-          message: `reading-order target /docs/${slug} is not marked skill.entry`,
+          message: `reading-order target ${url} is not marked skill.entry`,
         })
       }
     }
@@ -103,14 +106,14 @@ function validateSkillIndex(index: DocsIndex, content: string): Violation[] {
     if (!match || match[1].includes("---")) continue
 
     const intents = [...match[1].matchAll(/`([^`]+)`/g)].map((intent) => intent[1].trim().toLowerCase())
-    const slug = match[2]
-    const page = index.pagesBySlug[slug]
+    const sourceId = match[2]
+    const page = index.pagesBySourceId[sourceId]
     if (!page) {
       violations.push({
         rule: "skill-routing-target",
         sourcePath: SKILL_SOURCE_PATH,
         lineNumber,
-        message: `routing target docs/${slug}.mdx does not exist`,
+        message: `routing target docs/${sourceId}.mdx does not exist`,
       })
       continue
     }
@@ -119,17 +122,17 @@ function validateSkillIndex(index: DocsIndex, content: string): Violation[] {
         rule: "skill-routing-entry",
         sourcePath: SKILL_SOURCE_PATH,
         lineNumber,
-        message: `routing target docs/${slug}.mdx is not marked skill.entry`,
+        message: `routing target docs/${sourceId}.mdx is not marked skill.entry`,
       })
     }
 
-    routeCounts.set(slug, (routeCounts.get(slug) ?? 0) + 1)
+    routeCounts.set(page.slug, (routeCounts.get(page.slug) ?? 0) + 1)
     if (!sameStringSet(intents, page.skill.intents)) {
       violations.push({
         rule: "skill-routing-intents",
         sourcePath: SKILL_SOURCE_PATH,
         lineNumber,
-        message: `routing intents for docs/${slug}.mdx must match metadata: ${page.skill.intents.join(", ")}`,
+        message: `routing intents for docs/${sourceId}.mdx must match metadata: ${page.skill.intents.join(", ")}`,
       })
     }
   }
@@ -138,22 +141,24 @@ function validateSkillIndex(index: DocsIndex, content: string): Violation[] {
   for (const { lineNumber, text } of entries) {
     const match = text.match(/^- `docs\/(.+)\.mdx`$/)
     if (!match) continue
-    const slug = match[1]
-    entryCounts.set(slug, (entryCounts.get(slug) ?? 0) + 1)
-    const page = index.pagesBySlug[slug]
+    const sourceId = match[1]
+    const page = index.pagesBySourceId[sourceId]
     if (!page) {
       violations.push({
         rule: "skill-entry-target",
         sourcePath: SKILL_SOURCE_PATH,
         lineNumber,
-        message: `entry target docs/${slug}.mdx does not exist`,
+        message: `entry target docs/${sourceId}.mdx does not exist`,
       })
-    } else if (!page.skill.entry) {
+    } else {
+      entryCounts.set(page.slug, (entryCounts.get(page.slug) ?? 0) + 1)
+    }
+    if (page && !page.skill.entry) {
       violations.push({
         rule: "skill-entry-metadata",
         sourcePath: SKILL_SOURCE_PATH,
         lineNumber,
-        message: `docs/${slug}.mdx is listed as an entry but is not marked skill.entry`,
+        message: `docs/${sourceId}.mdx is listed as an entry but is not marked skill.entry`,
       })
     }
   }
@@ -191,6 +196,10 @@ function validateSkillIndex(index: DocsIndex, content: string): Violation[] {
   return violations
 }
 
+function normalizeDocUrl(url: string): "/docs" | `/docs/${string}` {
+  return (url.endsWith("/") ? url.slice(0, -1) : url) as "/docs" | `/docs/${string}`
+}
+
 function getSectionLines(lines: string[], heading: string): Array<{ lineNumber: number; text: string }> | undefined {
   const start = lines.findIndex((line) => line.trim() === heading)
   if (start === -1) return undefined
@@ -218,7 +227,7 @@ function validateSkillDoc(sourcePath: string, content: string): Violation[] {
   for (const [index, line] of content.replace(/\r\n/g, "\n").split("\n").entries()) {
     const lineNumber = index + 1
     const trimmed = line.trim()
-    const disableMatch = trimmed.match(/^<!--\s*docs-lint-disable\s+([a-z0-9-]+)\s*-->$/)
+    const disableMatch = trimmed.match(/^(?:<!--|\{\/\*)\s*docs-lint-disable\s+([a-z0-9-]+)\s*(?:-->|\*\/\})$/)
 
     if (disableMatch) {
       pendingDisables.push(disableMatch[1])

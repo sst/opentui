@@ -5,12 +5,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
 import path from "path"
-
-interface Variant {
-  platform: string
-  arch: string
-  abi?: string
-}
+import { variants, type Variant } from "./variants"
 
 interface PackageJson {
   name: string
@@ -56,17 +51,6 @@ const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms
 const gpaSafeStats = args.includes("--gpa-safe-stats")
-
-const variants: Variant[] = [
-  { platform: "darwin", arch: "x64" },
-  { platform: "darwin", arch: "arm64" },
-  { platform: "linux", arch: "x64" },
-  { platform: "linux", arch: "arm64" },
-  { platform: "linux", arch: "x64", abi: "musl" },
-  { platform: "linux", arch: "arm64", abi: "musl" },
-  { platform: "win32", arch: "x64" },
-  { platform: "win32", arch: "arm64" },
-]
 
 const getHostVariant = (): Variant => {
   const hostVariant = variants.find((variant) => variant.platform === process.platform && variant.arch === process.arch)
