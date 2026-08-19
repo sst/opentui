@@ -28,20 +28,16 @@ OpenTUI links Ghostty VT on `x86_64` and `aarch64` for macOS, Linux glibc, Linux
 
 The renderable owns a VT parser, a screen, scrollback, and input encoders. It does not own the child.
 
-```text
-┌─ child ─┐      ┌─ EmbeddedTerminalRenderable ──────┐
-│ stdout ─┼──────┼─ write(bytes) ─► VT parser        │
-│         │      │                      ▼            │
-│         │      │         cells, cursor, scrollback │
-│         │      │                                   │
-│         │      │   key, mouse, paste, focus        │
-│         │      │   ▼ encode from current modes     │
-│         │    ┌─┼───┴─ onData(bytes, "input")       │
-│ stdin ◄─┼────┤ │                                   │
-│         │    │ │   write() or a resize             │
-│         │    │ │   ▼ drain replies (DSR, DA, ...)  │
-│         │    └─┼───┴─ onData(bytes, "response")    │
-└─────────┘      └───────────────────────────────────┘
+```diagram
+┌─ child ────────────┐                ┌─ EmbeddedTerminalRenderable ────────┐
+│ stdout             ├── write() ─────┤ VT parser                           │
+│                    │                │      │                              │
+│                    │                │      ▼                              │
+│                    │                │ cells, cursor, scrollback           │
+│                    │                │                                     │
+│ stdin              ┤◄── "input" ────├ encode key, mouse, paste, focus     │
+│                    ┤◄─ "response" ──├ drain replies after write/resize    │
+└────────────────────┘                └─────────────────────────────────────┘
 ```
 
 Both `onData` sources belong on the child stdin path. Use `source` when you log or filter them. A query such as DSR produces `"response"`. A key or mouse event produces `"input"`.
@@ -184,7 +180,7 @@ Use `encodeKey()` and `encodePaste()` to assert mode-aware sequences without a c
 ## Options and state
 
 | Member                | Type                                                             | Description                                                               |
-| --------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------ |
+| --------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `cols`                | `number`                                                         | Constructor option. Initial emulator columns. Not an instance field.      |
 | `rows`                | `number`                                                         | Constructor option. Initial emulator rows. Not an instance field.         |
 | `maxScrollback`       | `number`                                                         | Constructor option. Scrollback budget in bytes. Default `10000`.          |
@@ -192,7 +188,7 @@ Use `encodeKey()` and `encodePaste()` to assert mode-aware sequences without a c
 | `onData`              | `(data: Uint8Array, source: EmbeddedTerminalDataSource) => void` | Called with encoded input or drained replies.                             |
 | `onTerminalResize`    | `(cols: number, rows: number) => void`                           | Called after a visible layout size change resizes the emulator.           |
 | `onScreenChange`      | `() => void`                                                     | Called after a successful compose while the renderable is visible.        |
-| `write(data)`         | `(data: string \\                                                | Uint8Array) => void`                                                      | Parse VT bytes and request a render. |
+| `write(data)`         | `(data: string \| Uint8Array) => void`                           | Parse VT bytes and request a render.                                      |
 | `encodeKey(key)`      | `(key: KeyEvent) => Uint8Array`                                  | Encode a key with the current keyboard mode.                              |
 | `encodePaste(bytes)`  | `(bytes: Uint8Array) => Uint8Array`                              | Encode a paste with the current paste mode.                               |
 | `handleKeyPress(key)` | `(key: KeyEvent) => boolean`                                     | Encode a key and send nonempty bytes as `"input"`.                        |
