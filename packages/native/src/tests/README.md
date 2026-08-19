@@ -2,10 +2,12 @@
 
 This directory contains the test suite for the OpenTUI Zig components.
 
-### Run all tests:
+### Run All Tests
+
+Run this command from `packages/core`:
 
 ```bash
-zig build test --summary all
+bun run test:native
 ```
 
 ## Adding New Test Files

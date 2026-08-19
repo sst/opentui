@@ -7,15 +7,14 @@ This directory contains benchmarks for the OpenTUI core library.
 From the `packages/core` directory:
 
 ```bash
-# Using the npm script (recommended)
-bun bench:native
+bun run bench:native
 
 # Include memory statistics
-bun bench:native --mem
+bun run bench:native --mem
 
 # Or from packages/native:
-zig build bench -Doptimize=ReleaseFast
-zig build bench -Doptimize=ReleaseFast -- --mem
+bun run bench
+bun run bench --mem
 ```
 
 ## Adding New Benchmarks
