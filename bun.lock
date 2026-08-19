@@ -92,6 +92,10 @@
         "solid-js",
       ],
     },
+    "packages/native": {
+      "name": "@opentui/native",
+      "version": "0.5.4",
+    },
     "packages/qrcode": {
       "name": "@opentui/qrcode",
       "version": "0.5.4",
@@ -559,6 +563,8 @@
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
+
+    "@opentui/native": ["@opentui/native@workspace:packages/native"],
 
     "@opentui/qrcode": ["@opentui/qrcode@workspace:packages/qrcode"],
 

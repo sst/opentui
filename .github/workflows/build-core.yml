@@ -40,7 +40,7 @@ jobs:
       - name: Restore Zig cache
         uses: actions/cache@v5
         with:
-          path: .zig-cache
+          path: packages/native/.zig-cache
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
@@ -53,8 +53,8 @@ jobs:
           bun run build:native --all
 
       - name: Build custom target without Ghostty VT
-        working-directory: packages/core/src/zig
-        run: zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseFast
+        working-directory: packages/native
+        run: zig build -Dlibrary-target=x86_64-freebsd -Doptimize=ReleaseFast
 
       - name: Upload native artifacts
         uses: actions/upload-artifact@v7
@@ -105,7 +105,7 @@ jobs:
         if: runner.os != 'Windows'
         uses: actions/cache@v5
         with:
-          path: .zig-cache
+          path: packages/native/.zig-cache
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
@@ -125,9 +125,8 @@ jobs:
           ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
 
       - name: Run native tests
-        run: |
-          cd packages/core/src/zig
-          zig build test --summary all
+        working-directory: packages/core
+        run: bun run test:native
 
       - name: Build TypeScript library
         run: |

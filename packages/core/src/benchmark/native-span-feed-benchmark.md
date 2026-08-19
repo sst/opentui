@@ -8,11 +8,11 @@ The benchmark library (`libnative_span_feed_bench`) is built by the Zig bench-ff
 with `ReleaseFast` by default. Override with `-Dbench-optimize=` if needed.
 
 ```bash
-cd packages/core/src/zig
+cd packages/native
 zig build bench-ffi
 ```
 
-This installs `zig-out/lib/libnative_span_feed_bench.*`, which
+This installs `packages/native/zig-out/lib/libnative_span_feed_bench.*`, which
 `src/benchmark/native-span-feed-benchmark.ts` loads by default.
 
 You can also run `zig build bench` to build the bench runner and install the FFI bench library in one step.

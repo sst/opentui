@@ -314,6 +314,8 @@ pub const CliRenderer = struct {
         remote_mode: Terminal.RemoteMode = .local,
         output: OutputTarget = .stdout,
         clearOnShutdown: bool = true,
+        // Borrowed: when provided, both frame buffers share this caller-owned pool.
+        link_pool: ?*link.LinkPool = null,
         // Optional override for terminal environment lookups. Borrowed: the
         // caller owns the map and must keep it alive for the renderer's lifetime.
         env_map: ?*const std.process.Environ.Map = null,
@@ -333,9 +335,19 @@ pub const CliRenderer = struct {
         const self = try allocator.create(CliRenderer);
         errdefer allocator.destroy(self);
 
-        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
+        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{
+            .pool = pool,
+            .link_pool = opts.link_pool,
+            .width_method = .unicode,
+            .id = "current buffer",
+        });
         errdefer currentBuffer.deinit();
-        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
+        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{
+            .pool = pool,
+            .link_pool = opts.link_pool,
+            .width_method = .unicode,
+            .id = "next buffer",
+        });
         errdefer nextBuffer.deinit();
 
         // stat sample arrays
@@ -1471,7 +1483,7 @@ pub const CliRenderer = struct {
                     }
                     currentLinkId = linkId;
                     if (currentLinkId != 0) {
-                        const lp = link.initGlobalLinkPool(self.allocator);
+                        const lp = self.nextRenderBuffer.link_pool;
                         if (lp.get(currentLinkId)) |url_bytes| {
                             writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
@@ -2471,7 +2483,7 @@ pub const CliRenderer = struct {
                     }
                     currentLinkId = linkId;
                     if (currentLinkId != 0) {
-                        const lp = link.initGlobalLinkPool(self.allocator);
+                        const lp = self.nextRenderBuffer.link_pool;
                         if (lp.get(currentLinkId)) |url_bytes| {
                             writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
@@ -2606,7 +2618,7 @@ pub const CliRenderer = struct {
                         ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                         const replay_link_id = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
                         if (replay_link_id != 0) {
-                            const lp = link.initGlobalLinkPool(self.allocator);
+                            const lp = self.nextRenderBuffer.link_pool;
                             if (lp.get(replay_link_id)) |url_bytes| {
                                 writer.print("\x1b]8;id={d};{s}\x1b\\", .{ replay_link_id, url_bytes }) catch {};
                             } else |_| {}

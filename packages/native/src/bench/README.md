@@ -13,7 +13,7 @@ bun bench:native
 # Include memory statistics
 bun bench:native --mem
 
-# Or from packages/core/src/zig directory:
+# Or from packages/native:
 zig build bench -Doptimize=ReleaseFast
 zig build bench -Doptimize=ReleaseFast -- --mem
 ```

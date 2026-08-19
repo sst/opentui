@@ -109,7 +109,7 @@ fn appendDragonGeometryBenchmarks(
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -198,7 +198,7 @@ fn appendKittyBenchmarks(
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -345,7 +345,7 @@ fn appendKittyPngBenchmarks(
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.png", work_allocator, .limited(2 * 1024 * 1024));
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../examples/src/assets/image-demo.png", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();
@@ -410,7 +410,7 @@ fn appendImageSwitchBenchmarks(
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const work_allocator = gpa.allocator();
-    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../../../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
+    const encoded = try std.Io.Dir.cwd().readFileAlloc(io, "../examples/src/assets/image-demo.gif", work_allocator, .limited(2 * 1024 * 1024));
     defer work_allocator.free(encoded);
     const decoded = try image.decode(work_allocator, encoded, .{});
     defer decoded.deinit();

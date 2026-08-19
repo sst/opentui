@@ -40,7 +40,10 @@ const treeSitterTestDataPaths = [
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const audioFixturesDir = "src/tests/fixtures/audio"
 const imageFixturesDir = "src/tests/fixtures/images"
-const iccFixturesDir = "src/zig/tests/fixtures"
+const iccFixturesDir = "../native/src/tests/fixtures"
+const stagedNativeFixturesRoot = resolve(outDir, iccFixturesDir)
+const stagedNativeRoot = resolve(packageRoot, "native")
+let stagedNativeRootOwned = false
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -206,10 +209,14 @@ try {
   }
 
   if (exitCode === 0) {
+    if (existsSync(stagedNativeRoot)) {
+      throw new Error(`Refusing to replace existing native fixture staging directory: ${stagedNativeRoot}`)
+    }
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
     cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
     cpSync(resolve(packageRoot, imageFixturesDir), resolve(outDir, imageFixturesDir), { recursive: true })
-    cpSync(resolve(packageRoot, iccFixturesDir), resolve(outDir, iccFixturesDir), { recursive: true })
+    stagedNativeRootOwned = true
+    cpSync(resolve(packageRoot, iccFixturesDir), stagedNativeFixturesRoot, { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
@@ -253,6 +260,7 @@ try {
   }
 } finally {
   rmSync(outDir, { recursive: true, force: true })
+  if (stagedNativeRootOwned) rmSync(stagedNativeRoot, { recursive: true, force: true })
 }
 
 process.exit(exitCode)

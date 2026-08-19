@@ -48,6 +48,16 @@ bun run test:native -Dtest-filter="test name"
 bun run bench:native
 ```
 
+The Zig implementation, tests, and benchmarks live in `packages/native`. Run direct Zig commands and the no-JavaScript
+example from that package:
+
+```bash
+cd packages/native
+zig build test --summary all
+cd examples/hello
+zig build run
+```
+
 ## Local Development Linking
 
 Link your local OpenTUI to another project:

@@ -38,7 +38,7 @@ jobs:
       - name: Restore Zig cache
         uses: actions/cache@v5
         with:
-          path: .zig-cache
+          path: packages/native/.zig-cache
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
@@ -107,12 +107,12 @@ jobs:
           mkdir -p artifacts/native-notices
           cp LICENSE artifacts/native-notices/LICENSE
           cp packages/core/THIRD_PARTY_LICENSES/GHOSTTY artifacts/native-notices/LICENSE-GHOSTTY
-          cp packages/core/src/zig/vendor/wuffs/LICENSE artifacts/native-notices/LICENSE-WUFFS
-          cp packages/core/src/zig/vendor/stb/LICENSE artifacts/native-notices/LICENSE-STB
-          cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/native-notices/LICENSE-LIBWEBP
-          cp packages/core/src/zig/vendor/libwebp/PATENTS artifacts/native-notices/PATENTS-LIBWEBP
-          cp packages/core/src/zig/vendor/libwebp/AUTHORS artifacts/native-notices/AUTHORS-LIBWEBP
-          cp packages/core/src/zig/vendor/lcms2/LICENSE artifacts/native-notices/LICENSE-LCMS2
+          cp packages/native/src/vendor/wuffs/LICENSE artifacts/native-notices/LICENSE-WUFFS
+          cp packages/native/src/vendor/stb/LICENSE artifacts/native-notices/LICENSE-STB
+          cp packages/native/src/vendor/libwebp/COPYING artifacts/native-notices/LICENSE-LIBWEBP
+          cp packages/native/src/vendor/libwebp/PATENTS artifacts/native-notices/PATENTS-LIBWEBP
+          cp packages/native/src/vendor/libwebp/AUTHORS artifacts/native-notices/AUTHORS-LIBWEBP
+          cp packages/native/src/vendor/lcms2/LICENSE artifacts/native-notices/LICENSE-LCMS2
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64

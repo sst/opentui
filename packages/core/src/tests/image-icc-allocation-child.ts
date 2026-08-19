@@ -5,7 +5,7 @@ import { resolveRenderLib } from "../zig.js"
 
 const png = Uint8Array.from(
   Buffer.from(
-    readFileSync(new URL("../zig/tests/fixtures/display-p3.png.base64", import.meta.url), "utf8").trim(),
+    readFileSync(new URL("../../../native/src/tests/fixtures/display-p3.png.base64", import.meta.url), "utf8").trim(),
     "base64",
   ),
 )

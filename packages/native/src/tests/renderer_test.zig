@@ -1749,14 +1749,15 @@ test "renderer - grows frame output instead of committing cells whose ANSI was d
 test "renderer - hyperlinks enabled with OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var test_cli_renderer = try TestRenderer.create(
+    var test_cli_renderer = try TestRenderer.createWithLinkPool(
         std.testing.allocator,
         80,
         24,
         pool,
+        &local_link_pool,
     );
     defer test_cli_renderer.deinit();
     const cli_renderer = test_cli_renderer.renderer;

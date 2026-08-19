@@ -41,6 +41,7 @@ interface BunBuildOptions {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
+const nativeRoot = resolve(rootDir, "../native")
 const licensePath = path.resolve(__dirname, "../../../LICENSE")
 const ghosttyLicensePath = path.resolve(rootDir, "THIRD_PARTY_LICENSES/GHOSTTY")
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
@@ -51,6 +52,7 @@ const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms
 const gpaSafeStats = args.includes("--gpa-safe-stats")
+const skipZig = args.includes("--skip-zig")
 
 const getHostVariant = (): Variant => {
   const hostVariant = variants.find((variant) => variant.platform === process.platform && variant.arch === process.arch)
@@ -187,14 +189,14 @@ if (buildNative) {
     zigArgs.push("-Dgpa-safe-stats=true")
   }
 
-  runCommand("zig", zigArgs, join(rootDir, "src", "zig"), "Error: Zig build failed")
+  if (!skipZig) runCommand("zig", zigArgs, nativeRoot, "Error: Zig build failed")
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
   for (const { platform, arch, abi } of variantsToPackage) {
     const nativeName = `${packageJson.name}-${platform}-${arch}${abi ? `-${abi}` : ""}`
     const nativeDir = join(rootDir, "node_modules", nativeName)
-    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch, abi))
+    const libDir = join(nativeRoot, "lib", getZigTarget(platform, arch, abi))
 
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
@@ -279,12 +281,12 @@ export default module.default
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
     for (const [source, destination] of [
       [ghosttyLicensePath, "LICENSE-GHOSTTY"],
-      [join(rootDir, "src", "zig", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
-      [join(rootDir, "src", "zig", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
-      [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
-      [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
-      [join(rootDir, "src", "zig", "vendor", "libwebp", "AUTHORS"), "AUTHORS-LIBWEBP"],
-      [join(rootDir, "src", "zig", "vendor", "lcms2", "LICENSE"), "LICENSE-LCMS2"],
+      [join(nativeRoot, "src", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
+      [join(nativeRoot, "src", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "AUTHORS"), "AUTHORS-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "lcms2", "LICENSE"), "LICENSE-LCMS2"],
     ] as const) {
       if (!existsSync(source)) throw new Error(`Required native license file is missing: ${source}`)
       copyFileSync(source, join(nativeDir, destination))

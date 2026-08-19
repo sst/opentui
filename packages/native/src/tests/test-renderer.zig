@@ -4,6 +4,7 @@ const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const renderer = @import("../renderer.zig");
 const renderer_output = @import("../renderer-output.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 pub const TestMemoryOutput = struct {
     allocator: std.mem.Allocator,
@@ -59,6 +60,7 @@ pub const TestRenderer = struct {
     const CreateConfig = struct {
         thread_safe: bool = false,
         env_vars: []const TestEnvVar = &.{},
+        link_pool: ?*link.LinkPool = null,
     };
 
     pub fn create(allocator: std.mem.Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !TestRenderer {
@@ -77,6 +79,10 @@ pub const TestRenderer = struct {
         env_vars: []const TestEnvVar,
     ) !TestRenderer {
         return createWithConfig(allocator, width, height, pool, .{ .env_vars = env_vars });
+    }
+
+    pub fn createWithLinkPool(allocator: std.mem.Allocator, width: u32, height: u32, pool: *gp.GraphemePool, link_pool: *link.LinkPool) !TestRenderer {
+        return createWithConfig(allocator, width, height, pool, .{ .link_pool = link_pool });
     }
 
     fn createWithConfig(
@@ -103,6 +109,7 @@ pub const TestRenderer = struct {
         const cli_renderer = try renderer.CliRenderer.createWithOptions(allocator, width, height, pool, .{
             .output = .{ .buffered = memory.bufferedOutput() },
             .env_map = env_map,
+            .link_pool = config.link_pool,
         });
 
         return .{

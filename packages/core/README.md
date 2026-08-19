@@ -40,7 +40,7 @@ Run native performance benchmarks:
 bun run bench:native
 ```
 
-See [src/zig/bench.zig](src/zig/bench.zig) for available options like `--filter` and `--mem`.
+See [the native benchmark runner](../native/src/bench.zig) for options such as `--filter` and `--mem`.
 
 NativeSpanFeed TypeScript benchmarks:
 

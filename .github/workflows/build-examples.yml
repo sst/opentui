@@ -131,12 +131,12 @@ jobs:
           mkdir -p artifacts/example-notices
           cp LICENSE artifacts/example-notices/LICENSE
           cp packages/core/THIRD_PARTY_LICENSES/GHOSTTY artifacts/example-notices/LICENSE-GHOSTTY
-          cp packages/core/src/zig/vendor/wuffs/LICENSE artifacts/example-notices/LICENSE-WUFFS
-          cp packages/core/src/zig/vendor/stb/LICENSE artifacts/example-notices/LICENSE-STB
-          cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/example-notices/LICENSE-LIBWEBP
-          cp packages/core/src/zig/vendor/libwebp/PATENTS artifacts/example-notices/PATENTS-LIBWEBP
-          cp packages/core/src/zig/vendor/libwebp/AUTHORS artifacts/example-notices/AUTHORS-LIBWEBP
-          cp packages/core/src/zig/vendor/lcms2/LICENSE artifacts/example-notices/LICENSE-LCMS2
+          cp packages/native/src/vendor/wuffs/LICENSE artifacts/example-notices/LICENSE-WUFFS
+          cp packages/native/src/vendor/stb/LICENSE artifacts/example-notices/LICENSE-STB
+          cp packages/native/src/vendor/libwebp/COPYING artifacts/example-notices/LICENSE-LIBWEBP
+          cp packages/native/src/vendor/libwebp/PATENTS artifacts/example-notices/PATENTS-LIBWEBP
+          cp packages/native/src/vendor/libwebp/AUTHORS artifacts/example-notices/AUTHORS-LIBWEBP
+          cp packages/native/src/vendor/lcms2/LICENSE artifacts/example-notices/LICENSE-LCMS2
 
       # Create separate zips for each platform's examples
       - name: Package examples - darwin-x64

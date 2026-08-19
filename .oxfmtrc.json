@@ -5,6 +5,7 @@
   "sortPackageJson": false,
   "ignorePatterns": [
     "**/.zig-cache/**",
+    "**/zig-pkg/**",
     "packages/core/src/lib/tree-sitter/default-parsers.ts",
     "packages/web/public/recordings/*.json"
   ]

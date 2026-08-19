@@ -71,8 +71,8 @@ export async function runBenchmarkCli(args: readonly string[], dependencies: Cli
 }
 
 function readZigVersion(): string {
-  const sourceZigDirectory = fileURLToPath(new URL("../zig", import.meta.url))
-  const zigDirectory = existsSync(sourceZigDirectory) ? sourceZigDirectory : resolve("src/zig")
+  const sourceZigDirectory = fileURLToPath(new URL("../../../native", import.meta.url))
+  const zigDirectory = existsSync(sourceZigDirectory) ? sourceZigDirectory : resolve("../native")
   const child = spawnSync("zig", ["version"], {
     cwd: zigDirectory,
     encoding: "utf8",
