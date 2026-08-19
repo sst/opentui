@@ -505,20 +505,95 @@ test "remote detection - explicit local mode ignores SSH environment" {
     try testing.expect(!term.caps.remote);
 }
 
+const DiscardTty = struct {
+    pub fn writeAll(_: *DiscardTty, _: []const u8) !void {}
+};
+
 test "processCapabilityResponse captures startup cursor report before home probes" {
     var term = Terminal.init(.{});
-    term.startup_cursor_query_pending = true;
-    term.startup_cursor_query_captured = false;
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
 
     term.processCapabilityResponse("\x1b[7;11R\x1b[1;2R\x1b[1;3R");
 
     const cursor = term.getCursorPosition();
     try testing.expectEqual(@as(u32, 11), cursor.x);
     try testing.expectEqual(@as(u32, 7), cursor.y);
-    try testing.expect(term.startup_cursor_query_captured);
-    try testing.expect(!term.startup_cursor_query_pending);
     try testing.expect(term.caps.explicit_width);
     try testing.expect(term.caps.scaled_text);
+}
+
+test "processCapabilityResponse ignores cursor reports that answer no pending query" {
+    var term = Terminal.init(.{});
+
+    term.processCapabilityResponse("\x1b[1;2R\x1b[1;3R");
+
+    try testing.expect(!term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
+}
+
+test "processCapabilityResponse does not take a row-1 startup cursor report as probe evidence" {
+    var term = Terminal.init(.{});
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
+
+    term.processCapabilityResponse("\x1b[1;5R\x1b[1;1R\x1b[1;1R");
+
+    const cursor = term.getCursorPosition();
+    try testing.expectEqual(@as(u32, 5), cursor.x);
+    try testing.expectEqual(@as(u32, 1), cursor.y);
+    try testing.expect(!term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
+}
+
+test "processCapabilityResponse rejects a terminal that echoes the probe payload" {
+    var term = Terminal.init(.{});
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
+
+    term.processCapabilityResponse("\x1b[5;1R\x1b[1;9R\x1b[1;12R");
+
+    try testing.expect(!term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
+}
+
+test "processCapabilityResponse keeps attribution across split reply chunks" {
+    var term = Terminal.init(.{});
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
+
+    term.processCapabilityResponse("\x1b[3;1R");
+    term.processCapabilityResponse("\x1b[1;2R");
+    term.processCapabilityResponse("\x1b[1;3R");
+
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(term.caps.scaled_text);
+}
+
+test "processCapabilityResponse detects explicit width without scaled text" {
+    var term = Terminal.init(.{});
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
+
+    term.processCapabilityResponse("\x1b[2;7R\x1b[1;2R\x1b[1;1R");
+
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
+}
+
+test "processCapabilityResponse honours OPENTUI_FORCE_EXPLICIT_WIDTH=0 against row-1 reports" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    var tty = DiscardTty{};
+    try term.queryTerminalSend(&tty);
+
+    term.processCapabilityResponse("\x1b[1;2R");
+
+    try testing.expect(!term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
 }
 
 test "environment variables - should be overridden by xtversion" {

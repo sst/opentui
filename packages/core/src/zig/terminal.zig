@@ -163,8 +163,12 @@ skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 sixel_query_pending: bool = false,
 capability_queries_pending: bool = false,
-startup_cursor_query_pending: bool = false,
-startup_cursor_query_captured: bool = false,
+
+/// Purposes of the cursor-position requests (DSR 6) in flight, in emission order. Terminals
+/// answer queries sequentially, so each report is attributed to the oldest unanswered request.
+cursor_query_purposes: [4]CursorQueryPurpose = undefined,
+cursor_queries_sent: u8 = 0,
+cursor_queries_answered: u8 = 0,
 
 state: struct {
     alt_screen: bool = false,
@@ -197,6 +201,12 @@ notification_protocol: NotificationProtocol = .none,
 notification_protocol_authoritative: bool = false,
 notification_protocol_source: NotificationProtocolSource = .none,
 notification_id_counter: u64 = 0,
+
+pub const CursorQueryPurpose = enum {
+    startup_position,
+    explicit_width_probe,
+    scaled_text_probe,
+};
 
 pub fn init(opts: Options) Terminal {
     var term: Terminal = .{
@@ -297,8 +307,8 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.graphics_query_pending = !self.skip_graphics_query;
     self.sixel_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
-    self.startup_cursor_query_pending = true;
-    self.startup_cursor_query_captured = false;
+    self.cursor_queries_sent = 0;
+    self.cursor_queries_answered = 0;
 
     // We intentionally do not send CSI ?996n here. Terminals disagree on the
     // meaning and reliability of the ?997 reply, so startup theme detection is
@@ -314,7 +324,7 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         ansi.ANSI.saveCursorState);
 
     // Capture the current cursor position before temporary home-position queries.
-    try tty.writeAll(ansi.ANSI.cursorPositionRequest);
+    try self.sendCursorPositionRequest(tty, .startup_position);
 
     if (self.isInTmux()) {
         if (self.is_foot) {
@@ -342,15 +352,28 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     }
 
     if (!self.skip_explicit_width_query) {
-        try tty.writeAll(ansi.ANSI.home ++
-            ansi.ANSI.explicitWidthQuery ++
-            ansi.ANSI.cursorPositionRequest ++
-            ansi.ANSI.home ++
-            ansi.ANSI.scaledTextQuery ++
-            ansi.ANSI.cursorPositionRequest);
+        try tty.writeAll(ansi.ANSI.home ++ ansi.ANSI.explicitWidthQuery);
+        try self.sendCursorPositionRequest(tty, .explicit_width_probe);
+        try tty.writeAll(ansi.ANSI.home ++ ansi.ANSI.scaledTextQuery);
+        try self.sendCursorPositionRequest(tty, .scaled_text_probe);
     }
 
     try tty.writeAll(ansi.ANSI.restoreCursorState);
+}
+
+/// The only emitter of DSR 6, so every report the terminal sends has a recorded purpose.
+fn sendCursorPositionRequest(self: *Terminal, tty: anytype, purpose: CursorQueryPurpose) !void {
+    try tty.writeAll(ansi.ANSI.cursorPositionRequest);
+    if (self.cursor_queries_sent >= self.cursor_query_purposes.len) return;
+    self.cursor_query_purposes[self.cursor_queries_sent] = purpose;
+    self.cursor_queries_sent += 1;
+}
+
+fn popCursorQueryPurpose(self: *Terminal) ?CursorQueryPurpose {
+    if (self.cursor_queries_answered >= self.cursor_queries_sent) return null;
+    const purpose = self.cursor_query_purposes[self.cursor_queries_answered];
+    self.cursor_queries_answered += 1;
+    return purpose;
 }
 
 pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
@@ -1226,8 +1249,9 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.bracketed_paste = true;
     }
 
-    // Parse cursor position reports: ESC[row;colR
-    // The first report after queryTerminalSend is the pre-home cursor position.
+    // Parse cursor position reports: ESC[row;colR. The probes accept only the exact geometry
+    // a supporting terminal produces; any other column means the terminal echoed or ignored
+    // the probe, which is not evidence of support.
     var scan_pos: usize = 0;
     while (scan_pos < response.len) {
         const esc_rel = std.mem.find(u8, response[scan_pos..], "\x1b[") orelse break;
@@ -1259,20 +1283,17 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
             continue;
         };
 
-        if (self.startup_cursor_query_pending and !self.startup_cursor_query_captured and row >= 1 and col >= 1) {
-            self.setCursorPosition(col, row, self.state.cursor.visible);
-            self.startup_cursor_query_captured = true;
-            self.startup_cursor_query_pending = false;
-        }
-
-        if (row == 1) {
-            if (col >= 2) {
+        if (self.popCursorQueryPurpose()) |purpose| switch (purpose) {
+            .startup_position => if (row >= 1 and col >= 1) {
+                self.setCursorPosition(col, row, self.state.cursor.visible);
+            },
+            .explicit_width_probe => if (row == 1 and col == 2) {
                 self.caps.explicit_width = true;
-            }
-            if (col >= 3) {
+            },
+            .scaled_text_probe => if (row == 1 and col == 3) {
                 self.caps.scaled_text = true;
-            }
-        }
+            },
+        };
 
         scan_pos = pos + 1;
     }
