@@ -203,8 +203,12 @@ for required or readonly constructor state.
 
 Do not blindly register `FrameBufferRenderable`, `SliderRenderable`, or `ScrollBarRenderable` in Solid. A frame buffer
 needs dimensions during construction. A slider and scroll bar need a readonly orientation during construction. Use an
-adapter that supplies valid constructor defaults or register separate fixed-orientation classes. Expose setters only
-for state that the class can safely change after construction.
+adapter that supplies valid constructor defaults or register separate fixed-orientation classes.
+
+Do not register `EmbeddedTerminalRenderable` in Solid without an adapter. It reads `cols`, `rows`, and `maxScrollback`
+only in the constructor.
+
+Expose setters only for state that the class can safely change after construction.
 
 After you define an adapter, register it and augment the binding's `OpenTUIComponents` interface. The binding guides
 show the exact TypeScript declarations:
