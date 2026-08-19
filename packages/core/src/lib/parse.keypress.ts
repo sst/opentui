@@ -344,6 +344,15 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
       key.name = "space"
     } else if (charCode === 127 || charCode === 8) {
       key.name = "backspace"
+    } else if (charCode >= 65 && charCode <= 90) {
+      // Uppercase letter: normalize the name to lowercase and report the
+      // capitalization via the shift flag, matching the raw single-char path.
+      // Terminals differ on whether they send the shifted (65='A') or base
+      // (97='a') codepoint here, so this keeps `ctrl+shift+a` matching either way.
+      const char = String.fromCharCode(charCode + 32)
+      key.name = char
+      key.sequence = char
+      key.shift = true
     } else {
       // For other character codes, use the character itself
       const char = String.fromCharCode(charCode)

@@ -392,7 +392,7 @@ pub const ANSI = struct {
     pub const csiUPop = "\x1b[<u";
 
     // modifyOtherKeys mode
-    pub const modifyOtherKeysSet = "\x1b[>4;1m";
+    pub const modifyOtherKeysSet = "\x1b[>4;2m";
     pub const modifyOtherKeysReset = "\x1b[>4;0m";
 
     // Movement and erase
