@@ -78,7 +78,7 @@ export class TabControllerRenderable extends Renderable {
     this.frameCallback = async (deltaMs) => {
       this.update(deltaMs)
     }
-    this.renderer.setFrameCallback(this.frameCallback)
+    this.renderer.setFrameCallback(this.frameCallback, { drawsToBuffer: false })
   }
 
   public addTab(tabObject: TabObject): Tab {
