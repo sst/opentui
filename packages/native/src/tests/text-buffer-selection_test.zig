@@ -1186,3 +1186,37 @@ test "Selection - setLocalSelection and updateLocalSelection agree for backward 
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Wor", out_buffer[0..len]);
 }
+
+test "Selection - wrap padding does not include the next visual line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Word wrap at 18 leaves unused cells on the first visual line:
+    // vline 0 is "hello my good " (14 cols), vline 1 is "friend".
+    try tb.setText("hello my good friend");
+    view.setWrapMode(.word);
+    view.setWrapWidth(18);
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    // Drag through the empty padding after col 14. Inclusive selection must
+    // stop at the wrap, not consume the 'f' that starts the next visual line.
+    _ = view.setLocalSelection(0, 0, 17, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 14), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("hello my good ", out_buffer[0..len]);
+}

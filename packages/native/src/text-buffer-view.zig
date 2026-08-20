@@ -722,6 +722,21 @@ pub const UnifiedTextBufferView = struct {
         return last_vline.col_offset + last_vline.width_cols;
     }
 
+    /// Max local X that still belongs to this visual line. A wrap boundary is
+    /// also the first cell of the next visual line, so empty padding after a
+    /// wrapped line must not map onto that next cell.
+    fn maxLocalXOnVisualLine(vlines: []const VirtualLine, vline_idx: usize) u32 {
+        const vline = &vlines[vline_idx];
+        if (vline.width_cols == 0) return 0;
+        if (vline_idx + 1 < vlines.len) {
+            const next_vline = &vlines[vline_idx + 1];
+            if (next_vline.source_line == vline.source_line) {
+                return vline.width_cols - 1;
+            }
+        }
+        return vline.width_cols;
+    }
+
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
@@ -746,9 +761,9 @@ pub const UnifiedTextBufferView = struct {
         const vline_idx: usize = @intCast(clamped_y);
         const vline = &self.virtual_lines.items[vline_idx];
         const lineStart = vline.col_offset;
-        const lineWidth = vline.width_cols;
+        const max_local_x = maxLocalXOnVisualLine(self.virtual_lines.items, vline_idx);
 
-        var localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+        var localX = @max(0, @min(abs_x, @as(i32, @intCast(max_local_x))));
 
         if (vline.is_truncated) {
             const ellipsis_width: u32 = 3;

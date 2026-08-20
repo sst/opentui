@@ -171,6 +171,24 @@ describe("Textarea - Selection Tests", () => {
       expect(sel!.end).toBe(14)
     })
 
+    it("should not select the next wrapped line when dragging into wrap padding", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello my good friend",
+        width: 18,
+        height: 10,
+        wrapMode: "word",
+        selectable: true,
+      })
+
+      expect(editor.editorView.getVirtualLineCount()).toBe(2)
+
+      // First visual line is 14 cols; columns 14..17 are empty wrap padding.
+      await currentMouse.drag(editor.x, editor.y, editor.x + 17, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("hello my good ")
+    })
+
     it("should handle reverse selection (drag from end to start)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello World",
