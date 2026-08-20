@@ -74,6 +74,11 @@ export default defineConfig({
     }),
   ],
   site: "https://opentui.com",
+  vite: {
+    server: {
+      allowedHosts: true,
+    },
+  },
   redirects: {
     "/docs/getting-started": "/docs",
     "/docs/core-concepts/constructs": "/docs/core-concepts/renderables",
