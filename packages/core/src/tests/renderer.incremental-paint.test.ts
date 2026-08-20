@@ -94,6 +94,14 @@ class LifecyclePaintingRenderable extends PaintingRenderable {
   }
 }
 
+class CachedUpdatePaintingRenderable extends PaintingRenderable {
+  public cachedUpdateCount = 0
+
+  public override updateCachedRenderList(_deltaTime: number): void {
+    this.cachedUpdateCount += 1
+  }
+}
+
 async function setup(width = 40, height = 12) {
   const testRenderer = await createTestRenderer({ width, height, useThread: false, useMouse: true })
   const { renderer, renderOnce } = testRenderer
@@ -397,6 +405,22 @@ describe("incremental paint", () => {
     const second = captureCharFrame()
 
     expect(first).not.toBe(second)
+    renderer.destroy()
+  })
+
+  test("skips obsolete cached updates when layout already requires a render-list rebuild", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const cached = new CachedUpdatePaintingRenderable(renderer, "cached-update", "A", 3, 3)
+    root.add(cached)
+
+    await renderOnce()
+    await renderOnce()
+    expect(cached.cachedUpdateCount).toBe(1)
+
+    cached.width = 2
+    await renderOnce()
+
+    expect(cached.cachedUpdateCount).toBe(1)
     renderer.destroy()
   })
 

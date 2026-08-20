@@ -1857,13 +1857,15 @@ export class RootRenderable extends Renderable {
       if (!renderable.isDestroyed) renderable.onLifecyclePass?.call(renderable)
     }
 
-    if (this.renderListReusable) {
+    let layoutWasDirty = Boolean(this.yogaNode.isDirty())
+    const renderListRevisionWasDirty = this.appliedRenderListRevision !== getRenderListRevision(this._ctx)
+    if (this.renderListReusable && !layoutWasDirty && !renderListRevisionWasDirty) {
       for (const renderable of this.cachedUpdateRenderables) {
         if (!renderable.isDestroyed) renderable.updateCachedRenderList(deltaTime)
       }
+      layoutWasDirty = Boolean(this.yogaNode.isDirty())
     }
 
-    const layoutWasDirty = Boolean(this.yogaNode.isDirty())
     if (layoutWasDirty) this.calculateLayout()
     else this.syncExternalLayoutGeneration()
 
