@@ -185,12 +185,45 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
         0x200B, // ZERO WIDTH SPACE
         0x00AD, // SOFT HYPHEN
         0x2010, // HYPHEN
-        0x3001, // IDEOGRAPHIC COMMA
-        0x3002, // IDEOGRAPHIC FULL STOP
-        0xFF01, // FULLWIDTH EXCLAMATION MARK
-        0xFF0C, // FULLWIDTH COMMA
-        0xFF1A, // FULLWIDTH COLON
-        0xFF1F, // FULLWIDTH QUESTION MARK
+
+        // --- General Punctuation ---
+        0x2018, // '‘'      // LEFT SINGLE QUOTATION MARK
+        0x2019, // '’'      // RIGHT SINGLE QUOTATION MARK
+        0x201C, // '“'      // LEFT DOUBLE QUOTATION MARK
+        0x201D, // '”'      // RIGHT DOUBLE QUOTATION MARK
+
+        // --- CJK Symbols and Punctuation ---
+        0x3001, // '、'     // IDEOGRAPHIC COMMA
+        0x3002, // '。'     // IDEOGRAPHIC FULL STOP
+        0x3008, // '〈'     // LEFT ANGLE BRACKET
+        0x3009, // '〉'     // RIGHT ANGLE BRACKET
+        0x300A, // '《'     // LEFT DOUBLE ANGLE BRACKET
+        0x300B, // '》'     // RIGHT DOUBLE ANGLE BRACKET
+        0x300C, // '「'     // LEFT CORNER BRACKET
+        0x300D, // '」'     // RIGHT CORNER BRACKET
+        0x300E, // '『'     // LEFT WHITE CORNER BRACKET
+        0x300F, // '』'     // RIGHT WHITE CORNER BRACKET
+        0x3010, // '【'     // LEFT BLACK LENTICULAR BRACKET
+        0x3011, // '】'     // RIGHT BLACK LENTICULAR BRACKET
+        0x3014, // '〔'     // LEFT TORTOISE SHELL BRACKET
+        0x3015, // '〕'     // RIGHT TORTOISE SHELL BRACKET
+        0x3016, // '〖'     // LEFT WHITE LENTICULAR BRACKET
+        0x3017, // '〗'     // RIGHT WHITE LENTICULAR BRACKET
+
+        // --- Halfwidth and Fullwidth Forms ---
+        0xFF01, // '！'     // FULLWIDTH EXCLAMATION MARK
+        0xFF08, // '（'     // FULLWIDTH LEFT PARENTHESIS
+        0xFF09, // '）'     // FULLWIDTH RIGHT PARENTHESIS
+        0xFF0C, // '，'     // FULLWIDTH COMMA
+        0xFF0E, // '．'     // FULLWIDTH FULL STOP
+        0xFF1A, // '：'     // FULLWIDTH COLON
+        0xFF1B, // '；'     // FULLWIDTH SEMICOLON
+        0xFF1F, // '？'     // FULLWIDTH QUESTION MARK
+        0xFF3B, // '［'     // FULLWIDTH LEFT SQUARE BRACKET
+        0xFF3D, // '］'     // FULLWIDTH RIGHT SQUARE BRACKET
+        0xFF5B, // '｛'     // FULLWIDTH LEFT CURLY BRACKET
+        0xFF5C, // '｜'     // FULLWIDTH VERTICAL LINE
+        0xFF5D, // '｝'     // FULLWIDTH RIGHT CURLY BRACKET
         => true,
         else => false,
     };

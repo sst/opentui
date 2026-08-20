@@ -1212,6 +1212,105 @@ test "wrap breaks: CJK punctuation before ASCII" {
     try testing.expectEqual(@as(u16, 3), result.breaks.items[0].char_offset);
 }
 
+test "wrap breaks: general punctuation" {
+    const inputs = [_]struct {
+        text: []const u8,
+        expected_bytes: []const u32,
+        expected_chars: []const u32,
+    }{
+        // ==========================================
+        // General Punctuation Block (0x2000...)
+        // ==========================================
+        .{ .text = "你好‘世界’", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x2018, 0x2019
+        .{ .text = "你好“世界”", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x201C, 0x201D
+    };
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+
+    for (inputs) |case| {
+        result.reset(); 
+        try utf8.findWrapBreaks(case.text, &result, .unicode);
+
+        try testing.expectEqual(case.expected_bytes.len, result.breaks.items.len);
+        for (case.expected_bytes, 0..) |expected_byte, i| {
+            try testing.expectEqual(expected_byte, result.breaks.items[i].byte_offset);
+            try testing.expectEqual(case.expected_chars[i], result.breaks.items[i].char_offset);
+        }
+    }
+}
+
+test "wrap breaks: cjk symbols and punctuation" {
+    const inputs = [_]struct {
+        text: []const u8,
+        expected_bytes: []const u32,
+        expected_chars: []const u32,
+    }{
+        // ==========================================
+        // CJK Symbols and Punctuation Block (0x3000...)
+        // ==========================================
+        .{ .text = "你好、世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0x3001
+        .{ .text = "你好。世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0x3002
+        .{ .text = "你好〈世界〉", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x3008, 0x3009
+        .{ .text = "你好《世界》", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x300A, 0x300B
+        .{ .text = "你好「世界」", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x300C, 0x300D
+        .{ .text = "你好『世界』", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x300E, 0x300F
+        .{ .text = "你好【世界】", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x3010, 0x3011
+        .{ .text = "你好〔世界〕", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x3014, 0x3015
+        .{ .text = "你好〖世界〗", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0x3016, 0x3017
+    };
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+
+    for (inputs) |case| {
+        result.reset(); 
+        try utf8.findWrapBreaks(case.text, &result, .unicode);
+
+        try testing.expectEqual(case.expected_bytes.len, result.breaks.items.len);
+        for (case.expected_bytes, 0..) |expected_byte, i| {
+            try testing.expectEqual(expected_byte, result.breaks.items[i].byte_offset);
+            try testing.expectEqual(case.expected_chars[i], result.breaks.items[i].char_offset);
+        }
+    }
+}
+
+test "wrap breaks: halfwidth and fullwidth forms" {
+    const inputs = [_]struct {
+        text: []const u8,
+        expected_bytes: []const u32,
+        expected_chars: []const u32,
+    }{
+        // ==========================================
+        // Halfwidth and Fullwidth Forms Block (0xFF00...)
+        // ==========================================
+        .{ .text = "你好！世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF01
+        .{ .text = "你好（世界）", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0xFF08, 0xFF09
+        .{ .text = "你好，世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF0C
+        .{ .text = "你好．世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF0E
+        .{ .text = "你好：世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF1A
+        .{ .text = "你好；世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF1B
+        .{ .text = "你好？世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF1F
+        .{ .text = "你好［世界］", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0xFF3B, 0xFF3D
+        .{ .text = "你好｛世界｝", .expected_bytes = &[_]u32{ 6, 15 }, .expected_chars = &[_]u32{ 2, 5 } }, // 0xFF5B, 0xFF5D
+        .{ .text = "你好｜世界", .expected_bytes = &[_]u32{6}, .expected_chars = &[_]u32{2} },          // 0xFF5C
+    };
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+
+    for (inputs) |case| {
+        result.reset(); 
+        try utf8.findWrapBreaks(case.text, &result, .unicode);
+
+        try testing.expectEqual(case.expected_bytes.len, result.breaks.items.len);
+        for (case.expected_bytes, 0..) |expected_byte, i| {
+            try testing.expectEqual(expected_byte, result.breaks.items[i].byte_offset);
+            try testing.expectEqual(case.expected_chars[i], result.breaks.items[i].char_offset);
+        }
+    }
+}
+
 test "wrap breaks: compat ideograph to ASCII script transition" {
     const input = "丽abc";
 

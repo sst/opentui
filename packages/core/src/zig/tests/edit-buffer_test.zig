@@ -371,6 +371,126 @@ test "EditBuffer - word boundary respects CJK punctuation before ASCII" {
     try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
 }
 
+test "EditBuffer - word boundary with General Punctuation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("你好“世”界");
+
+    const eol = eb.getEOL();
+
+    // According to the Unicode EastAsianWidth list, the General Punctuation Block contains
+    // many East Asian Ambiguous characters, which are treated as fullwidth in East Asian
+    // context.
+    //
+    // The double quotes here are defined as ambiguous, so they may be counted as 1 column
+    // or 2 columns depending on the implementation.
+    //
+    // Although the current implementation in this library treats them as halfwidth (making
+    // the total column count 10), it could be 12 if the implementation changes in
+    // the future.
+    try std.testing.expect(eol.col == 10 or eol.col == 12);
+
+    const boundary_left_quote: u32 = if (eol.col == 10) 5 else 6;
+    const boundary_right_quote: u32 = eol.col - 2;
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(boundary_left_quote, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(boundary_right_quote, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(boundary_right_quote, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(boundary_left_quote, prev_cursor2.col);
+
+    try eb.setCursor(prev_cursor2.row, prev_cursor2.col);
+    const prev_cursor3 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor3.col);
+}
+
+test "EditBuffer - word boundary with CJK Symbols and Punctuation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("你好【世】界");
+
+    const eol = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 12), eol.col);
+
+    const boundary_left_bracket: u32 = 6;
+    const boundary_right_bracket: u32 = 10;
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(boundary_left_bracket, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(boundary_right_bracket, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(boundary_right_bracket, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(boundary_left_bracket, prev_cursor2.col);
+
+    try eb.setCursor(prev_cursor2.row, prev_cursor2.col);
+    const prev_cursor3 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor3.col);
+}
+
+test "EditBuffer - word boundary with fullwidth punctuation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("你好：世界");
+
+    const eol = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 10), eol.col);
+
+    const boundary_colon: u32 = 6;
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(boundary_colon, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(boundary_colon, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
 test "EditBuffer - word boundary with compat ideograph and ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
