@@ -756,7 +756,9 @@ function toNodeFFIType(type: FFITypeOrString, position: "parameter" | "result"):
       // Bun's N-API bridge types are not equivalent to raw Node FFI pointers.
       throw new Error(NODE_NAPI_UNSUPPORTED)
     case FFIType.buffer:
-      return "buffer"
+      // Node 26.4's Linux fast-buffer trampoline can pass a null pointer for
+      // multi-argument signatures. The pointer path still borrows the owner.
+      return "pointer"
     default:
       return unsupportedNodeFFIType(type)
   }

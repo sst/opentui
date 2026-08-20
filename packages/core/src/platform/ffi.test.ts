@@ -371,7 +371,7 @@ describe("platform/ffi", () => {
     expect(symbolDefinitions).toEqual([
       {
         pointers: {
-          arguments: ["pointer", "pointer", "pointer", "pointer", "buffer", "string"],
+          arguments: ["pointer", "pointer", "pointer", "pointer", "pointer", "string"],
           return: "void",
         },
       },

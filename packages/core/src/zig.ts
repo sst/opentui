@@ -301,8 +301,15 @@ function isFFIU32(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= MAX_FFI_U32
 }
 
-function ptrOrNull(value: ArrayBufferView): Pointer | null {
-  return value.byteLength === 0 ? null : ptr(value)
+function viewOrNull<T extends ArrayBufferView>(value: T): T | null {
+  return value.byteLength === 0 ? null : value
+}
+
+function retainedPtrOrNull(value: ArrayBufferView): Pointer | null {
+  if (value.byteLength === 0) return null
+  // Materialize separate storage before native code retains its address.
+  void value.buffer
+  return ptr(value)
 }
 
 const EMBEDDED_TERMINAL_ERRORS: Record<number, string> = {
@@ -339,12 +346,12 @@ function embeddedTerminalF32(value: number, name: string) {
   return value
 }
 
-function rgbaPtr(value: RGBA): Pointer {
-  return ptr(value.buffer)
+function rgbaBuffer(value: RGBA): Uint16Array {
+  return value.buffer
 }
 
-function optionalRgbaPtr(value: RGBA | null | undefined): Pointer | null {
-  return value ? rgbaPtr(value) : null
+function optionalRgbaBuffer(value: RGBA | null | undefined): Uint16Array | null {
+  return value ? rgbaBuffer(value) : null
 }
 
 function getOpenTUILib(libPath?: string) {
@@ -420,7 +427,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     embeddedTerminalGetSelectedText: {
-      args: ["u32", "ptr", "u32", "ptr"],
+      args: ["u32", "buffer", "u32", "buffer"],
       returns: "i32",
     },
     embeddedTerminalCompose: {
@@ -473,7 +480,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     setBackgroundColor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     setRenderOffset: {
@@ -536,7 +543,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     rendererSetPaletteState: {
-      args: ["u32", "ptr", "u32", "ptr", "ptr", "u32"],
+      args: ["u32", "buffer", "u32", "buffer", "buffer", "u32"],
       returns: "void",
     },
 
@@ -550,7 +557,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool", "u8", "ptr", "u32"],
+      args: ["u32", "u32", "bool", "u8", "buffer", "u32"],
       returns: "u32",
     },
     destroyOptimizedBuffer: {
@@ -571,7 +578,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     bufferClear: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     bufferGetCharPtr: {
@@ -599,7 +606,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferGetId: {
-      args: ["u32", "ptr", "u32"],
+      args: ["u32", "buffer", "u32"],
       returns: "u32",
     },
     bufferGetRealCharSize: {
@@ -612,19 +619,19 @@ function getOpenTUILib(libPath?: string) {
     },
 
     bufferDrawText: {
-      args: ["u32", "ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["u32", "ptr", "u32", "u32", "u32", "buffer", "ptr", "u32"],
       returns: "void",
     },
     bufferSetCellWithAlphaBlending: {
-      args: ["u32", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["u32", "u32", "u32", "u32", "buffer", "buffer", "u32"],
       returns: "void",
     },
     bufferSetCell: {
-      args: ["u32", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["u32", "u32", "u32", "u32", "buffer", "buffer", "u32"],
       returns: "void",
     },
     bufferFillRect: {
-      args: ["u32", "u32", "u32", "u32", "u32", "ptr"],
+      args: ["u32", "u32", "u32", "u32", "u32", "buffer"],
       returns: "void",
     },
     bufferColorMatrix: {
@@ -669,7 +676,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     setCursorColor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     getCursorState: {
@@ -804,11 +811,26 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawGrid: {
-      args: ["u32", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
+      args: ["u32", "buffer", "buffer", "buffer", "buffer", "u32", "buffer", "u32", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
-      args: ["u32", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32"],
+      args: [
+        "u32",
+        "i32",
+        "i32",
+        "u32",
+        "u32",
+        "buffer",
+        "u32",
+        "buffer",
+        "buffer",
+        "buffer",
+        "ptr",
+        "u32",
+        "ptr",
+        "u32",
+      ],
       returns: "void",
     },
     bufferPushScissorRect: {
@@ -1146,7 +1168,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewSetTabIndicatorColor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     textBufferViewSetTruncate: {
@@ -1184,7 +1206,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewGetViewport: {
-      args: ["u32", "ptr", "ptr", "ptr", "ptr"],
+      args: ["u32", "buffer", "buffer", "buffer", "buffer"],
       returns: "void",
     },
     editorViewSetScrollMargin: {
@@ -1412,7 +1434,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     editorViewGetCursor: {
-      args: ["u32", "ptr", "ptr"],
+      args: ["u32", "buffer", "buffer"],
       returns: "void",
     },
     editorViewGetText: {
@@ -1471,7 +1493,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewSetTabIndicatorColor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
 
@@ -1514,21 +1536,21 @@ function getOpenTUILib(libPath?: string) {
     imageRetainIccCache: { args: [], returns: "void" },
     imageReleaseIccCache: { args: [], returns: "void" },
     imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
-    imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
-    imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
+    imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
-    imageRetain: { args: ["u32", "ptr"], returns: "u32" },
+    imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     imageMaterialize: { args: ["u32"], returns: "u32" },
     imageEnsureEncodedPng: { args: ["u32"], returns: "u32" },
     imageGetPixelsPtr: { args: ["u32"], returns: "ptr" },
-    imageClone: { args: ["u32", "ptr"], returns: "u32" },
+    imageClone: { args: ["u32", "buffer"], returns: "u32" },
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
-    imageResize: { args: ["u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
-    imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
-    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
-    imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
-    imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
+    imageResize: { args: ["u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "buffer", "buffer"], returns: "u32" },
+    imageTransform: { args: ["u32", "u32", "buffer"], returns: "u32" },
+    imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "buffer"], returns: "u32" },
 
     // Terminal capability functions
     getTerminalCapabilities: {
@@ -1550,7 +1572,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawChar: {
-      args: ["u32", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["u32", "u32", "u32", "u32", "buffer", "buffer", "u32"],
       returns: "void",
     },
 
@@ -1774,7 +1796,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     audioGetPlaybackDeviceName: {
-      args: ["u32", "u32", "ptr", "u32"],
+      args: ["u32", "u32", "buffer", "u32"],
       returns: "u32",
     },
     audioIsPlaybackDeviceDefault: {
@@ -1798,7 +1820,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     audioGetCaptureDeviceName: {
-      args: ["u32", "u32", "ptr", "u32"],
+      args: ["u32", "u32", "buffer", "u32"],
       returns: "u32",
     },
     audioIsCaptureDeviceDefault: {
@@ -1826,7 +1848,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     audioReadCapture: {
-      args: ["u32", "ptr", "u32", "u32", "ptr"],
+      args: ["u32", "buffer", "u32", "u32", "ptr"],
       returns: "i32",
     },
     audioGetCaptureStats: {
@@ -1882,7 +1904,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioLoad: {
-      args: ["u32", "ptr", "u32", "ptr"],
+      args: ["u32", "buffer", "u32", "ptr"],
       returns: "i32",
     },
     audioUnload: {
@@ -1902,7 +1924,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioCreateGroup: {
-      args: ["u32", "ptr", "u32", "ptr"],
+      args: ["u32", "buffer", "u32", "ptr"],
       returns: "i32",
     },
     audioSetGroupVolume: {
@@ -1914,7 +1936,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioMixToBuffer: {
-      args: ["u32", "ptr", "u32", "u8"],
+      args: ["u32", "buffer", "u32", "u8"],
       returns: "i32",
     },
     audioEnableTap: {
@@ -1922,7 +1944,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioReadTap: {
-      args: ["u32", "ptr", "u32", "u8", "ptr"],
+      args: ["u32", "buffer", "u32", "u8", "ptr"],
       returns: "i32",
     },
     audioGetStats: {
@@ -1952,7 +1974,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     streamDrainSpans: {
-      args: ["ptr", "ptr", "u32"],
+      args: ["ptr", "buffer", "u32"],
       returns: "u32",
     },
     streamClose: {
@@ -2463,15 +2485,15 @@ export interface RenderLib extends AudioEngineLib {
   ) => void
   bufferColorMatrix: (
     buffer: OptimizedBufferHandle,
-    matrixPtr: Pointer,
-    cellMaskPtr: Pointer,
+    matrix: Pointer | Float32Array,
+    cellMask: Pointer | Float32Array,
     cellMaskCount: number,
     strength: number,
     target: TargetChannel,
   ) => void
   bufferColorMatrixUniform: (
     buffer: OptimizedBufferHandle,
-    matrixPtr: Pointer,
+    matrix: Pointer | Float32Array,
     strength: number,
     target: TargetChannel,
   ) => void
@@ -2479,7 +2501,7 @@ export interface RenderLib extends AudioEngineLib {
     buffer: OptimizedBufferHandle,
     x: number,
     y: number,
-    pixelDataPtr: Pointer,
+    pixelData: Pointer | Uint8Array,
     pixelDataLength: number,
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
@@ -2501,7 +2523,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => boolean
   bufferDrawPackedBuffer: (
     buffer: OptimizedBufferHandle,
-    dataPtr: Pointer,
+    data: Pointer | Uint8Array,
     dataLen: number,
     posX: number,
     posY: number,
@@ -2512,7 +2534,7 @@ export interface RenderLib extends AudioEngineLib {
     buffer: OptimizedBufferHandle,
     posX: number,
     posY: number,
-    intensitiesPtr: Pointer,
+    intensities: Pointer | Float32Array,
     srcWidth: number,
     srcHeight: number,
     fg: RGBA | null,
@@ -2522,7 +2544,7 @@ export interface RenderLib extends AudioEngineLib {
     buffer: OptimizedBufferHandle,
     posX: number,
     posY: number,
-    intensitiesPtr: Pointer,
+    intensities: Pointer | Float32Array,
     srcWidth: number,
     srcHeight: number,
     fg: RGBA | null,
@@ -3105,7 +3127,6 @@ class FFIRenderLib implements RenderLib {
   // Layout reads are synchronous and non-reentrant. Retain one backing buffer so
   // Node does not allocate and resolve a new output pointer for every node.
   private readonly yogaLayout = new Float32Array(6)
-  private readonly yogaLayoutPtr = ptr(this.yogaLayout)
   private readonly ffiStructStorage = {
     logicalCursor: {
       ...allocStruct(LogicalCursorStruct),
@@ -3254,7 +3275,7 @@ class FFIRenderLib implements RenderLib {
   public embeddedTerminalGetSelectedText(handle: EmbeddedTerminalHandle): Uint8Array {
     const required = new Uint32Array(1)
     const read = (output: Uint8Array) =>
-      this.opentui.symbols.embeddedTerminalGetSelectedText(handle, ptrOrNull(output), output.byteLength, required)
+      this.opentui.symbols.embeddedTerminalGetSelectedText(handle, viewOrNull(output), output.byteLength, required)
     const initial = new Uint8Array(256)
     const status = read(initial)
     if (status >= 0) return initial.slice(0, status)
@@ -3601,9 +3622,9 @@ class FFIRenderLib implements RenderLib {
     const valueBytes = this.encoder.encode(value)
     return this.opentui.symbols.setTerminalEnvVar(
       renderer,
-      ptrOrNull(keyBytes),
+      viewOrNull(keyBytes),
       keyBytes.byteLength,
-      ptrOrNull(valueBytes),
+      viewOrNull(valueBytes),
       valueBytes.byteLength,
     )
   }
@@ -3621,7 +3642,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setBackgroundColor(renderer: Pointer, color: RGBA) {
-    this.opentui.symbols.setBackgroundColor(renderer, rgbaPtr(color))
+    this.opentui.symbols.setBackgroundColor(renderer, rgbaBuffer(color))
   }
 
   public setRenderOffset(renderer: Pointer, offset: number) {
@@ -3674,7 +3695,7 @@ class FFIRenderLib implements RenderLib {
 
   public getRenderStats(renderer: Pointer): NativeRenderStats {
     const statsBuffer = new ArrayBuffer(NativeRenderStatsStruct.size)
-    this.opentui.symbols.getRenderStats(renderer, ptr(statsBuffer))
+    this.opentui.symbols.getRenderStats(renderer, statsBuffer)
     const stats = NativeRenderStatsStruct.unpack(statsBuffer)
 
     return {
@@ -3727,10 +3748,10 @@ class FFIRenderLib implements RenderLib {
 
     this.opentui.symbols.rendererSetPaletteState(
       renderer,
-      ptr(paletteBuffer),
+      paletteBuffer,
       palette.length,
-      rgbaPtr(defaultForeground),
-      rgbaPtr(defaultBackground),
+      rgbaBuffer(defaultForeground),
+      rgbaBuffer(defaultBackground),
       paletteEpoch >>> 0,
     )
   }
@@ -3778,7 +3799,7 @@ class FFIRenderLib implements RenderLib {
   public bufferGetId(buffer: Pointer): string {
     const maxLen = 256
     const outBuffer = new Uint8Array(maxLen)
-    const actualLen = this.opentui.symbols.bufferGetId(buffer, ptr(outBuffer), maxLen)
+    const actualLen = this.opentui.symbols.bufferGetId(buffer, outBuffer, maxLen)
     return this.decoder.decode(outBuffer.slice(0, actualLen))
   }
 
@@ -3789,7 +3810,7 @@ class FFIRenderLib implements RenderLib {
   public bufferWriteResolvedChars(buffer: Pointer, outputBuffer: Uint8Array, addLineBreaks: boolean): number {
     return this.opentui.symbols.bufferWriteResolvedChars(
       buffer,
-      ptrOrNull(outputBuffer),
+      viewOrNull(outputBuffer),
       outputBuffer.byteLength,
       ffiBool(addLineBreaks),
     )
@@ -3804,7 +3825,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public bufferClear(buffer: Pointer, color: RGBA) {
-    this.opentui.symbols.bufferClear(buffer, rgbaPtr(color))
+    this.opentui.symbols.bufferClear(buffer, rgbaBuffer(color))
   }
 
   public bufferDrawText(
@@ -3817,12 +3838,12 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const textBytes = this.encoder.encode(text)
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = rgbaPtr(color)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = rgbaBuffer(color)
 
     this.opentui.symbols.bufferDrawText(
       buffer,
-      ptrOrNull(textBytes),
+      viewOrNull(textBytes),
       textBytes.byteLength,
       x,
       y,
@@ -3842,8 +3863,8 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const bg = rgbaPtr(bgColor)
-    const fg = rgbaPtr(color)
+    const bg = rgbaBuffer(bgColor)
+    const fg = rgbaBuffer(color)
 
     this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
   }
@@ -3858,37 +3879,42 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const bg = rgbaPtr(bgColor)
-    const fg = rgbaPtr(color)
+    const bg = rgbaBuffer(bgColor)
+    const fg = rgbaBuffer(color)
 
     this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
   }
 
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
-    const bg = rgbaPtr(color)
+    const bg = rgbaBuffer(color)
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bg)
   }
 
   public bufferColorMatrix(
     buffer: Pointer,
-    matrixPtr: Pointer,
-    cellMaskPtr: Pointer,
+    matrix: Pointer | Float32Array,
+    cellMask: Pointer | Float32Array,
     cellMaskCount: number,
     strength: number,
     target: TargetChannel,
   ): void {
-    this.opentui.symbols.bufferColorMatrix(buffer, matrixPtr, cellMaskPtr, cellMaskCount, strength, target)
+    this.opentui.symbols.bufferColorMatrix(buffer, matrix, cellMask, cellMaskCount, strength, target)
   }
 
-  public bufferColorMatrixUniform(buffer: Pointer, matrixPtr: Pointer, strength: number, target: TargetChannel): void {
-    this.opentui.symbols.bufferColorMatrixUniform(buffer, matrixPtr, strength, target)
+  public bufferColorMatrixUniform(
+    buffer: Pointer,
+    matrix: Pointer | Float32Array,
+    strength: number,
+    target: TargetChannel,
+  ): void {
+    this.opentui.symbols.bufferColorMatrixUniform(buffer, matrix, strength, target)
   }
 
   public bufferDrawSuperSampleBuffer(
     buffer: Pointer,
     x: number,
     y: number,
-    pixelDataPtr: Pointer,
+    pixelData: Pointer | Uint8Array,
     pixelDataLength: number,
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
@@ -3898,7 +3924,7 @@ class FFIRenderLib implements RenderLib {
       buffer,
       x,
       y,
-      pixelDataPtr,
+      pixelData,
       pixelDataLength,
       formatId,
       alignedBytesPerRow,
@@ -3944,7 +3970,7 @@ class FFIRenderLib implements RenderLib {
 
   public bufferDrawPackedBuffer(
     buffer: Pointer,
-    dataPtr: Pointer,
+    data: Pointer | Uint8Array,
     dataLen: number,
     posX: number,
     posY: number,
@@ -3953,7 +3979,7 @@ class FFIRenderLib implements RenderLib {
   ): void {
     this.opentui.symbols.bufferDrawPackedBuffer(
       buffer,
-      dataPtr,
+      data,
       dataLen,
       posX,
       posY,
@@ -3966,7 +3992,7 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     posX: number,
     posY: number,
-    intensitiesPtr: Pointer,
+    intensities: Pointer | Float32Array,
     srcWidth: number,
     srcHeight: number,
     fg: RGBA | null,
@@ -3976,11 +4002,11 @@ class FFIRenderLib implements RenderLib {
       buffer,
       posX,
       posY,
-      intensitiesPtr,
+      intensities,
       srcWidth,
       srcHeight,
-      optionalRgbaPtr(fg),
-      optionalRgbaPtr(bg),
+      optionalRgbaBuffer(fg),
+      optionalRgbaBuffer(bg),
     )
   }
 
@@ -3988,7 +4014,7 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     posX: number,
     posY: number,
-    intensitiesPtr: Pointer,
+    intensities: Pointer | Float32Array,
     srcWidth: number,
     srcHeight: number,
     fg: RGBA | null,
@@ -3998,11 +4024,11 @@ class FFIRenderLib implements RenderLib {
       buffer,
       posX,
       posY,
-      intensitiesPtr,
+      intensities,
       srcWidth,
       srcHeight,
-      optionalRgbaPtr(fg),
-      optionalRgbaPtr(bg),
+      optionalRgbaBuffer(fg),
+      optionalRgbaBuffer(bg),
     )
   }
 
@@ -4025,12 +4051,12 @@ class FFIRenderLib implements RenderLib {
 
     this.opentui.symbols.bufferDrawGrid(
       buffer,
-      ptr(borderChars),
-      rgbaPtr(borderFg),
-      rgbaPtr(borderBg),
-      ptr(columnOffsets),
+      borderChars,
+      rgbaBuffer(borderFg),
+      rgbaBuffer(borderBg),
+      columnOffsets,
       columnCount,
-      ptr(rowOffsets),
+      rowOffsets,
       rowCount,
       this.ffiStructStorage.gridDrawOptions.buffer,
     )
@@ -4052,11 +4078,11 @@ class FFIRenderLib implements RenderLib {
   ): void {
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = titleBytes?.byteLength ?? 0
-    const titlePtr = titleBytes ? ptr(titleBytes) : null
+    const titleBuffer = titleBytes ? titleBytes : null
 
     const bottomTitleBytes = bottomTitle ? this.encoder.encode(bottomTitle) : null
     const bottomTitleLen = bottomTitleBytes?.byteLength ?? 0
-    const bottomTitlePtr = bottomTitleBytes ? ptr(bottomTitleBytes) : null
+    const bottomTitleBuffer = bottomTitleBytes ? bottomTitleBytes : null
 
     this.opentui.symbols.bufferDrawBox(
       buffer,
@@ -4064,14 +4090,14 @@ class FFIRenderLib implements RenderLib {
       y,
       width,
       height,
-      ptr(borderChars),
+      borderChars,
       packedOptions,
-      rgbaPtr(borderColor),
-      rgbaPtr(backgroundColor),
-      rgbaPtr(titleColor),
-      titlePtr,
+      rgbaBuffer(borderColor),
+      rgbaBuffer(backgroundColor),
+      rgbaBuffer(titleColor),
+      titleBuffer,
       titleLen,
-      bottomTitlePtr,
+      bottomTitleBuffer,
       bottomTitleLen,
     )
   }
@@ -4083,12 +4109,12 @@ class FFIRenderLib implements RenderLib {
   // Link API
   public linkAlloc(url: string): number {
     const urlBytes = this.encoder.encode(url)
-    return this.opentui.symbols.linkAlloc(ptrOrNull(urlBytes), urlBytes.byteLength)
+    return this.opentui.symbols.linkAlloc(viewOrNull(urlBytes), urlBytes.byteLength)
   }
 
   public linkGetUrl(linkId: number, maxLen: number = 512): string {
     const outBuffer = new Uint8Array(maxLen)
-    const actualLen = this.opentui.symbols.linkGetUrl(linkId, ptrOrNull(outBuffer), maxLen)
+    const actualLen = this.opentui.symbols.linkGetUrl(linkId, viewOrNull(outBuffer), maxLen)
     return this.decoder.decode(outBuffer.slice(0, actualLen))
   }
 
@@ -4109,12 +4135,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setCursorColor(renderer: Pointer, color: RGBA) {
-    this.opentui.symbols.setCursorColor(renderer, rgbaPtr(color))
+    this.opentui.symbols.setCursorColor(renderer, rgbaBuffer(color))
   }
 
   public getCursorState(renderer: Pointer): CursorState {
     const cursorBuffer = new ArrayBuffer(CursorStateStruct.size)
-    this.opentui.symbols.getCursorState(renderer, ptr(cursorBuffer))
+    this.opentui.symbols.getCursorState(renderer, cursorBuffer)
     const struct = CursorStateStruct.unpack(cursorBuffer)
 
     return {
@@ -4203,7 +4229,7 @@ class FFIRenderLib implements RenderLib {
       height,
       ffiBool(respectAlpha),
       widthMethodCode,
-      ptr(idBytes),
+      idBytes,
       idBytes.byteLength,
     )
     if (!bufferPtr) {
@@ -4244,13 +4270,13 @@ class FFIRenderLib implements RenderLib {
 
   public setTerminalTitle(renderer: Pointer, title: string) {
     const titleBytes = this.encoder.encode(title)
-    this.opentui.symbols.setTerminalTitle(renderer, ptrOrNull(titleBytes), titleBytes.byteLength)
+    this.opentui.symbols.setTerminalTitle(renderer, viewOrNull(titleBytes), titleBytes.byteLength)
   }
 
   public copyToClipboardOSC52(renderer: Pointer, target: number, textUtf8: Uint8Array): boolean {
     if (textUtf8.byteLength > 0xffffffff) return false
     return Boolean(
-      this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(textUtf8), textUtf8.byteLength),
+      this.opentui.symbols.copyToClipboardOSC52(renderer, target, viewOrNull(textUtf8), textUtf8.byteLength),
     )
   }
 
@@ -4572,7 +4598,7 @@ class FFIRenderLib implements RenderLib {
   public writeOut(renderer: Pointer, data: string | Uint8Array): void {
     const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
     if (bytes.length === 0) return
-    this.opentui.symbols.writeOut(renderer, ptrOrNull(bytes), bytes.byteLength)
+    this.opentui.symbols.writeOut(renderer, viewOrNull(bytes), bytes.byteLength)
   }
 
   public yogaConfigCreate(): Pointer {
@@ -4713,7 +4739,7 @@ class FFIRenderLib implements RenderLib {
 
   public yogaNodeGetComputedLayout(node: Pointer): NativeYogaLayout {
     const layout = this.yogaLayout
-    this.opentui.symbols.yogaNodeGetComputedLayout(node, this.yogaLayoutPtr)
+    this.opentui.symbols.yogaNodeGetComputedLayout(node, this.yogaLayout)
     return {
       left: layout[0]!,
       top: layout[1]!,
@@ -4839,18 +4865,18 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {
-    const fgPtr = optionalRgbaPtr(fg)
-    this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPtr)
+    const fgBuffer = optionalRgbaBuffer(fg)
+    this.opentui.symbols.textBufferSetDefaultFg(buffer, fgBuffer)
   }
 
   public textBufferSetDefaultBg(buffer: Pointer, bg: RGBA | null): void {
-    const bgPtr = optionalRgbaPtr(bg)
-    this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPtr)
+    const bgBuffer = optionalRgbaBuffer(bg)
+    this.opentui.symbols.textBufferSetDefaultBg(buffer, bgBuffer)
   }
 
   public textBufferSetDefaultAttributes(buffer: Pointer, attributes: number | null): void {
     const attrValue = attributes === null ? null : new Uint32Array([attributes])
-    this.opentui.symbols.textBufferSetDefaultAttributes(buffer, attrValue ? ptr(attrValue) : null)
+    this.opentui.symbols.textBufferSetDefaultAttributes(buffer, attrValue)
   }
 
   public textBufferResetDefaults(buffer: Pointer): void {
@@ -4868,7 +4894,7 @@ class FFIRenderLib implements RenderLib {
   public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {
     const result = this.opentui.symbols.textBufferRegisterMemBuffer(
       buffer,
-      ptrOrNull(bytes),
+      retainedPtrOrNull(bytes),
       bytes.byteLength,
       ffiBool(owned),
     )
@@ -4887,7 +4913,7 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferReplaceMemBuffer(
       buffer,
       memId,
-      ptrOrNull(bytes),
+      retainedPtrOrNull(bytes),
       bytes.byteLength,
       ffiBool(owned),
     )
@@ -4902,7 +4928,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferAppend(buffer: Pointer, bytes: Uint8Array): void {
-    this.opentui.symbols.textBufferAppend(buffer, ptrOrNull(bytes), bytes.byteLength)
+    this.opentui.symbols.textBufferAppend(buffer, retainedPtrOrNull(bytes), bytes.byteLength)
   }
 
   public textBufferAppendFromMemId(buffer: Pointer, memId: number): void {
@@ -4911,7 +4937,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferLoadFile(buffer: Pointer, path: string): boolean {
     const pathBytes = this.encoder.encode(path)
-    return this.opentui.symbols.textBufferLoadFile(buffer, ptrOrNull(pathBytes), pathBytes.byteLength)
+    return this.opentui.symbols.textBufferLoadFile(buffer, viewOrNull(pathBytes), pathBytes.byteLength)
   }
 
   public textBufferSetStyledText(
@@ -4931,14 +4957,14 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetLineCount(buffer)
   }
 
-  private textBufferGetPlainText(buffer: Pointer, outPtr: Pointer | null, maxLen: number): number {
-    return this.opentui.symbols.textBufferGetPlainText(buffer, outPtr, maxLen)
+  private textBufferGetPlainText(buffer: Pointer, outBuffer: Uint8Array | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferGetPlainText(buffer, outBuffer, maxLen)
   }
 
   public getPlainTextBytes(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferGetPlainText(buffer, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.textBufferGetPlainText(buffer, viewOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -4959,7 +4985,7 @@ class FFIRenderLib implements RenderLib {
       buffer,
       startOffset,
       endOffset,
-      ptrOrNull(outBuffer),
+      viewOrNull(outBuffer),
       maxLength,
     )
 
@@ -4988,7 +5014,7 @@ class FFIRenderLib implements RenderLib {
       startCol,
       endRow,
       endCol,
-      ptrOrNull(outBuffer),
+      viewOrNull(outBuffer),
       maxLength,
     )
 
@@ -5021,8 +5047,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     this.opentui.symbols.textBufferViewSetSelection(view, start, end, bg, fg)
   }
 
@@ -5057,14 +5083,14 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     return Boolean(this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg))
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     this.opentui.symbols.textBufferViewUpdateSelection(view, end, bg, fg)
   }
 
@@ -5077,8 +5103,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     return Boolean(
       this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg),
     )
@@ -5111,7 +5137,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewGetLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
-    this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
+    this.textBufferViewGetLineInfoDirect(view, outBuffer)
     const struct = LineInfoStruct.unpack(outBuffer)
 
     const lineStartCols = struct.startCols as number[]
@@ -5129,7 +5155,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewGetLogicalLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
-    this.textBufferViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
+    this.textBufferViewGetLogicalLineInfoDirect(view, outBuffer)
     const struct = LineInfoStruct.unpack(outBuffer)
 
     const lineStartCols = struct.startCols as number[]
@@ -5149,26 +5175,26 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
-  private textBufferViewGetLineInfoDirect(view: Pointer, outPtr: Pointer): void {
-    this.opentui.symbols.textBufferViewGetLineInfoDirect(view, outPtr)
+  private textBufferViewGetLineInfoDirect(view: Pointer, outBuffer: ArrayBuffer): void {
+    this.opentui.symbols.textBufferViewGetLineInfoDirect(view, outBuffer)
   }
 
-  private textBufferViewGetLogicalLineInfoDirect(view: Pointer, outPtr: Pointer): void {
-    this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, outPtr)
+  private textBufferViewGetLogicalLineInfoDirect(view: Pointer, outBuffer: ArrayBuffer): void {
+    this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, outBuffer)
   }
 
-  private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer | null, maxLen: number): number {
-    return this.opentui.symbols.textBufferViewGetSelectedText(view, outPtr, maxLen)
+  private textBufferViewGetSelectedText(view: Pointer, outBuffer: Uint8Array | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferViewGetSelectedText(view, outBuffer, maxLen)
   }
 
-  private textBufferViewGetPlainText(view: Pointer, outPtr: Pointer | null, maxLen: number): number {
-    return this.opentui.symbols.textBufferViewGetPlainText(view, outPtr, maxLen)
+  private textBufferViewGetPlainText(view: Pointer, outBuffer: Uint8Array | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferViewGetPlainText(view, outBuffer, maxLen)
   }
 
   public textBufferViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferViewGetSelectedText(view, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.textBufferViewGetSelectedText(view, viewOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -5180,7 +5206,7 @@ class FFIRenderLib implements RenderLib {
   public textBufferViewGetPlainTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferViewGetPlainText(view, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.textBufferViewGetPlainText(view, viewOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -5194,7 +5220,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
-    this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, rgbaPtr(color))
+    this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, rgbaBuffer(color))
   }
 
   public textBufferViewSetTruncate(view: Pointer, truncate: boolean): void {
@@ -5211,12 +5237,12 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
     const packedHighlight = HighlightStruct.pack(highlight)
-    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, ptr(packedHighlight))
+    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, packedHighlight)
   }
 
   public textBufferAddHighlight(buffer: Pointer, lineIdx: number, highlight: Highlight): void {
     const packedHighlight = HighlightStruct.pack(highlight)
-    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(packedHighlight))
+    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, packedHighlight)
   }
 
   public textBufferRemoveHighlightsByRef(buffer: Pointer, hlRef: number): void {
@@ -5238,7 +5264,7 @@ class FFIRenderLib implements RenderLib {
   public textBufferGetLineHighlights(buffer: Pointer, lineIdx: number): Array<Highlight> {
     const outCountBuf = new Uint32Array(1)
 
-    const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, ptr(outCountBuf))
+    const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, outCountBuf)
     if (!nativePtr) return []
 
     const count = outCountBuf[0]
@@ -5262,7 +5288,7 @@ class FFIRenderLib implements RenderLib {
 
   public getBuildOptions(): BuildOptions {
     const optionsBuffer = new ArrayBuffer(BuildOptionsStruct.size)
-    this.opentui.symbols.getBuildOptions(ptr(optionsBuffer))
+    this.opentui.symbols.getBuildOptions(optionsBuffer)
     const options = BuildOptionsStruct.unpack(optionsBuffer)
 
     return {
@@ -5273,7 +5299,7 @@ class FFIRenderLib implements RenderLib {
 
   public getAllocatorStats(): AllocatorStats {
     const statsBuffer = new ArrayBuffer(AllocatorStatsStruct.size)
-    this.opentui.symbols.getAllocatorStats(ptr(statsBuffer))
+    this.opentui.symbols.getAllocatorStats(statsBuffer)
     const stats = AllocatorStatsStruct.unpack(statsBuffer)
 
     return {
@@ -5335,7 +5361,7 @@ class FFIRenderLib implements RenderLib {
     const width = new Uint32Array(1)
     const height = new Uint32Array(1)
 
-    this.opentui.symbols.editorViewGetViewport(view, ptr(x), ptr(y), ptr(width), ptr(height))
+    this.opentui.symbols.editorViewGetViewport(view, x, y, width, height)
 
     return {
       offsetX: x[0],
@@ -5372,7 +5398,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
-    this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(outBuffer))
+    this.opentui.symbols.editorViewGetLineInfoDirect(view, outBuffer)
     const struct = LineInfoStruct.unpack(outBuffer)
 
     const lineStartCols = struct.startCols as number[]
@@ -5390,7 +5416,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetLogicalLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
-    this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
+    this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, outBuffer)
     const struct = LineInfoStruct.unpack(outBuffer)
 
     const lineStartCols = struct.startCols as number[]
@@ -5421,7 +5447,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
-    this.opentui.symbols.editBufferSetText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
+    this.opentui.symbols.editBufferSetText(buffer, viewOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferSetTextFromMem(buffer: Pointer, memId: number): void {
@@ -5429,7 +5455,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferReplaceText(buffer: Pointer, textBytes: Uint8Array): void {
-    this.opentui.symbols.editBufferReplaceText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
+    this.opentui.symbols.editBufferReplaceText(buffer, viewOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferReplaceTextFromMem(buffer: Pointer, memId: number): void {
@@ -5438,7 +5464,7 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferGetText(buffer, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.opentui.symbols.editBufferGetText(buffer, viewOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
@@ -5446,12 +5472,12 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferInsertChar(buffer: Pointer, char: string): void {
     const charBytes = this.encoder.encode(char)
-    this.opentui.symbols.editBufferInsertChar(buffer, ptrOrNull(charBytes), charBytes.byteLength)
+    this.opentui.symbols.editBufferInsertChar(buffer, viewOrNull(charBytes), charBytes.byteLength)
   }
 
   public editBufferInsertText(buffer: Pointer, text: string): void {
     const textBytes = this.encoder.encode(text)
-    this.opentui.symbols.editBufferInsertText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
+    this.opentui.symbols.editBufferInsertText(buffer, viewOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferDeleteChar(buffer: Pointer): void {
@@ -5537,7 +5563,7 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferUndo(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferUndo(buffer, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.opentui.symbols.editBufferUndo(buffer, viewOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
@@ -5545,7 +5571,7 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferRedo(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferRedo(buffer, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.opentui.symbols.editBufferRedo(buffer, viewOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
@@ -5615,7 +5641,7 @@ class FFIRenderLib implements RenderLib {
       buffer,
       startOffset,
       endOffset,
-      ptrOrNull(outBuffer),
+      viewOrNull(outBuffer),
       maxLength,
     )
     const len = actualLen
@@ -5638,7 +5664,7 @@ class FFIRenderLib implements RenderLib {
       startCol,
       endRow,
       endCol,
-      ptrOrNull(outBuffer),
+      viewOrNull(outBuffer),
       maxLength,
     )
     const len = actualLen
@@ -5654,8 +5680,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     this.opentui.symbols.editorViewSetSelection(view, start, end, bg, fg)
   }
 
@@ -5684,8 +5710,8 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     return Boolean(
       this.opentui.symbols.editorViewSetLocalSelection(
         view,
@@ -5702,8 +5728,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     this.opentui.symbols.editorViewUpdateSelection(view, end, bg, fg)
   }
 
@@ -5718,8 +5744,8 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = optionalRgbaPtr(bgColor)
-    const fg = optionalRgbaPtr(fgColor)
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
     return Boolean(
       this.opentui.symbols.editorViewUpdateLocalSelection(
         view,
@@ -5741,7 +5767,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, viewOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
@@ -5750,13 +5776,13 @@ class FFIRenderLib implements RenderLib {
   public editorViewGetCursor(view: Pointer): { row: number; col: number } {
     const row = new Uint32Array(1)
     const col = new Uint32Array(1)
-    this.opentui.symbols.editorViewGetCursor(view, ptr(row), ptr(col))
+    this.opentui.symbols.editorViewGetCursor(view, row, col)
     return { row: row[0], col: col[0] }
   }
 
   public editorViewGetText(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editorViewGetText(view, ptrOrNull(outBuffer), maxLength)
+    const actualLen = this.opentui.symbols.editorViewGetText(view, viewOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
@@ -5850,7 +5876,7 @@ class FFIRenderLib implements RenderLib {
 
   public getTerminalCapabilities(renderer: Pointer): TerminalCapabilities {
     const capsBuffer = new ArrayBuffer(TerminalCapabilitiesStruct.size)
-    this.opentui.symbols.getTerminalCapabilities(renderer, ptr(capsBuffer))
+    this.opentui.symbols.getTerminalCapabilities(renderer, capsBuffer)
 
     const caps = TerminalCapabilitiesStruct.unpack(capsBuffer)
 
@@ -5886,7 +5912,7 @@ class FFIRenderLib implements RenderLib {
 
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
-    this.opentui.symbols.processCapabilityResponse(renderer, ptrOrNull(responseBytes), responseBytes.byteLength)
+    this.opentui.symbols.processCapabilityResponse(renderer, viewOrNull(responseBytes), responseBytes.byteLength)
   }
 
   public encodeUnicode(
@@ -5900,10 +5926,10 @@ class FFIRenderLib implements RenderLib {
     const outLenBuffer = new ArrayBuffer(8) // Native length out slot
 
     const success = this.opentui.symbols.encodeUnicode(
-      ptrOrNull(textBytes),
+      viewOrNull(textBytes),
       textBytes.byteLength,
-      ptr(outPtrBuffer),
-      ptr(outLenBuffer),
+      outPtrBuffer,
+      outLenBuffer,
       widthMethodCode,
     )
 
@@ -5943,14 +5969,12 @@ class FFIRenderLib implements RenderLib {
     bg: RGBA,
     attributes: number = 0,
   ): void {
-    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, rgbaPtr(fg), rgbaPtr(bg), attributes)
+    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, rgbaBuffer(fg), rgbaBuffer(bg), attributes)
   }
 
   public createAudioEngine(options?: AudioCreateOptions | null): AudioEngineHandle | null {
     const optionsBuffer = options == null ? null : AudioCreateOptionsStruct.pack(options)
-    const engineHandle = this.opentui.symbols.createAudioEngine(
-      optionsBuffer ? ptr(optionsBuffer) : null,
-    ) as AudioEngineHandle
+    const engineHandle = this.opentui.symbols.createAudioEngine(optionsBuffer) as AudioEngineHandle
     return engineHandle ? engineHandle : null
   }
 
@@ -5969,7 +5993,7 @@ class FFIRenderLib implements RenderLib {
   public audioGetPlaybackDeviceName(engine: Pointer, index: number): string {
     const outBuffer = new Uint8Array(512)
     const bytesWritten = toNumber(
-      this.opentui.symbols.audioGetPlaybackDeviceName(engine, index, ptr(outBuffer), outBuffer.length),
+      this.opentui.symbols.audioGetPlaybackDeviceName(engine, index, outBuffer, outBuffer.length),
     )
     const safeBytesWritten = Math.max(0, Math.min(outBuffer.length, bytesWritten))
     return this.decoder.decode(outBuffer.subarray(0, safeBytesWritten))
@@ -6089,7 +6113,7 @@ class FFIRenderLib implements RenderLib {
     } catch {
       return -1
     }
-    return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
+    return this.opentui.symbols.audioStart(engine, optionsBuffer)
   }
 
   public audioStartMixer(engine: Pointer): number {
@@ -6166,7 +6190,7 @@ class FFIRenderLib implements RenderLib {
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
     const outBuffer = new ArrayBuffer(4)
     const dataLength = toSafeFFIU32Length(data.byteLength, "Audio data length")
-    const status = this.opentui.symbols.audioLoad(engine, ptr(data), dataLength, ptr(outBuffer))
+    const status = this.opentui.symbols.audioLoad(engine, data, dataLength, outBuffer)
     if (status !== 0) {
       return { status, soundId: null }
     }
@@ -6186,12 +6210,7 @@ class FFIRenderLib implements RenderLib {
     if (options?.groupId !== undefined && !isFFIU32(options.groupId)) return { status: -1, voiceId: null }
     const outBuffer = new ArrayBuffer(4)
     const optionsBuffer = options ? AudioVoiceOptionsStruct.pack(options) : null
-    const status = this.opentui.symbols.audioPlay(
-      engine,
-      soundId,
-      optionsBuffer ? ptr(optionsBuffer) : null,
-      ptr(outBuffer),
-    )
+    const status = this.opentui.symbols.audioPlay(engine, soundId, optionsBuffer, outBuffer)
     if (status !== 0) {
       return { status, voiceId: null }
     }
@@ -6212,7 +6231,7 @@ class FFIRenderLib implements RenderLib {
     const outBuffer = new ArrayBuffer(4)
     const nameBytes = this.encoder.encode(name)
     const nameLength = toSafeFFIU32Length(nameBytes.byteLength, "Audio group name length")
-    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameLength, ptr(outBuffer))
+    const status = this.opentui.symbols.audioCreateGroup(engine, nameBytes, nameLength, outBuffer)
     if (status !== 0) {
       return { status, groupId: null }
     }
@@ -6229,7 +6248,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioMixToBuffer(engine: Pointer, outBuffer: Float32Array, frameCount: number, channels: number): number {
-    return this.opentui.symbols.audioMixToBuffer(engine, ptr(outBuffer), frameCount, channels)
+    return this.opentui.symbols.audioMixToBuffer(engine, outBuffer, frameCount, channels)
   }
 
   public audioEnableTap(engine: Pointer, enabled: boolean, capacityFrames: number): number {
@@ -6243,13 +6262,7 @@ class FFIRenderLib implements RenderLib {
     channels: number,
   ): { status: number; framesRead: number } {
     const outFramesReadBuffer = new ArrayBuffer(4)
-    const status = this.opentui.symbols.audioReadTap(
-      engine,
-      ptr(outBuffer),
-      frameCount,
-      channels,
-      ptr(outFramesReadBuffer),
-    )
+    const status = this.opentui.symbols.audioReadTap(engine, outBuffer, frameCount, channels, outFramesReadBuffer)
     if (status !== 0) {
       return { status, framesRead: 0 }
     }
@@ -6259,7 +6272,7 @@ class FFIRenderLib implements RenderLib {
 
   public audioGetStats(engine: Pointer): AudioStats | null {
     const statsBuffer = new ArrayBuffer(AudioStatsStruct.size)
-    const status = this.opentui.symbols.audioGetStats(engine, ptr(statsBuffer))
+    const status = this.opentui.symbols.audioGetStats(engine, statsBuffer)
     if (status !== 0) {
       return null
     }
@@ -6287,7 +6300,7 @@ class FFIRenderLib implements RenderLib {
 
   public createNativeSpanFeed(options?: NativeSpanFeedOptions | null): Pointer {
     const optionsBuffer = options == null ? null : NativeSpanFeedOptionsStruct.pack(options)
-    const streamPtr = this.opentui.symbols.createNativeSpanFeed(optionsBuffer ? ptr(optionsBuffer) : null)
+    const streamPtr = this.opentui.symbols.createNativeSpanFeed(optionsBuffer)
     if (!streamPtr) {
       throw new Error("Failed to create stream")
     }
@@ -6305,7 +6318,7 @@ class FFIRenderLib implements RenderLib {
 
   public streamWrite(stream: Pointer, data: Uint8Array | string): number {
     const bytes = typeof data === "string" ? this.encoder.encode(data) : data
-    return this.opentui.symbols.streamWrite(stream, ptrOrNull(bytes), bytes.byteLength)
+    return this.opentui.symbols.streamWrite(stream, viewOrNull(bytes), bytes.byteLength)
   }
 
   public streamCommit(stream: Pointer): number {
@@ -6313,7 +6326,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public streamDrainSpans(stream: Pointer, outBuffer: Uint8Array, maxSpans: number): number {
-    const count = this.opentui.symbols.streamDrainSpans(stream, ptr(outBuffer), maxSpans)
+    const count = this.opentui.symbols.streamDrainSpans(stream, outBuffer, maxSpans)
     return toNumber(count)
   }
 
@@ -6323,12 +6336,12 @@ class FFIRenderLib implements RenderLib {
 
   public streamSetOptions(stream: Pointer, options: NativeSpanFeedOptions): number {
     const optionsBuffer = NativeSpanFeedOptionsStruct.pack(options)
-    return this.opentui.symbols.streamSetOptions(stream, ptr(optionsBuffer))
+    return this.opentui.symbols.streamSetOptions(stream, optionsBuffer)
   }
 
   public streamGetStats(stream: Pointer): NativeSpanFeedStats | null {
     const statsBuffer = new ArrayBuffer(NativeSpanFeedStatsStruct.size)
-    const status = this.opentui.symbols.streamGetStats(stream, ptr(statsBuffer))
+    const status = this.opentui.symbols.streamGetStats(stream, statsBuffer)
     if (status !== 0) {
       return null
     }
@@ -6343,7 +6356,7 @@ class FFIRenderLib implements RenderLib {
 
   public streamReserve(stream: Pointer, minLen: number): { status: number; info: ReserveInfo | null } {
     const reserveBuffer = new ArrayBuffer(ReserveInfoStruct.size)
-    const status = this.opentui.symbols.streamReserve(stream, minLen, ptr(reserveBuffer))
+    const status = this.opentui.symbols.streamReserve(stream, minLen, reserveBuffer)
     if (status !== 0) {
       return { status, info: null }
     }
@@ -6374,21 +6387,21 @@ class FFIRenderLib implements RenderLib {
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
-    const fgPtr = optionalRgbaPtr(fg)
-    const bgPtr = optionalRgbaPtr(bg)
+    const fgBuffer = optionalRgbaBuffer(fg)
+    const bgBuffer = optionalRgbaBuffer(bg)
     return this.opentui.symbols.syntaxStyleRegister(
       style,
-      ptrOrNull(nameBytes),
+      viewOrNull(nameBytes),
       nameBytes.byteLength,
-      fgPtr,
-      bgPtr,
+      fgBuffer,
+      bgBuffer,
       attributes,
     )
   }
 
   public syntaxStyleResolveByName(style: SyntaxStyleHandle, name: string): number | null {
     const nameBytes = this.encoder.encode(name)
-    const id = this.opentui.symbols.syntaxStyleResolveByName(style, ptrOrNull(nameBytes), nameBytes.byteLength)
+    const id = this.opentui.symbols.syntaxStyleResolveByName(style, viewOrNull(nameBytes), nameBytes.byteLength)
     return id === 0 ? null : id
   }
 
@@ -6565,7 +6578,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewSetTabIndicatorColor(view: EditorViewHandle, color: RGBA): void {
-    this.opentui.symbols.editorViewSetTabIndicatorColor(view, rgbaPtr(color))
+    this.opentui.symbols.editorViewSetTabIndicatorColor(view, rgbaBuffer(color))
   }
 
   public onNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {
