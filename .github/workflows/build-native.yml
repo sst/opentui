@@ -7,6 +7,11 @@ on:
         description: "Version being released"
         required: true
         type: string
+      prepareVersion:
+        description: "Optional package version to prepare before building"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -41,6 +46,10 @@ jobs:
           path: packages/native/.zig-cache
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
+
+      - name: Prepare release versions
+        if: ${{ inputs.prepareVersion != '' }}
+        run: bun run prepare-release "${{ inputs.prepareVersion }}" --no-install
 
       - name: Install dependencies
         run: bun install
