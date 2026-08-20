@@ -40,10 +40,16 @@ terminal or platform is unavailable locally.
 - Portable symbol signatures must stay within the `node:ffi`/`bun:ffi` intersection. Use explicit widths such as
   `u32`/`u64`, not backend-only ABI names such as `usize`, `napi_env`, or `napi_value`; represent `i64`/`u64` as `bigint`,
   native booleans as `0`/`1`, and shared pointers as `number | bigint`.
-- Pass transient `ArrayBuffer` values or views directly to synchronous pointer parameters so the backend borrows the
-  owner. Do not pre-resolve them with `ptr()`.
-- Use `ptr(view)` only for addresses stored in structs or retained by native code, and keep the backing buffer alive for
-  the complete native lifetime.
+- Default to `buffer` for transient, non-null `TypedArray` parameters and pass the view directly. Do not call `ptr()`.
+- Use `ptr` only when a parameter can be null, accepts a numeric native address, is a callback, or receives a raw
+  `ArrayBuffer`. Pass transient owner objects directly to `ptr` parameters; do not pre-resolve them.
+- On Bun 1.3.14, `DataView` is not accepted by `buffer` or `ptr`. You MUST pass an equivalent typed array such as
+  `new Uint8Array(view.buffer, view.byteOffset, view.byteLength)`.
+- On Bun 1.4+, a non-null `DataView` MUST use `buffer` and be passed directly.
+- Use `ptr(view)` only when native code stores the address beyond the call. Before resolving it, access `view.buffer` to
+  move any inline typed-array storage into a stable `ArrayBuffer`, then keep the view alive for the complete native
+  lifetime. The order is required: `const owner = view.buffer; const address = ptr(view)`. Calling `ptr(view)` first and
+  accessing `view.buffer` later can move the storage and invalidate `address`.
 - Model C-string inputs as pointer parameters and pass owned, NUL-terminated byte buffers directly; string returns are
   not portable. Create callbacks through the loaded library/platform facade, not `new JSCallback(...)`, and assume only
   same-thread callbacks.

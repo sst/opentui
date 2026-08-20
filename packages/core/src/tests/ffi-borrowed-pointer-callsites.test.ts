@@ -16,7 +16,8 @@ import {
   VisualCursorStruct,
 } from "../zig-structs.js"
 import { RGBA } from "../lib/RGBA.js"
-import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
+import { ptr, toArrayBuffer, type Pointer } from "../platform/ffi.js"
+import { OptimizedBuffer } from "../buffer.js"
 
 // Borrowed-pointer contract for styled text, styled placeholders, and cursor
 // options: packed struct buffers must reach the FFI symbol as object values so
@@ -76,6 +77,92 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("stabilizes retained text memory before resolving its pointer", () => {
+    withStubbedSymbols(
+      {
+        textBufferRegisterMemBuffer: () => 1,
+        textBufferReplaceMemBuffer: () => 1,
+        textBufferAppend: () => undefined,
+      },
+      (calls) => {
+        const registered = new Uint8Array([1, 2, 3])
+        const replaced = new Uint8Array([4, 5, 6])
+        const appended = new Uint8Array([7, 8, 9])
+
+        lib.textBufferRegisterMemBuffer(1 as any, registered)
+        lib.textBufferReplaceMemBuffer(1 as any, 1, replaced)
+        lib.textBufferAppend(1 as any, appended)
+
+        void registered.buffer
+        void replaced.buffer
+        void appended.buffer
+        expect(calls.textBufferRegisterMemBuffer[0]![1]).toBe(ptr(registered))
+        expect(calls.textBufferReplaceMemBuffer[0]![2]).toBe(ptr(replaced))
+        expect(calls.textBufferAppend[0]![1]).toBe(ptr(appended))
+      },
+    )
+  })
+
+  test("passes transient owners directly through remaining synchronous wrappers", () => {
+    withStubbedSymbols(
+      {
+        bufferColorMatrix: () => undefined,
+        bufferDrawGrayscaleBuffer: () => undefined,
+        bufferDrawPackedBuffer: () => undefined,
+        bufferDrawSuperSampleBuffer: () => undefined,
+        bufferDrawText: () => undefined,
+        bufferGetId: () => 0,
+        getBuildOptions: () => undefined,
+        editorViewGetViewport: () => undefined,
+        audioGetPlaybackDeviceName: () => 0,
+        streamDrainSpans: () => 0,
+      },
+      (calls) => {
+        const fg = RGBA.fromValues(1, 1, 1, 1)
+        const bg = RGBA.fromValues(0, 0, 0, 1)
+        const matrix = new Float32Array(16)
+        const mask = new Float32Array(3)
+        const intensities = new Float32Array(4)
+        const spans = new Uint8Array(64)
+        const pixels = new Uint8Array(16)
+        const packed = new Uint8Array(48)
+        const buffer = new OptimizedBuffer(lib, 1 as any, 2, 2, {})
+
+        buffer.colorMatrix(matrix, mask)
+        buffer.drawGrayscaleBuffer(0, 0, intensities, 2, 2, fg, bg)
+        buffer.drawSuperSampleBuffer(0, 0, pixels, pixels.byteLength, "rgba8unorm", 8)
+        buffer.drawPackedBuffer(packed, packed.byteLength, 0, 0, 1, 1)
+        lib.bufferDrawText(1 as any, "x", 0, 0, fg, bg)
+        lib.bufferGetId(1 as any)
+        lib.getBuildOptions()
+        lib.editorViewGetViewport(1 as any)
+        lib.audioGetPlaybackDeviceName(1 as any, 0)
+        lib.streamDrainSpans(1 as any, spans, 1)
+
+        expect(calls.bufferColorMatrix[0]![1]).toBe(matrix)
+        expect(calls.bufferColorMatrix[0]![2]).toBe(mask)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![3]).toBe(intensities)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![6]).toBe(fg.buffer)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![7]).toBe(bg.buffer)
+        expect(calls.bufferDrawSuperSampleBuffer[0]![3]).toBe(pixels)
+        expect(calls.bufferDrawPackedBuffer[0]![1]).toBe(packed)
+        expect(calls.bufferDrawText[0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.bufferDrawText[0]![5]).toBe(fg.buffer)
+        expect(calls.bufferDrawText[0]![6]).toBe(bg.buffer)
+        expect(calls.bufferGetId[0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.getBuildOptions[0]![0]).toBeInstanceOf(ArrayBuffer)
+        expect(calls.editorViewGetViewport[0]!.slice(1)).toEqual([
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+        ])
+        expect(calls.audioGetPlaybackDeviceName[0]![2]).toBeInstanceOf(Uint8Array)
+        expect(calls.streamDrainSpans[0]![1]).toBe(spans)
+      },
+    )
+  })
+
   test("reuses owned output storage while preserving public result identity", () => {
     const originals = {
       editBufferGetCursorPosition: symbols.editBufferGetCursorPosition,
@@ -762,6 +849,29 @@ describe("borrowed pointer call sites", () => {
     } finally {
       symbols.imageGetPixelsPtr = original
     }
+  })
+
+  test("empty image inputs preserve nullable pointer semantics", () => {
+    withStubbedSymbols(
+      {
+        imageInfo: () => 0,
+        imageDecode: () => 0,
+        imageCreateFromRgba: () => 0,
+        imageCopyPixels: () => 0,
+      },
+      (calls) => {
+        const empty = new Uint8Array()
+        lib.imageInfo(empty)
+        lib.imageDecode(empty)
+        lib.imageCreateFromRgba(empty, 0, 0, 0)
+        lib.imageCopyPixels(1 as any, empty, 0, false)
+
+        expect(calls.imageInfo[0]![0]).toBeNull()
+        expect(calls.imageDecode[0]![0]).toBeNull()
+        expect(calls.imageCreateFromRgba[0]![0]).toBeNull()
+        expect(calls.imageCopyPixels[0]![1]).toBeNull()
+      },
+    )
   })
 
   test("imageExtend rejects a short background before native access", () => {

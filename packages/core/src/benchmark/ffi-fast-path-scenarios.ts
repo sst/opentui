@@ -8,7 +8,6 @@ import { EditorView } from "../editor-view.js"
 import { BorderCharArrays } from "../lib/border.js"
 import { RGBA } from "../lib/RGBA.js"
 import { NativeImage } from "../image.js"
-import { ptr } from "../platform/ffi.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { TextBuffer } from "../text-buffer.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
@@ -635,7 +634,6 @@ function createSuperSampleScenario(
         pixels[index + 2] = (index >>> 8) & 0xff
         pixels[index + 3] = 0xff
       }
-      const pixelsPtr = ptr(pixels)
       return {
         run: (operations) => {
           for (let index = 0; index < operations; index++) {
@@ -643,7 +641,7 @@ function createSuperSampleScenario(
               buffer.ptr,
               0,
               0,
-              pixelsPtr,
+              pixels,
               pixels.byteLength,
               "rgba8unorm",
               alignedBytesPerRow,
@@ -692,13 +690,12 @@ function createPackedBufferScenario(
         view.setUint32(offset + 32, 0x2588, true)
       }
       const packedBytes = new Uint8Array(packed)
-      const packedPtr = ptr(packedBytes)
       return {
         run: (operations) => {
           for (let index = 0; index < operations; index++) {
             lib.bufferDrawPackedBuffer(
               buffer.ptr,
-              packedPtr,
+              packedBytes,
               packedBytes.byteLength,
               posX,
               posY,
@@ -737,7 +734,6 @@ function createGrayscaleScenario(
       )
       const intensities = new Float32Array(sourceWidth * sourceHeight)
       for (let index = 0; index < intensities.length; index++) intensities[index] = (index % 17) / 16
-      const intensitiesPtr = ptr(intensities)
       return {
         run: (operations) => {
           if (supersampled) {
@@ -746,7 +742,7 @@ function createGrayscaleScenario(
                 buffer.ptr,
                 0,
                 0,
-                intensitiesPtr,
+                intensities,
                 sourceWidth,
                 sourceHeight,
                 COLORS.fg,
@@ -759,7 +755,7 @@ function createGrayscaleScenario(
                 buffer.ptr,
                 0,
                 0,
-                intensitiesPtr,
+                intensities,
                 sourceWidth,
                 sourceHeight,
                 COLORS.fg,
