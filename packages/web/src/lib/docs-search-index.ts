@@ -21,7 +21,7 @@ export async function buildDocsSearchIndex(): Promise<SearchEntry[]> {
 }
 
 export function searchEntriesForPage(
-  page: Pick<DocPage, "title" | "url" | "description" | "searchSymbols">,
+  page: Pick<DocPage, "title" | "navTitle" | "url" | "description" | "searchSymbols">,
   content: string,
 ): SearchEntry[] {
   const sections = splitSections(page.title, content)
@@ -30,8 +30,10 @@ export function searchEntriesForPage(
   return sections.map((section, index) => ({
     chapter: page.title,
     title: section.title,
+    navTitle: section.anchor ? "" : page.navTitle,
     url: section.anchor ? `${page.url}#${section.anchor}` : page.url,
     text: index === 0 && extra ? joinText(section.text, extra) : section.text,
+    symbols: section.anchor ? [] : [...page.searchSymbols],
   }))
 }
 
