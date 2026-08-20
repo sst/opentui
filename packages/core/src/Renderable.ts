@@ -103,7 +103,11 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   buffered?: boolean
   live?: boolean
   opacity?: number
-  /** Set to "unbounded" when renderSelf may draw outside this renderable's layout rectangle. */
+  /**
+   * Declare the conservative bounds of `renderSelf`. Custom painters default
+   * to `"unbounded"`; opt into `"layout"` only when every write stays inside
+   * the renderable's layout rectangle.
+   */
   paintBounds?: "layout" | "unbounded"
 
   // Draw-only hooks for custom rendering/decorations. They run after layout
@@ -255,7 +259,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private _live: boolean = false
   protected _liveCount: number = 0
-  private _paintBounds: "layout" | "unbounded"
+  private _paintBounds: "layout" | "unbounded" | undefined
 
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
@@ -313,7 +317,7 @@ export abstract class Renderable extends BaseRenderable {
     this.buffered = options.buffered ?? false
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
-    this._paintBounds = options.paintBounds ?? "layout"
+    this._paintBounds = options.paintBounds
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
     this.yogaNode = Yoga.Node.createForOpenTUI()
@@ -1521,8 +1525,14 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public getPaintBounds(): { x: number; y: number; width: number; height: number } | null {
-    if (this._paintBounds === "unbounded") return null
+    if (this._paintBounds === "unbounded" || (this._paintBounds === undefined && !this.hasLayoutBoundedPaint())) {
+      return null
+    }
     return { x: this._screenX, y: this._screenY, width: this.width, height: this.height }
+  }
+
+  protected hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === Renderable.prototype.renderSelf
   }
 
   protected hasStableRenderListInputs(): boolean {

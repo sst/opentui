@@ -171,6 +171,10 @@ export class ImageRenderable extends Renderable {
     super.render(buffer, deltaTime)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === ImageRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this._image || this.width <= 0 || this.height <= 0) return
     const fitted =

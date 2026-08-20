@@ -128,7 +128,7 @@ class BenchmarkSpinnerRenderable extends Renderable {
   private frameIndex = 0
 
   constructor(ctx: RenderContext, id: string) {
-    super(ctx, { id, width: 1, height: 1, flexShrink: 0 })
+    super(ctx, { id, width: 1, height: 1, flexShrink: 0, paintBounds: "layout" })
   }
 
   public setFrame(frameIndex: number): void {

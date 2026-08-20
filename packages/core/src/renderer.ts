@@ -824,7 +824,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private liveRequestCounter: number = 0
   private _controlState: RendererControlState = RendererControlState.IDLE
 
-  private frameCallbacks: ((deltaTime: number) => Promise<void>)[] = []
+  private frameCallbacks: Array<{
+    callback: (deltaTime: number) => Promise<void>
+    drawsToBuffer: boolean
+  }> = []
+  private hadFrameDrivenBufferWrites = false
   private renderStats: {
     frameCount: number
     fps: number
@@ -4089,12 +4093,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.requestRender()
   }
 
-  public setFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
-    this.frameCallbacks.push(callback)
+  /**
+   * Register per-frame work. Callbacks are assumed to draw directly into
+   * `nextRenderBuffer` for backwards compatibility. Set `drawsToBuffer: false`
+   * when a callback only updates state so retained row composition stays enabled.
+   */
+  public setFrameCallback(
+    callback: (deltaTime: number) => Promise<void>,
+    options: { drawsToBuffer?: boolean } = {},
+  ): void {
+    this.frameCallbacks.push({ callback, drawsToBuffer: options.drawsToBuffer ?? true })
   }
 
   public removeFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
-    this.frameCallbacks = this.frameCallbacks.filter((cb) => cb !== callback)
+    this.frameCallbacks = this.frameCallbacks.filter((entry) => entry.callback !== callback)
   }
 
   public clearFrameCallbacks(): void {
@@ -4570,6 +4582,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const frameRequests = Array.from(this.animationRequest.values())
       this.animationRequest.clear()
+      const hasFrameDrivenBufferWrites = this.frameCallbacks.some((entry) => entry.drawsToBuffer)
+      const refreshFrameCallbackLayer = hasFrameDrivenBufferWrites || this.hadFrameDrivenBufferWrites
+      this.hadFrameDrivenBufferWrites = hasFrameDrivenBufferWrites
+      if (refreshFrameCallbackLayer) {
+        // Historically native cleared the desired buffer after every published
+        // frame, so frame callbacks always drew into a fresh underlay before the
+        // retained render tree painted over it. Preserve that public ordering.
+        this.nextRenderBuffer.clear(this.backgroundColor)
+      }
       const animationRequestStart = performance.now()
       for (const callback of frameRequests) {
         callback(deltaTime)
@@ -4579,7 +4600,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const animationRequestTime = animationRequestEnd - animationRequestStart
 
       const start = performance.now()
-      for (const frameCallback of this.frameCallbacks) {
+      for (const { callback: frameCallback } of this.frameCallbacks) {
         try {
           await frameCallback(deltaTime)
         } catch (error) {
@@ -4593,8 +4614,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.nextRenderBuffer,
         deltaTime,
         this.backgroundColor,
-        this.postProcessFns.length > 0 || this._console.visible || this.debugOverlay.enabled,
-        true,
+        refreshFrameCallbackLayer ||
+          this.postProcessFns.length > 0 ||
+          this._console.visible ||
+          this.debugOverlay.enabled,
+        !refreshFrameCallbackLayer,
       )
 
       for (const postProcessFn of this.postProcessFns) {
@@ -4606,6 +4630,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // If destroy() was requested during this frame, skip native work and scheduling.
       if (!this._isDestroyed) {
         const nativeStatus = this.renderNative() ?? "rendered"
+        if (nativeStatus !== "rendered") {
+          // Native rejection does not publish the staged hit grid. Keep the
+          // retained visual buffer, but rebuild both scene and grid together on
+          // the next attempt instead of treating the rejected frame as clean.
+          this.root.invalidate()
+        }
         if (nativeStatus === "rendered") this.frameCount++
         if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
           this.currentFps = this.frameCount

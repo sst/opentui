@@ -559,6 +559,10 @@ export class CodeRenderable extends TextBufferRenderable {
     return this.textBuffer.getLineHighlights(lineIdx)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === CodeRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this._highlightsDirty) {
       if (this.isDestroyed) return

@@ -104,6 +104,10 @@ class GutterRenderable extends Renderable {
     }
   }
 
+  public override lifecyclePassIsPaintStable(): boolean {
+    return true
+  }
+
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -238,6 +242,10 @@ class GutterRenderable extends Renderable {
 
   public getLineSigns(): Map<number, LineSign> {
     return this._lineSigns
+  }
+
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === GutterRenderable.prototype.renderSelf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -521,6 +529,10 @@ export class LineNumberRenderable extends Renderable {
       super.remove(this.gutter)
       this.gutter = null
     }
+  }
+
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === LineNumberRenderable.prototype.renderSelf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

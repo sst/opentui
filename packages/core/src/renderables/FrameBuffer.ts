@@ -31,6 +31,10 @@ export class FrameBufferRenderable extends Renderable {
     this.requestRender()
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === FrameBufferRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this.visible || this.isDestroyed) return
     buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)

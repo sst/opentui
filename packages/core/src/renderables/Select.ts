@@ -160,6 +160,10 @@ export class SelectRenderable extends Renderable {
     this.requestRender() // Initial render needed
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === SelectRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible || !this.frameBuffer) return
 

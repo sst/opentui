@@ -2133,6 +2133,10 @@ export class MarkdownRenderable extends Renderable {
     this.requestRender()
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === MarkdownRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     // Check if style/conceal changed - re-render blocks before rendering
     if (this._styleDirty) {
