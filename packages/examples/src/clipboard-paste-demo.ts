@@ -16,6 +16,11 @@ import {
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
+import {
+  canCreateInheritedWaylandHostService,
+  inheritedWaylandOnly,
+  markInheritedWaylandHostServiceCreated,
+} from "./lib/inherited-wayland-clipboard.js"
 
 const COLORS = {
   background: "#071018",
@@ -29,12 +34,6 @@ const COLORS = {
 const READ_MAX_BYTES = 2 * 1024 * 1024
 const UNICODE_PAYLOAD = "OpenTUI clipboard round-trip\nUnicode: \u4e16\u754c cafe \ud83d\ude80\nLine endings: LF\nEnd"
 const LARGE_PAYLOAD = `OpenTUI large clipboard payload\n${"0123456789abcdef".repeat(1024)}`
-const INHERITED_WAYLAND_ONLY =
-  process.platform === "linux" &&
-  Boolean(process.env.WAYLAND_SOCKET) &&
-  !process.env.WAYLAND_DISPLAY &&
-  !process.env.DISPLAY
-
 type LifecycleIntent = "create" | "dispose" | "recreate"
 
 let root: BoxRenderable | null = null
@@ -52,7 +51,6 @@ let lifecycleQueue: Promise<void> = Promise.resolve()
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let pasteHandler: ((event: PasteEvent) => void) | null = null
 let destroyPromise: Promise<void> | null = null
-let inheritedWaylandServiceCreated = false
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -99,11 +97,11 @@ function finishOperation(version: number, status: string): void {
 }
 
 function requestLifecycle(renderer: CliRenderer, intent: LifecycleIntent): Promise<void> {
-  if (INHERITED_WAYLAND_ONLY && intent === "recreate" && clipboard) {
+  if (inheritedWaylandOnly && intent === "recreate" && clipboard) {
     beginOperation("Recreate skipped: this inherited Wayland socket supports one active host service")
     return lifecycleQueue
   }
-  if (INHERITED_WAYLAND_ONLY && intent !== "dispose" && inheritedWaylandServiceCreated && !clipboard) {
+  if (intent !== "dispose" && !canCreateInheritedWaylandHostService() && !clipboard) {
     beginOperation("Host service unavailable: the inherited Wayland socket was already consumed")
     return lifecycleQueue
   }
@@ -140,13 +138,17 @@ function requestLifecycle(renderer: CliRenderer, intent: LifecycleIntent): Promi
       finishOperation(operation, "Service is already active")
       return
     }
+    if (!canCreateInheritedWaylandHostService()) {
+      finishOperation(operation, "Host service unavailable: the inherited Wayland socket was already consumed")
+      return
+    }
 
     try {
       clipboard = createClipboard({
         host: createHostClipboard({ maxReadBytes: READ_MAX_BYTES }),
         terminal: createRendererClipboardAdapter(renderer),
       })
-      if (INHERITED_WAYLAND_ONLY) inheritedWaylandServiceCreated = true
+      markInheritedWaylandHostServiceCreated()
       finishOperation(operation, "Created host and terminal clipboard service")
     } catch (error) {
       finishOperation(operation, `Create failed: ${errorMessage(error)}`)
@@ -306,7 +308,7 @@ export function run(renderer: CliRenderer): void {
       "CLIPBOARD AND PASTE MANUAL ACCEPTANCE",
       "F1 Unicode | F2 host write | F3 clipboard/primary | F4 16,416-byte fixture | F5 terminal write | F6 all write",
       "F7 read clipboard | Shift+F7 read primary | F8 clear clipboard/all | F9 terminal clear (selected selection)",
-      INHERITED_WAYLAND_ONLY
+      inheritedWaylandOnly
         ? "F10 dispose (irreversible) | F11 unavailable | Menu: Escape returns | Standalone: Ctrl+C/Ctrl+Q quits"
         : "F10 dispose | F11 recreate | Menu: Escape returns | Standalone: Ctrl+C/Ctrl+Q quits",
       "Terminal attempts are unconfirmed. Paste normally into the focused textarea below.",
