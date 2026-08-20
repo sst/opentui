@@ -21,10 +21,6 @@ import {
   type HostClipboardService,
   type Selection,
 } from "@opentui/core"
-import {
-  canCreateInheritedWaylandHostService,
-  markInheritedWaylandHostServiceCreated,
-} from "./lib/inherited-wayland-clipboard.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
@@ -113,6 +109,9 @@ let highlightsEnabled: boolean = true
 let diagnosticsEnabled: boolean = true
 
 const IS_LINUX = process.platform === "linux"
+const INHERITED_WAYLAND_ONLY =
+  IS_LINUX && Boolean(process.env.WAYLAND_SOCKET) && !process.env.WAYLAND_DISPLAY && !process.env.DISPLAY
+let inheritedWaylandServiceCreated = false
 const MAX_QUEUED_CLIPBOARD_OPERATIONS = 16
 type ClipboardOperationQueue = { tail: Promise<void>; pending: number }
 const clipboardOperationQueues: Record<ClipboardSelection, ClipboardOperationQueue> = {
@@ -490,7 +489,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   clipboardStatus = "Clipboard ready"
   let host: HostClipboardService | null = null
 
-  if (!canCreateInheritedWaylandHostService()) {
+  if (INHERITED_WAYLAND_ONLY && inheritedWaylandServiceCreated) {
     clipboardStatus = "Host clipboard unavailable: inherited Wayland socket already used"
     setupEditor(rendererInstance)
     return
@@ -503,7 +502,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       terminal: createRendererClipboardAdapter(rendererInstance),
     })
     host = null
-    markInheritedWaylandHostServiceCreated()
+    if (INHERITED_WAYLAND_ONLY) inheritedWaylandServiceCreated = true
     setupEditor(rendererInstance)
   } catch (error) {
     try {
