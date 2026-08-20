@@ -553,7 +553,7 @@ test "adaptive Sixel palette quality by color limit" {
 }
 
 test "kitty transmits decoded JPEG images as raw RGB pixels" {
-    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/halves.jpg", std.testing.allocator, .limited(1 << 20));
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../core/src/tests/fixtures/images/halves.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const decoded = try image.decode(std.testing.allocator, jpeg, .{});
     defer decoded.deinit();
@@ -576,7 +576,7 @@ test "kitty transmits decoded JPEG images as raw RGB pixels" {
 }
 
 test "kitty transmits decoded WebP alpha images as raw RGBA pixels" {
-    const webp = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/alpha.webp", std.testing.allocator, .limited(1 << 20));
+    const webp = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../core/src/tests/fixtures/images/alpha.webp", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(webp);
     const decoded = try image.decode(std.testing.allocator, webp, .{});
     defer decoded.deinit();

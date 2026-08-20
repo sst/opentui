@@ -44,7 +44,7 @@ jobs:
         if: runner.os != 'Windows'
         uses: actions/cache@v5
         with:
-          path: .zig-cache
+          path: packages/native/.zig-cache
           key: zig-v1-${{ runner.os }}-0.16.0-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-0.16.0-
 

@@ -18,6 +18,7 @@ bun create tui
 
 This monorepo contains the following packages:
 
+- [`@opentui/native`](packages/native) - Private workspace package containing the Zig implementation, tests, and benchmarks.
 - [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
 - [`@opentui/three`](packages/three) - Three.js WebGPU renderer for OpenTUI.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.

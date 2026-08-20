@@ -32,7 +32,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
 const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
 
 const LIB_NAME = "opentui";
-const ROOT_SOURCE_FILE = "lib.zig";
+const ROOT_SOURCE_FILE = "src/lib.zig";
 const GHOSTTY_VT_VERSION = "0.1.0-dev+b988efcf";
 
 const YOGA_CXX_FLAGS = [_][]const u8{
@@ -185,10 +185,10 @@ fn addMiniaudioShim(
         else => &.{"-std=c99"},
     };
 
-    module.addIncludePath(b.path("."));
+    module.addIncludePath(b.path("src"));
     module.link_libc = true;
     module.addCSourceFile(.{
-        .file = b.path("miniaudio_shim.c"),
+        .file = b.path("src/miniaudio_shim.c"),
         .flags = c_flags,
     });
 }
@@ -207,13 +207,13 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
     };
 
     module.addCSourceFile(.{
-        .file = b.path("image-shim.c"),
+        .file = b.path("src/image-shim.c"),
         .flags = flags,
     });
-    module.addIncludePath(b.path("vendor/lcms2/include"));
-    module.addIncludePath(b.path("vendor/lcms2/src"));
+    module.addIncludePath(b.path("src/vendor/lcms2/include"));
+    module.addIncludePath(b.path("src/vendor/lcms2/src"));
     module.addCSourceFiles(.{
-        .root = b.path("vendor/lcms2"),
+        .root = b.path("src/vendor/lcms2"),
         .files = &LCMS2_SOURCES,
         // image.zig serializes every LittleCMS operation with icc_cache_mutex.
         .flags = flags,
@@ -230,7 +230,7 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
         else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" },
     };
     module.addCSourceFile(.{
-        .file = b.path("image-resize-shim.c"),
+        .file = b.path("src/image-resize-shim.c"),
         .flags = resize_flags,
     });
 
@@ -242,13 +242,13 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
         appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
     else
         webp_flags;
-    module.addIncludePath(b.path("vendor/libwebp"));
+    module.addIncludePath(b.path("src/vendor/libwebp"));
     module.addCSourceFile(.{
-        .file = b.path("image-webp-config.c"),
+        .file = b.path("src/image-webp-config.c"),
         .flags = webp_dispatch_flags,
     });
     module.addCSourceFiles(.{
-        .root = b.path("vendor/libwebp"),
+        .root = b.path("src/vendor/libwebp"),
         .files = &.{
             "src/dec/alpha_dec.c",
             "src/dec/buffer_dec.c",
@@ -286,7 +286,7 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
     switch (target.result.cpu.arch) {
         .x86_64 => {
             module.addCSourceFiles(.{
-                .root = b.path("vendor/libwebp"),
+                .root = b.path("src/vendor/libwebp"),
                 .files = &.{
                     "src/dsp/alpha_processing_sse2.c",
                     "src/dsp/dec_sse2.c",
@@ -299,16 +299,16 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
                 .flags = webp_flags,
             });
             module.addCSourceFile(.{
-                .file = b.path("image-webp-sse41.c"),
+                .file = b.path("src/image-webp-sse41.c"),
                 .flags = webp_flags,
             });
             module.addCSourceFile(.{
-                .file = b.path("image-webp-avx2.c"),
+                .file = b.path("src/image-webp-avx2.c"),
                 .flags = webp_flags,
             });
         },
         .aarch64 => module.addCSourceFiles(.{
-            .root = b.path("vendor/libwebp"),
+            .root = b.path("src/vendor/libwebp"),
             .files = &.{
                 "src/dsp/alpha_processing_neon.c",
                 "src/dsp/dec_neon.c",
@@ -337,7 +337,7 @@ fn addMacOSSDKSearchPaths(b: *std.Build, module: *std.Build.Module, sdk_path: []
 
 fn addMacOSClipboardDependencies(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
     module.addCSourceFile(.{
-        .file = b.path("clipboard/macos-shim.m"),
+        .file = b.path("src/clipboard/macos-shim.m"),
         .flags = &.{ "-fobjc-arc", "-fobjc-arc-exceptions", "-isysroot", sdk_path },
     });
     module.linkFramework("AppKit", .{});
@@ -406,11 +406,11 @@ fn addTranslatedCImports(
     target: std.Build.ResolvedTarget,
 ) void {
     const miniaudio_translate = b.addTranslateC(.{
-        .root_source_file = b.path("vendor/miniaudio/miniaudio.h"),
+        .root_source_file = b.path("src/vendor/miniaudio/miniaudio.h"),
         .target = target,
         .optimize = optimize,
     });
-    miniaudio_translate.addIncludePath(b.path("."));
+    miniaudio_translate.addIncludePath(b.path("src"));
     module.addImport("miniaudio", miniaudio_translate.createModule());
 
     const yoga_dep = b.dependency("yoga", .{});
@@ -509,12 +509,22 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const bench_optimize = b.option(std.builtin.OptimizeMode, "bench-optimize", "Optimize mode for benchmarks") orelse .ReleaseFast;
     const debug_use_llvm = b.option(bool, "debug-llvm", "Use LLVM backend for debug/test artifacts");
-    const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu.2.17').");
+    const target_option = b.option([]const u8, "library-target", "Build shared library for a specific target (e.g., 'x86_64-linux-gnu.2.17').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
     const macos_sdk_path = resolveMacOSSDKPath(b);
     const build_options = b.addOptions();
     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
+
+    const module_target = b.standardTargetOptions(.{});
+    const opentui_module = b.addModule("opentui", .{
+        .root_source_file = b.path("src/opentui.zig"),
+        .target = module_target,
+        .optimize = optimize,
+    });
+    applyDependencies(b, opentui_module, optimize, module_target, build_options);
+    addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
+    addYogaDependencies(b, opentui_module);
 
     if (target_option) |target_str| {
         // Build single target
@@ -540,7 +550,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     const native_target = nativeExecutableTarget(b);
     const test_mod = b.createModule(.{
-        .root_source_file = b.path("test.zig"),
+        .root_source_file = b.path("src/test.zig"),
         .target = native_target,
         .optimize = .Debug,
     });
@@ -564,7 +574,7 @@ pub fn build(b: *std.Build) void {
     // Bench step (native only)
     const bench_step = b.step("bench", "Run benchmarks");
     const bench_mod = b.createModule(.{
-        .root_source_file = b.path("bench.zig"),
+        .root_source_file = b.path("src/bench.zig"),
         .target = native_target,
         .optimize = bench_optimize,
     });
@@ -585,7 +595,7 @@ pub fn build(b: *std.Build) void {
     const bench_ffi_step = b.step("bench-ffi", "Build NativeSpanFeed benchmark library");
     const bench_ffi_target = b.resolveTargetQuery(.{});
     const bench_ffi_mod = b.createModule(.{
-        .root_source_file = b.path("native-span-feed-bench-lib.zig"),
+        .root_source_file = b.path("src/native-span-feed-bench-lib.zig"),
         .target = bench_ffi_target,
         .optimize = bench_optimize,
     });
@@ -608,7 +618,7 @@ pub fn build(b: *std.Build) void {
     // Debug step (native only)
     const debug_step = b.step("debug", "Run debug executable");
     const debug_mod = b.createModule(.{
-        .root_source_file = b.path("debug-view.zig"),
+        .root_source_file = b.path("src/debug-view.zig"),
         .target = native_target,
         .optimize = .Debug,
     });

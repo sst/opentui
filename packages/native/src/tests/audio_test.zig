@@ -3,7 +3,7 @@ const testing = std.testing;
 const audio = @import("../audio.zig");
 
 const TEST_SAMPLE_RATE: u32 = 48_000;
-const TEST_MP3_PATH = "../tests/fixtures/audio/tone-750hz-48k-mono-1s.mp3";
+const TEST_MP3_PATH = "../core/src/tests/fixtures/audio/tone-750hz-48k-mono-1s.mp3";
 
 fn expectStatusOk(status: i32) !void {
     try testing.expectEqual(audio.Status.ok, status);

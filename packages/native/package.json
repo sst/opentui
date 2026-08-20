@@ -1,0 +1,13 @@
+{
+  "name": "@opentui/native",
+  "version": "0.5.4",
+  "private": true,
+  "scripts": {
+    "build": "zig build -Doptimize=ReleaseFast",
+    "build:dev": "zig build -Doptimize=Debug",
+    "test": "sh scripts/test.sh",
+    "bench": "zig build bench -Dbench-optimize=ReleaseFast --",
+    "bench:ffi": "zig build bench-ffi",
+    "clean": "bun ../../scripts/clean.ts --native"
+  }
+}

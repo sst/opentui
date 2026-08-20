@@ -124,9 +124,7 @@ export async function loadFirstPartyPackageFacts(repoRoot = findRepoRoot()): Pro
       if (manifest.name === "@opentui/core") {
         packageFacts.platformPackages = matchPlatformPackages(manifest.name, manifest.optionalDependencies, variants)
         packageFacts.platforms = variants.map(normalizePlatform)
-        packageFacts.zig = extractZigMetadata(
-          await readFile(join(packagesRoot, directory, "src/zig/build.zig.zon"), "utf8"),
-        )
+        packageFacts.zig = extractZigMetadata(await readFile(join(packagesRoot, "native", "build.zig.zon"), "utf8"))
       }
 
       return packageFacts

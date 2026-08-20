@@ -717,7 +717,7 @@ fn injectJpegExifOrientation(
 }
 
 test "JPEG EXIF orientation swaps probe and decode dimensions" {
-    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../core/src/tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const plain = try image.decode(std.testing.allocator, jpeg, .{});
     defer plain.deinit();
@@ -759,7 +759,7 @@ test "JPEG EXIF orientation swaps probe and decode dimensions" {
 }
 
 test "JPEG EXIF orientation 180 keeps dimensions" {
-    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../core/src/tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     const plain = try image.decode(std.testing.allocator, jpeg, .{});
     defer plain.deinit();
@@ -788,7 +788,7 @@ test "JPEG EXIF orientation 180 keeps dimensions" {
 }
 
 test "JPEG EXIF orientation ignores invalid values and uses the default" {
-    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
+    const jpeg = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../core/src/tests/fixtures/images/orientation.jpg", std.testing.allocator, .limited(1 << 20));
     defer std.testing.allocator.free(jpeg);
     for ([_]u16{ 0, 9, 200 }) |invalid| {
         const bytes = try injectJpegExifOrientation(std.testing.allocator, jpeg, invalid, .little);

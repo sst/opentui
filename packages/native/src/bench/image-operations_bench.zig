@@ -10,10 +10,10 @@ const EncodedScenario = struct {
 };
 
 const encoded_scenarios = [_]EncodedScenario{
-    .{ .label = "PNG", .path = "../../../examples/src/assets/image-demo.png" },
-    .{ .label = "JPEG", .path = "../../../examples/src/assets/dragon.jpg" },
-    .{ .label = "WebP", .path = "../../../examples/src/assets/image-demo.webp" },
-    .{ .label = "GIF", .path = "../../../examples/src/assets/image-demo.gif" },
+    .{ .label = "PNG", .path = "../examples/src/assets/image-demo.png" },
+    .{ .label = "JPEG", .path = "../examples/src/assets/dragon.jpg" },
+    .{ .label = "WebP", .path = "../examples/src/assets/image-demo.webp" },
+    .{ .label = "GIF", .path = "../examples/src/assets/image-demo.gif" },
 };
 
 fn appendResult(

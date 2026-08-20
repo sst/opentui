@@ -1,0 +1,7 @@
+.zig-cache
+zig-out
+lib
+zig-pkg
+examples/*/.zig-cache
+examples/*/zig-out
+examples/*/zig-pkg

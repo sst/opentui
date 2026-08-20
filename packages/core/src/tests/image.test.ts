@@ -29,7 +29,10 @@ const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
 async function readBase64Fixture(name: string): Promise<Uint8Array> {
   return Uint8Array.from(
-    Buffer.from((await readFile(new URL(`../zig/tests/fixtures/${name}`, import.meta.url), "utf8")).trim(), "base64"),
+    Buffer.from(
+      (await readFile(new URL(`../../../native/src/tests/fixtures/${name}`, import.meta.url), "utf8")).trim(),
+      "base64",
+    ),
   )
 }
 
