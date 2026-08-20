@@ -516,7 +516,7 @@ class TimelineEngine {
       this.update(deltaTime)
     }
 
-    renderer.setFrameCallback(this.frameCallback)
+    renderer.setFrameCallback(this.frameCallback, { drawsToBuffer: false })
   }
 
   detach(): void {

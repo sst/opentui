@@ -994,6 +994,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.renderCursor(buffer)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === EditBufferRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     buffer.drawEditorView(this.editorView, this._screenX, this._screenY)
   }

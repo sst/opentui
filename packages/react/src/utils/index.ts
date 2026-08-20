@@ -20,13 +20,15 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
   }
 }
 
-function setStyle(instance: Instance, styles: any, oldStyles: any) {
+function setStyle(instance: Instance, styles: any, oldStyles: any): boolean {
+  let changed = false
   if (oldStyles != null && typeof oldStyles === "object") {
     for (const styleName in oldStyles) {
       if (oldStyles.hasOwnProperty(styleName)) {
         if (styles == null || !styles.hasOwnProperty(styleName)) {
           // @ts-expect-error props are not strongly typed in the reconciler
           instance[styleName] = null
+          changed = true
         }
       }
     }
@@ -40,13 +42,15 @@ function setStyle(instance: Instance, styles: any, oldStyles: any) {
         if (value !== oldValue) {
           // @ts-expect-error props are not strongly typed in the reconciler
           instance[styleName] = value
+          changed = true
         }
       }
     }
   }
+  return changed
 }
 
-function setProperty(instance: Instance, type: Type, propKey: string, propValue: any, oldPropValue?: any) {
+function setProperty(instance: Instance, type: Type, propKey: string, propValue: any, oldPropValue?: any): boolean {
   switch (propKey) {
     case "onChange":
       if (instance instanceof InputRenderable) {
@@ -56,26 +60,26 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
       } else if (instance instanceof TabSelectRenderable) {
         initEventListeners(instance, TabSelectRenderableEvents.SELECTION_CHANGED, propValue, oldPropValue)
       }
-      break
+      return false
     case "onInput":
       if (instance instanceof InputRenderable) {
         initEventListeners(instance, InputRenderableEvents.INPUT, propValue, oldPropValue)
       }
-      break
+      return false
     case "onSubmit":
       if (instance instanceof InputRenderable) {
         initEventListeners(instance, InputRenderableEvents.ENTER, propValue, oldPropValue)
       } else if (instance instanceof TextareaRenderable) {
         instance.onSubmit = propValue
       }
-      break
+      return false
     case "onSelect":
       if (instance instanceof SelectRenderable) {
         initEventListeners(instance, SelectRenderableEvents.ITEM_SELECTED, propValue, oldPropValue)
       } else if (instance instanceof TabSelectRenderable) {
         initEventListeners(instance, TabSelectRenderableEvents.ITEM_SELECTED, propValue, oldPropValue)
       }
-      break
+      return false
     case "focused":
       if (isRenderable(instance)) {
         if (!!propValue) {
@@ -84,16 +88,16 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
           instance.blur()
         }
       }
-      break
+      return false
     case "style":
-      setStyle(instance, propValue, oldPropValue)
-      break
+      return setStyle(instance, propValue, oldPropValue)
     case "children":
       // Skip children handling - React reconciler handles this automatically
-      break
+      return false
     default:
       // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
       instance[propKey] = propValue
+      return true
   }
 }
 
@@ -112,11 +116,12 @@ export function setInitialProperties(instance: Instance, type: Type, props: Prop
   }
 }
 
-export function updateProperties(instance: Instance, type: Type, oldProps: Props, newProps: Props) {
+export function updateProperties(instance: Instance, type: Type, oldProps: Props, newProps: Props): boolean {
+  let changed = false
   for (const propKey in oldProps) {
     const oldProp = oldProps[propKey]
     if (oldProps.hasOwnProperty(propKey) && oldProp != null && !newProps.hasOwnProperty(propKey)) {
-      setProperty(instance, type, propKey, null, oldProp)
+      changed = setProperty(instance, type, propKey, null, oldProp) || changed
     }
   }
 
@@ -125,7 +130,8 @@ export function updateProperties(instance: Instance, type: Type, oldProps: Props
     const oldProp = oldProps[propKey]
 
     if (newProps.hasOwnProperty(propKey) && newProp !== oldProp && (newProp != null || oldProp != null)) {
-      setProperty(instance, type, propKey, newProp, oldProp)
+      changed = setProperty(instance, type, propKey, newProp, oldProp) || changed
     }
   }
+  return changed
 }

@@ -481,6 +481,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === TextBufferRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
       buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)

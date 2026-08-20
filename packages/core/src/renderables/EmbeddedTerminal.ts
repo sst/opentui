@@ -255,6 +255,10 @@ export class EmbeddedTerminalRenderable extends Renderable {
     this._onTerminalResize?.(cols, rows)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === EmbeddedTerminalRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this.handle || !this.frameBuffer || !this.visible || this.isDestroyed) return
     this.lib.embeddedTerminalCompose(this.handle, buffer.ptr, 0, 0)

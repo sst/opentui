@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import {
   BoxRenderable,
+  LineNumberRenderable,
   OptimizedBuffer,
   Renderable,
   RGBA,
   ScrollBoxRenderable,
   TextRenderable,
+  VRenderable,
   type RenderContext,
 } from "../index.js"
 import { createTestRenderer } from "../testing.js"
@@ -23,7 +25,7 @@ class PaintingRenderable extends Renderable {
   public paintCount = 0
 
   constructor(ctx: RenderContext, id: string, value: string, x: number, y: number) {
-    super(ctx, { id, width: 1, height: 1, position: "absolute", left: x, top: y })
+    super(ctx, { id, width: 1, height: 1, position: "absolute", left: x, top: y, paintBounds: "layout" })
     this.value = value
   }
 
@@ -62,6 +64,24 @@ class UnboundedPaintingRenderable extends Renderable {
   }
 }
 
+class LegacyOutOfBoundsRenderable extends Renderable {
+  private value: string
+
+  constructor(ctx: RenderContext, value: string) {
+    super(ctx, { id: "legacy-out-of-bounds", width: 1, height: 1, position: "absolute", left: 2, top: 2 })
+    this.value = value
+  }
+
+  public setValue(value: string): void {
+    this.value = value
+    this.requestRender()
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    buffer.setCell(this._screenX, 8, this.value, fg, bg)
+  }
+}
+
 class LifecyclePaintingRenderable extends PaintingRenderable {
   private tick = 0
 
@@ -91,6 +111,112 @@ async function setup(width = 40, height = 12) {
 }
 
 describe("incremental paint", () => {
+  test("preserves direct next-buffer drawing from frame callbacks", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 4,
+      height: 2,
+      useThread: false,
+    })
+    let callbackRuns = 0
+    let drawDirectCell = true
+    const callback = async () => {
+      callbackRuns += 1
+      if (drawDirectCell) renderer.nextRenderBuffer.setCell(1, 0, "X", fg, bg)
+    }
+    renderer.setFrameCallback(callback)
+
+    await renderOnce()
+
+    expect(callbackRuns).toBe(1)
+    expect(captureCharFrame()).toContain("X")
+
+    drawDirectCell = false
+    await renderOnce()
+    expect(callbackRuns).toBe(2)
+    expect(captureCharFrame()).not.toContain("X")
+
+    drawDirectCell = true
+    await renderOnce()
+    expect(captureCharFrame()).toContain("X")
+    renderer.removeFrameCallback(callback)
+    await renderOnce()
+    expect(captureCharFrame()).not.toContain("X")
+    renderer.destroy()
+  })
+
+  test("keeps incremental painting for frame callbacks declared buffer-free", async () => {
+    const { renderer, renderOnce, root } = await setup()
+    const staticNode = new PaintingRenderable(renderer, "buffer-free-callback-static", "S", 20, 6)
+    const spinner = new PaintingRenderable(renderer, "buffer-free-callback-spinner", "|", 2, 1)
+    root.add(staticNode)
+    root.add(spinner)
+    renderer.setFrameCallback(async () => {}, { drawsToBuffer: false })
+
+    await renderOnce()
+    const staticPaintsBeforeTick = staticNode.paintCount
+    const spinnerPaintsBeforeTick = spinner.paintCount
+    spinner.setValue("/")
+    await renderOnce()
+
+    expect(staticNode.paintCount).toBe(staticPaintsBeforeTick)
+    expect(spinner.paintCount).toBe(spinnerPaintsBeforeTick + 1)
+    expect(renderer.getNativeStats().cellsUpdated).toBe(1)
+    renderer.destroy()
+  })
+
+  for (const [status, label] of [
+    [1, "skipped"],
+    [2, "failed"],
+  ] as const) {
+    test(`publishes the matching hit grid after a ${label} native frame`, async () => {
+      const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+        width: 4,
+        height: 2,
+        useThread: false,
+        useMouse: true,
+      })
+      const first = new TextRenderable(renderer, {
+        id: `${label}-first-hit-target`,
+        content: "A",
+        width: 1,
+        height: 1,
+        position: "absolute",
+        left: 0,
+        top: 0,
+      })
+      renderer.root.add(first)
+      await renderOnce()
+      expect(renderer.hitTest(0, 0)).toBe(first.num)
+
+      renderer.root.remove(first)
+      const second = new TextRenderable(renderer, {
+        id: `${label}-second-hit-target`,
+        content: "B",
+        width: 1,
+        height: 1,
+        position: "absolute",
+        left: 0,
+        top: 0,
+      })
+      renderer.root.add(second)
+
+      const rendererLib = (renderer as any).lib
+      const nativeRender = rendererLib.render
+      try {
+        rendererLib.render = () => status
+        await renderOnce()
+      } finally {
+        rendererLib.render = nativeRender
+      }
+
+      await renderOnce()
+
+      expect(captureCharFrame()).toContain("B")
+      expect(renderer.hitTest(0, 0)).toBe(second.num)
+      renderer.destroy()
+    })
+  }
+
   test("skips all paints on an unchanged frame", async () => {
     const { renderer, renderOnce, root, captureCharFrame } = await setup()
     const first = new PaintingRenderable(renderer, "first", "A", 2, 2)
@@ -218,6 +344,48 @@ describe("incremental paint", () => {
     renderer.destroy()
   })
 
+  test("preserves legacy custom painting outside omitted paint bounds", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const custom = new LegacyOutOfBoundsRenderable(renderer, "A")
+    root.add(custom)
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+    custom.setValue("B")
+    await renderOnce()
+
+    expect(captureCharFrame()).not.toContain("A")
+    expect(captureCharFrame()).toContain("B")
+    renderer.destroy()
+  })
+
+  test("preserves VRenderable painting outside omitted paint bounds", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    let value = "A"
+    const custom = new VRenderable(renderer, {
+      id: "out-of-bounds-vrenderable",
+      width: 1,
+      height: 1,
+      position: "absolute",
+      left: 2,
+      top: 2,
+      render(buffer) {
+        buffer.setCell(2, 8, value, fg, bg)
+      },
+    })
+    root.add(custom)
+
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+    value = "B"
+    custom.requestRender()
+    await renderOnce()
+
+    expect(captureCharFrame()).not.toContain("A")
+    expect(captureCharFrame()).toContain("B")
+    renderer.destroy()
+  })
+
   test("preserves lifecycle-driven visual updates", async () => {
     const { renderer, renderOnce, root, captureCharFrame } = await setup()
     const lifecycle = new LifecyclePaintingRenderable(renderer)
@@ -259,6 +427,51 @@ describe("incremental paint", () => {
     expect(scrollContent.paintCount).toBe(scrollPaintsBeforeTick)
     expect(spinner.paintCount).toBe(spinnerPaintsBeforeTick + 1)
     expect(renderer.getNativeStats().cellsUpdated).toBe(1)
+    renderer.destroy()
+  })
+
+  test("keeps row-local painting beside an unchanged line-number gutter", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup(40, 16)
+    const code = new TextRenderable(renderer, {
+      id: "line-number-code",
+      content: "one\ntwo\nthree",
+      width: 20,
+    })
+    const lineNumbers = new LineNumberRenderable(renderer, {
+      id: "incremental-line-numbers",
+      target: code,
+      width: 24,
+      position: "absolute",
+      left: 1,
+      top: 1,
+    })
+    const staticNode = new PaintingRenderable(renderer, "line-number-static", "S", 30, 7)
+    const spinner = new PaintingRenderable(renderer, "line-number-spinner", "|", 30, 9)
+    root.add(lineNumbers)
+    root.add(staticNode)
+    root.add(spinner)
+
+    await renderOnce()
+    while (Boolean(renderer.root.getLayoutNode().isDirty())) await renderOnce()
+    const staticPaintsBeforeTick = staticNode.paintCount
+    const spinnerPaintsBeforeTick = spinner.paintCount
+
+    spinner.setValue("/")
+    await renderOnce()
+
+    expect(staticNode.paintCount).toBe(staticPaintsBeforeTick)
+    expect(spinner.paintCount).toBe(spinnerPaintsBeforeTick + 1)
+    expect(renderer.getNativeStats().cellsUpdated).toBe(1)
+
+    const codeXBeforeDigitBoundary = code.screenX
+    const staticPaintsBeforeDigitBoundary = staticNode.paintCount
+    code.content = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n")
+    await renderOnce()
+    while (Boolean(renderer.root.getLayoutNode().isDirty())) await renderOnce()
+
+    expect(code.screenX).toBe(codeXBeforeDigitBoundary + 1)
+    expect(staticNode.paintCount).toBeGreaterThan(staticPaintsBeforeDigitBoundary)
+    expect(captureCharFrame()).toContain("12")
     renderer.destroy()
   })
 
