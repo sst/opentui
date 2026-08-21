@@ -1484,7 +1484,7 @@ pub const CliRenderer = struct {
                     }
                     currentLinkId = linkId;
                     if (currentLinkId != 0) {
-                        const lp = self.nextRenderBuffer.link_pool;
+                        const lp = snapshot.link_pool;
                         if (lp.get(currentLinkId)) |url_bytes| {
                             writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
