@@ -158,6 +158,19 @@ export abstract class BaseRenderable extends EventEmitter {
   public abstract requestRender(): void
   public abstract findDescendantById(id: string): BaseRenderable | undefined
 
+  public onLayoutAttach(_ctx: RenderContext): void {}
+
+  protected assertCanAdopt(child: BaseRenderable): void {
+    let current: BaseRenderable | null = this
+    const visited = new Set<BaseRenderable>()
+    while (current) {
+      if (current === child) throw new Error("Cannot add a renderable to itself or one of its descendants")
+      if (visited.has(current)) throw new Error("Cannot mutate a cyclic renderable tree")
+      visited.add(current)
+      current = current.parent
+    }
+  }
+
   public get id(): string {
     return this._id
   }
@@ -200,6 +213,7 @@ export abstract class BaseRenderable extends EventEmitter {
 interface LayoutGenerationContext extends RenderContext {
   __otuiLayoutGeneration?: number
   __otuiRenderListRevision?: number
+  __otuiUpdatePassComplete?: boolean
 }
 
 function getLayoutGeneration(ctx: RenderContext): number {
@@ -1204,6 +1218,9 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
+    this.assertCanAdopt(renderable)
+    renderable.onLayoutAttach(this._ctx)
+
     const anchorRenderable = index !== undefined ? this._childrenInLayoutOrder[index] : undefined
 
     if (anchorRenderable) {
@@ -1262,6 +1279,8 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
+    this.assertCanAdopt(renderable)
+
     if (!isRenderable(anchor)) {
       throw new Error("Anchor must be a Renderable")
     }
@@ -1286,6 +1305,8 @@ export abstract class Renderable extends BaseRenderable {
       }
       return -1
     }
+
+    renderable.onLayoutAttach(this._ctx)
 
     if (renderable.parent === this) {
       this.yogaNode.removeChild(renderable.getLayoutNode())
@@ -1382,7 +1403,7 @@ export abstract class Renderable extends BaseRenderable {
   public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
     if (!this.visible) return
 
-    this.onUpdate(deltaTime)
+    if (!(this._ctx as LayoutGenerationContext).__otuiUpdatePassComplete) this.onUpdate(deltaTime)
 
     // If destroyed during onUpdate, don't add to render list
     if (this._isDestroyed) return
@@ -1516,6 +1537,16 @@ export abstract class Renderable extends BaseRenderable {
   protected onUpdate(deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
+  }
+
+  protected runUpdatePass(deltaTime: number): void {
+    if (!this.visible || this._isDestroyed) return
+    this.onUpdate(deltaTime)
+    if (this._isDestroyed) return
+    this.ensureZIndexSorted()
+    for (const child of [...this._childrenInZIndexOrder]) {
+      if (typeof child.runUpdatePass === "function") child.runUpdatePass(deltaTime)
+    }
   }
 
   protected getScissorRect(): {
@@ -1781,17 +1812,22 @@ export class RootRenderable extends Renderable {
     this._currentRenderable = undefined
     if (!this.visible) return
 
-    // 0. Run lifecycle pass
+    // 0. Run update hooks before document snapshots and layout. This keeps
+    // mutations made by onUpdate in the same measured and drawn frame.
+    this.runUpdatePass(deltaTime)
+
+    // 1. Run lifecycle pass
     for (const renderable of this._ctx.getLifecyclePasses()) {
       if (!renderable.isDestroyed) {
         renderable.onLifecyclePass?.call(renderable)
       }
     }
 
-    // NOTE: Strictly speaking, this is a 3-pass rendering process:
-    // 1. Calculate layout from root
-    // 2. Update layout throughout the tree and collect render list
-    // 3. Render all collected renderables
+    // NOTE: Strictly speaking, this is a 4-pass rendering process:
+    // 1. Run update hooks and lifecycle snapshots
+    // 2. Calculate layout from root
+    // 3. Update layout throughout the tree and collect render list
+    // 4. Render all collected renderables
     // Should be 2-pass by hooking into the calculateLayout phase,
     // but that's only possible if we move the layout tree to native.
 
@@ -1812,7 +1848,13 @@ export class RootRenderable extends Renderable {
 
     if (!canReuseRenderList) {
       this.renderList.length = 0
-      super.updateLayout(deltaTime, this.renderList)
+      const generationContext = this._ctx as LayoutGenerationContext
+      generationContext.__otuiUpdatePassComplete = true
+      try {
+        super.updateLayout(deltaTime, this.renderList)
+      } finally {
+        generationContext.__otuiUpdatePassComplete = false
+      }
       this.appliedLayoutGeneration = layoutGeneration
       this.appliedRenderListRevision = getRenderListRevision(this._ctx)
       this.renderListReusable = this.canReuseCurrentRenderList()

@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test"
-import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
+import { RootTextNodeRenderable, TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
+import { TextRenderable } from "./Text.js"
 import { RGBA } from "../lib/RGBA.js"
 import { StyledText, red, bold, t } from "../lib/styled-text.js"
 
@@ -90,6 +91,21 @@ describe("TextNodeRenderable", () => {
       expect(isTextNodeRenderable(plainObject)).toBe(false)
       expect(isTextNodeRenderable(null)).toBe(false)
       expect(isTextNodeRenderable(undefined)).toBe(false)
+    })
+
+    it("recognizes the legacy cross-version TextNode brand", () => {
+      const legacy = { [Symbol.for("@opentui/core/TextNodeRenderable")]: true }
+      expect(isTextNodeRenderable(legacy)).toBe(true)
+    })
+
+    it("keeps RootTextNodeRenderable constructor argument compatibility", () => {
+      const parent = new TextRenderable({ content: "parent" })
+      const root = new RootTextNodeRenderable(parent.ctx, { id: "legacy-root" }, parent)
+      expect(root.id).toBe("legacy-root")
+      expect(root.textParent).toBe(parent)
+      expect((root as any).hasTextDocumentState).toBe(false)
+      root.destroy()
+      parent.destroy()
     })
   })
 

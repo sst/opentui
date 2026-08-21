@@ -3,6 +3,12 @@ import { TextAttributes, TextRenderable, type RenderContext, type TextNodeOption
 export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "br", "a"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
+export class LayoutTextRenderable extends TextRenderable {
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, false)
+  }
+}
+
 export class SpanRenderable extends TextRenderable {
   constructor(ctx: RenderContext, options: TextNodeOptions) {
     super(ctx, options, false)

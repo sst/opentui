@@ -42,6 +42,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   private _textBufferView: TextBufferView | null = null
   private _textDocumentSyntaxStyle: SyntaxStyle | null = null
   private nativeRenderable: NativeRenderableHandle | null = null
+  private firstLineOffsetContext: RenderContext | null = null
 
   protected get textBuffer(): TextBuffer {
     if (!this._textBuffer) throw new Error("Text document state is not attached")
@@ -87,8 +88,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       : this._defaultOptions.tabIndicatorColor
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this._firstLineOffset = attachTextDocumentState ? (ctx.claimFirstLineOffset?.(this) ?? 0) : 0
-
     if (attachTextDocumentState) this.attachTextDocumentState()
   }
 
@@ -99,30 +98,58 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected attachTextDocumentState(): void {
     if (this.hasTextDocumentState || this.isDestroyed) return
 
-    const textBuffer = TextBuffer.create(this._ctx.widthMethod)
-    const textBufferView = TextBufferView.create(textBuffer)
-    const syntaxStyle = SyntaxStyle.create()
+    let textBuffer: TextBuffer | null = null
+    let textBufferView: TextBufferView | null = null
+    let syntaxStyle: SyntaxStyle | null = null
+    let nativeRenderable: NativeRenderableHandle | null = null
+    let claimedOffset = false
 
-    this._textBuffer = textBuffer
-    this._textBufferView = textBufferView
-    this._textDocumentSyntaxStyle = syntaxStyle
+    try {
+      textBuffer = TextBuffer.create(this._ctx.widthMethod)
+      textBufferView = TextBufferView.create(textBuffer)
+      syntaxStyle = SyntaxStyle.create()
 
-    textBuffer.setSyntaxStyle(syntaxStyle)
-    textBufferView.setWrapMode(this._wrapMode)
-    textBufferView.setFirstLineOffset(this._firstLineOffset)
-    this.setupNativeRenderable()
+      textBuffer.setSyntaxStyle(syntaxStyle)
+      textBufferView.setWrapMode(this._wrapMode)
+      nativeRenderable = this.createNativeRenderable(textBufferView)
 
-    textBuffer.setDefaultFg(this._defaultFg)
-    textBuffer.setDefaultBg(this._defaultBg)
-    textBuffer.setDefaultAttributes(this._defaultAttributes)
+      textBuffer.setDefaultFg(this._defaultFg)
+      textBuffer.setDefaultBg(this._defaultBg)
+      textBuffer.setDefaultAttributes(this._defaultAttributes)
 
-    if (this._tabIndicator !== undefined) textBufferView.setTabIndicator(this._tabIndicator)
-    if (this._tabIndicatorColor !== undefined) textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
-    if (this._wrapMode !== "none" && this.width > 0) textBufferView.setWrapWidth(this.width)
-    if (this.width > 0 && this.height > 0) {
-      textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      if (this._tabIndicator !== undefined) textBufferView.setTabIndicator(this._tabIndicator)
+      if (this._tabIndicatorColor !== undefined) textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
+      if (this._wrapMode !== "none" && this.width > 0) textBufferView.setWrapWidth(this.width)
+      if (this.width > 0 && this.height > 0) {
+        textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      }
+      textBufferView.setTruncate(this._truncate)
+
+      this._firstLineOffset = this._ctx.claimFirstLineOffset?.(this) ?? 0
+      claimedOffset = true
+      textBufferView.setFirstLineOffset(this._firstLineOffset)
+
+      this._textBuffer = textBuffer
+      this._textBufferView = textBufferView
+      this._textDocumentSyntaxStyle = syntaxStyle
+      this.nativeRenderable = nativeRenderable
+      this.firstLineOffsetContext = this._ctx
+    } catch (error) {
+      const cleanup = [
+        () => claimedOffset && this._ctx.releaseFirstLineOffset?.(this),
+        () => nativeRenderable && resolveRenderLib().destroyNativeRenderable(nativeRenderable),
+        () => textBuffer && syntaxStyle && textBuffer.setSyntaxStyle(null),
+        () => syntaxStyle?.destroy(),
+        () => textBufferView?.destroy(),
+        () => textBuffer?.destroy(),
+      ]
+      for (const dispose of cleanup) {
+        try {
+          dispose()
+        } catch {}
+      }
+      throw error
     }
-    textBufferView.setTruncate(this._truncate)
 
     this.yogaNode.markDirty()
     this._ctx.requestRender()
@@ -131,22 +158,53 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected detachTextDocumentState(): void {
     if (!this.hasTextDocumentState) return
 
-    if (this.nativeRenderable) {
-      resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
-      this.nativeRenderable = null
-    }
-
     const textBuffer = this._textBuffer!
     const textBufferView = this._textBufferView!
     const syntaxStyle = this._textDocumentSyntaxStyle!
+    const nativeRenderable = this.nativeRenderable
+    this.nativeRenderable = null
     this._textBuffer = null
     this._textBufferView = null
     this._textDocumentSyntaxStyle = null
 
-    textBuffer.setSyntaxStyle(null)
-    syntaxStyle.destroy()
-    textBufferView.destroy()
-    textBuffer.destroy()
+    const claimedContext = this.firstLineOffsetContext
+    this.firstLineOffsetContext = null
+    this._firstLineOffset = 0
+
+    const cleanup = [
+      () => claimedContext?.releaseFirstLineOffset?.(this),
+      () => nativeRenderable && resolveRenderLib().destroyNativeRenderable(nativeRenderable),
+      () => textBuffer.setSyntaxStyle(null),
+      () => syntaxStyle.destroy(),
+      () => textBufferView.destroy(),
+      () => textBuffer.destroy(),
+    ]
+    let cleanupError: unknown
+    for (const dispose of cleanup) {
+      try {
+        dispose()
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (cleanupError) throw cleanupError
+  }
+
+  protected adoptTextDocumentContext(ctx: RenderContext): void {
+    if (this._ctx === ctx) return
+    const previousContext = this._ctx
+    const wasAttached = this.hasTextDocumentState
+    if (wasAttached) this.detachTextDocumentState()
+    this._ctx = ctx
+    if (!wasAttached) return
+
+    try {
+      this.attachTextDocumentState()
+    } catch (error) {
+      this._ctx = previousContext
+      this.attachTextDocumentState()
+      throw error
+    }
   }
 
   protected onMouseEvent(event: any): void {
@@ -330,8 +388,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
           this.textBufferView.setWrapWidth(this.width)
         }
       }
-      // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
-      this.yogaNode.markDirty()
+      // Inline text has no measure function; its owner is invalidated by TextRenderable.
+      if (this.hasTextDocumentState) this.yogaNode.markDirty()
       this.requestRender()
     }
   }
@@ -381,7 +439,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
     this.yogaNode.markDirty()
     this.requestRender()
-    this.emit("line-info-change")
+    this.emitLineInfoChange()
   }
 
   protected refreshLocalSelection(): boolean {
@@ -414,10 +472,14 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.yogaNode.markDirty()
     this.requestRender()
+    this.emitLineInfoChange()
+  }
+
+  protected emitLineInfoChange(): void {
     this.emit("line-info-change")
   }
 
-  private setupNativeRenderable(): void {
+  private createNativeRenderable(textBufferView: TextBufferView): NativeRenderableHandle {
     const lib = resolveRenderLib()
     // Transitional native backing: JS still owns the render tree and Yoga nodes,
     // while native owns only hot measurement state. Attach the existing JS-created
@@ -432,13 +494,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       !lib.nativeRenderableSetMeasureTarget(
         nativeRenderable,
         NativeMeasureTargetKind.TextBufferView,
-        this.textBufferView.ptr,
+        textBufferView.ptr,
       )
     ) {
       lib.destroyNativeRenderable(nativeRenderable)
       throw new Error("Failed to attach text buffer native measure target")
     }
-    this.nativeRenderable = nativeRenderable
+    return nativeRenderable
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -526,9 +588,18 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   destroy(): void {
     if (this.isDestroyed) return
-
-    this.detachTextDocumentState()
-    super.destroy()
+    let destroyError: unknown
+    try {
+      this.detachTextDocumentState()
+    } catch (error) {
+      destroyError = error
+    }
+    try {
+      super.destroy()
+    } catch (error) {
+      destroyError ??= error
+    }
+    if (destroyError) throw destroyError
   }
 
   protected onFgChanged(newColor: RGBA): void {

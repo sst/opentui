@@ -21,7 +21,11 @@ import { getComponentCatalogue, RendererContext, SlotRenderable, SpanRenderable 
 import { getNextId } from "./utils/id-counter.js"
 import { log } from "./utils/log.js"
 
-class TextNode extends TextRenderable {}
+class TextNode extends TextRenderable {
+  constructor(options: { id: string }) {
+    super(options, false)
+  }
+}
 
 export type DomNode = BaseRenderable
 

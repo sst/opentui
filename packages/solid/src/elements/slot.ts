@@ -56,7 +56,7 @@ export class TextSlotRenderable extends TextRenderable {
   protected destroyed: boolean = false
 
   constructor(id: string, parent?: SlotRenderable) {
-    super({ id: id })
+    super({ id: id }, false)
     this._visible = false
     this.slotParent = parent
   }

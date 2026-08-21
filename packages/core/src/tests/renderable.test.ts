@@ -330,6 +330,22 @@ describe("Renderable - layout read caching invariants", () => {
 })
 
 describe("Renderable - Child Management", () => {
+  test("rejects layout self and ancestor cycles before mutation", () => {
+    const root = new TestRenderable(testRenderer, { id: "root" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const grandchild = new TestRenderable(testRenderer, { id: "grandchild" })
+    root.add(child)
+    child.add(grandchild)
+
+    expect(() => grandchild.add(root)).toThrow("descendants")
+    expect(root.parent).toBeNull()
+    expect(root.getChildren()).toEqual([child])
+    expect(child.parent).toBe(root)
+    expect(child.getChildren()).toEqual([grandchild])
+    expect(grandchild.parent).toBe(child)
+    expect(() => root.add(root)).toThrow("itself")
+  })
+
   test("can add and remove children", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child1 = new TestRenderable(testRenderer, { id: "child1" })

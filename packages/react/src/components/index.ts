@@ -11,7 +11,6 @@ import {
   SelectRenderable,
   TabSelectRenderable,
   TextareaRenderable,
-  TextRenderable,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/components.js"
 import {
@@ -19,13 +18,14 @@ import {
   ItalicSpanRenderable,
   LineBreakRenderable,
   LinkRenderable,
+  LayoutTextRenderable,
   SpanRenderable,
   UnderlineSpanRenderable,
 } from "./text.js"
 
 export const baseComponents = {
   box: BoxRenderable,
-  text: TextRenderable,
+  text: LayoutTextRenderable,
   code: CodeRenderable,
   diff: DiffRenderable,
   markdown: MarkdownRenderable,

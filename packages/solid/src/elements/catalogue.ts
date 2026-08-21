@@ -27,6 +27,13 @@ export class SpanRenderable extends TextRenderable {
   }
 }
 
+export class LayoutTextRenderable extends TextRenderable {
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, false)
+    this.allowLayoutTextDocumentPromotion()
+  }
+}
+
 export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "a"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
@@ -90,7 +97,7 @@ export class LinkRenderable extends SpanRenderable {
 
 export const baseComponents = {
   box: BoxRenderable,
-  text: TextRenderable,
+  text: LayoutTextRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   textarea: TextareaRenderable,

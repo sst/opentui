@@ -1945,6 +1945,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       enumerable: true,
       configurable: true,
     })
+    Object.defineProperty(renderContext, "releaseFirstLineOffset", {
+      value: (renderable: Renderable): void => {
+        if (firstLineOffsetOwner === renderable) firstLineOffsetOwner = null
+      },
+      enumerable: true,
+      configurable: true,
+    })
 
     const internalRoot = new RootRenderable(renderContext)
     const publicRoot = new BoxRenderable(renderContext, {

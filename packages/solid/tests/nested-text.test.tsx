@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type TextRenderable } from "@opentui/core"
 import { afterEach, describe, expect, test } from "bun:test"
 import { createSignal, For } from "solid-js"
 import { testRender } from "../index.js"
@@ -89,5 +89,48 @@ describe("Solid nested text", () => {
     span = setup.captureSpans().lines[0]!.spans.find((candidate) => candidate.text.includes("status"))!
     expect(span.attributes & TextAttributes.BOLD).toBeFalsy()
     expect(span.fg.toInts()).not.toEqual([255, 0, 0, 255])
+  })
+
+  test("promotes only layout text while nested refs delegate functional APIs", async () => {
+    let outer: TextRenderable | undefined
+    let nested: TextRenderable | undefined
+    setup = await testRender(
+      () => (
+        <text ref={(value) => (outer = value)}>
+          prefix <text ref={(value) => (nested = value)}>界{"\t"}value</text>
+        </text>
+      ),
+      { width: 30, height: 3 },
+    )
+    await setup.renderOnce()
+
+    expect((outer as any).hasTextDocumentState).toBe(true)
+    expect((nested as any).hasTextDocumentState).toBe(false)
+    expect(nested!.plainText).toBe("界\tvalue")
+    expect(nested!.textLength).toBe(9)
+    expect(nested!.lineInfo).toEqual(outer!.lineInfo)
+  })
+
+  test("preserves hidden outer content and removes hidden nested text from flow", async () => {
+    const [nestedVisible, setNestedVisible] = createSignal(true)
+    const [outerVisible, setOuterVisible] = createSignal(true)
+    let outer: TextRenderable | undefined
+    setup = await testRender(
+      () => (
+        <text ref={(value) => (outer = value)} visible={outerVisible()}>
+          prefix <text visible={nestedVisible()}>nested</text>
+        </text>
+      ),
+      { width: 30, height: 3 },
+    )
+    await setup.renderOnce()
+
+    setNestedVisible(false)
+    await setup.renderOnce()
+    expect(outer!.plainText).toBe("prefix ")
+
+    setOuterVisible(false)
+    await setup.renderOnce()
+    expect(outer!.plainText).toBe("prefix ")
   })
 })

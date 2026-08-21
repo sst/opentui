@@ -62,10 +62,14 @@ export const hostConfig: HostConfig<
       throw new Error(`Unknown component type: ${type}`)
     }
 
-    return new components[type](rootContainerInstance.ctx, {
+    const instance = new components[type](rootContainerInstance.ctx, {
       id,
       ...initialInstanceProps(type, props),
     })
+    if (type === "text" && !hostContext.isInsideText && instance instanceof TextRenderable) {
+      instance.allowLayoutTextDocumentPromotion()
+    }
+    return instance
   },
 
   // Append a child to a parent
