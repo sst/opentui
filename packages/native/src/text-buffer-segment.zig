@@ -15,6 +15,9 @@ pub const TextBufferError = error{
     InvalidIndex,
     InvalidId,
     InvalidMemId,
+    InvalidByteOffset,
+    InvalidDisplayColumn,
+    InvalidUtf8,
 };
 
 const MemRegistry = mem_registry_mod.MemRegistry;

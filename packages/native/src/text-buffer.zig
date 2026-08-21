@@ -31,6 +31,21 @@ pub const WrapMode = seg_mod.WrapMode;
 pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 
+/// Byte coordinate in the normalized UTF-8 document exposed by getPlainText.
+/// Every logical line break occupies one byte, regardless of its source spelling.
+pub const NormalizedByteOffset = u32;
+
+pub const DisplayPoint = struct {
+    row: u32,
+    col: u32,
+};
+
+const SpliceRange = struct {
+    mem_id: u8,
+    start: u32,
+    end: u32,
+};
+
 pub const SyntaxStyle = ss.SyntaxStyle;
 
 pub const TextBuffer = UnifiedTextBuffer;
@@ -94,7 +109,15 @@ pub const UnifiedTextBuffer = struct {
     styled_buffer: ?[]u8,
     styled_capacity: usize,
 
+    // Append-only storage for normalized-byte replacements. A single registry
+    // slot keeps historical rope roots valid and avoids exhausting u8 mem IDs.
+    splice_mem_id: ?u8,
+    splice_buffer: ?[]u8,
+    splice_len: usize,
+
     tab_width: u8,
+
+    segment_splitter: UnifiedRope.Node.LeafSplitFn,
 
     pub const Defaults = struct {
         fg: ?RGBA,
@@ -227,7 +250,11 @@ pub const UnifiedTextBuffer = struct {
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
+            .splice_mem_id = null,
+            .splice_buffer = null,
+            .splice_len = 0,
             .tab_width = 2,
+            .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
         };
 
         return self;
@@ -344,6 +371,259 @@ pub const UnifiedTextBuffer = struct {
         return total_bytes;
     }
 
+    fn normalizedBytesForMetrics(metrics: UnifiedRope.Metrics) u32 {
+        return metrics.custom.total_bytes + metrics.custom.newline_count;
+    }
+
+    fn byteOffsetToWeightInNode(self: *const Self, node: *const UnifiedRope.Node, byte_offset: u32) TextBufferError!u32 {
+        const node_bytes = normalizedBytesForMetrics(node.metrics());
+        if (byte_offset > node_bytes) return TextBufferError.InvalidByteOffset;
+
+        return switch (node.*) {
+            .branch => |*branch| blk: {
+                const left_bytes = normalizedBytesForMetrics(branch.left_metrics);
+                if (byte_offset <= left_bytes) {
+                    break :blk try self.byteOffsetToWeightInNode(branch.left, byte_offset);
+                }
+                const right_weight = try self.byteOffsetToWeightInNode(branch.right, byte_offset - left_bytes);
+                break :blk branch.left_metrics.weight() + right_weight;
+            },
+            .leaf => |*leaf| switch (leaf.data) {
+                .text => |chunk| blk: {
+                    const bytes = chunk.getBytes(&self.mem_registry);
+                    if (byte_offset > bytes.len) return TextBufferError.InvalidByteOffset;
+                    if (!std.unicode.utf8ValidateSlice(bytes[0..byte_offset])) return TextBufferError.InvalidByteOffset;
+                    const prefix = bytes[0..byte_offset];
+                    break :blk utf8.calculateTextWidth(prefix, self.tab_width, utf8.isAsciiOnly(prefix), self.width_method);
+                },
+                .brk => if (byte_offset <= 1) byte_offset else TextBufferError.InvalidByteOffset,
+                .linestart => if (byte_offset == 0) 0 else TextBufferError.InvalidByteOffset,
+            },
+        };
+    }
+
+    fn weightToByteOffsetInNode(self: *const Self, node: *const UnifiedRope.Node, weight: u32) TextBufferError!u32 {
+        const node_weight = node.metrics().weight();
+        if (weight > node_weight) return TextBufferError.InvalidDisplayColumn;
+
+        return switch (node.*) {
+            .branch => |*branch| blk: {
+                const left_weight = branch.left_metrics.weight();
+                if (weight <= left_weight) {
+                    break :blk try self.weightToByteOffsetInNode(branch.left, weight);
+                }
+                const right_bytes = try self.weightToByteOffsetInNode(branch.right, weight - left_weight);
+                break :blk normalizedBytesForMetrics(branch.left_metrics) + right_bytes;
+            },
+            .leaf => |*leaf| switch (leaf.data) {
+                .text => |chunk| blk: {
+                    const bytes = chunk.getBytes(&self.mem_registry);
+                    if (weight == chunk.width) break :blk @intCast(bytes.len);
+                    const result = utf8.findPosByWidth(bytes, weight, self.tab_width, chunk.isAsciiOnly(), false, self.width_method);
+                    if (result.columns_used != weight) return TextBufferError.InvalidDisplayColumn;
+                    break :blk result.byte_offset;
+                },
+                .brk => if (weight <= 1) weight else TextBufferError.InvalidDisplayColumn,
+                .linestart => if (weight == 0) 0 else TextBufferError.InvalidDisplayColumn,
+            },
+        };
+    }
+
+    /// Convert a normalized document UTF-8 boundary to the rope's display weight.
+    /// Multiple byte boundaries can map to one display position inside a grapheme.
+    pub fn normalizedByteOffsetToRopeWeight(self: *const Self, byte_offset: NormalizedByteOffset) TextBufferError!u32 {
+        const byte_size = self.getByteSize();
+        if (byte_offset > byte_size) return TextBufferError.InvalidByteOffset;
+        if (byte_offset == 0) return 0;
+        if (byte_offset == byte_size) return self._rope.totalWeight();
+        return self.byteOffsetToWeightInNode(self._rope.root, byte_offset);
+    }
+
+    /// Convert an exact rope display boundary to a normalized document byte offset.
+    pub fn ropeWeightToNormalizedByteOffset(self: *const Self, weight: u32) TextBufferError!NormalizedByteOffset {
+        if (weight > self._rope.totalWeight()) return TextBufferError.InvalidDisplayColumn;
+        if (weight == 0) return 0;
+        if (weight == self._rope.totalWeight()) return self.getByteSize();
+        return self.weightToByteOffsetInNode(self._rope.root, weight);
+    }
+
+    pub fn normalizedByteOffsetToDisplayPoint(self: *const Self, byte_offset: NormalizedByteOffset) TextBufferError!DisplayPoint {
+        const weight = try self.normalizedByteOffsetToRopeWeight(byte_offset);
+        const coords = iter_mod.offsetToCoords(@constCast(&self._rope), weight) orelse return TextBufferError.InvalidByteOffset;
+        return .{ .row = coords.row, .col = coords.col };
+    }
+
+    pub fn displayPointToNormalizedByteOffset(self: *const Self, point: DisplayPoint) TextBufferError!NormalizedByteOffset {
+        const weight = iter_mod.coordsToOffset(@constCast(&self._rope), point.row, point.col) orelse return TextBufferError.InvalidDisplayColumn;
+        return self.ropeWeightToNormalizedByteOffset(weight);
+    }
+
+    fn splitChunkAtWeight(self: *Self, chunk: *const TextChunk, weight: u32) error{ OutOfBounds, OutOfMemory }!struct { left: TextChunk, right: TextChunk } {
+        if (weight == 0) return .{ .left = TextChunk.empty(), .right = chunk.* };
+        if (weight >= chunk.width) return .{ .left = chunk.*, .right = TextChunk.empty() };
+
+        const bytes = chunk.getBytes(&self.mem_registry);
+        const result = utf8.findPosByWidth(bytes, weight, self.tab_width, chunk.isAsciiOnly(), false, self.width_method);
+        if (result.columns_used != weight) return error.OutOfBounds;
+
+        return .{
+            .left = self.createChunk(chunk.mem_id, chunk.byte_start, chunk.byte_start + result.byte_offset),
+            .right = self.createChunk(chunk.mem_id, chunk.byte_start + result.byte_offset, chunk.byte_end),
+        };
+    }
+
+    fn splitSegmentCallback(
+        allocator: Allocator,
+        ctx: ?*anyopaque,
+        leaf: *const Segment,
+        weight_in_leaf: u32,
+    ) error{ OutOfBounds, OutOfMemory }!UnifiedRope.Node.LeafSplitResult {
+        _ = allocator;
+        const self = @as(*Self, @ptrCast(@alignCast(ctx.?)));
+        if (leaf.asText()) |chunk| {
+            const split = try self.splitChunkAtWeight(chunk, weight_in_leaf);
+            return .{ .left = .{ .text = split.left }, .right = .{ .text = split.right } };
+        }
+        return .{ .left = leaf.*, .right = leaf.* };
+    }
+
+    pub fn segmentSplitter(self: *Self) *const UnifiedRope.Node.LeafSplitFn {
+        return &self.segment_splitter;
+    }
+
+    fn reserveSpliceBytes(self: *Self, bytes: []const u8) TextBufferError!SpliceRange {
+        const required = std.math.add(usize, self.splice_len, bytes.len) catch return TextBufferError.InvalidDimensions;
+        if (required > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+
+        if (self.splice_buffer == null) {
+            const capacity = @max(@as(usize, 4096), required);
+            const buffer = self.global_allocator.alloc(u8, capacity) catch return TextBufferError.OutOfMemory;
+            errdefer self.global_allocator.free(buffer);
+            const mem_id = try self.mem_registry.register(buffer, true);
+            self.splice_mem_id = mem_id;
+            self.splice_buffer = buffer;
+        } else if (required > self.splice_buffer.?.len) {
+            const old_buffer = self.splice_buffer.?;
+            var capacity = @max(old_buffer.len *| 2, required);
+            if (capacity > std.math.maxInt(u32)) capacity = required;
+            const new_buffer = self.global_allocator.alloc(u8, capacity) catch return TextBufferError.OutOfMemory;
+            errdefer self.global_allocator.free(new_buffer);
+            @memcpy(new_buffer[0..self.splice_len], old_buffer[0..self.splice_len]);
+            try self.mem_registry.replace(self.splice_mem_id.?, new_buffer, true);
+            self.splice_buffer = new_buffer;
+        }
+
+        const start: u32 = @intCast(self.splice_len);
+        const end: u32 = @intCast(required);
+        @memcpy(self.splice_buffer.?[self.splice_len..required], bytes);
+        return .{ .mem_id = self.splice_mem_id.?, .start = start, .end = end };
+    }
+
+    fn copyNormalizedByteRange(self: *const Self, start: u32, end: u32, output: []u8) usize {
+        if (start >= end or output.len == 0) return 0;
+
+        const Context = struct {
+            buffer: *const Self,
+            start: u32,
+            end: u32,
+            document_offset: u32 = 0,
+            output: []u8,
+            written: usize = 0,
+            line_count: u32,
+
+            fn copyIntersection(ctx: *@This(), bytes: []const u8) void {
+                const item_start = ctx.document_offset;
+                const item_end = item_start + @as(u32, @intCast(bytes.len));
+                defer ctx.document_offset = item_end;
+                if (item_end <= ctx.start or item_start >= ctx.end) return;
+
+                const local_start: usize = @intCast(if (ctx.start > item_start) ctx.start - item_start else 0);
+                const local_end: usize = @intCast(@min(ctx.end, item_end) - item_start);
+                const copy_len = @min(local_end - local_start, ctx.output.len - ctx.written);
+                @memcpy(ctx.output[ctx.written .. ctx.written + copy_len], bytes[local_start .. local_start + copy_len]);
+                ctx.written += copy_len;
+            }
+
+            fn segmentCallback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, _: u32) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                ctx.copyIntersection(chunk.getBytes(&ctx.buffer.mem_registry));
+            }
+
+            fn lineEndCallback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (line_info.line_idx + 1 < ctx.line_count) ctx.copyIntersection("\n");
+            }
+        };
+
+        var ctx: Context = .{
+            .buffer = self,
+            .start = start,
+            .end = end,
+            .output = output,
+            .line_count = self.getLineCount(),
+        };
+        self.walkLinesAndSegments(&ctx, Context.segmentCallback, Context.lineEndCallback);
+        return ctx.written;
+    }
+
+    /// Replace normalized UTF-8 document bytes in [start, end). The rope root is
+    /// published once, replacement storage remains valid for undo roots, and views
+    /// observe exactly one content epoch change on success.
+    pub fn replaceNormalizedBytes(
+        self: *Self,
+        start: NormalizedByteOffset,
+        end: NormalizedByteOffset,
+        replacement: []const u8,
+    ) TextBufferError!void {
+        if (start > end or end > self.getByteSize()) return TextBufferError.InvalidByteOffset;
+        if (!std.unicode.utf8ValidateSlice(replacement)) return TextBufferError.InvalidUtf8;
+        if (start == end and replacement.len == 0) return;
+
+        _ = try self.normalizedByteOffsetToRopeWeight(start);
+        _ = try self.normalizedByteOffsetToRopeWeight(end);
+
+        // Resegment complete affected lines so grapheme clusters remain correct
+        // when replacement codepoints combine with retained text at either edge.
+        const start_point = try self.normalizedByteOffsetToDisplayPoint(start);
+        const end_point = try self.normalizedByteOffsetToDisplayPoint(end);
+        const region_start = try self.displayPointToNormalizedByteOffset(.{ .row = start_point.row, .col = 0 });
+        const region_end = if (end_point.row + 1 < self.getLineCount()) blk: {
+            const next_line_start = try self.displayPointToNormalizedByteOffset(.{ .row = end_point.row + 1, .col = 0 });
+            break :blk next_line_start - 1;
+        } else self.getByteSize();
+        const region_start_weight = try self.normalizedByteOffsetToRopeWeight(region_start);
+        const region_end_weight = try self.normalizedByteOffsetToRopeWeight(region_end);
+
+        const prefix_len: usize = start - region_start;
+        const suffix_len: usize = region_end - end;
+        const combined_len = std.math.add(usize, prefix_len, replacement.len) catch return TextBufferError.InvalidDimensions;
+        const total_len = std.math.add(usize, combined_len, suffix_len) catch return TextBufferError.InvalidDimensions;
+        if (total_len > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+
+        const combined = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(combined);
+        if (self.copyNormalizedByteRange(region_start, start, combined[0..prefix_len]) != prefix_len) return TextBufferError.InvalidByteOffset;
+        @memcpy(combined[prefix_len .. prefix_len + replacement.len], replacement);
+        if (self.copyNormalizedByteRange(end, region_end, combined[prefix_len + replacement.len ..]) != suffix_len) return TextBufferError.InvalidByteOffset;
+
+        var segments: std.ArrayListUnmanaged(Segment) = .empty;
+        defer segments.deinit(self.global_allocator);
+
+        var reserved: ?SpliceRange = null;
+        if (combined.len > 0) {
+            reserved = try self.reserveSpliceBytes(combined);
+            const prepared = try self.textToSegments(self.global_allocator, combined, reserved.?.mem_id, reserved.?.start, false);
+            segments = prepared.segments;
+        }
+
+        self._rope.replaceRangeByWeight(region_start_weight, region_end_weight, segments.items, &self.segment_splitter) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            error.OutOfBounds => return TextBufferError.InvalidByteOffset,
+        };
+        if (reserved) |range| self.splice_len = range.end;
+        self.markAllViewsDirty();
+    }
+
     pub fn measureText(self: *const Self, text: []const u8) u32 {
         // For grapheme-accurate width calculation (used by highlighting system),
         // use utf8.calculateTextWidth which properly handles grapheme clusters
@@ -382,6 +662,10 @@ pub const UnifiedTextBuffer = struct {
         self.styled_buffer = null;
         self.styled_text_mem_id = null;
         self.styled_capacity = 0;
+
+        self.splice_mem_id = null;
+        self.splice_buffer = null;
+        self.splice_len = 0;
 
         // Now reset the arena (frees all the internal memory)
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
@@ -610,6 +894,9 @@ pub const UnifiedTextBuffer = struct {
 
     pub fn clearMemRegistry(self: *Self) void {
         self.mem_registry.clear();
+        self.splice_mem_id = null;
+        self.splice_buffer = null;
+        self.splice_len = 0;
     }
 
     pub fn getMemBuffer(self: *const Self, mem_id: u8) ?[]const u8 {

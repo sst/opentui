@@ -910,22 +910,23 @@ pub fn Rope(comptime T: type) type {
             return try Node.join_balanced(L, R, self.allocator);
         }
 
-        fn applyEndsInvariant(self: *Self) !void {
-            if (!boundary_enabled or !@hasDecl(T, "rewriteEnds")) return;
+        fn rootWithEndsInvariant(self: *Self, initial_root: *const Node) !*const Node {
+            if (!boundary_enabled or !@hasDecl(T, "rewriteEnds")) return initial_root;
 
-            const first = self.getFirstLeaf();
-            const last = self.getLastLeaf();
+            var root = initial_root;
+            const first = if (root.count() == 0) null else getFirstLeafIn(root);
+            const last = if (root.count() == 0) null else getLastLeafIn(root);
             const action = try T.rewriteEnds(self.allocator, first, last);
 
             // Handle deletion operations first
-            if (action.delete_left and self.count() > 0) {
-                const split_result = try Node.split_at(self.root, 1, self.allocator, self.empty_leaf);
-                self.root = split_result.right;
+            if (action.delete_left and root.count() > 0) {
+                const split_result = try Node.split_at(root, 1, self.allocator, self.empty_leaf);
+                root = split_result.right;
             }
-            if (action.delete_right and self.count() > 0) {
-                const cnt = self.count();
-                const split_result = try Node.split_at(self.root, cnt - 1, self.allocator, self.empty_leaf);
-                self.root = split_result.left;
+            if (action.delete_right and root.count() > 0) {
+                const cnt = root.count();
+                const split_result = try Node.split_at(root, cnt - 1, self.allocator, self.empty_leaf);
+                root = split_result.left;
             }
 
             // Handle insertion
@@ -940,8 +941,14 @@ pub fn Rope(comptime T: type) type {
                 }
 
                 const insert_root = try Node.merge_leaves(leaves.items, self.allocator);
-                self.root = try Node.join_balanced(insert_root, self.root, self.allocator);
+                root = try Node.join_balanced(insert_root, root, self.allocator);
             }
+
+            return root;
+        }
+
+        fn applyEndsInvariant(self: *Self) !void {
+            self.root = try self.rootWithEndsInvariant(self.root);
         }
 
         pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: *const Node.LeafSplitFn) !void {
@@ -968,6 +975,28 @@ pub fn Rope(comptime T: type) type {
 
             self.version += 1;
             try self.applyEndsInvariant();
+        }
+
+        /// Atomically replace a weighted range. The published root and version are
+        /// unchanged if any split, join, or invariant allocation fails.
+        pub fn replaceRangeByWeight(self: *Self, start: u32, end: u32, items: []const T, split_leaf_fn: *const Node.LeafSplitFn) !void {
+            const total_weight = self.totalWeight();
+            if (start > end or end > total_weight) return error.OutOfBounds;
+            if (start == end and items.len == 0) return;
+
+            const first_split = try Node.split_at_weight(self.root, start, self.allocator, self.empty_leaf, split_leaf_fn);
+            const second_split = try Node.split_at_weight(first_split.right, end - start, self.allocator, self.empty_leaf, split_leaf_fn);
+
+            var next_root = first_split.left;
+            if (items.len > 0) {
+                const insert_rope = try Self.from_slice(self.allocator, items);
+                next_root = try self.joinWithBoundary(next_root, insert_rope.root);
+            }
+            next_root = try self.joinWithBoundary(next_root, second_split.right);
+            next_root = try self.rootWithEndsInvariant(next_root);
+
+            self.root = next_root;
+            self.version += 1;
         }
 
         pub const WeightFindResult = struct { leaf: *const T, start_weight: u32 };

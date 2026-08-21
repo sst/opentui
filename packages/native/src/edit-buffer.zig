@@ -12,8 +12,6 @@ const event_bus = @import("event-bus.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
-const Segment = seg_mod.Segment;
-const UnifiedRope = seg_mod.UnifiedRope;
 
 var global_edit_buffer_id: u16 = 0;
 
@@ -130,7 +128,6 @@ pub const EditBuffer = struct {
     cursors: std.ArrayListUnmanaged(Cursor),
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
-    segment_splitter: UnifiedRope.Node.LeafSplitFn,
     event_sink: ?*event_bus.EventSink,
 
     pub fn init(
@@ -164,7 +161,6 @@ pub const EditBuffer = struct {
             .cursors = cursors,
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
-            .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
             .event_sink = event_sink,
         };
 
@@ -238,70 +234,6 @@ pub const EditBuffer = struct {
         try self.add_buffer.ensureCapacity(self.tb, need);
     }
 
-    /// TODO: This method should live in text-buffer-segment.zig and the Rope should take it as comptime param
-    fn splitChunkAtWeight(
-        self: *EditBuffer,
-        chunk: *const TextChunk,
-        weight: u32,
-    ) error{ OutOfBounds, OutOfMemory }!struct { left: TextChunk, right: TextChunk } {
-        const chunk_weight = chunk.width;
-
-        if (weight == 0) {
-            return .{
-                .left = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
-                .right = chunk.*,
-            };
-        } else if (weight >= chunk_weight) {
-            return .{
-                .left = chunk.*,
-                .right = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
-            };
-        }
-
-        const chunk_bytes = chunk.getBytes(self.tb.memRegistry());
-        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-
-        const result = utf8.findPosByWidth(chunk_bytes, weight, self.tb.tabWidth(), is_ascii_only, false, self.tb.widthMethod());
-        const split_byte_offset = result.byte_offset;
-
-        const left_chunk = self.tb.createChunk(
-            chunk.mem_id,
-            chunk.byte_start,
-            chunk.byte_start + split_byte_offset,
-        );
-
-        const right_chunk = self.tb.createChunk(
-            chunk.mem_id,
-            chunk.byte_start + split_byte_offset,
-            chunk.byte_end,
-        );
-
-        return .{ .left = left_chunk, .right = right_chunk };
-    }
-
-    fn splitSegmentCallback(
-        allocator: Allocator,
-        ctx: ?*anyopaque,
-        leaf: *const Segment,
-        weight_in_leaf: u32,
-    ) error{ OutOfBounds, OutOfMemory }!UnifiedRope.Node.LeafSplitResult {
-        _ = allocator;
-        const edit_buf = @as(*EditBuffer, @ptrCast(@alignCast(ctx.?)));
-
-        if (leaf.asText()) |chunk| {
-            const result = try edit_buf.splitChunkAtWeight(chunk, weight_in_leaf);
-            return .{
-                .left = Segment{ .text = result.left },
-                .right = Segment{ .text = result.right },
-            };
-        } else {
-            return .{
-                .left = Segment{ .brk = {} },
-                .right = Segment{ .brk = {} },
-            };
-        }
-    }
-
     pub fn insertText(self: *EditBuffer, bytes: []const u8) !void {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
@@ -336,7 +268,7 @@ pub const EditBuffer = struct {
         }
 
         if (result.segments.items.len > 0) {
-            try self.tb.rope().insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
+            try self.tb.rope().insertSliceByWeight(insert_offset, result.segments.items, self.tb.segmentSplitter());
         }
         if (num_breaks > 0) {
             const new_row = cursor.row + @as(u32, @intCast(num_breaks));
@@ -383,7 +315,7 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
-        try self.tb.rope().deleteRangeByWeight(start_offset, end_offset, &self.segment_splitter);
+        try self.tb.rope().deleteRangeByWeight(start_offset, end_offset, self.tb.segmentSplitter());
 
         self.tb.markViewsDirty();
 
