@@ -667,7 +667,11 @@ test "getGraphemeWidthAt - middle of wide character" {
 
     try testing.expectEqual(@as(u32, 2), iter_mod.getGraphemeWidthAt(tb.rope(), tb.memRegistry(), 0, 0, tb.tabWidth(), tb.widthMethod()));
     const result = iter_mod.getGraphemeWidthAt(tb.rope(), tb.memRegistry(), 0, 1, tb.tabWidth(), tb.widthMethod());
-    _ = result;
+    try testing.expectEqual(@as(u32, 1), result);
+
+    const bounds = iter_mod.getGraphemeBoundsAt(tb.rope(), tb.memRegistry(), 0, 1, tb.tabWidth(), tb.widthMethod()).?;
+    try testing.expectEqual(@as(u32, 0), bounds.start);
+    try testing.expectEqual(@as(u32, 2), bounds.end);
 }
 
 test "getGraphemeWidthAt - invalid row" {

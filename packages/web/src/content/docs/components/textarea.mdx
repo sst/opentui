@@ -87,6 +87,7 @@ const textarea = new TextareaRenderable(renderer, {
 | `selectionFg`            | `string` or `RGBA`                    | -                  | Selection foreground                    |
 | `cursorColor`            | `string` or `RGBA`                    | `#FFFFFF`          | Cursor color                            |
 | `cursorStyle`            | `CursorStyleOptions`                  | -                  | Cursor style and blinking               |
+| `selectionOccupancy`     | `"cell"` or `"boundary"`              | `"cell"`           | Which cells a selection occupies        |
 | `keyBindings`            | `KeyBinding[]`                        | -                  | Custom key bindings                     |
 | `keyAliasMap`            | `Record<string, string>`              | -                  | Key alias mapping                       |
 | `onSubmit`               | `(event: SubmitEvent) => void`        | -                  | Submit handler                          |
@@ -139,8 +140,8 @@ textarea.gotoBufferEnd({ select: true })
 ### Selection
 
 ```typescript
-textarea.setSelection(start, end) // half-open offsets
-textarea.setSelectionInclusive(start, end) // inclusive end
+textarea.setSelection(start, end) // half-open [start, end) in both occupancy modes
+textarea.setSelectionInclusive(start, end) // also selects the grapheme at end in cell mode
 textarea.selectAll()
 textarea.clearSelection()
 textarea.deleteSelection()
@@ -165,6 +166,10 @@ textarea.redo()
 
 These methods update the editor and request a render as needed. Selection behavior depends on the method. Movement with
 `{ select: true }` extends the selection. Call `clearSelection()` when a command must clear the global selection.
+
+The default occupancy is `cell`: the selection covers both endpoint cells, so the first shift+right selects two
+cells. If you use a bar cursor (`cursorStyle: { style: "line" }`), also set `selectionOccupancy: "boundary"`. The
+cursor style is visual only and never changes which text you select, copy, or delete.
 
 ## Traits
 

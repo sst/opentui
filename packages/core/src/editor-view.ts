@@ -9,6 +9,7 @@ import {
 } from "./zig.js"
 import type { EditBuffer } from "./edit-buffer.js"
 import { createExtmarksController } from "./lib/index.js"
+import type { SelectionOccupancy } from "./types.js"
 
 export interface Viewport {
   offsetY: number
@@ -161,6 +162,27 @@ export class EditorView {
     this.lib.editorViewResetLocalSelection(this.viewPtr)
   }
 
+  public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
+    this.guard()
+    this.lib.editorViewSetSelectionOccupancy(this.viewPtr, occupancy)
+  }
+
+  public getSelectionOccupancy(): SelectionOccupancy {
+    this.guard()
+    this._textBufferViewPtr ??= this.lib.editorViewGetTextBufferView(this.viewPtr)
+    return this.lib.textBufferViewGetSelectionOccupancy(this._textBufferViewPtr)
+  }
+
+  public setSelectionInclusive(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.editorViewSetSelectionInclusive(this.viewPtr, start, end, bgColor || null, fgColor || null)
+  }
+
+  public setSelectionColors(bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.editorViewSetSelectionColors(this.viewPtr, bgColor || null, fgColor || null)
+  }
+
   public getSelectedText(): string {
     this.guard()
     // TODO: native can stack alloc all the text and decode will alloc as js string then
@@ -235,6 +257,11 @@ export class EditorView {
     return this.lib.editorViewGetVisualEOL(this.viewPtr)
   }
 
+  public gotoVisualLineEnd(): void {
+    this.guard()
+    this.lib.editorViewGotoVisualLineEnd(this.viewPtr)
+  }
+
   public getLineInfo(): LineInfo {
     this.guard()
     return this.lib.editorViewGetLineInfo(this.viewPtr)
@@ -270,9 +297,7 @@ export class EditorView {
 
   public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
     this.guard()
-    if (!this._textBufferViewPtr) {
-      this._textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
-    }
+    this._textBufferViewPtr ??= this.lib.editorViewGetTextBufferView(this.viewPtr)
     return this.lib.textBufferViewMeasureForDimensions(this._textBufferViewPtr, width, height)
   }
 

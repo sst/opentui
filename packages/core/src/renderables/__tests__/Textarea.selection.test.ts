@@ -9,6 +9,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
+type SelectionTestEditor = Awaited<ReturnType<typeof createTextareaRenderable>>["textarea"]
 
 describe("Textarea - Selection Tests", () => {
   beforeEach(async () => {
@@ -38,6 +39,7 @@ describe("Textarea - Selection Tests", () => {
 
       expect(editor.hasSelection()).toBe(false)
 
+      // Inclusive selection: the cell under the pointer (5, the space) is selected too.
       await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
       await renderOnce()
 
@@ -46,9 +48,9 @@ describe("Textarea - Selection Tests", () => {
       const sel = editor.getSelection()
       expect(sel).not.toBe(null)
       expect(sel!.start).toBe(0)
-      expect(sel!.end).toBe(5)
+      expect(sel!.end).toBe(6)
 
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
     })
 
     it("should return selected text from multi-line content", async () => {
@@ -63,7 +65,7 @@ describe("Textarea - Selection Tests", () => {
       await renderOnce()
 
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("AA\nBBBB\nCC")
+      expect(selectedText).toBe("AA\nBBBB\nCCC")
     })
 
     it("should handle selection with viewport scrolling", async () => {
@@ -167,7 +169,25 @@ describe("Textarea - Selection Tests", () => {
       const sel = editor.getSelection()
       expect(sel).not.toBe(null)
       expect(sel!.start).toBe(2)
-      expect(sel!.end).toBe(13)
+      expect(sel!.end).toBe(14)
+    })
+
+    it("should not select the next wrapped line when dragging into wrap padding", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello my good friend",
+        width: 18,
+        height: 10,
+        wrapMode: "word",
+        selectable: true,
+      })
+
+      expect(editor.editorView.getVirtualLineCount()).toBe(2)
+
+      // First visual line is 14 cols; columns 14..17 are empty wrap padding.
+      await currentMouse.drag(editor.x, editor.y, editor.x + 17, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("hello my good ")
     })
 
     it("should handle reverse selection (drag from end to start)", async () => {
@@ -189,6 +209,95 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("World")
     })
 
+    it("should keep the anchor cell selected when dragging backward", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Press on cell 9 ('l'), drag left to cell 6 ('W'): cells 6..9 selected.
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      const sel = editor.getSelection()
+      expect(sel).not.toBe(null)
+      expect(sel!.start).toBe(6)
+      expect(sel!.end).toBe(10)
+      expect(editor.getSelectedText()).toBe("Worl")
+    })
+
+    it("should keep the same selection when selection colors change after a backward drag", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(0, 0, 1, 1),
+      })
+
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      const before = editor.getSelectedText()
+      expect(before).toBe("Worl")
+
+      // Style changes replay the stored anchor/focus through setLocalSelection;
+      // set and update must agree or the selection shifts under the user.
+      editor.selectionBg = RGBA.fromValues(1, 0, 0, 1)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe(before)
+    })
+
+    it("should collapse to the selection edges with plain arrow keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("Worl")
+
+      // Right arrow collapses to the boundary after the last selected cell.
+      currentMockInput.pressArrow("right")
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(10)
+
+      await currentMouse.drag(editor.x + 9, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      // Left arrow collapses to the first selected cell.
+      currentMockInput.pressArrow("left")
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("should select the anchor cell and the crossed cell with shift+left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursorToLineCol(0, 5)
+
+      // Vim v+h: the cell under the anchor cursor (the space at 5) stays
+      // selected together with the cell the cursor moved onto (the 'o' at 4).
+      currentMockInput.pressArrow("left", { shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("o ")
+    })
+
     it("should render selection properly when drawing to buffer", async () => {
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
@@ -205,7 +314,7 @@ describe("Textarea - Selection Tests", () => {
       await renderOnce()
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       buffer.clear(RGBA.fromValues(0, 0, 0, 1))
       buffer.drawEditorView(editor.editorView, editor.x, editor.y)
@@ -213,7 +322,7 @@ describe("Textarea - Selection Tests", () => {
       const sel = editor.getSelection()
       expect(sel).not.toBe(null)
       expect(sel!.start).toBe(0)
-      expect(sel!.end).toBe(5)
+      expect(sel!.end).toBe(6)
 
       buffer.destroy()
     })
@@ -300,7 +409,7 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
 
-      expect(selectedText).toBe("A".repeat(10))
+      expect(selectedText).toBe("A".repeat(11))
 
       const sel = editor.getSelection()
       expect(sel).not.toBe(null)
@@ -416,11 +525,12 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
 
-      expect(selectedText).toBe("Line1")
+      // Inclusive selection: 5 shift+right presses select 6 cells.
+      expect(selectedText).toBe("Line15")
 
       const sel = editor.getSelection()
       expect(sel).not.toBe(null)
-      expect(sel!.end - sel!.start).toBe(5)
+      expect(sel!.end - sel!.start).toBe(6)
     })
 
     it("should handle mouse drag selection with scrolled viewport using correct offset", async () => {
@@ -445,10 +555,10 @@ describe("Textarea - Selection Tests", () => {
       const selectedText = editor.getSelectedText()
 
       expect(selectedText).not.toContain("AAAA0")
-      expect(selectedText).not.toContain("AAAA1")
 
+      // Inclusive selection: dragging over cells 0..4 selects 5 cells.
       const firstVisibleLineIdx = viewport.offsetY
-      const expectedText = `AAAA${firstVisibleLineIdx}`.substring(0, 4)
+      const expectedText = `AAAA${firstVisibleLineIdx}`.substring(0, 5)
       expect(selectedText).toBe(expectedText)
     })
 
@@ -500,8 +610,10 @@ describe("Textarea - Selection Tests", () => {
 
       currentMockInput.pressArrow("right", { shift: true })
 
+      // Inclusive selection: the anchor cell and the cell under the moved
+      // cursor are both selected (Vim v+l).
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("H")
+      expect(editor.getSelectedText()).toBe("He")
     })
 
     it("should extend selection with shift+right", async () => {
@@ -519,7 +631,7 @@ describe("Textarea - Selection Tests", () => {
       }
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
     })
 
     it("should extend a mouse selection with shift+right", async () => {
@@ -536,12 +648,12 @@ describe("Textarea - Selection Tests", () => {
       await renderOnce()
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       currentMockInput.pressArrow("right", { shift: true })
       await renderOnce()
 
-      expect(editor.getSelectedText()).toBe("Hello ")
+      expect(editor.getSelectedText()).toBe("Hello W")
     })
 
     it("should handle shift+left selection", async () => {
@@ -576,9 +688,11 @@ describe("Textarea - Selection Tests", () => {
 
       currentMockInput.pressArrow("down", { shift: true })
 
+      // Inclusive selection: the cell under the moved cursor (the 'L' of
+      // "Line 2") is selected too.
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("Line 1\n")
+      expect(selectedText).toBe("Line 1\nL")
     })
 
     it("should select with shift+up", async () => {
@@ -669,13 +783,13 @@ describe("Textarea - Selection Tests", () => {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
       expect(editor.plainText).toBe("Hello World")
 
       currentMockInput.pressBackspace()
 
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.plainText).toBe(" World")
+      expect(editor.plainText).toBe("World")
       expect(editor.logicalCursor.col).toBe(0)
     })
 
@@ -725,7 +839,7 @@ describe("Textarea - Selection Tests", () => {
       currentMockInput.pressBackspace()
 
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.plainText).toBe("e 2\nLine 3")
+      expect(editor.plainText).toBe(" 2\nLine 3")
       expect(editor.logicalCursor.col).toBe(0)
       expect(editor.logicalCursor.row).toBe(0)
     })
@@ -743,13 +857,15 @@ describe("Textarea - Selection Tests", () => {
 
       currentMockInput.pressArrow("down", { shift: true })
 
+      // Inclusive selection: the cell under the moved cursor (the 'L' of
+      // "Line 3") is selected and deleted too.
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("Line 2\n")
+      expect(selectedText).toBe("Line 2\nL")
 
       currentMockInput.pressKey("DELETE")
 
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.plainText).toBe("Line 1\nLine 3")
+      expect(editor.plainText).toBe("Line 1\nine 3")
       expect(editor.logicalCursor.row).toBe(1)
     })
 
@@ -767,13 +883,13 @@ describe("Textarea - Selection Tests", () => {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       currentMockInput.pressKey("H")
       currentMockInput.pressKey("i")
 
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.plainText).toBe("Hi World")
+      expect(editor.plainText).toBe("HiWorld")
     })
 
     it("should delete selected text via native deleteSelectedText API", async () => {
@@ -790,13 +906,13 @@ describe("Textarea - Selection Tests", () => {
       await renderOnce()
 
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       editor.editorView.deleteSelectedText()
       currentRenderer.clearSelection()
       await renderOnce()
 
-      expect(editor.plainText).toBe(" World")
+      expect(editor.plainText).toBe("World")
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
       expect(editor.editorView.hasSelection()).toBe(false)
@@ -859,7 +975,7 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("")
 
       expect(textBelow.hasSelection()).toBe(true)
-      expect(textBelow.getSelectedText()).toBe("This is te")
+      expect(textBelow.getSelectedText()).toBe("This is tex")
 
       textBelow.destroy()
     })
@@ -983,7 +1099,8 @@ describe("Textarea - Selection Tests", () => {
       expect(codeText2.hasSelection()).toBe(true)
       const codeText2Selected = codeText2.getSelectedText()
       const codeText2Content = "  const selected = getText()"
-      expect(codeText2Selected).toBe(codeText2Content.substring(0, 15))
+      // Inclusive selection: the cell under the pointer (15) is selected too.
+      expect(codeText2Selected).toBe(codeText2Content.substring(0, 16))
 
       bottomText.destroy()
       rightBox.destroy()
@@ -1091,8 +1208,10 @@ describe("Textarea - Selection Tests", () => {
       const selectedTextBefore = editor.getSelectedText()
       const selectionBefore = editor.getSelection()
 
+      // Inclusive selection: cells 6..17 = "BBBBB CCCCC" plus the space under
+      // the pointer at cell 17.
       expect(editor.hasSelection()).toBe(true)
-      expect(selectedTextBefore).toBe("BBBBB CCCCC")
+      expect(selectedTextBefore).toBe("BBBBB CCCCC ")
 
       editor.width = 15
       editor.height = 15
@@ -1103,7 +1222,7 @@ describe("Textarea - Selection Tests", () => {
       const selectionAfterNarrow = editor.getSelection()
 
       expect(editor.hasSelection()).toBe(true)
-      expect(selectedTextAfterNarrow).toBe("BBBBB CCCCC")
+      expect(selectedTextAfterNarrow).toBe("BBBBB CCCCC ")
       expect(selectionAfterNarrow?.start).toBe(selectionBefore?.start)
       expect(selectionAfterNarrow?.end).toBe(selectionBefore?.end)
 
@@ -1125,7 +1244,7 @@ describe("Textarea - Selection Tests", () => {
         }
       }
 
-      expect(selectedCellsNarrow).toBe(11)
+      expect(selectedCellsNarrow).toBe(12)
 
       editor.width = 50
       editor.height = 10
@@ -1136,7 +1255,7 @@ describe("Textarea - Selection Tests", () => {
       const selectionAfterWide = editor.getSelection()
 
       expect(editor.hasSelection()).toBe(true)
-      expect(selectedTextAfterWide).toBe("BBBBB CCCCC")
+      expect(selectedTextAfterWide).toBe("BBBBB CCCCC ")
       expect(selectionAfterWide?.start).toBe(selectionBefore?.start)
       expect(selectionAfterWide?.end).toBe(selectionBefore?.end)
 
@@ -1157,7 +1276,7 @@ describe("Textarea - Selection Tests", () => {
         }
       }
 
-      expect(selectedCellsWide).toBe(11)
+      expect(selectedCellsWide).toBe(12)
 
       buffer.destroy()
       editor.destroy()
@@ -1561,6 +1680,363 @@ describe("Textarea - Selection Tests", () => {
       // First line should be complete, last line should be partial
       expect(selectedText.startsWith("Line 00")).toBe(true)
       expect(selectedText).toContain("Line 14")
+    })
+  })
+
+  describe("Occupancy contract", () => {
+    it("selects one cell on first shift+right in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+
+      expect(editor.getSelectedText()).toBe("H")
+      expect(editor.getSelection()).toEqual({ start: 0, end: 1 })
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("ello")
+    })
+
+    it("selects b when shifting left from ab|cd in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abcd",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+      editor.focus()
+      editor.editBuffer.setCursorToLineCol(0, 2)
+      editor.moveCursorLeft({ select: true })
+      expect(editor.getSelectedText()).toBe("b")
+    })
+
+    it("never copies half a wide glyph in either occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = 0
+      currentMockInput.pressArrow("right", { shift: true })
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.getSelectedText()).toBe("ab你")
+
+      editor.selectionOccupancy = "boundary"
+      expect(editor.getSelectedText()).toBe("ab")
+
+      editor.selectionOccupancy = "cell"
+      expect(editor.getSelectedText()).toBe("ab你")
+    })
+
+    it("keeps boundary copy and deletion aligned on a wide-glyph continuation cell", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      await currentMouse.drag(editor.x, editor.y, editor.x + 3, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelection()).toEqual({ start: 0, end: 4 })
+      expect(editor.getSelectedText()).toBe("ab你")
+      expect(editor.cursorOffset).toBe(4)
+      editor.deleteSelection()
+      expect(editor.plainText).toBe("cd")
+    })
+
+    it("restarts shift selection from a normalized continuation-cell click", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+      editor.focus()
+
+      await currentMouse.click(editor.x + 3, editor.y)
+      editor.moveCursorLeft({ select: true })
+      expect(editor.getSelectedText()).toBe("b")
+
+      editor.moveCursorRight({ select: true })
+      expect(editor.hasSelection()).toBe(false)
+    })
+
+    it("resynchronizes a normalized caret when occupancy changes", async () => {
+      let cursorChanges = 0
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 40,
+        height: 10,
+        selectable: true,
+        onCursorChange: () => cursorChanges++,
+      })
+
+      await currentMouse.drag(editor.x, editor.y, editor.x + 3, editor.y)
+      expect(editor.cursorOffset).toBe(2)
+
+      cursorChanges = 0
+      editor.selectionOccupancy = "boundary"
+      await renderOnce()
+      expect(editor.cursorOffset).toBe(4)
+      expect(cursorChanges).toBe(1)
+      editor.moveCursorRight({ select: true })
+      expect(editor.getSelectedText()).toBe("ab你c")
+    })
+
+    it("keeps a press without drag empty", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.pressDown(editor.x + 2, editor.y)
+      await currentMouse.release(editor.x + 2, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.getSelectedText()).toBe("")
+    })
+
+    it("does not grab a bare newline at EOL", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello\nWorld",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd({ select: true })
+
+      expect(editor.getSelectedText()).toBe("Hello")
+    })
+
+    it("does not change selected text when cursorStyle changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.getSelectedText()).toBe("He")
+
+      editor.cursorStyle = { style: "line", blinking: true }
+      expect(editor.getSelectedText()).toBe("He")
+      expect(editor.selectionOccupancy).toBe("cell")
+
+      editor.cursorStyle = { style: "block", blinking: false }
+      expect(editor.getSelectedText()).toBe("He")
+    })
+
+    it("does not replay viewport-relative endpoints when selection colors change", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 12 }, (_, index) => `Line ${index}`).join("\n"),
+        width: 20,
+        height: 3,
+        selectable: true,
+      })
+      editor.gotoLine(6)
+      await renderOnce()
+      await currentMouse.drag(editor.x, editor.y, editor.x + 4, editor.y + 1)
+      const before = editor.getSelectedText()
+
+      const viewport = editor.editorView.getViewport()
+      editor.editorView.setViewport(viewport.offsetX, viewport.offsetY + 2, viewport.width, viewport.height, false)
+      editor.selectionBg = "#ff0000"
+
+      expect(editor.getSelectedText()).toBe(before)
+    })
+  })
+
+  describe("Non-shift collapse", () => {
+    async function selectedHelloSpace() {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      editor.focus()
+      editor.cursorOffset = 5
+      editor.setSelection(0, 6)
+      expect(editor.getSelectedText()).toBe("Hello ")
+      return editor
+    }
+
+    const clearCases: Array<[string, (editor: SelectionTestEditor) => void, number]> = [
+      ["left", (editor: SelectionTestEditor) => editor.moveCursorLeft(), 0],
+      ["right", (editor: SelectionTestEditor) => editor.moveCursorRight(), 6],
+      ["home", (editor: SelectionTestEditor) => editor.gotoLineHome(), 0],
+      ["end", (editor: SelectionTestEditor) => editor.gotoLineEnd(), 6],
+      ["visual-home", (editor: SelectionTestEditor) => editor.gotoVisualLineHome(), 0],
+      ["visual-end", (editor: SelectionTestEditor) => editor.gotoVisualLineEnd(), 6],
+      ["buffer-home", (editor: SelectionTestEditor) => editor.gotoBufferHome(), 0],
+      ["buffer-end", (editor: SelectionTestEditor) => editor.gotoBufferEnd(), 6],
+      ["word-back", (editor: SelectionTestEditor) => editor.moveWordBackward(), 0],
+      ["word-forward", (editor: SelectionTestEditor) => editor.moveWordForward(), 6],
+      ["cursor offset", (editor: SelectionTestEditor) => (editor.cursorOffset = 3), 3],
+      ["set cursor", (editor: SelectionTestEditor) => editor.setCursor(0, 4), 4],
+      ["line", (editor: SelectionTestEditor) => editor.gotoLine(0), 0],
+      ["exact line start", (editor: SelectionTestEditor) => editor.gotoLineStart(), 0],
+      ["exact line end", (editor: SelectionTestEditor) => editor.gotoLineTextEnd(), 11],
+    ]
+
+    it.each(clearCases)("clears the selection on %s", async (_name, move, offset) => {
+      const editor = await selectedHelloSpace()
+      move(editor)
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.cursorOffset).toBe(offset)
+    })
+
+    it("clears an explicit selection before vertical movement", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World\nSecond line",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      editor.focus()
+      editor.cursorOffset = 5
+      editor.setSelection(0, 6)
+      expect(editor.getSelectedText()).toBe("Hello ")
+
+      editor.selectable = false
+      editor.moveCursorDown()
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(5)
+    })
+
+    it("starts a new shift selection when only an explicit range exists", async () => {
+      const editor = await selectedHelloSpace()
+
+      editor.moveCursorRight({ select: true })
+
+      expect(editor.getSelectedText()).toBe(" W")
+      expect(editor.cursorOffset).toBe(6)
+    })
+  })
+
+  describe("Horizontal wrapping", () => {
+    it("includes newline when shift+right wraps from EOL onto the next line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello\nWorld",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = 5
+      currentMockInput.pressArrow("right", { shift: true })
+
+      expect(editor.getSelectedText()).toBe("\nW")
+    })
+
+    it("includes the last cell at a wrapped visual-line end in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello my good friend",
+        width: 18,
+        height: 4,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      editor.focus()
+      editor.gotoVisualLineEnd({ select: true })
+      expect(editor.getSelectedText()).toBe("hello my good ")
+      expect(editor.visualCursor.visualRow).toBe(0)
+      expect(editor.visualCursor.visualCol).toBe(14)
+
+      editor.height = 5
+      await renderOnce()
+      expect(editor.visualCursor.visualRow).toBe(0)
+      expect(editor.visualCursor.visualCol).toBe(14)
+
+      editor.clearSelection()
+      editor.moveCursorDown()
+      expect(editor.logicalCursor.col).toBe(20)
+
+      editor.cursorOffset = 0
+      await currentMouse.drag(editor.x, editor.y, editor.x + 17, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("hello my good ")
+      expect(editor.visualCursor.visualRow).toBe(0)
+      expect(editor.visualCursor.visualCol).toBe(14)
+
+      editor.selectionOccupancy = "cell"
+      expect(editor.getSelectedText()).toBe("hello my good f")
+      expect(editor.visualCursor.visualRow).toBe(1)
+      expect(editor.visualCursor.visualCol).toBe(0)
+    })
+
+    it("invalidates soft-wrap affinity after content changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello my good friend",
+        width: 18,
+        height: 4,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      await currentMouse.drag(editor.x + 17, editor.y + 1, editor.x, editor.y + 1)
+      editor.deleteSelection()
+
+      expect(editor.plainText).toBe("hello my good ")
+      expect(editor.visualCursor.visualRow).toBe(0)
+      expect(editor.visualCursor.visualCol).toBe(14)
+    })
+
+    it("keeps cell visual End on a grapheme boundary", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 4,
+        height: 4,
+        wrapMode: "char",
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoVisualLineEnd()
+      expect(editor.cursorOffset).toBe(2)
+
+      editor.insertText("X")
+      editor.deleteCharBackward()
+      expect(editor.plainText).toBe("ab你cd")
+    })
+
+    it("preserves boundary EOL affinity during vertical movement", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abcdefghijklmnopqr",
+        width: 6,
+        height: 4,
+        wrapMode: "char",
+        selectionOccupancy: "boundary",
+      })
+
+      editor.gotoVisualLineEnd()
+      editor.moveCursorDown()
+      expect(editor.visualCursor.visualRow).toBe(1)
+      expect(editor.visualCursor.visualCol).toBe(6)
+      expect(editor.cursorOffset).toBe(12)
     })
   })
 })

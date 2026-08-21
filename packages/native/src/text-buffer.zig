@@ -158,6 +158,40 @@ pub const UnifiedTextBuffer = struct {
         return iter_mod.getPrevGraphemeWidth(@constCast(&self._rope), &self.mem_registry, row, col, self.tab_width, self.width_method);
     }
 
+    pub fn textEndOffset(self: *const Self) u32 {
+        return self._rope.totalWeight();
+    }
+
+    pub fn graphemeBoundsAtOffset(self: *const Self, offset: u32) ?struct { start: u32, end: u32 } {
+        const rope_ptr = @constCast(&self._rope);
+        const coords = iter_mod.offsetToCoords(rope_ptr, offset) orelse return null;
+        const bounds = iter_mod.getGraphemeBoundsAt(
+            rope_ptr,
+            &self.mem_registry,
+            coords.row,
+            coords.col,
+            self.tab_width,
+            self.width_method,
+        ) orelse return null;
+        const line_start = offset - coords.col;
+        return .{ .start = line_start + bounds.start, .end = line_start + bounds.end };
+    }
+
+    pub fn cursorUnitBoundsAtOffset(self: *const Self, offset: u32) ?struct { start: u32, end: u32 } {
+        const rope_ptr = @constCast(&self._rope);
+        const coords = iter_mod.offsetToCoords(rope_ptr, offset) orelse return null;
+        const bounds = iter_mod.getCursorUnitBoundsAt(
+            rope_ptr,
+            &self.mem_registry,
+            coords.row,
+            coords.col,
+            self.tab_width,
+            self.width_method,
+        ) orelse return null;
+        const line_start = offset - coords.col;
+        return .{ .start = line_start + bounds.start, .end = line_start + bounds.end };
+    }
+
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
         return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
     }

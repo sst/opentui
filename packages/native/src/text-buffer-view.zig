@@ -32,6 +32,20 @@ pub const SelectionStyle = struct {
     }
 };
 
+/// How a selection occupies cells between stored anchor and focus offsets.
+/// `cell` includes the grapheme under the max endpoint (block / Vim-visual).
+/// `boundary` is the half-open insert range `[min, max)` (thin / GUI carets).
+/// Occupancy is independent of cursor style; style is paint only.
+pub const SelectionOccupancy = enum(u8) {
+    cell = 0,
+    boundary = 1,
+};
+
+const SelectionEndpoints = struct {
+    anchor: u32,
+    focus: u32,
+};
+
 /// Viewport defines a rectangular window into the virtual line space
 pub const Viewport = struct {
     x: u32,
@@ -129,7 +143,10 @@ pub const UnifiedTextBufferView = struct {
     original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
-    selection_anchor_offset: ?u32,
+    /// Local selection endpoints stay separate from the derived range because
+    /// cell occupancy can extend `selection.end` past the focus grapheme.
+    selection_endpoints: ?SelectionEndpoints,
+    selection_occupancy: SelectionOccupancy,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -187,7 +204,8 @@ pub const UnifiedTextBufferView = struct {
             .original_text_buffer = text_buffer,
             .view_id = view_id,
             .selection = null,
-            .selection_anchor_offset = null,
+            .selection_endpoints = null,
+            .selection_occupancy = .cell,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -528,12 +546,40 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
+    fn clearSelectionEndpoints(self: *Self) void {
+        self.selection_endpoints = null;
+    }
+
+    fn offsetSelectionRange(self: *Self, start: u32, end: u32) struct { start: u32, end: u32 } {
+        const text_end = self.text_buffer.textEndOffset();
+        var range_start = @min(@min(start, end), text_end);
+        var range_end = @min(@max(start, end), text_end);
+        if (range_start == range_end) {
+            if (self.text_buffer.graphemeBoundsAtOffset(range_start)) |bounds| range_start = bounds.start;
+            return .{ .start = range_start, .end = range_start };
+        }
+
+        if (self.text_buffer.graphemeBoundsAtOffset(range_start)) |bounds| {
+            range_start = bounds.start;
+        }
+        if (self.text_buffer.graphemeBoundsAtOffset(range_end)) |bounds| {
+            if (bounds.start < range_end) range_end = bounds.end;
+        }
+
+        return .{ .start = range_start, .end = @min(range_end, text_end) };
+    }
+
     pub fn setSelection(self: *Self, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
         self.setSelectionStyle(start, end, SelectionStyle.rgb(bgColor, fgColor));
     }
 
     pub fn setSelectionStyle(self: *Self, start: u32, end: u32, style: SelectionStyle) void {
-        self.selection = selectionFromStyle(start, end, style);
+        // Offset APIs write an already-exclusive [start, end) and do not go
+        // through occupancy. Clear stored cell-pin endpoints so a later
+        // occupancy change or cursor sync cannot replay a stale focus.
+        self.clearSelectionEndpoints();
+        const range = self.offsetSelectionRange(start, end);
+        self.selection = selectionFromStyle(range.start, range.end, style);
     }
 
     pub fn updateSelection(self: *Self, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
@@ -542,12 +588,51 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn updateSelectionStyle(self: *Self, end: u32, style: SelectionStyle) void {
         if (self.selection) |sel| {
-            self.selection = selectionFromStyle(sel.start, end, style);
+            self.clearSelectionEndpoints();
+            const range = self.offsetSelectionRange(sel.start, end);
+            self.selection = selectionFromStyle(range.start, range.end, style);
+        }
+    }
+
+    pub fn setSelectionColors(self: *Self, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        if (self.selection) |*selection| {
+            selection.bgColor = bgColor;
+            selection.fgColor = fgColor;
         }
     }
 
     pub fn resetSelection(self: *Self) void {
         self.selection = null;
+        self.clearSelectionEndpoints();
+    }
+
+    pub fn setSelectionOccupancy(self: *Self, occupancy: SelectionOccupancy) void {
+        self.selection_occupancy = occupancy;
+        const endpoints = if (self.selection_endpoints) |*endpoints| endpoints else return;
+        const selection = if (self.selection) |*selection| selection else return;
+        const text_end = self.getTextEndOffset();
+        endpoints.anchor = @min(endpoints.anchor, text_end);
+        endpoints.focus = @min(endpoints.focus, text_end);
+        const range = self.selectionRange(endpoints.anchor, endpoints.focus, text_end);
+        selection.start = range.start;
+        selection.end = range.end;
+    }
+
+    pub fn getSelectionOccupancy(self: *const Self) SelectionOccupancy {
+        return self.selection_occupancy;
+    }
+
+    /// Inclusive-end offset helper: under `cell` occupancy, extend `end` by the
+    /// grapheme at that offset. Under `boundary`, write `[start, end)` as-is.
+    /// Does not store cell-pin endpoints (offset API).
+    pub fn setSelectionInclusiveStyle(self: *Self, start: u32, end: u32, style: SelectionStyle) void {
+        const lo = @min(start, end);
+        const hi = @max(start, end);
+        const exclusive_end = if (self.selection_occupancy == .cell)
+            if (self.text_buffer.graphemeBoundsAtOffset(hi)) |bounds| bounds.end else hi
+        else
+            hi;
+        self.setSelectionStyle(lo, exclusive_end, style);
     }
 
     pub fn getSelection(self: *const Self) ?TextSelection {
@@ -588,8 +673,7 @@ pub const UnifiedTextBufferView = struct {
 
         if ((anchor_above and focus_above) or (anchor_below and focus_below)) {
             const had_selection = self.selection != null;
-            self.selection = null;
-            self.selection_anchor_offset = null;
+            self.resetSelection();
             return had_selection;
         }
 
@@ -602,8 +686,7 @@ pub const UnifiedTextBufferView = struct {
         else
             self.coordsToCharOffset(anchorX, anchorY) orelse {
                 const had_selection = self.selection != null;
-                self.selection = null;
-                self.selection_anchor_offset = null;
+                self.resetSelection();
                 return had_selection;
             };
 
@@ -614,18 +697,16 @@ pub const UnifiedTextBufferView = struct {
         else
             self.coordsToCharOffset(focusX, focusY) orelse {
                 const had_selection = self.selection != null;
-                self.selection = null;
-                self.selection_anchor_offset = null;
+                self.resetSelection();
                 return had_selection;
             };
 
-        self.selection_anchor_offset = anchor_offset;
+        self.selection_endpoints = .{ .anchor = anchor_offset, .focus = focus_offset };
 
-        const new_start = @min(anchor_offset, focus_offset);
-        const new_end = @max(anchor_offset, focus_offset);
+        const range = self.selectionRange(anchor_offset, focus_offset, text_end_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
-        const new_selection = selectionFromStyle(new_start, new_end, style);
+        const new_selection = selectionFromStyle(range.start, range.end, style);
 
         const selection_changed = if (self.selection) |old_sel|
             old_sel.start != new_selection.start or old_sel.end != new_selection.end
@@ -641,7 +722,7 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
-        if (self.selection_anchor_offset) |_| {
+        if (self.selection_endpoints != null) {
             return self.updateLocalSelectionFocusOnly(focusX, focusY, style);
         } else {
             return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style);
@@ -649,7 +730,8 @@ pub const UnifiedTextBufferView = struct {
     }
 
     fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle) bool {
-        const anchor_offset = self.selection_anchor_offset orelse return false;
+        const endpoints = self.selection_endpoints orelse return false;
+        const anchor_offset = endpoints.anchor;
 
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
@@ -669,24 +751,47 @@ pub const UnifiedTextBufferView = struct {
         else
             self.coordsToCharOffset(focusX, focusY) orelse return false;
 
-        const new_start = @min(anchor_offset, focus_col_offset);
-        var new_end = @max(anchor_offset, focus_col_offset);
+        self.selection_endpoints.?.focus = focus_col_offset;
 
-        if (focus_col_offset < anchor_offset) {
-            new_end = @min(new_end + 1, text_end_offset);
-        }
-
-        self.selection = selectionFromStyle(new_start, new_end, style);
+        const range = self.selectionRange(anchor_offset, focus_col_offset, text_end_offset);
+        self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
     }
 
+    /// Derive the exclusive highlight/copy/delete range from stored endpoints.
+    /// `cell`: `[min, max + width(max))` so both endpoint graphemes are occupied.
+    /// `boundary`: `[min, max)` — the insert range the caret swept.
+    /// Zero extent (`anchor == focus`) stays empty in both modes: a press is
+    /// not a cell to occupy.
+    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
+        var start = @min(anchor_offset, focus_offset);
+        var end = @max(anchor_offset, focus_offset);
+        if (anchor_offset == focus_offset) {
+            const offset = @min(start, text_end_offset);
+            return .{ .start = offset, .end = offset };
+        }
+
+        if (self.text_buffer.graphemeBoundsAtOffset(start)) |bounds| {
+            start = bounds.start;
+        }
+        if (self.text_buffer.graphemeBoundsAtOffset(end)) |bounds| {
+            if (self.selection_occupancy == .cell or bounds.start < end) {
+                end = bounds.end;
+            }
+        }
+
+        start = @min(start, text_end_offset);
+        end = @min(end, text_end_offset);
+        return .{ .start = start, .end = end };
+    }
+
     pub fn resetLocalSelection(self: *Self) void {
-        self.selection = null;
-        self.selection_anchor_offset = null;
+        self.resetSelection();
     }
 
     fn getTextEndOffset(self: *Self) u32 {
+        self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
             self.ensureTruncation();
         }
@@ -696,10 +801,24 @@ pub const UnifiedTextBufferView = struct {
         const last_vline = &self.virtual_lines.items[last_line_idx];
 
         if (last_vline.is_truncated) {
-            return last_vline.col_offset + last_vline.truncation_suffix_start + (last_vline.width_cols - last_vline.ellipsis_pos - 3);
+            return last_vline.col_offset + last_vline.truncation_suffix_start + (last_vline.width_cols -| last_vline.ellipsis_pos -| 3);
         }
 
         return last_vline.col_offset + last_vline.width_cols;
+    }
+
+    /// Cell occupancy clamps wrap padding to the last cell. Boundary occupancy
+    /// maps it to the insertion gap after that cell.
+    fn maxLocalXOnVisualLine(self: *const Self, vlines: []const VirtualLine, vline_idx: usize) u32 {
+        const vline = &vlines[vline_idx];
+        if (vline.width_cols == 0) return 0;
+        if (self.selection_occupancy == .cell and vline_idx + 1 < vlines.len) {
+            const next_vline = &vlines[vline_idx + 1];
+            if (next_vline.source_line == vline.source_line) {
+                return vline.width_cols - 1;
+            }
+        }
+        return vline.width_cols;
     }
 
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
@@ -726,9 +845,9 @@ pub const UnifiedTextBufferView = struct {
         const vline_idx: usize = @intCast(clamped_y);
         const vline = &self.virtual_lines.items[vline_idx];
         const lineStart = vline.col_offset;
-        const lineWidth = vline.width_cols;
+        const max_local_x = self.maxLocalXOnVisualLine(self.virtual_lines.items, vline_idx);
 
-        var localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+        var localX = @max(0, @min(abs_x, @as(i32, @intCast(max_local_x))));
 
         if (vline.is_truncated) {
             const ellipsis_width: u32 = 3;

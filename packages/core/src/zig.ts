@@ -15,6 +15,7 @@ import { EventEmitter } from "events"
 import {
   type CursorStyle,
   type CursorStyleOptions,
+  type SelectionOccupancy,
   type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
@@ -1123,6 +1124,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    textBufferViewSetSelectionOccupancy: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
+    textBufferViewGetSelectionOccupancy: {
+      args: ["u32"],
+      returns: "u8",
+    },
     textBufferViewSetWrapWidth: {
       args: ["u32", "u32"],
       returns: "void",
@@ -1429,6 +1438,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    editorViewSetSelectionOccupancy: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
+    editorViewSetSelectionInclusive: {
+      args: ["u32", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewSetSelectionColors: {
+      args: ["u32", "ptr", "ptr"],
+      returns: "void",
+    },
     editorViewGetSelectedTextBytes: {
       args: ["u32", "ptr", "u32"],
       returns: "u32",
@@ -1482,6 +1503,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewGetVisualEOL: {
       args: ["u32", "ptr"],
+      returns: "void",
+    },
+    editorViewGotoVisualLineEnd: {
+      args: ["u32"],
       returns: "void",
     },
     editorViewSetPlaceholderStyledText: {
@@ -2812,6 +2837,8 @@ export interface RenderLib extends AudioEngineLib {
     fgColor: RGBA | null,
   ) => boolean
   textBufferViewResetLocalSelection: (view: TextBufferViewHandle) => void
+  textBufferViewSetSelectionOccupancy: (view: TextBufferViewHandle, occupancy: SelectionOccupancy) => void
+  textBufferViewGetSelectionOccupancy: (view: TextBufferViewHandle) => SelectionOccupancy
   textBufferViewSetWrapWidth: (view: TextBufferViewHandle, width: number) => void
   textBufferViewSetWrapMode: (view: TextBufferViewHandle, mode: "none" | "char" | "word") => void
   textBufferViewSetFirstLineOffset: (view: TextBufferViewHandle, offset: number) => void
@@ -2952,6 +2979,15 @@ export interface RenderLib extends AudioEngineLib {
   ) => boolean
 
   editorViewResetLocalSelection: (view: EditorViewHandle) => void
+  editorViewSetSelectionOccupancy: (view: EditorViewHandle, occupancy: SelectionOccupancy) => void
+  editorViewSetSelectionInclusive: (
+    view: EditorViewHandle,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
+  editorViewSetSelectionColors: (view: EditorViewHandle, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewGetSelectedTextBytes: (view: EditorViewHandle, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: EditorViewHandle) => { row: number; col: number }
   editorViewGetText: (view: EditorViewHandle, maxLength: number) => Uint8Array | null
@@ -2965,6 +3001,7 @@ export interface RenderLib extends AudioEngineLib {
   editorViewGetEOL: (view: EditorViewHandle) => VisualCursor
   editorViewGetVisualSOL: (view: EditorViewHandle) => VisualCursor
   editorViewGetVisualEOL: (view: EditorViewHandle) => VisualCursor
+  editorViewGotoVisualLineEnd: (view: EditorViewHandle) => void
   editorViewGetLineInfo: (view: EditorViewHandle) => LineInfo
   editorViewGetLogicalLineInfo: (view: EditorViewHandle) => LineInfo
   editorViewSetPlaceholderStyledText: (
@@ -5114,6 +5151,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewResetLocalSelection(view)
   }
 
+  public textBufferViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {
+    this.opentui.symbols.textBufferViewSetSelectionOccupancy(view, occupancy === "boundary" ? 1 : 0)
+  }
+
+  public textBufferViewGetSelectionOccupancy(view: Pointer): SelectionOccupancy {
+    return this.opentui.symbols.textBufferViewGetSelectionOccupancy(view) === 1 ? "boundary" : "cell"
+  }
+
   public textBufferViewSetWrapWidth(view: Pointer, width: number): void {
     this.opentui.symbols.textBufferViewSetWrapWidth(view, width)
   }
@@ -5765,6 +5810,28 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewResetLocalSelection(view)
   }
 
+  public editorViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {
+    this.opentui.symbols.editorViewSetSelectionOccupancy(view, occupancy === "boundary" ? 1 : 0)
+  }
+
+  public editorViewSetSelectionInclusive(
+    view: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): void {
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
+    this.opentui.symbols.editorViewSetSelectionInclusive(view, start, end, bg, fg)
+  }
+
+  public editorViewSetSelectionColors(view: Pointer, bgColor: RGBA | null, fgColor: RGBA | null): void {
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
+    this.opentui.symbols.editorViewSetSelectionColors(view, bg, fg)
+  }
+
   public editorViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
     const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, viewOrNull(outBuffer), maxLength)
@@ -5844,6 +5911,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewGetVisualEOL(view, storage.buffer)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
+  }
+
+  public editorViewGotoVisualLineEnd(view: Pointer): void {
+    this.opentui.symbols.editorViewGotoVisualLineEnd(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

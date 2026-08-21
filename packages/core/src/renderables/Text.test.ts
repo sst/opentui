@@ -31,11 +31,12 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
+      // Inclusive selection: the cell under the pointer (5) is selected too.
       await currentMouse.drag(text.x, text.y, text.x + 5, text.y)
       await renderOnce()
 
       const selectedText = text.getSelectedText()
-      expect(selectedText).toBe("Hello")
+      expect(selectedText).toBe("Hello ")
     })
 
     it("should handle graphemes correctly", async () => {
@@ -125,10 +126,11 @@ describe("TextRenderable Selection", () => {
       // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 starts at 7
       // Position "n" in "Line 2" is at 7 + 2 = 9
       expect(selection!.start).toBe(9)
-      // Line 2 starts at 14, position after "Line" is 14 + 4 = 18
-      expect(selection!.end).toBe(18)
+      // Line 2 starts at 14; the cell under the pointer (14 + 4, the ' ' of
+      // "Line 3") is included, so the end is 19.
+      expect(selection!.end).toBe(19)
 
-      expect(text.getSelectedText()).toBe("ne 2\nLine")
+      expect(text.getSelectedText()).toBe("ne 2\nLine ")
     })
 
     it("should handle selection across empty lines", async () => {
@@ -372,13 +374,13 @@ describe("TextRenderable Selection", () => {
 
       await currentMouse.drag(text.x + 0, text.y, text.x + 5, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("Hello")
-      expect(text.getSelection()).toEqual({ start: 0, end: 5 })
+      expect(text.getSelectedText()).toBe("Hello ")
+      expect(text.getSelection()).toEqual({ start: 0, end: 6 })
 
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("World")
-      expect(text.getSelection()).toEqual({ start: 6, end: 11 })
+      expect(text.getSelectedText()).toBe("World ")
+      expect(text.getSelection()).toEqual({ start: 6, end: 12 })
 
       await currentMouse.drag(text.x + 12, text.y, text.x + 16, text.y)
       await renderOnce()
@@ -1240,7 +1242,7 @@ describe("TextRenderable Selection", () => {
       await currentMouse.drag(text.x + 4, text.y, text.x + 9, text.y)
       await renderOnce()
 
-      expect(text.getSelectedText()).toBe("Green")
+      expect(text.getSelectedText()).toBe("Green ")
     })
 
     it("should handle StyledText with TextNodeRenderable children", async () => {
