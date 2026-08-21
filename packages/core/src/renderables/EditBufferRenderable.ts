@@ -128,51 +128,70 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   constructor(ctx: RenderContext, options: EditBufferOptions) {
     super(ctx, options, true)
 
-    this._textColor = parseColor(options.textColor ?? this._defaultOptions.textColor)
-    this._backgroundColor = parseColor(options.backgroundColor ?? this._defaultOptions.backgroundColor)
-    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
-    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
-    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
-    this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
-    this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
-    this._scrollSpeed = options.scrollSpeed ?? this._defaultOptions.scrollSpeed
-    this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
-    this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
-    this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
-    this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
-    this._tabIndicatorColor = options.tabIndicatorColor
-      ? parseColor(options.tabIndicatorColor)
-      : this._defaultOptions.tabIndicatorColor
+    let editBuffer: EditBuffer | undefined
+    let editorView: EditorView | undefined
 
-    this.editBuffer = EditBuffer.create(this._ctx.widthMethod)
-    this.editorView = EditorView.create(this.editBuffer, this.width || 80, this.height || 24)
+    try {
+      this._textColor = parseColor(options.textColor ?? this._defaultOptions.textColor)
+      this._backgroundColor = parseColor(options.backgroundColor ?? this._defaultOptions.backgroundColor)
+      this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+      this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
+      this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+      this.selectable = options.selectable ?? this._defaultOptions.selectable
+      this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+      this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
+      this._scrollSpeed = options.scrollSpeed ?? this._defaultOptions.scrollSpeed
+      this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
+      this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
+      this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
+      this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
+      this._tabIndicatorColor = options.tabIndicatorColor
+        ? parseColor(options.tabIndicatorColor)
+        : this._defaultOptions.tabIndicatorColor
 
-    this.editorView.setWrapMode(this._wrapMode)
-    this.editorView.setScrollMargin(this._scrollMargin)
-    if (options.selectionOccupancy === "boundary") {
-      this.editorView.setSelectionOccupancy("boundary")
+      editBuffer = EditBuffer.create(this._ctx.widthMethod)
+      this.editBuffer = editBuffer
+      editorView = EditorView.create(editBuffer, this.width || 80, this.height || 24)
+      this.editorView = editorView
+
+      this.editorView.setWrapMode(this._wrapMode)
+      this.editorView.setScrollMargin(this._scrollMargin)
+      if (options.selectionOccupancy === "boundary") {
+        this.editorView.setSelectionOccupancy("boundary")
+      }
+
+      this.editBuffer.setDefaultFg(this._textColor)
+      this.editBuffer.setDefaultBg(this._backgroundColor)
+      this.editBuffer.setDefaultAttributes(this._defaultAttributes)
+
+      if (options.syntaxStyle) {
+        this.editBuffer.setSyntaxStyle(options.syntaxStyle)
+      }
+
+      if (this._tabIndicator !== undefined) {
+        this.editorView.setTabIndicator(this._tabIndicator)
+      }
+      if (this._tabIndicatorColor !== undefined) {
+        this.editorView.setTabIndicatorColor(this._tabIndicatorColor)
+      }
+
+      if (!this.setNativeMeasureTarget(NativeMeasureTargetKind.EditorView, this.editorView.ptr)) {
+        throw new Error("Failed to attach editor native measure target")
+      }
+      this.setupEventListeners(options)
+    } catch (error) {
+      try {
+        this.runCleanup((run) => {
+          run(() => this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0))
+          run(() => editorView?.destroy())
+          run(() => editBuffer?.destroy())
+          run(() => this.abortConstruction())
+        })
+      } catch {
+        // Preserve the first construction failure.
+      }
+      throw error
     }
-
-    this.editBuffer.setDefaultFg(this._textColor)
-    this.editBuffer.setDefaultBg(this._backgroundColor)
-    this.editBuffer.setDefaultAttributes(this._defaultAttributes)
-
-    if (options.syntaxStyle) {
-      this.editBuffer.setSyntaxStyle(options.syntaxStyle)
-    }
-
-    if (this._tabIndicator !== undefined) {
-      this.editorView.setTabIndicator(this._tabIndicator)
-    }
-    if (this._tabIndicatorColor !== undefined) {
-      this.editorView.setTabIndicatorColor(this._tabIndicatorColor)
-    }
-
-    if (!this.setNativeMeasureTarget(NativeMeasureTargetKind.EditorView, this.editorView.ptr)) {
-      throw new Error("Failed to attach editor native measure target")
-    }
-    this.setupEventListeners(options)
   }
 
   public get lineInfo(): LineInfo {
@@ -1013,27 +1032,23 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   override destroy(): void {
     if (this.isDestroyed) return
+    this.runCleanup((run) => {
+      run(() => {
+        this.traits = {}
+      })
 
-    this.traits = {}
+      if (this._focused) {
+        run(() => this._ctx.setCursorPosition(0, 0, false))
+        run(() => this.blur())
+      }
 
-    if (this._focused) {
-      this._ctx.setCursorPosition(0, 0, false)
-      // Manually blur to unhook event handlers BEFORE setting destroyed flag
-      // This prevents the guard in super.destroy() from skipping blur()
-      this.blur()
-    }
-
-    // Destroy dependent resources in correct order BEFORE calling super
-    // EditorView depends on EditBuffer, so destroy it first
-    if (this.nativeRenderable) {
-      this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0)
-    }
-    this.editorView.destroy()
-    this.editBuffer.destroy()
-
-    // Finally clean up parent resources
-    // Note: super.destroy() will try to blur() again, but blur() has guards to prevent double-blur
-    super.destroy()
+      if (this.nativeRenderable) {
+        run(() => this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0))
+      }
+      run(() => this.editorView.destroy())
+      run(() => this.editBuffer.destroy())
+      run(() => super.destroy())
+    })
   }
 
   public set onCursorChange(handler: ((event: CursorChangeEvent) => void) | undefined) {

@@ -80,29 +80,38 @@ export class CodeRenderable extends TextBufferRenderable {
   constructor(ctx: RenderContext, options: CodeOptions) {
     super(ctx, options)
 
-    this._content = options.content ?? this._contentDefaultOptions.content
-    this._filetype = options.filetype
-    this._syntaxStyle = options.syntaxStyle
-    this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
-    this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
-    this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
-    this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
-    this._initialStyledText = options.initialStyledText
-    this._baseHighlight = options.baseHighlight
-    this._onHighlight = options.onHighlight
-    this._onChunks = options.onChunks
+    try {
+      this._content = options.content ?? this._contentDefaultOptions.content
+      this._filetype = options.filetype
+      this._syntaxStyle = options.syntaxStyle
+      this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
+      this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
+      this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
+      this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
+      this._initialStyledText = options.initialStyledText
+      this._baseHighlight = options.baseHighlight
+      this._onHighlight = options.onHighlight
+      this._onChunks = options.onChunks
 
-    if (this._content.length > 0) {
-      if (this._initialStyledText && this._drawUnstyledText) {
-        this.textBuffer.setStyledText(this._initialStyledText)
-      } else {
-        this.textBuffer.setText(this._content)
+      if (this._content.length > 0) {
+        if (this._initialStyledText && this._drawUnstyledText) {
+          this.textBuffer.setStyledText(this._initialStyledText)
+        } else {
+          this.textBuffer.setText(this._content)
+        }
+        this.updateTextInfo()
+        this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
       }
-      this.updateTextInfo()
-      this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
-    }
 
-    this._highlightsDirty = this._content.length > 0
+      this._highlightsDirty = this._content.length > 0
+    } catch (error) {
+      try {
+        super.destroy()
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
+    }
   }
 
   get content(): string {

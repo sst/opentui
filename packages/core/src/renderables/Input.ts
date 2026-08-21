@@ -86,13 +86,22 @@ export class InputRenderable extends TextareaRenderable {
       ],
     })
 
-    this._maxLength = maxLength
-    this._minLength = minLength
-    this._lastCommittedValue = this.plainText
+    try {
+      this._maxLength = maxLength
+      this._minLength = minLength
+      this._lastCommittedValue = this.plainText
 
-    // Set cursor to end of initial value
-    if (initialValue) {
-      this.cursorOffset = initialValue.length
+      // Set cursor to end of initial value
+      if (initialValue) {
+        this.cursorOffset = initialValue.length
+      }
+    } catch (error) {
+      try {
+        super.destroy()
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
     }
   }
 

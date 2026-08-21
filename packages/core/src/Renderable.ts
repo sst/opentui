@@ -266,7 +266,7 @@ export abstract class Renderable extends BaseRenderable {
   private _keyListeners: Partial<Record<"down", (key: KeyEvent) => void>> = {}
 
   protected yogaNode: YogaNode
-  protected readonly nativeRenderable: NativeRenderableHandle | null
+  protected nativeRenderable: NativeRenderableHandle | null
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
@@ -299,39 +299,83 @@ export abstract class Renderable extends BaseRenderable {
     this.nativeRenderable = nativeRenderable
     Renderable.renderablesByNumber.set(this.num, this)
 
-    validateOptions(this.id, options)
+    let yogaNode: YogaNode | null = null
+    try {
+      validateOptions(this.id, options)
 
-    this.renderBefore = options.renderBefore
-    this.renderAfter = options.renderAfter
+      this.renderBefore = options.renderBefore
+      this.renderAfter = options.renderAfter
 
-    this._width = options.width ?? "auto"
-    this._height = options.height ?? "auto"
+      this._width = options.width ?? "auto"
+      this._height = options.height ?? "auto"
 
-    if (typeof this._width === "number") {
-      this._widthValue = this._width
+      if (typeof this._width === "number") {
+        this._widthValue = this._width
+      }
+      if (typeof this._height === "number") {
+        this._heightValue = this._height
+      }
+
+      this._zIndex = options.zIndex ?? 0
+      this._visible = options.visible !== false
+      this.buffered = options.buffered ?? false
+      this._live = options.live ?? false
+      this._liveCount = this._live && this._visible ? 1 : 0
+      this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
+
+      yogaNode = nativeRenderable
+        ? Yoga.Node.fromBorrowedPointer(renderLib!.nativeRenderableGetYogaNode(nativeRenderable))
+        : Yoga.Node.createForOpenTUI()
+      this.yogaNode = yogaNode
+      this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
+      this.setupYogaProperties(options)
+
+      this.applyEventOptions(options)
+
+      if (this.buffered) {
+        this.createFrameBuffer()
+      }
+    } catch (error) {
+      try {
+        this.runCleanup((run) => {
+          run(() => yogaNode?.free())
+          if (nativeRenderable) run(() => renderLib!.destroyNativeRenderable(nativeRenderable))
+        })
+      } catch {
+        // Preserve the first construction failure.
+      }
+      Renderable.renderablesByNumber.delete(this.num)
+      throw error
     }
-    if (typeof this._height === "number") {
-      this._heightValue = this._height
-    }
+  }
 
-    this._zIndex = options.zIndex ?? 0
-    this._visible = options.visible !== false
-    this.buffered = options.buffered ?? false
-    this._live = options.live ?? false
-    this._liveCount = this._live && this._visible ? 1 : 0
-    this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
+  protected abortConstruction(): void {
+    this._isDestroyed = true
+    Renderable.renderablesByNumber.delete(this.num)
+    this.runCleanup((run) => {
+      if (this.frameBuffer) {
+        const frameBuffer = this.frameBuffer
+        this.frameBuffer = null
+        run(() => frameBuffer.destroy())
+      }
+      run(() => this.destroyLayoutBacking())
+    })
+  }
 
-    this.yogaNode = nativeRenderable
-      ? Yoga.Node.fromBorrowedPointer(renderLib!.nativeRenderableGetYogaNode(nativeRenderable))
-      : Yoga.Node.createForOpenTUI()
-    this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
-    this.setupYogaProperties(options)
-
-    this.applyEventOptions(options)
-
-    if (this.buffered) {
-      this.createFrameBuffer()
-    }
+  protected runCleanup(steps: (run: (step: () => void) => void) => void): void {
+    let failed = false
+    let firstError: unknown
+    steps((step) => {
+      try {
+        step()
+      } catch (error) {
+        if (!failed) {
+          failed = true
+          firstError = error
+        }
+      }
+    })
+    if (failed) throw firstError
   }
 
   protected setNativeMeasureTarget(kind: NativeMeasureTargetKind, target: NativeMeasureTargetHandle | 0): boolean {
@@ -1216,6 +1260,13 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
+    if (this._isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${this.id} was already destroyed, skipping add`)
+      }
+      return -1
+    }
+
     if (renderable.isDestroyed) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping add`)
@@ -1271,6 +1322,13 @@ export abstract class Renderable extends BaseRenderable {
 
     const renderable = maybeMakeRenderable(this._ctx, obj)
     if (!renderable) {
+      return -1
+    }
+
+    if (this._isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${this.id} was already destroyed, skipping insertBefore`)
+      }
       return -1
     }
 
@@ -1362,10 +1420,6 @@ export abstract class Renderable extends BaseRenderable {
 
     const renderable = this._childrenInLayoutOrder[index]
 
-    if (renderable._liveCount > 0) {
-      this.propagateLiveCount(-renderable._liveCount)
-    }
-
     this.yogaNode.removeChild(renderable.getLayoutNode())
     this._childrenInLayoutOrder.splice(index, 1)
 
@@ -1375,14 +1429,19 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this._shouldUpdateBefore.delete(renderable)
-    this.requestRender()
 
-    renderable.onRemove()
-    renderable.parent = null
-    this._ctx.unregisterLifecyclePass(renderable)
+    this.runCleanup((run) => {
+      if (renderable._liveCount > 0) {
+        run(() => this.propagateLiveCount(-renderable._liveCount))
+      }
+      run(() => this.requestRender())
+      run(() => renderable.onRemove())
+      renderable.parent = null
+      run(() => this._ctx.unregisterLifecyclePass(renderable))
 
-    this.childrenPrimarySortDirty = true
-    bumpRenderListRevision(this._ctx)
+      this.childrenPrimarySortDirty = true
+      run(() => bumpRenderListRevision(this._ctx))
+    })
   }
 
   protected onRemove(): void {
@@ -1566,52 +1625,93 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this._isDestroyed = true
-    this.emit(RenderableEvents.DESTROYED)
+    this.runCleanup((run) => {
+      run(() => this.emit(RenderableEvents.DESTROYED))
 
-    if (this.parent) {
-      this.parent.remove(this)
-    }
+      if (this.parent) {
+        const parent = this.parent
+        run(() => parent.remove(this))
+        if (this.parent === parent) {
+          run(() => this.detachFromParent())
+        }
+      }
 
-    if (this.frameBuffer) {
-      this.frameBuffer.destroy()
-      this.frameBuffer = null
-    }
+      if (this.frameBuffer) {
+        const frameBuffer = this.frameBuffer
+        this.frameBuffer = null
+        run(() => frameBuffer.destroy())
+      }
 
-    for (const child of [...this._childrenInLayoutOrder]) {
-      this.remove(child)
-    }
+      for (const child of [...this._childrenInLayoutOrder]) {
+        run(() => this.remove(child))
+      }
 
-    this._childrenInLayoutOrder = []
-    this._childrenInZIndexOrder = []
-    this._shouldUpdateBefore.clear()
-    Renderable.renderablesByNumber.delete(this.num)
+      this._childrenInLayoutOrder = []
+      this._childrenInZIndexOrder = []
+      this._shouldUpdateBefore.clear()
+      Renderable.renderablesByNumber.delete(this.num)
 
-    this.blur()
-    this.removeAllListeners()
-
-    this.destroySelf()
-
-    try {
-      this.yogaNode.free()
-    } catch (e) {
-      // Might be already freed and will throw an error if we try to free it again
-    }
-    if (this.nativeRenderable) resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
+      run(() => this.blur())
+      run(() => this.removeAllListeners())
+      run(() => this.destroySelf())
+      run(() => this.yogaNode.free())
+      if (this.nativeRenderable) {
+        const nativeRenderable = this.nativeRenderable
+        this.nativeRenderable = null
+        run(() => resolveRenderLib().destroyNativeRenderable(nativeRenderable))
+      }
+    })
   }
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
     // Make a copy of the children array to avoid iteration issues when children are destroyed
     const children = [...this._childrenInLayoutOrder]
-    for (const child of children) {
-      child.destroyRecursively()
-    }
-    this.destroy()
+    this.runCleanup((run) => {
+      for (const child of children) {
+        run(() => child.destroyRecursively())
+      }
+      run(() => this.destroy())
+    })
   }
 
   protected destroySelf(): void {
     // Default implementation: do nothing else
     // Override this method to provide custom cleanup
+  }
+
+  private destroyLayoutBacking(): void {
+    this.yogaNode.free()
+    if (this.nativeRenderable) {
+      const nativeRenderable = this.nativeRenderable
+      this.nativeRenderable = null
+      resolveRenderLib().destroyNativeRenderable(nativeRenderable)
+    }
+  }
+
+  private detachFromParent(): void {
+    const parent = this.parent
+    if (!parent) return
+
+    const layoutIndex = parent._childrenInLayoutOrder.indexOf(this)
+    if (layoutIndex !== -1) {
+      parent.yogaNode.removeChild(this.getLayoutNode())
+      parent._childrenInLayoutOrder.splice(layoutIndex, 1)
+      if (this._liveCount > 0) {
+        parent.propagateLiveCount(-this._liveCount)
+      }
+    }
+
+    const zIndexIndex = parent._childrenInZIndexOrder.indexOf(this)
+    if (zIndexIndex !== -1) {
+      parent._childrenInZIndexOrder.splice(zIndexIndex, 1)
+    }
+
+    parent._shouldUpdateBefore.delete(this)
+    parent._ctx.unregisterLifecyclePass(this)
+    this.parent = null
+    parent.childrenPrimarySortDirty = true
+    bumpRenderListRevision(parent._ctx)
   }
 
   public processMouseEvent(event: MouseEvent): void {

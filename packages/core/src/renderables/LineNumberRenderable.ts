@@ -77,30 +77,39 @@ class GutterRenderable extends Renderable {
       flexShrink: 0,
       buffered: options.buffered,
     })
-    this.target = target
-    this._fg = options.fg
-    this._bg = options.bg
-    this._minWidth = options.minWidth
-    this._paddingRight = options.paddingRight
-    this._lineColorsGutter = options.lineColorsGutter
-    this._lineColorsContent = options.lineColorsContent
-    this._lineSigns = options.lineSigns
-    this._lineNumberOffset = options.lineNumberOffset
-    this._hideLineNumbers = options.hideLineNumbers
-    this._lineNumbers = options.lineNumbers ?? new Map()
-    this._lastKnownLineCount = this.target.virtualLineCount
-    this._lastKnownScrollY = this.target.scrollY
-    this.calculateSignWidths()
-    this.setupMeasureFunc()
+    try {
+      this.target = target
+      this._fg = options.fg
+      this._bg = options.bg
+      this._minWidth = options.minWidth
+      this._paddingRight = options.paddingRight
+      this._lineColorsGutter = options.lineColorsGutter
+      this._lineColorsContent = options.lineColorsContent
+      this._lineSigns = options.lineSigns
+      this._lineNumberOffset = options.lineNumberOffset
+      this._hideLineNumbers = options.hideLineNumbers
+      this._lineNumbers = options.lineNumbers ?? new Map()
+      this._lastKnownLineCount = this.target.virtualLineCount
+      this._lastKnownScrollY = this.target.scrollY
+      this.calculateSignWidths()
+      this.setupMeasureFunc()
 
-    // Use lifecycle pass to detect line count changes BEFORE layout
-    this.onLifecyclePass = () => {
-      const currentLineCount = this.target.virtualLineCount
-      if (currentLineCount !== this._lastKnownLineCount) {
-        this._lastKnownLineCount = currentLineCount
-        this.yogaNode.markDirty()
-        this.requestRender()
+      // Use lifecycle pass to detect line count changes BEFORE layout
+      this.onLifecyclePass = () => {
+        const currentLineCount = this.target.virtualLineCount
+        if (currentLineCount !== this._lastKnownLineCount) {
+          this._lastKnownLineCount = currentLineCount
+          this.yogaNode.markDirty()
+          this.requestRender()
+        }
       }
+    } catch (error) {
+      try {
+        this.abortConstruction()
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
     }
   }
 
@@ -397,75 +406,88 @@ export class LineNumberRenderable extends Renderable {
       height: "auto",
     })
 
-    this._fg = parseColor(options.fg ?? DEFAULT_GUTTER_FG)
-    this._bg = parseColor(options.bg ?? DEFAULT_GUTTER_BG)
-    this._minWidth = options.minWidth ?? 3
-    this._paddingRight = options.paddingRight ?? 1
-    this._lineNumberOffset = options.lineNumberOffset ?? 0
-    this._hideLineNumbers = options.hideLineNumbers ?? new Set()
-    this._lineNumbers = options.lineNumbers ?? new Map()
+    try {
+      this._fg = parseColor(options.fg ?? DEFAULT_GUTTER_FG)
+      this._bg = parseColor(options.bg ?? DEFAULT_GUTTER_BG)
+      this._minWidth = options.minWidth ?? 3
+      this._paddingRight = options.paddingRight ?? 1
+      this._lineNumberOffset = options.lineNumberOffset ?? 0
+      this._hideLineNumbers = options.hideLineNumbers ?? new Set()
+      this._lineNumbers = options.lineNumbers ?? new Map()
 
-    this._lineColorsGutter = new Map<number, RGBA>()
-    this._lineColorsContent = new Map<number, RGBA>()
-    if (options.lineColors) {
-      for (const [line, color] of options.lineColors) {
-        this.parseLineColor(line, color)
+      this._lineColorsGutter = new Map<number, RGBA>()
+      this._lineColorsContent = new Map<number, RGBA>()
+      if (options.lineColors) {
+        for (const [line, color] of options.lineColors) {
+          this.parseLineColor(line, color)
+        }
       }
-    }
 
-    this._lineSigns = new Map<number, LineSign>()
-    if (options.lineSigns) {
-      for (const [line, sign] of options.lineSigns) {
-        this._lineSigns.set(line, sign)
+      this._lineSigns = new Map<number, LineSign>()
+      if (options.lineSigns) {
+        for (const [line, sign] of options.lineSigns) {
+          this._lineSigns.set(line, sign)
+        }
       }
-    }
 
-    // If target is provided in constructor, set it up immediately
-    if (options.target) {
-      this.setTarget(options.target)
+      // If target is provided in constructor, set it up immediately
+      if (options.target && !this.setTarget(options.target)) {
+        throw new Error("LineNumberRenderable: Cannot use a destroyed target.")
+      }
+    } catch (error) {
+      try {
+        this.runCleanup((run) => {
+          run(() => this.clearTarget())
+          run(() => this.abortConstruction())
+        })
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
     }
   }
 
-  private setTarget(target: Renderable & LineInfoProvider): void {
-    if (this.target === target) return
+  private setTarget(target: Renderable & LineInfoProvider): boolean {
+    if (this.target === target) return true
+    if (this.isDestroyed || target.isDestroyed) return false
 
-    if (this.target) {
-      // Remove event listener from old target
-      this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target)
-    }
-
-    if (this.gutter) {
-      super.remove(this.gutter)
-      this.gutter = null
-    }
+    if (this.target || this.gutter) this.clearTarget()
 
     this.target = target
+    try {
+      target.on("line-info-change", this.handleLineInfoChange)
+      this.gutter = new GutterRenderable(this.ctx, target, {
+        fg: this._fg,
+        bg: this._bg,
+        minWidth: this._minWidth,
+        paddingRight: this._paddingRight,
+        lineColorsGutter: this._lineColorsGutter,
+        lineColorsContent: this._lineColorsContent,
+        lineSigns: this._lineSigns,
+        lineNumberOffset: this._lineNumberOffset,
+        hideLineNumbers: this._hideLineNumbers,
+        lineNumbers: this._lineNumbers,
+        id: this.id ? `${this.id}-gutter` : undefined,
+        buffered: true,
+      })
 
-    // Listen for line info changes from target
-    this.target.on("line-info-change", this.handleLineInfoChange)
-
-    this.gutter = new GutterRenderable(this.ctx, this.target, {
-      fg: this._fg,
-      bg: this._bg,
-      minWidth: this._minWidth,
-      paddingRight: this._paddingRight,
-      lineColorsGutter: this._lineColorsGutter,
-      lineColorsContent: this._lineColorsContent,
-      lineSigns: this._lineSigns,
-      lineNumberOffset: this._lineNumberOffset,
-      hideLineNumbers: this._hideLineNumbers,
-      lineNumbers: this._lineNumbers,
-      id: this.id ? `${this.id}-gutter` : undefined,
-      buffered: true,
-    })
-
-    super.add(this.gutter)
-    super.add(this.target)
+      if (super.add(this.gutter) < 0 || super.add(target) < 0) {
+        throw new Error("LineNumberRenderable: Failed to attach target.")
+      }
+      return true
+    } catch (error) {
+      try {
+        this.clearTarget()
+      } catch {
+        // Preserve the target setup failure.
+      }
+      throw error
+    }
   }
 
   // Override add to intercept and set as target if it's a LineInfoProvider
   public override add(child: Renderable): number {
+    if (this.isDestroyed) return -1
     // If this is a LineInfoProvider and we don't have a target yet, set it
     if (
       !this.target &&
@@ -474,8 +496,7 @@ export class LineNumberRenderable extends Renderable {
       "virtualLineCount" in child &&
       "scrollY" in child
     ) {
-      this.setTarget(child as Renderable & LineInfoProvider)
-      return this.getChildrenCount() - 1
+      return this.setTarget(child as Renderable & LineInfoProvider) ? this.getChildrenCount() - 1 : -1
     }
     // Otherwise ignore - SolidJS may try to add layout slots or other helpers
     return -1
@@ -489,38 +510,59 @@ export class LineNumberRenderable extends Renderable {
     }
 
     if (this.gutter && child === this.gutter) {
+      if (this.gutter.isDestroyed) {
+        this.clearTarget()
+        return
+      }
       throw new Error("LineNumberRenderable: Cannot remove gutter directly.")
     }
     if (this.target && child === this.target) {
+      if (this.target.isDestroyed) {
+        this.clearTarget()
+        return
+      }
       throw new Error("LineNumberRenderable: Cannot remove target directly. Use clearTarget() instead.")
     }
     super.remove(child)
   }
 
-  // Override destroyRecursively to properly clean up internal components
+  public override destroy(): void {
+    const gutter = this.gutter
+    this._isDestroying = true
+    this.runCleanup((run) => {
+      run(() => super.destroy())
+      if (gutter) run(() => gutter.destroy())
+    })
+  }
+
+  // Internal children must be removable before recursive teardown starts.
   public override destroyRecursively(): void {
     this._isDestroying = true
-
-    if (this.target) {
-      this.target.off("line-info-change", this.handleLineInfoChange)
-    }
-
     super.destroyRecursively()
+  }
 
+  protected override destroySelf(): void {
+    this.target?.off("line-info-change", this.handleLineInfoChange)
     this.gutter = null
     this.target = null
   }
 
   public clearTarget(): void {
-    if (this.target) {
-      this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target)
-      this.target = null
-    }
-    if (this.gutter) {
-      super.remove(this.gutter)
-      this.gutter = null
-    }
+    const target = this.target
+    const gutter = this.gutter
+
+    this.runCleanup((run) => {
+      if (target) {
+        run(() => target.off("line-info-change", this.handleLineInfoChange))
+        if (target.parent === this) run(() => super.remove(target))
+        this.target = null
+      }
+      if (gutter) {
+        if (gutter.parent === this) run(() => super.remove(gutter))
+        this.gutter = null
+        run(() => gutter.destroy())
+      }
+    })
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
