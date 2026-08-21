@@ -11,7 +11,6 @@ const TextSelection = tb.TextSelection;
 pub const WrapMode = tb.WrapMode;
 const TextChunk = seg_mod.TextChunk;
 const StyleSpan = tb.StyleSpan;
-const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const TextBufferViewError = error{
     OutOfMemory,
@@ -134,10 +133,24 @@ pub const VirtualLineSpanInfo = struct {
 };
 
 pub const VirtualChunk = struct {
-    grapheme_start: u32,
-    width: u32,
-    // Direct reference to source chunk for rendering
     chunk: *const TextChunk,
+    byte_start_in_chunk: u32,
+    byte_len: u32,
+    col_start_in_chunk: u32,
+    width_cols: u32,
+};
+
+const PendingWordPiece = struct {
+    column_start: u32,
+    width: u32,
+    byte_start: u32,
+    byte_end: u32,
+    chunk: *const TextChunk,
+};
+
+const PendingWordPieceFit = struct {
+    width: u32,
+    bytes_used: u32,
 };
 
 pub const VirtualLine = struct {
@@ -166,6 +179,15 @@ pub const VirtualLine = struct {
     pub fn deinit(self: *VirtualLine, allocator: Allocator) void {
         self.chunks.deinit(allocator);
         self.* = undefined;
+    }
+
+    fn appendChunk(self: *VirtualLine, allocator: Allocator, chunk: VirtualChunk) Allocator.Error!void {
+        if (self.chunks.capacity == 0) {
+            try self.chunks.ensureTotalCapacityPrecise(allocator, 1);
+        } else if (self.chunks.items.len == self.chunks.capacity) {
+            try self.chunks.ensureUnusedCapacity(allocator, 1);
+        }
+        self.chunks.appendAssumeCapacity(chunk);
     }
 };
 
@@ -361,53 +383,7 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    fn calculateChunkFitWord(self: *const Self, chunk: *const TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
-        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
-
-        const total_width = @as(u32, chunk.width) - char_offset_in_chunk;
-        if (total_width == 0) return .{ .char_count = 0, .width = 0 };
-        if (total_width <= max_width) return .{ .char_count = total_width, .width = total_width };
-
-        const wrap_offsets = self.text_buffer.getWrapOffsetsFor(chunk) catch {
-            const fit_width = @min(max_width, total_width);
-            return .{ .char_count = fit_width, .width = fit_width };
-        };
-
-        var last_boundary: ?u32 = null;
-        var first_boundary: ?u32 = null;
-
-        for (wrap_offsets) |wrap_break| {
-            const offset = @as(u32, wrap_break.char_offset);
-            if (offset < char_offset_in_chunk) continue;
-
-            const local_offset = offset - char_offset_in_chunk;
-            if (local_offset >= total_width) break;
-
-            const width_to_boundary = local_offset + 1;
-            if (first_boundary == null) first_boundary = width_to_boundary;
-
-            if (width_to_boundary <= max_width) {
-                last_boundary = width_to_boundary;
-            } else break;
-        }
-
-        if (last_boundary) |width| return .{ .char_count = width, .width = width };
-
-        const line_width = self.wrap_width orelse max_width;
-        const needs_force_break = (first_boundary orelse total_width) > line_width;
-
-        if (needs_force_break) {
-            const fit_width = @min(max_width, total_width);
-            return .{ .char_count = fit_width, .width = fit_width };
-        }
-
-        return .{ .char_count = 0, .width = 0 };
-    }
-
-    pub fn updateVirtualLines(self: *Self) void {
-        const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
-        if (!self.virtual_lines_dirty and !buffer_dirty) return;
-
+    fn resetVirtualLineStorage(self: *Self) void {
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .empty;
         self.cached_line_starts = .empty;
@@ -417,6 +393,13 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_first_vline = .empty;
         self.cached_line_vline_counts = .empty;
         self.truncation_applied = false;
+    }
+
+    pub fn updateVirtualLines(self: *Self) void {
+        const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
+        if (!self.virtual_lines_dirty and !buffer_dirty) return;
+
+        self.resetVirtualLineStorage();
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
@@ -430,15 +413,18 @@ pub const UnifiedTextBufferView = struct {
             .cached_line_vline_counts = &self.cached_line_vline_counts,
         };
 
-        // Call the generic calculation function
-        calculateVirtualLinesGeneric(
-            virtual_allocator,
-            self.text_buffer,
-            self.wrap_mode,
-            self.wrap_width,
-            self.first_line_offset,
-            output,
-        );
+        const calculated = if (self.wrap_mode == .none or self.wrap_width == null)
+            calculateUnwrappedVirtualLines(virtual_allocator, self.text_buffer, output)
+        else switch (self.wrap_mode) {
+            .none => unreachable,
+            .char => calculateVirtualLinesGeneric(.render, .char, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output),
+            .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output),
+        };
+        if (!calculated) {
+            self.resetVirtualLineStorage();
+            self.virtual_lines_dirty = true;
+            return;
+        }
 
         self.virtual_lines_dirty = false;
         self.text_buffer.clearViewDirty(self.view_id);
@@ -544,25 +530,11 @@ pub const UnifiedTextBufferView = struct {
 
         if (vline_count == 0) return first_vline_idx;
 
-        var i: u32 = 0;
+        var i: u32 = 1;
         while (i < vline_count) : (i += 1) {
             const vline_idx = first_vline_idx + i;
             if (vline_idx >= vlines.len) break;
-
-            const vline = &vlines[vline_idx];
-            const vline_start_col = vline.source_col_offset;
-            const vline_end_col = vline_start_col + vline.width_cols;
-
-            const is_last_vline = (i == vline_count - 1);
-
-            // For the end check: use < for all lines except the last line where we use <=
-            // This ensures that a position exactly at vline_end_col goes to the NEXT line
-            // unless this is the last line (where there is no next line)
-            const end_check = if (is_last_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
-
-            if (logical_col >= vline_start_col and end_check) {
-                return vline_idx;
-            }
+            if (logical_col < vlines[vline_idx].source_col_offset) return vline_idx - 1;
         }
 
         // If not found, return last virtual line for this logical line
@@ -793,7 +765,7 @@ pub const UnifiedTextBufferView = struct {
 
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
-            self.applyTruncation();
+            self.ensureTruncation();
         }
 
         const focus_above = focusY < 0;
@@ -1088,7 +1060,7 @@ pub const UnifiedTextBufferView = struct {
             return last_vline.col_offset + last_vline.truncation_suffix_start + (last_vline.width_cols -| last_vline.ellipsis_pos -| 3);
         }
 
-        return last_vline.col_offset + last_vline.width_cols;
+        return self.text_buffer.rope().totalWeight();
     }
 
     /// Cell occupancy clamps wrap padding to the last cell. Boundary occupancy
@@ -1142,6 +1114,24 @@ pub const UnifiedTextBufferView = struct {
             } else if (localX_u32 >= vline.ellipsis_pos + ellipsis_width) {
                 const suffix_offset = localX_u32 - vline.ellipsis_pos - ellipsis_width;
                 localX = @intCast(vline.truncation_suffix_start + suffix_offset);
+            }
+        }
+
+        if (!vline.is_truncated and localX == @as(i32, @intCast(vline.width_cols))) {
+            const rendered_source_end = vline.source_col_offset + vline.width_cols;
+            const next_idx = vline_idx + 1;
+            const has_next_same_source = next_idx < self.virtual_lines.items.len and
+                self.virtual_lines.items[next_idx].source_line == vline.source_line;
+            if (has_next_same_source and
+                self.virtual_lines.items[next_idx].source_col_offset > rendered_source_end)
+            {
+                return self.virtual_lines.items[next_idx].col_offset;
+            }
+            if (!has_next_same_source) {
+                const logical_line_width = self.text_buffer.lineWidthAt(@intCast(vline.source_line));
+                if (logical_line_width > rendered_source_end) {
+                    return lineStart - vline.source_col_offset + logical_line_width;
+                }
             }
         }
 
@@ -1227,27 +1217,89 @@ pub const UnifiedTextBufferView = struct {
             return;
         }
 
-        self.applyTruncation();
+        if (!self.applyTruncation()) {
+            self.truncation_applied = false;
+            return;
+        }
         self.truncation_applied = true;
         self.truncation_epoch = epoch;
         self.truncation_viewport = self.viewport;
     }
 
-    fn applyTruncation(self: *Self) void {
-        const vp = self.viewport orelse return;
-        if (vp.width == 0) return;
+    fn applyTruncation(self: *Self) bool {
+        const vp = self.viewport orelse return true;
+        if (vp.width == 0) return true;
 
         const ellipsis_width: u32 = 3;
 
-        for (self.virtual_lines.items) |*vline| {
+        const keepChunkPrefix = struct {
+            fn apply(view: *Self, chunk: VirtualChunk, keep_cols: u32) ?VirtualChunk {
+                if (keep_cols == 0) return null;
+                if (keep_cols >= chunk.width_cols) return chunk;
+
+                const bytes = chunk.chunk.getBytes(view.text_buffer.memRegistry());
+                const window = bytes[chunk.byte_start_in_chunk .. chunk.byte_start_in_chunk + chunk.byte_len];
+                const fit = utf8.findWrapPosByWidthGraphemeSafe(
+                    window,
+                    keep_cols,
+                    view.text_buffer.tabWidth(),
+                    (chunk.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0,
+                    view.text_buffer.widthMethod(),
+                );
+                if (fit.byte_offset == 0 or fit.columns_used == 0) return null;
+
+                var partial = chunk;
+                partial.byte_len = fit.byte_offset;
+                partial.width_cols = fit.columns_used;
+                return partial;
+            }
+        }.apply;
+
+        const dropChunkPrefix = struct {
+            fn apply(view: *Self, chunk: VirtualChunk, drop_cols: u32) ?VirtualChunk {
+                if (drop_cols == 0) return chunk;
+                if (drop_cols >= chunk.width_cols) return null;
+
+                const bytes = chunk.chunk.getBytes(view.text_buffer.memRegistry());
+                const window = bytes[chunk.byte_start_in_chunk .. chunk.byte_start_in_chunk + chunk.byte_len];
+                const dropped = utf8.findPosByWidthGraphemeSafe(
+                    window,
+                    drop_cols,
+                    view.text_buffer.tabWidth(),
+                    (chunk.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0,
+                    true,
+                    view.text_buffer.widthMethod(),
+                );
+                if (dropped.byte_offset >= chunk.byte_len or dropped.columns_used >= chunk.width_cols) return null;
+
+                var partial = chunk;
+                partial.byte_start_in_chunk += dropped.byte_offset;
+                partial.byte_len -= dropped.byte_offset;
+                partial.col_start_in_chunk += dropped.columns_used;
+                partial.width_cols -= dropped.columns_used;
+                return partial;
+            }
+        }.apply;
+
+        const Replacement = struct {
+            active: bool = false,
+            chunks: std.ArrayListUnmanaged(VirtualChunk) = .empty,
+            width_cols: u32 = 0,
+            is_truncated: bool = false,
+            ellipsis_pos: u32 = 0,
+            truncation_suffix_start: u32 = 0,
+        };
+        const replacements = self.global_allocator.alloc(Replacement, self.virtual_lines.items.len) catch return false;
+        defer self.global_allocator.free(replacements);
+        @memset(replacements, .{});
+        const arena_allocator = self.virtual_lines_arena.allocator();
+
+        for (self.virtual_lines.items, replacements) |vline, *replacement| {
             if (vline.width_cols <= vp.width) continue;
+            replacement.active = true;
 
             if (vp.width <= ellipsis_width) {
-                vline.chunks.clearRetainingCapacity();
-                vline.width_cols = 0;
-                vline.is_truncated = true;
-                vline.ellipsis_pos = 0;
-                vline.truncation_suffix_start = vline.width_cols;
+                replacement.is_truncated = true;
                 continue;
             }
 
@@ -1255,62 +1307,76 @@ pub const UnifiedTextBufferView = struct {
             const prefix_width = available_width / 2;
             const suffix_width = available_width - prefix_width;
 
-            var new_chunks: std.ArrayListUnmanaged(VirtualChunk) = .empty;
-
             var prefix_accumulated: u32 = 0;
             for (vline.chunks.items) |chunk| {
                 if (prefix_accumulated >= prefix_width) break;
 
                 const space_left = prefix_width - prefix_accumulated;
-                if (chunk.width <= space_left) {
-                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
-                    prefix_accumulated += chunk.width;
+                if (chunk.width_cols <= space_left) {
+                    replacement.chunks.append(arena_allocator, chunk) catch return false;
+                    prefix_accumulated += chunk.width_cols;
                 } else {
-                    var partial = chunk;
-                    partial.width = space_left;
-                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
-                    prefix_accumulated += space_left;
+                    if (keepChunkPrefix(self, chunk, space_left)) |partial| {
+                        replacement.chunks.append(arena_allocator, partial) catch return false;
+                        prefix_accumulated += partial.width_cols;
+                    }
                     break;
                 }
             }
 
-            new_chunks.append(self.virtual_lines_arena.allocator(), .{
-                .grapheme_start = 0,
-                .width = ellipsis_width,
+            replacement.chunks.append(arena_allocator, .{
                 .chunk = &self.ellipsis_chunk,
-            }) catch return;
+                .byte_start_in_chunk = 0,
+                .byte_len = self.ellipsis_chunk.byte_end - self.ellipsis_chunk.byte_start,
+                .col_start_in_chunk = 0,
+                .width_cols = ellipsis_width,
+            }) catch return false;
 
             const suffix_start_pos = vline.width_cols - suffix_width;
 
             var pos_accumulated: u32 = 0;
+            var suffix_accumulated: u32 = 0;
+            var actual_suffix_start: ?u32 = null;
             for (vline.chunks.items) |chunk| {
-                const chunk_end = pos_accumulated + chunk.width;
+                const chunk_end = pos_accumulated + chunk.width_cols;
 
                 if (chunk_end <= suffix_start_pos) {
-                    pos_accumulated += chunk.width;
+                    pos_accumulated += chunk.width_cols;
                     continue;
                 }
 
                 if (pos_accumulated >= suffix_start_pos) {
-                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
+                    replacement.chunks.append(arena_allocator, chunk) catch return false;
+                    if (actual_suffix_start == null) actual_suffix_start = pos_accumulated;
+                    suffix_accumulated += chunk.width_cols;
                 } else {
-                    const offset_in_chunk = suffix_start_pos - pos_accumulated;
-                    var partial = chunk;
-                    partial.grapheme_start += offset_in_chunk;
-                    partial.width = chunk.width - offset_in_chunk;
-                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                    if (dropChunkPrefix(self, chunk, suffix_start_pos - pos_accumulated)) |partial| {
+                        replacement.chunks.append(arena_allocator, partial) catch return false;
+                        if (actual_suffix_start == null) {
+                            actual_suffix_start = pos_accumulated + partial.col_start_in_chunk - chunk.col_start_in_chunk;
+                        }
+                        suffix_accumulated += partial.width_cols;
+                    }
                 }
 
-                pos_accumulated += chunk.width;
+                pos_accumulated += chunk.width_cols;
             }
 
-            vline.chunks.clearRetainingCapacity();
-            vline.chunks.appendSlice(self.virtual_lines_arena.allocator(), new_chunks.items) catch return;
-            vline.width_cols = vp.width;
-            vline.is_truncated = true;
-            vline.ellipsis_pos = prefix_width;
-            vline.truncation_suffix_start = suffix_start_pos;
+            replacement.width_cols = prefix_accumulated + ellipsis_width + suffix_accumulated;
+            replacement.is_truncated = true;
+            replacement.ellipsis_pos = prefix_accumulated;
+            replacement.truncation_suffix_start = actual_suffix_start orelse replacement.width_cols;
         }
+
+        for (self.virtual_lines.items, replacements) |*vline, replacement| {
+            if (!replacement.active) continue;
+            vline.chunks = replacement.chunks;
+            vline.width_cols = replacement.width_cols;
+            vline.is_truncated = replacement.is_truncated;
+            vline.ellipsis_pos = replacement.ellipsis_pos;
+            vline.truncation_suffix_start = replacement.truncation_suffix_start;
+        }
+        return true;
     }
 
     /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
@@ -1360,48 +1426,13 @@ pub const UnifiedTextBufferView = struct {
         _ = self.measure_arena.reset(.retain_capacity);
         const measure_allocator = self.measure_arena.allocator();
 
-        // Create temporary output structures
-        var temp_virtual_lines: std.ArrayListUnmanaged(VirtualLine) = .empty;
-        var temp_line_starts: std.ArrayListUnmanaged(u32) = .empty;
-        var temp_line_widths: std.ArrayListUnmanaged(u32) = .empty;
-        var temp_line_sources: std.ArrayListUnmanaged(u32) = .empty;
-        var temp_line_wrap_indices: std.ArrayListUnmanaged(u32) = .empty;
-        var temp_line_first_vline: std.ArrayListUnmanaged(u32) = .empty;
-        var temp_line_vline_counts: std.ArrayListUnmanaged(u32) = .empty;
-
-        const output: VirtualLineOutput = .{
-            .virtual_lines = &temp_virtual_lines,
-            .cached_line_starts = &temp_line_starts,
-            .cached_line_widths = &temp_line_widths,
-            .cached_line_sources = &temp_line_sources,
-            .cached_line_wrap_indices = &temp_line_wrap_indices,
-            .cached_line_first_vline = &temp_line_first_vline,
-            .cached_line_vline_counts = &temp_line_vline_counts,
+        var result: MeasureResult = .{ .line_count = 0, .width_cols_max = 0 };
+        const calculated = switch (self.wrap_mode) {
+            .none => unreachable,
+            .char => calculateVirtualLinesGeneric(.measure, .char, measure_allocator, self.text_buffer, width, self.first_line_offset, &result),
+            .word => calculateVirtualLinesGeneric(.measure, .word, measure_allocator, self.text_buffer, width, self.first_line_offset, &result),
         };
-
-        // Use width for wrap calculation
-        const wrap_width_for_measure = if (self.wrap_mode != .none and width > 0) width else null;
-
-        // Call generic calculation with temporary structures
-        calculateVirtualLinesGeneric(
-            measure_allocator,
-            self.text_buffer,
-            self.wrap_mode,
-            wrap_width_for_measure,
-            self.first_line_offset,
-            output,
-        );
-
-        // Calculate max width from temp structures
-        var width_cols_max: u32 = 0;
-        for (temp_line_widths.items) |w| {
-            width_cols_max = @max(width_cols_max, w);
-        }
-
-        const result: MeasureResult = .{
-            .line_count = @intCast(temp_virtual_lines.items.len),
-            .width_cols_max = width_cols_max,
-        };
+        if (!calculated) return TextBufferViewError.OutOfMemory;
 
         self.cached_measure_width = width;
         self.cached_measure_wrap_mode = self.wrap_mode;
@@ -1413,419 +1444,772 @@ pub const UnifiedTextBufferView = struct {
         return result;
     }
 
-    /// Generic virtual line calculation that writes to provided output structures
-    fn calculateVirtualLinesGeneric(
+    const CalculationMode = enum { render, measure };
+
+    fn calculateUnwrappedVirtualLines(
         allocator: Allocator,
         text_buffer: *UnifiedTextBuffer,
-        wrap_mode: WrapMode,
-        wrap_width: ?u32,
-        first_line_offset: u32,
         output: VirtualLineOutput,
-    ) void {
-        if (wrap_mode == .none or wrap_width == null) {
-            // No wrapping - create 1:1 mapping to real lines
-            const Context = struct {
-                text_buffer: *UnifiedTextBuffer,
-                allocator: Allocator,
-                output: VirtualLineOutput,
-                current_vline: ?VirtualLine = null,
+    ) bool {
+        // No wrapping - create 1:1 mapping to real lines
+        const Context = struct {
+            text_buffer: *UnifiedTextBuffer,
+            allocator: Allocator,
+            output: VirtualLineOutput,
+            current_vline: ?VirtualLine = null,
+            failed: bool = false,
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
-                    _ = line_idx;
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
+                _ = line_idx;
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (ctx.failed) return;
 
-                    if (ctx.current_vline) |*vline| {
-                        vline.chunks.append(ctx.allocator, .{
-                            .grapheme_start = 0,
-                            .width = chunk.width,
-                            .chunk = chunk,
-                        }) catch {};
-                    }
+                if (ctx.current_vline) |*vline| {
+                    vline.appendChunk(ctx.allocator, .{
+                        .chunk = chunk,
+                        .byte_start_in_chunk = 0,
+                        .byte_len = chunk.byte_end - chunk.byte_start,
+                        .col_start_in_chunk = 0,
+                        .width_cols = chunk.width,
+                    }) catch {
+                        ctx.failed = true;
+                    };
                 }
+            }
 
-                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (ctx.failed) return;
 
-                    const first_vline_idx: u32 = @intCast(ctx.output.virtual_lines.items.len);
-                    ctx.output.cached_line_first_vline.append(ctx.allocator, first_vline_idx) catch {};
-                    ctx.output.cached_line_vline_counts.append(ctx.allocator, 1) catch {};
+                const first_vline_idx: u32 = @intCast(ctx.output.virtual_lines.items.len);
+                ctx.output.cached_line_first_vline.append(ctx.allocator, first_vline_idx) catch {
+                    ctx.failed = true;
+                    return;
+                };
+                ctx.output.cached_line_vline_counts.append(ctx.allocator, 1) catch {
+                    ctx.failed = true;
+                    return;
+                };
 
-                    var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
-                    vline.width_cols = line_info.width_cols;
-                    vline.col_offset = line_info.col_offset;
-                    vline.source_line = line_info.line_idx;
-                    vline.source_col_offset = 0;
+                var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
+                vline.width_cols = line_info.width_cols;
+                vline.col_offset = line_info.col_offset;
+                vline.source_line = line_info.line_idx;
+                vline.source_col_offset = 0;
 
-                    ctx.output.virtual_lines.append(ctx.allocator, vline) catch {};
-                    ctx.output.cached_line_starts.append(ctx.allocator, vline.col_offset) catch {};
-                    ctx.output.cached_line_widths.append(ctx.allocator, vline.width_cols) catch {};
-                    ctx.output.cached_line_sources.append(ctx.allocator, @intCast(line_info.line_idx)) catch {};
-                    ctx.output.cached_line_wrap_indices.append(ctx.allocator, 0) catch {};
+                ctx.output.virtual_lines.append(ctx.allocator, vline) catch {
+                    ctx.failed = true;
+                    return;
+                };
+                ctx.output.cached_line_starts.append(ctx.allocator, vline.col_offset) catch {
+                    ctx.failed = true;
+                    return;
+                };
+                ctx.output.cached_line_widths.append(ctx.allocator, vline.width_cols) catch {
+                    ctx.failed = true;
+                    return;
+                };
+                ctx.output.cached_line_sources.append(ctx.allocator, @intCast(line_info.line_idx)) catch {
+                    ctx.failed = true;
+                    return;
+                };
+                ctx.output.cached_line_wrap_indices.append(ctx.allocator, 0) catch {
+                    ctx.failed = true;
+                    return;
+                };
 
-                    ctx.current_vline = VirtualLine.init();
-                }
-            };
+                ctx.current_vline = VirtualLine.init();
+            }
+        };
 
-            var ctx: Context = .{
-                .text_buffer = text_buffer,
-                .allocator = allocator,
-                .output = output,
-                .current_vline = VirtualLine.init(),
-            };
+        var ctx: Context = .{
+            .text_buffer = text_buffer,
+            .allocator = allocator,
+            .output = output,
+            .current_vline = VirtualLine.init(),
+        };
 
-            text_buffer.walkLinesAndSegments(&ctx, Context.segment_callback, Context.line_end_callback);
-        } else {
-            const wrap_w = wrap_width.?;
+        text_buffer.walkLinesAndSegments(&ctx, Context.segment_callback, Context.line_end_callback);
+        return !ctx.failed;
+    }
 
-            const WrapContext = struct {
-                text_buffer: *UnifiedTextBuffer,
-                allocator: Allocator,
-                output: VirtualLineOutput,
-                wrap_mode: WrapMode,
-                wrap_w: u32,
-                first_line_offset: u32,
-                first_line_pending: bool,
-                global_char_offset: u32 = 0,
-                line_idx: u32 = 0,
-                line_col_offset: u32 = 0,
-                line_position: u32 = 0,
-                current_vline: VirtualLine = VirtualLine.init(),
-                chunk_idx_in_line: u32 = 0,
-                current_line_first_vline_idx: u32 = 0,
-                current_line_vline_count: u32 = 0,
+    /// One wrapping policy, specialized at comptime for its output and break mode.
+    fn calculateVirtualLinesGeneric(
+        comptime calculation: CalculationMode,
+        comptime wrap_mode: WrapMode,
+        allocator: Allocator,
+        text_buffer: *UnifiedTextBuffer,
+        wrap_w: u32,
+        first_line_offset: u32,
+        result: if (calculation == .render) VirtualLineOutput else *MeasureResult,
+    ) bool {
+        comptime std.debug.assert(wrap_mode != .none);
 
-                last_wrap_chunk_count: u32 = 0,
-                last_wrap_line_position: u32 = 0,
-                last_wrap_global_offset: u32 = 0,
+        const WrapContext = struct {
+            text_buffer: *UnifiedTextBuffer,
+            allocator: Allocator,
+            result: @TypeOf(result),
+            wrap_w: u32,
+            current_wrap_width: u32,
+            global_char_offset: u32 = 0,
+            line_idx: u32 = 0,
+            line_col_offset: u32 = 0,
+            line_position: u32 = 0,
+            current_vline: if (calculation == .render) VirtualLine else void = if (calculation == .render) VirtualLine.init() else {},
+            current_line_first_vline_idx: if (calculation == .render) u32 else void = if (calculation == .render) 0 else {},
+            current_line_vline_count: if (calculation == .render) u32 else void = if (calculation == .render) 0 else {},
+            pending_word_pieces: if (wrap_mode == .word) std.ArrayListUnmanaged(PendingWordPiece) else void = if (wrap_mode == .word) .empty else {},
+            pending_word_width: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
+            pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
+            source_line_has_non_whitespace: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
+            word_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
+            word_chunk_col_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
+            word_chunk_byte_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
+            deferred_measure_chunk: if (wrap_mode == .word and calculation == .measure) ?*const TextChunk else void = if (wrap_mode == .word and calculation == .measure) null else {},
+            logical_measure_line_count: if (wrap_mode == .word and calculation == .measure) u32 else void = if (wrap_mode == .word and calculation == .measure) 0 else {},
+            logical_measure_width_max: if (wrap_mode == .word and calculation == .measure) u32 else void = if (wrap_mode == .word and calculation == .measure) 0 else {},
+            failed: bool = false,
 
-                fn lineWrapWidth(wctx: *@This()) u32 {
-                    if (!wctx.first_line_pending or wctx.first_line_offset == 0 or wctx.first_line_offset >= wctx.wrap_w) {
-                        return wctx.wrap_w;
-                    }
+            fn lineWrapWidth(wctx: *@This()) u32 {
+                return wctx.current_wrap_width;
+            }
 
-                    return wctx.wrap_w - wctx.first_line_offset;
-                }
+            fn wordWrapWidth(wctx: *@This()) u32 {
+                return @max(wctx.lineWrapWidth(), 1);
+            }
 
-                fn commitVirtualLine(wctx: *@This()) void {
+            fn commitVirtualLine(wctx: *@This()) Allocator.Error!void {
+                if (comptime calculation == .render) {
                     wctx.current_vline.width_cols = wctx.line_position;
                     wctx.current_vline.source_line = wctx.line_idx;
                     wctx.current_vline.source_col_offset = wctx.line_col_offset;
-                    wctx.output.virtual_lines.append(wctx.allocator, wctx.current_vline) catch {};
-                    wctx.output.cached_line_starts.append(wctx.allocator, wctx.current_vline.col_offset) catch {};
-                    wctx.output.cached_line_widths.append(wctx.allocator, wctx.current_vline.width_cols) catch {};
-                    wctx.output.cached_line_sources.append(wctx.allocator, wctx.line_idx) catch {};
-                    wctx.output.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count) catch {};
+                }
+                try wctx.recordVirtualLine();
 
-                    wctx.current_line_vline_count += 1;
+                if (comptime calculation == .render) wctx.current_line_vline_count += 1;
 
-                    wctx.line_col_offset += wctx.line_position;
+                wctx.line_col_offset += wctx.line_position;
+                if (comptime calculation == .render) {
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.col_offset = wctx.global_char_offset;
-                    wctx.line_position = 0;
-                    wctx.first_line_pending = false;
-
-                    wctx.last_wrap_chunk_count = 0;
-                    wctx.last_wrap_line_position = 0;
-                    wctx.last_wrap_global_offset = 0;
                 }
+                wctx.line_position = 0;
+                wctx.current_wrap_width = wctx.wrap_w;
+            }
 
-                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, width_param: u32) void {
-                    wctx.current_vline.chunks.append(wctx.allocator, .{
-                        .grapheme_start = start,
-                        .width = width_param,
-                        .chunk = chunk,
-                    }) catch {};
-                    wctx.global_char_offset += width_param;
-                    wctx.line_position += width_param;
+            fn recordVirtualLine(wctx: *@This()) Allocator.Error!void {
+                if (comptime calculation == .measure) {
+                    wctx.result.line_count += 1;
+                    wctx.result.width_cols_max = @max(wctx.result.width_cols_max, wctx.line_position);
+                    if (comptime wrap_mode == .word) {
+                        wctx.logical_measure_line_count += 1;
+                        wctx.logical_measure_width_max = @max(wctx.logical_measure_width_max, wctx.line_position);
+                    }
+                } else {
+                    const out = wctx.result;
+                    try out.virtual_lines.append(wctx.allocator, wctx.current_vline);
+                    try out.cached_line_starts.append(wctx.allocator, wctx.current_vline.col_offset);
+                    try out.cached_line_widths.append(wctx.allocator, wctx.current_vline.width_cols);
+                    try out.cached_line_sources.append(wctx.allocator, wctx.line_idx);
+                    try out.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count);
                 }
+            }
 
-                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    wctx.chunk_idx_in_line = chunk_idx_in_line;
+            fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) Allocator.Error!void {
+                if (byte_len == 0) return;
 
-                    if (wctx.wrap_mode == .word) {
-                        const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
-                        const wrap_offsets = wctx.text_buffer.getWrapOffsetsFor(chunk) catch &[_]utf8.WrapBreak{};
-                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                        const graphemes: []const GraphemeInfo = if (is_ascii_only)
-                            &[_]GraphemeInfo{}
-                        else
-                            chunk.getGraphemes(wctx.text_buffer.getAllocator(), wctx.text_buffer.memRegistry(), wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod()) catch &[_]GraphemeInfo{};
-                        var grapheme_idx: usize = 0;
-                        var col_delta: i64 = 0;
-
-                        // char_offset tracks COLUMN position within the chunk (not grapheme count)
-                        // chunk.width is also in columns. The loop processes the chunk column by column.
-                        var char_offset: u32 = 0; // Column offset within chunk
-                        var byte_offset: u32 = 0;
-                        var wrap_idx: usize = 0;
-
-                        while (char_offset < chunk.width) {
-                            const line_wrap_w = wctx.lineWrapWidth();
-                            const remaining_in_chunk = chunk.width - char_offset;
-                            const remaining_on_line = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
-
-                            var last_wrap_that_fits: ?u32 = null;
-                            var saved_wrap_idx = wrap_idx;
-                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
-                                const wrap_break = wrap_offsets[wrap_idx];
-
-                                const break_info = iter_mod.charOffsetToColumn(wrap_break.char_offset, graphemes, &grapheme_idx, &col_delta);
-                                const break_col = break_info.col;
-
-                                // Skip breaks that are before our current column position in the chunk
-                                if (break_col < char_offset) continue;
-
-                                // width_to_boundary: columns needed to reach and include this break
-                                // break_col is the column where the break character starts (relative to chunk)
-                                // char_offset is our current column position (relative to chunk)
-                                // To include the break character, we need: break_col - char_offset + width
-                                const width_to_boundary = break_col - char_offset + break_info.width;
-                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) {
-                                    break;
-                                }
-                                last_wrap_that_fits = width_to_boundary;
-                                saved_wrap_idx = wrap_idx + 1;
-                            }
-                            wrap_idx = saved_wrap_idx;
-
-                            var to_add: u32 = 0;
-                            var has_wrap_after: bool = false;
-
-                            if (remaining_in_chunk <= remaining_on_line) {
-                                if (last_wrap_that_fits) |boundary_w| {
-                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= line_wrap_w;
-                                    if (would_fill_line and boundary_w < remaining_in_chunk) {
-                                        to_add = boundary_w;
-                                        has_wrap_after = true;
-                                    } else {
-                                        to_add = remaining_in_chunk;
-                                        has_wrap_after = true;
-                                    }
-                                } else {
-                                    to_add = remaining_in_chunk;
-                                }
-                            } else if (last_wrap_that_fits) |boundary_w| {
-                                to_add = boundary_w;
-                                has_wrap_after = true;
-                            } else if (wctx.line_position == 0) {
-                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                to_add = wrap_result.columns_used;
-                                byte_offset += wrap_result.byte_offset;
-                                if (to_add == 0) {
-                                    to_add = 1;
-                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                    byte_offset += single_result.byte_offset;
-                                }
-                            } else if (wctx.last_wrap_chunk_count > 0 and
-                                wctx.last_wrap_chunk_count <= wctx.current_vline.chunks.items.len)
-                            {
-                                var accumulated_width: u32 = 0;
-                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
-                                    accumulated_width += vchunk.width;
-                                }
-
-                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
-                                var chunks_to_move_count = chunks_after_wrap.len;
-                                var split_chunk: ?VirtualChunk = null;
-
-                                if (accumulated_width > wctx.last_wrap_line_position) {
-                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
-                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
-                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
-
-                                    split_chunk = VirtualChunk{
-                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
-                                        .width = overhang,
-                                        .chunk = last_chunk.chunk,
-                                    };
-
-                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
-
-                                    chunks_to_move_count += 1;
-                                }
-
-                                const saved_chunks_result = wctx.allocator.alloc(VirtualChunk, chunks_to_move_count);
-                                if (saved_chunks_result) |saved_chunks| {
-                                    var saved_idx: usize = 0;
-
-                                    if (split_chunk) |sc| {
-                                        saved_chunks[saved_idx] = sc;
-                                        saved_idx += 1;
-                                    }
-
-                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
-
-                                    wctx.line_position = wctx.last_wrap_line_position;
-                                    wctx.global_char_offset = wctx.last_wrap_global_offset;
-                                    wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
-
-                                    commitVirtualLine(wctx);
-
-                                    for (saved_chunks) |vchunk| {
-                                        wctx.current_vline.chunks.append(wctx.allocator, vchunk) catch {};
-                                        wctx.global_char_offset += vchunk.width;
-                                        wctx.line_position += vchunk.width;
-                                    }
-                                } else |_| {
-                                    commitVirtualLine(wctx);
-                                }
-
-                                continue;
-                            } else {
-                                commitVirtualLine(wctx);
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tabWidth(), is_ascii_only, false, wctx.text_buffer.widthMethod());
-                                    byte_offset = pos_result.byte_offset;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.lineWrapWidth(), wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                to_add = wrap_result.columns_used;
-                                byte_offset += wrap_result.byte_offset;
-                                if (to_add == 0) {
-                                    to_add = 1;
-                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                    byte_offset += single_result.byte_offset;
-                                }
-                            }
-
-                            if (to_add > 0) {
-                                const position_before_add = wctx.line_position;
-                                const offset_before_add = wctx.global_char_offset;
-
-                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
-                                char_offset += to_add;
-
-                                if (has_wrap_after) {
-                                    const wrap_pos_in_added = if (last_wrap_that_fits) |boundary_w|
-                                        @min(boundary_w, to_add)
-                                    else
-                                        to_add;
-
-                                    wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
-                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
-                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
-                                }
-
-                                if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
-                                    if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
-                                        commitVirtualLine(wctx);
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
-                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                        var byte_offset: usize = 0;
-                        var char_offset: u32 = 0;
-
-                        while (char_offset < chunk.width) {
-                            const line_wrap_w = wctx.lineWrapWidth();
-                            const remaining_width = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
-
-                            if (remaining_width == 0) {
-                                if (wctx.line_position > 0) {
-                                    commitVirtualLine(wctx);
-                                    continue;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
-                                    char_offset += force_result.columns_used;
-                                    byte_offset += force_result.byte_offset;
-                                } else {
-                                    break;
-                                }
-                                continue;
-                            }
-
-                            const remaining_bytes = chunk_bytes[byte_offset..];
-                            const wrap_result = utf8.findWrapPosByWidth(
-                                remaining_bytes,
-                                remaining_width,
-                                wctx.text_buffer.tabWidth(),
-                                is_ascii_only,
-                                wctx.text_buffer.widthMethod(),
-                            );
-
-                            if (wrap_result.grapheme_count == 0) {
-                                if (wctx.line_position > 0) {
-                                    commitVirtualLine(wctx);
-                                    continue;
-                                }
-                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1000, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
-                                    char_offset += force_result.columns_used;
-                                    byte_offset += force_result.byte_offset;
-                                    if (char_offset < chunk.width) {
-                                        commitVirtualLine(wctx);
-                                    }
-                                }
-                                break;
-                            }
-
-                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used);
-                            char_offset += wrap_result.columns_used;
-                            byte_offset += wrap_result.byte_offset;
-
-                            if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
-                                commitVirtualLine(wctx);
-                            }
+                if (comptime calculation == .render and wrap_mode == .word) {
+                    if (wctx.current_vline.chunks.items.len > 0) {
+                        const last = &wctx.current_vline.chunks.items[wctx.current_vline.chunks.items.len - 1];
+                        if (last.chunk == chunk and
+                            last.byte_start_in_chunk + last.byte_len == byte_start and
+                            last.col_start_in_chunk + last.width_cols == col_start)
+                        {
+                            last.byte_len += byte_len;
+                            last.width_cols += width_cols;
+                            wctx.global_char_offset += width_cols;
+                            wctx.line_position += width_cols;
+                            return;
                         }
                     }
                 }
 
-                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (comptime calculation == .render) {
+                    try wctx.current_vline.appendChunk(wctx.allocator, .{
+                        .chunk = chunk,
+                        .byte_start_in_chunk = byte_start,
+                        .byte_len = byte_len,
+                        .col_start_in_chunk = col_start,
+                        .width_cols = width_cols,
+                    });
+                }
+                wctx.global_char_offset += width_cols;
+                wctx.line_position += width_cols;
+            }
 
-                    if (wctx.current_vline.chunks.items.len > 0 or line_info.width_cols == 0) {
+            fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
+                addVirtualChunk(wctx, chunk, byte_start, byte_len, col_start, width_cols) catch {
+                    wctx.failed = true;
+                    return false;
+                };
+                return true;
+            }
+
+            fn commitVirtualLineSticky(wctx: *@This()) bool {
+                commitVirtualLine(wctx) catch {
+                    wctx.failed = true;
+                    return false;
+                };
+                return true;
+            }
+
+            fn consumeDroppedWhitespace(wctx: *@This(), width: u32) void {
+                wctx.global_char_offset += width;
+                wctx.line_col_offset += width;
+                if (comptime calculation == .render) wctx.current_vline.col_offset = wctx.global_char_offset;
+            }
+
+            fn queuePendingWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
+                if (width == 0 or wctx.failed) return;
+
+                if (wctx.pending_word_pieces.items.len > 0) {
+                    const last = &wctx.pending_word_pieces.items[wctx.pending_word_pieces.items.len - 1];
+                    if (last.chunk == chunk and last.column_start + last.width == start and last.byte_end == byte_start) {
+                        last.width += width;
+                        last.byte_end = byte_end;
+                        wctx.pending_word_width += width;
+                        return;
+                    }
+                }
+
+                wctx.pending_word_pieces.append(wctx.allocator, .{
+                    .column_start = start,
+                    .width = width,
+                    .byte_start = byte_start,
+                    .byte_end = byte_end,
+                    .chunk = chunk,
+                }) catch {
+                    wctx.failed = true;
+                    return;
+                };
+                wctx.pending_word_width += width;
+            }
+
+            fn clearPendingWord(wctx: *@This()) void {
+                wctx.pending_word_pieces.clearRetainingCapacity();
+                wctx.pending_word_width = 0;
+                wctx.pending_word_last_class = .other;
+            }
+
+            fn dropPendingWordPrefix(wctx: *@This(), count: usize) void {
+                if (count == 0) return;
+                const remaining = wctx.pending_word_pieces.items.len - count;
+                if (remaining > 0) {
+                    std.mem.copyForwards(
+                        PendingWordPiece,
+                        wctx.pending_word_pieces.items[0..remaining],
+                        wctx.pending_word_pieces.items[count..],
+                    );
+                }
+                wctx.pending_word_pieces.items.len = remaining;
+            }
+
+            fn fitPendingWordPiece(wctx: *@This(), piece: PendingWordPiece, max_width: u32, allow_forced_grapheme: bool) PendingWordPieceFit {
+                if (piece.width <= max_width) {
+                    return .{ .width = piece.width, .bytes_used = piece.byte_end - piece.byte_start };
+                }
+                if (max_width == 0) return .{ .width = 0, .bytes_used = 0 };
+
+                const chunk_bytes = piece.chunk.getBytes(wctx.text_buffer.memRegistry());
+                if (piece.byte_start > piece.byte_end or piece.byte_end > chunk_bytes.len) {
+                    wctx.failed = true;
+                    return .{ .width = 0, .bytes_used = 0 };
+                }
+                const slice_bytes = chunk_bytes[piece.byte_start..piece.byte_end];
+                const is_ascii_only = (piece.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const fit = utf8.findWrapPosByWidthGraphemeSafe(
+                    slice_bytes,
+                    max_width,
+                    wctx.text_buffer.tabWidth(),
+                    is_ascii_only,
+                    wctx.text_buffer.widthMethod(),
+                );
+                if (fit.columns_used > 0 and fit.byte_offset > 0) {
+                    return .{
+                        .width = @min(fit.columns_used, piece.width),
+                        .bytes_used = @min(fit.byte_offset, piece.byte_end - piece.byte_start),
+                    };
+                }
+
+                if (!allow_forced_grapheme) return .{ .width = 0, .bytes_used = 0 };
+
+                const forced = utf8.findPosByWidthGraphemeSafe(
+                    slice_bytes,
+                    max_width,
+                    wctx.text_buffer.tabWidth(),
+                    is_ascii_only,
+                    true,
+                    wctx.text_buffer.widthMethod(),
+                );
+                if (forced.columns_used == 0 or forced.byte_offset == 0) {
+                    wctx.failed = true;
+                    return .{ .width = 0, .bytes_used = 0 };
+                }
+                return .{
+                    .width = @min(forced.columns_used, piece.width),
+                    .bytes_used = @min(forced.byte_offset, piece.byte_end - piece.byte_start),
+                };
+            }
+
+            fn consumePendingWordPrefix(wctx: *@This(), max_width: u32) bool {
+                if (max_width == 0 or wctx.pending_word_width == 0 or wctx.failed) return false;
+
+                const line_before = wctx.line_position;
+                var remaining = max_width;
+                var consumed_count: usize = 0;
+                while (consumed_count < wctx.pending_word_pieces.items.len and remaining > 0) {
+                    const piece = wctx.pending_word_pieces.items[consumed_count];
+                    if (piece.width <= remaining) {
+                        if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width)) return false;
+                        remaining -= piece.width;
+                        consumed_count += 1;
+                        continue;
+                    }
+
+                    const fit = fitPendingWordPiece(wctx, piece, remaining, wctx.line_position == line_before);
+                    if (fit.width == 0) break;
+                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, fit.bytes_used, piece.column_start, fit.width)) return false;
+                    wctx.pending_word_pieces.items[consumed_count].column_start += fit.width;
+                    wctx.pending_word_pieces.items[consumed_count].width -= fit.width;
+                    wctx.pending_word_pieces.items[consumed_count].byte_start += fit.bytes_used;
+                    if (wctx.pending_word_pieces.items[consumed_count].width == 0) consumed_count += 1;
+                    break;
+                }
+
+                dropPendingWordPrefix(wctx, consumed_count);
+                const consumed_width = wctx.line_position - line_before;
+                wctx.pending_word_width -= consumed_width;
+                return consumed_width > 0;
+            }
+
+            fn appendPendingWordToLine(wctx: *@This()) void {
+                for (wctx.pending_word_pieces.items) |piece| {
+                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width)) return;
+                }
+                clearPendingWord(wctx);
+            }
+
+            fn finalizePendingWord(wctx: *@This()) void {
+                while (wctx.pending_word_width > 0 and !wctx.failed) {
+                    const wrap_limit = wctx.wordWrapWidth();
+                    if (wctx.line_position > 0 and wctx.line_position + wctx.pending_word_width > wrap_limit) {
+                        if (!commitVirtualLineSticky(wctx)) return;
+                        continue;
+                    }
+                    if (wctx.line_position == 0 and wctx.pending_word_width > wrap_limit) {
+                        if (!consumePendingWordPrefix(wctx, wrap_limit)) return;
+                        if (wctx.pending_word_width > 0 and !commitVirtualLineSticky(wctx)) return;
+                        continue;
+                    }
+                    appendPendingWordToLine(wctx);
+                }
+            }
+
+            fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
+                if (width == 0 or wctx.failed) return;
+
+                var piece: PendingWordPiece = .{
+                    .column_start = start,
+                    .width = width,
+                    .byte_start = byte_start,
+                    .byte_end = byte_end,
+                    .chunk = chunk,
+                };
+                while (piece.width > 0 and !wctx.failed) {
+                    const wrap_limit = wctx.wordWrapWidth();
+                    if (piece.width <= wrap_limit) {
+                        if (wctx.line_position > 0 and wctx.line_position + piece.width > wrap_limit and !commitVirtualLineSticky(wctx)) return;
+                        _ = addVirtualChunkSticky(wctx, chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width);
+                        return;
+                    }
+                    if (wctx.line_position > 0 and !commitVirtualLineSticky(wctx)) return;
+
+                    const fit = fitPendingWordPiece(wctx, piece, wctx.wordWrapWidth(), true);
+                    if (fit.width == 0) return;
+                    if (!addVirtualChunkSticky(wctx, chunk, piece.byte_start, fit.bytes_used, piece.column_start, fit.width)) return;
+                    piece.column_start += fit.width;
+                    piece.width -= fit.width;
+                    piece.byte_start += fit.bytes_used;
+                    if (piece.width > 0 and !commitVirtualLineSticky(wctx)) return;
+                }
+            }
+
+            fn flushCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
+                if (width == 0 or wctx.failed) return;
+                if (wctx.pending_word_width > 0) {
+                    queuePendingWordPiece(wctx, chunk, start, width, byte_start, byte_end);
+                    finalizePendingWord(wctx);
+                } else {
+                    placeCompleteWordPiece(wctx, chunk, start, width, byte_start, byte_end);
+                }
+            }
+
+            fn processWhitespaceBreak(wctx: *@This(), chunk: *const TextChunk, col_start: u32, byte_start: u32, wrap_break: utf8.LayoutWrapBreak) void {
+                if (wrap_break.col_offset > col_start) {
+                    flushCompleteWordPiece(
+                        wctx,
+                        chunk,
+                        col_start,
+                        wrap_break.col_offset - col_start,
+                        byte_start,
+                        wrap_break.byte_offset,
+                    );
+                    if (wctx.failed) return;
+                    wctx.source_line_has_non_whitespace = true;
+                } else if (wctx.pending_word_width > 0) {
+                    finalizePendingWord(wctx);
+                    if (wctx.failed) return;
+                }
+
+                const preserve_leading = !wctx.source_line_has_non_whitespace;
+                const wrap_limit = wctx.wordWrapWidth();
+                if (!preserve_leading and wctx.line_position + wrap_break.width > wrap_limit) {
+                    if (wctx.line_position > 0 and !commitVirtualLineSticky(wctx)) return;
+                    consumeDroppedWhitespace(wctx, wrap_break.width);
+                    return;
+                }
+
+                if (!preserve_leading and wctx.line_position == 0) {
+                    consumeDroppedWhitespace(wctx, wrap_break.width);
+                    return;
+                }
+
+                placeCompleteWordPiece(
+                    wctx,
+                    chunk,
+                    wrap_break.col_offset,
+                    wrap_break.width,
+                    wrap_break.byte_offset,
+                    wrap_break.byteEnd(),
+                );
+            }
+
+            fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
+                const chunk = wctx.word_chunk orelse return;
+                const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
+                const col_end = @min(wrap_break.colEnd(), chunk.width);
+                const byte_end = @min(wrap_break.byteEnd(), @as(u32, @intCast(chunk_bytes.len)));
+                if (col_end < wctx.word_chunk_col_start or byte_end < wctx.word_chunk_byte_start) return;
+                if (wrap_break.kind == .whitespace) {
+                    processWhitespaceBreak(wctx, chunk, wctx.word_chunk_col_start, wctx.word_chunk_byte_start, wrap_break);
+                    if (wctx.failed) return;
+                    wctx.word_chunk_col_start = col_end;
+                    wctx.word_chunk_byte_start = byte_end;
+                    return;
+                }
+                if (col_end > wctx.word_chunk_col_start) {
+                    flushCompleteWordPiece(
+                        wctx,
+                        chunk,
+                        wctx.word_chunk_col_start,
+                        col_end - wctx.word_chunk_col_start,
+                        wctx.word_chunk_byte_start,
+                        byte_end,
+                    );
+                    if (wctx.failed) return;
+                    wctx.source_line_has_non_whitespace = true;
+                } else if (byte_end > wctx.word_chunk_byte_start and wctx.pending_word_width > 0) {
+                    finalizePendingWord(wctx);
+                    if (wctx.failed) return;
+                }
+                wctx.word_chunk_col_start = col_end;
+                wctx.word_chunk_byte_start = byte_end;
+            }
+
+            inline fn processWordWrapBreak(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) !bool {
+                processWordWrapBreakValue(wctx, wrap_break);
+                return !wctx.failed;
+            }
+
+            fn processWordChunk(wctx: *@This(), chunk: *const TextChunk) void {
+                const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
+                const cached_layout = chunk.getCachedLayoutInfo(wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod());
+                const layout: ?utf8.ChunkLayoutInfo = if (cached_layout) |cached|
+                    cached
+                else blk: {
+                    if (comptime calculation == .render) {
+                        if (chunk_bytes.len >= 1024 and chunk_bytes.len <= 64 * 1024) {
+                            break :blk wctx.text_buffer.getLayoutInfoFor(chunk) catch |err| switch (err) {
+                                error.OutOfMemory => null,
+                                else => {
+                                    wctx.failed = true;
+                                    return;
+                                },
+                            };
+                        }
+                    }
+                    break :blk null;
+                };
+                const word_classes = if (layout) |info|
+                    utf8.WordClassEdges{ .first = info.first_word_class, .last = info.last_word_class }
+                else
+                    utf8.chunkWordClassEdges(chunk_bytes);
+                if (wctx.pending_word_width > 0 and
+                    utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first))
+                {
+                    finalizePendingWord(wctx);
+                    if (wctx.failed) return;
+                }
+                wctx.word_chunk = chunk;
+                wctx.word_chunk_col_start = 0;
+                wctx.word_chunk_byte_start = 0;
+                const last_word_class = if (layout) |info| blk: {
+                    for (info.wrap_breaks) |wrap_break| {
+                        processWordWrapBreakValue(wctx, wrap_break);
+                        if (wctx.failed) return;
+                    }
+                    break :blk info.last_word_class;
+                } else blk: {
+                    const streamed_layout = utf8.walkChunkLayoutInfoComptime(
+                        chunk_bytes,
+                        wctx.text_buffer.tabWidth(),
+                        chunk.isAsciiOnly(),
+                        wctx.text_buffer.widthMethod(),
+                        wctx,
+                        processWordWrapBreak,
+                    ) catch {
+                        wctx.failed = true;
+                        return;
+                    };
+                    break :blk streamed_layout.last;
+                };
+
+                if (wctx.word_chunk_col_start < chunk.width) {
+                    queuePendingWordPiece(
+                        wctx,
+                        chunk,
+                        wctx.word_chunk_col_start,
+                        chunk.width - wctx.word_chunk_col_start,
+                        wctx.word_chunk_byte_start,
+                        @intCast(chunk_bytes.len),
+                    );
+                    if (!wctx.failed) wctx.pending_word_last_class = last_word_class;
+                    wctx.source_line_has_non_whitespace = true;
+                }
+                wctx.word_chunk = null;
+            }
+
+            fn processCharChunk(comptime width_method: utf8.WidthMethod, wctx: *@This(), chunk: *const TextChunk) Allocator.Error!void {
+                const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
+                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const tab_width = wctx.text_buffer.tabWidth();
+                var byte_offset: usize = 0;
+                var char_offset: u32 = 0;
+
+                while (char_offset < chunk.width) {
+                    const line_wrap_w = wctx.lineWrapWidth();
+                    const remaining_width = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
+
+                    if (remaining_width == 0) {
+                        if (wctx.line_position > 0) {
+                            try commitVirtualLine(wctx);
+                            continue;
+                        }
+                        const remaining_bytes = chunk_bytes[byte_offset..];
+                        const force_result = utf8.findPosByWidthGraphemeSafe(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
+                        if (force_result.grapheme_count > 0) {
+                            try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
+                            char_offset += force_result.columns_used;
+                            byte_offset += force_result.byte_offset;
+                        } else {
+                            break;
+                        }
+                        continue;
+                    }
+
+                    const remaining_bytes = chunk_bytes[byte_offset..];
+                    const wrap_result = utf8.findWrapPosByWidthGraphemeSafe(
+                        remaining_bytes,
+                        remaining_width,
+                        tab_width,
+                        is_ascii_only,
+                        width_method,
+                    );
+
+                    if (wrap_result.grapheme_count == 0) {
+                        if (wctx.line_position > 0) {
+                            try commitVirtualLine(wctx);
+                            continue;
+                        }
+                        const force_result = utf8.findPosByWidthGraphemeSafe(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
+                        if (force_result.grapheme_count > 0) {
+                            try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
+                            char_offset += force_result.columns_used;
+                            byte_offset += force_result.byte_offset;
+                            if (char_offset < chunk.width) {
+                                try commitVirtualLine(wctx);
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+
+                    try addVirtualChunk(wctx, chunk, @intCast(byte_offset), wrap_result.byte_offset, char_offset, wrap_result.columns_used);
+                    char_offset += wrap_result.columns_used;
+                    byte_offset += wrap_result.byte_offset;
+
+                    if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
+                        try commitVirtualLine(wctx);
+                    }
+                }
+            }
+
+            fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
+                const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (wctx.failed) return;
+
+                if (comptime wrap_mode == .word) {
+                    if (comptime calculation == .measure) {
+                        if (wctx.deferred_measure_chunk) |deferred| {
+                            processWordChunk(wctx, deferred);
+                            wctx.deferred_measure_chunk = null;
+                            if (wctx.failed) return;
+                        } else if (chunk_idx_in_line == 0) {
+                            wctx.deferred_measure_chunk = chunk;
+                            return;
+                        }
+                    }
+                    processWordChunk(wctx, chunk);
+                } else {
+                    const process_result = switch (wctx.text_buffer.widthMethod()) {
+                        inline else => |width_method| processCharChunk(width_method, wctx, chunk),
+                    };
+                    process_result catch {
+                        wctx.failed = true;
+                    };
+                }
+            }
+
+            fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (wctx.failed) return;
+
+                var used_measure_cache = false;
+                var measure_cache_chunk: ?*const TextChunk = null;
+                var measure_cache_first_width: u32 = 0;
+                if (comptime wrap_mode == .word and calculation == .measure) {
+                    if (wctx.deferred_measure_chunk) |chunk| {
+                        wctx.deferred_measure_chunk = null;
+                        measure_cache_chunk = chunk;
+                        const first_width = wctx.lineWrapWidth();
+                        measure_cache_first_width = first_width;
+                        if (chunk.getWordMeasureSummary(
+                            wctx.wrap_w,
+                            first_width,
+                            wctx.text_buffer.tabWidth(),
+                            wctx.text_buffer.widthMethod(),
+                        )) |summary| {
+                            wctx.result.line_count += summary.line_count;
+                            wctx.result.width_cols_max = @max(wctx.result.width_cols_max, summary.width_max);
+                            wctx.global_char_offset += chunk.width;
+                            used_measure_cache = true;
+                        } else {
+                            processWordChunk(wctx, chunk);
+                            if (wctx.failed) return;
+                        }
+                    }
+                }
+
+                if (comptime wrap_mode == .word) {
+                    if (!used_measure_cache) finalizePendingWord(wctx);
+                    clearPendingWord(wctx);
+                }
+
+                const has_content = if (comptime calculation == .render)
+                    wctx.current_vline.chunks.items.len > 0
+                else
+                    wctx.line_position > 0;
+                if (!used_measure_cache and (has_content or line_info.width_cols == 0)) {
+                    if (comptime calculation == .render) {
                         wctx.current_vline.width_cols = wctx.line_position;
                         wctx.current_vline.source_line = wctx.line_idx;
                         wctx.current_vline.source_col_offset = wctx.line_col_offset;
-                        wctx.output.virtual_lines.append(wctx.allocator, wctx.current_vline) catch {};
-                        wctx.output.cached_line_starts.append(wctx.allocator, wctx.current_vline.col_offset) catch {};
-                        wctx.output.cached_line_widths.append(wctx.allocator, wctx.current_vline.width_cols) catch {};
-                        wctx.output.cached_line_sources.append(wctx.allocator, wctx.line_idx) catch {};
-                        wctx.output.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count) catch {};
-                        wctx.current_line_vline_count += 1;
                     }
+                    wctx.recordVirtualLine() catch {
+                        wctx.failed = true;
+                        return;
+                    };
+                    if (comptime calculation == .render) wctx.current_line_vline_count += 1;
+                }
 
-                    wctx.output.cached_line_first_vline.append(wctx.allocator, wctx.current_line_first_vline_idx) catch {};
-                    wctx.output.cached_line_vline_counts.append(wctx.allocator, wctx.current_line_vline_count) catch {};
+                if (comptime wrap_mode == .word and calculation == .measure) {
+                    if (!used_measure_cache) {
+                        if (measure_cache_chunk) |chunk| {
+                            chunk.setWordMeasureSummary(
+                                wctx.text_buffer.getAllocator(),
+                                wctx.wrap_w,
+                                measure_cache_first_width,
+                                wctx.text_buffer.tabWidth(),
+                                wctx.text_buffer.widthMethod(),
+                                .{
+                                    .line_count = wctx.logical_measure_line_count,
+                                    .width_max = wctx.logical_measure_width_max,
+                                },
+                            ) catch |err| switch (err) {
+                                error.OutOfMemory => {},
+                                else => {
+                                    wctx.failed = true;
+                                    return;
+                                },
+                            };
+                        }
+                    }
+                }
 
-                    wctx.global_char_offset += 1;
+                if (comptime calculation == .render) {
+                    const out = wctx.result;
+                    out.cached_line_first_vline.append(wctx.allocator, wctx.current_line_first_vline_idx) catch {
+                        wctx.failed = true;
+                        return;
+                    };
+                    out.cached_line_vline_counts.append(wctx.allocator, wctx.current_line_vline_count) catch {
+                        wctx.failed = true;
+                        return;
+                    };
+                }
 
-                    wctx.line_idx += 1;
-                    wctx.line_col_offset = 0;
-                    wctx.line_position = 0;
-                    wctx.first_line_pending = false;
+                wctx.global_char_offset += 1;
+
+                wctx.line_idx += 1;
+                wctx.line_col_offset = 0;
+                wctx.line_position = 0;
+                wctx.current_wrap_width = wctx.wrap_w;
+                if (comptime calculation == .render) {
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.col_offset = wctx.global_char_offset;
-                    wctx.last_wrap_chunk_count = 0;
-                    wctx.last_wrap_line_position = 0;
-                    wctx.last_wrap_global_offset = 0;
-                    wctx.chunk_idx_in_line = 0;
-                    wctx.current_line_first_vline_idx = @intCast(wctx.output.virtual_lines.items.len);
+                    wctx.current_line_first_vline_idx = @intCast(wctx.result.virtual_lines.items.len);
                     wctx.current_line_vline_count = 0;
                 }
-            };
+                if (comptime wrap_mode == .word) wctx.source_line_has_non_whitespace = false;
+                if (comptime wrap_mode == .word and calculation == .measure) {
+                    wctx.logical_measure_line_count = 0;
+                    wctx.logical_measure_width_max = 0;
+                }
+            }
+        };
 
-            var wrap_ctx: WrapContext = .{
-                .text_buffer = text_buffer,
-                .allocator = allocator,
-                .output = output,
-                .wrap_mode = wrap_mode,
-                .wrap_w = wrap_w,
-                .first_line_offset = first_line_offset,
-                .first_line_pending = first_line_offset > 0,
-            };
+        var wrap_ctx: WrapContext = .{
+            .text_buffer = text_buffer,
+            .allocator = allocator,
+            .result = result,
+            .wrap_w = wrap_w,
+            .current_wrap_width = if (first_line_offset > 0 and first_line_offset < wrap_w)
+                wrap_w - first_line_offset
+            else
+                wrap_w,
+        };
 
-            text_buffer.walkLinesAndSegments(&wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
-        }
+        text_buffer.walkLinesAndSegments(&wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
+        return !wrap_ctx.failed;
     }
 };

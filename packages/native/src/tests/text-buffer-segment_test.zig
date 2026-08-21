@@ -1,10 +1,187 @@
 const std = @import("std");
 const testing = std.testing;
 const seg_mod = @import("../text-buffer-segment.zig");
+const MemRegistry = @import("../mem-registry.zig").MemRegistry;
+const utf8 = @import("../utf8.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
+
+test "TextChunk keeps cold cache state out of rope leaves" {
+    try testing.expect(@sizeOf(TextChunk) <= 24);
+}
+
+test "TextChunk.getLayoutInfo returns direct byte and column metadata" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+
+    const text = "AB🌟 CD";
+    const mem_id = try registry.register(text, false);
+    var chunk: TextChunk = .{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = @intCast(utf8.calculateTextWidth(text, 2, false, .unicode)),
+    };
+
+    const layout = try chunk.getLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expectEqual(@as(usize, 1), layout.wrap_breaks.len);
+    try testing.expectEqual(@as(u32, 6), layout.wrap_breaks[0].byte_offset);
+    try testing.expectEqual(@as(u32, 4), layout.wrap_breaks[0].col_offset);
+    try testing.expectEqual(@as(u32, 7), layout.wrap_breaks[0].byteEnd());
+    try testing.expectEqual(@as(u32, 5), layout.wrap_breaks[0].colEnd());
+
+    const cached = try chunk.getLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expectEqual(@intFromPtr(layout.wrap_breaks.ptr), @intFromPtr(cached.wrap_breaks.ptr));
+
+    const zero_width_text = "a\u{200B}b";
+    const zero_width_mem_id = try registry.register(zero_width_text, false);
+    var zero_width_chunk: TextChunk = .{
+        .mem_id = zero_width_mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(zero_width_text.len),
+        .width = @intCast(utf8.calculateTextWidth(zero_width_text, 2, false, .unicode)),
+    };
+    const zero_width_layout = try zero_width_chunk.getLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expectEqual(@as(usize, 1), zero_width_layout.wrap_breaks.len);
+    try testing.expectEqual(@as(u32, 1), zero_width_layout.wrap_breaks[0].byte_offset);
+    try testing.expectEqual(@as(u32, 3), zero_width_layout.wrap_breaks[0].byte_len);
+    try testing.expectEqual(@as(u32, 1), zero_width_layout.wrap_breaks[0].col_offset);
+    try testing.expectEqual(@as(u32, 0), zero_width_layout.wrap_breaks[0].width);
+}
+
+test "findChunkLayoutInfo classifies direct byte and column break metadata" {
+    const Case = struct {
+        text: []const u8,
+        tab_width: u8 = 2,
+        expected: []const utf8.LayoutWrapBreak,
+    };
+
+    const cases = [_]Case{
+        .{ .text = "AB🌟 CD", .expected = &.{.{ .byte_offset = 6, .col_offset = 4, .byte_len = 1, .width = 1, .kind = .whitespace }} },
+        .{ .text = "中A", .expected = &.{.{ .byte_offset = 0, .col_offset = 0, .byte_len = 3, .width = 2, .kind = .script_transition }} },
+        .{ .text = "A中", .expected = &.{.{ .byte_offset = 0, .col_offset = 0, .byte_len = 1, .width = 1, .kind = .script_transition }} },
+        .{ .text = "a\u{0301}中", .expected = &.{.{ .byte_offset = 0, .col_offset = 0, .byte_len = 3, .width = 1, .kind = .script_transition }} },
+        .{ .text = "0123456789abcdef中", .expected = &.{.{ .byte_offset = 15, .col_offset = 15, .byte_len = 1, .width = 1, .kind = .script_transition }} },
+        .{ .text = "a\u{200B}b", .expected = &.{.{ .byte_offset = 1, .col_offset = 1, .byte_len = 3, .width = 0, .kind = .whitespace }} },
+        .{ .text = "a\tb", .tab_width = 2, .expected = &.{.{ .byte_offset = 1, .col_offset = 1, .byte_len = 1, .width = 2, .kind = .whitespace }} },
+        .{ .text = "a\tb", .tab_width = 4, .expected = &.{.{ .byte_offset = 1, .col_offset = 1, .byte_len = 1, .width = 4, .kind = .whitespace }} },
+        .{ .text = "ab,cd", .expected = &.{.{ .byte_offset = 2, .col_offset = 2, .byte_len = 1, .width = 1, .kind = .punctuation }} },
+    };
+
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+
+    for (cases) |case| {
+        _ = try utf8.findChunkLayoutInfo(testing.allocator, case.text, case.tab_width, false, .unicode, &breaks);
+        try testing.expectEqualDeep(case.expected, breaks.items);
+    }
+}
+
+test "walkChunkLayoutInfo keeps Prepend joined to an ASCII vector" {
+    const text = "\u{0600} 0123456789abcdef";
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+
+    _ = try utf8.findChunkLayoutInfo(testing.allocator, text, 2, false, .unicode, &breaks);
+    try testing.expectEqual(@as(usize, 1), breaks.items.len);
+    try testing.expectEqual(@as(u32, 0), breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 3), breaks.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 0), breaks.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 1), breaks.items[0].width);
+    try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, breaks.items[0].kind);
+}
+
+test "walkChunkLayoutInfo stops streaming after visitor allocation failure" {
+    const text = try testing.allocator.alloc(u8, 70_000);
+    defer testing.allocator.free(text);
+    @memset(text, ' ');
+
+    var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    const Context = struct {
+        allocator: std.mem.Allocator,
+        breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty,
+        callback_count: usize = 0,
+        failed: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, wrap_break: utf8.LayoutWrapBreak) !bool {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            ctx.callback_count += 1;
+            ctx.breaks.append(ctx.allocator, wrap_break) catch {
+                ctx.failed = true;
+                return false;
+            };
+            return true;
+        }
+    };
+    var ctx: Context = .{ .allocator = failing.allocator() };
+    defer ctx.breaks.deinit(ctx.allocator);
+    _ = try utf8.walkChunkLayoutInfo(text, 2, true, .unicode, .{
+        .context = &ctx,
+        .callback = Context.visit,
+    });
+    try testing.expect(failing.has_induced_failure);
+    try testing.expect(ctx.failed);
+    try testing.expectEqual(@as(usize, 1), ctx.callback_count);
+}
+
+test "TextChunk.getLayoutInfo refreshes tab-dependent metadata" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+    const text = "a\tb";
+    const mem_id = try registry.register(text, false);
+    var chunk: TextChunk = .{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = 4,
+    };
+
+    const first = try chunk.getLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expectEqual(@as(u32, 2), first.wrap_breaks[0].width);
+    const capacity_after_first = arena.queryCapacity();
+
+    const second = try chunk.getLayoutInfo(arena.allocator(), &registry, 8, .unicode);
+    try testing.expectEqual(@as(u32, 8), second.wrap_breaks[0].width);
+    try testing.expectEqual(@intFromPtr(first.wrap_breaks.ptr), @intFromPtr(second.wrap_breaks.ptr));
+    try testing.expectEqual(capacity_after_first, arena.queryCapacity());
+}
+
+test "TextChunk.getGraphemes reuses tab-dependent cache storage" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+    const text = "a\tb";
+    const mem_id = try registry.register(text, false);
+    var chunk: TextChunk = .{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = 4,
+    };
+
+    const first = try chunk.getGraphemes(arena.allocator(), &registry, 2, .unicode);
+    try testing.expectEqual(@as(u32, 2), first[0].width);
+    const capacity_after_first = arena.queryCapacity();
+
+    const wider = try chunk.getGraphemes(arena.allocator(), &registry, 8, .unicode);
+    try testing.expectEqual(@as(u32, 8), wider[0].width);
+    try testing.expectEqual(@intFromPtr(first.ptr), @intFromPtr(wider.ptr));
+
+    const narrower = try chunk.getGraphemes(arena.allocator(), &registry, 4, .unicode);
+    try testing.expectEqual(@as(u32, 4), narrower[0].width);
+    try testing.expectEqual(@intFromPtr(first.ptr), @intFromPtr(narrower.ptr));
+    try testing.expectEqual(capacity_after_first, arena.queryCapacity());
+}
 
 test "Segment.measure - text chunk" {
     const chunk: TextChunk = .{

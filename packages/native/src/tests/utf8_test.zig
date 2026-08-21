@@ -2371,8 +2371,8 @@ test "findGraphemeInfo: ASCII with tab" {
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
     try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
 }
 
@@ -2387,14 +2387,14 @@ test "findGraphemeInfo: multiple tabs" {
 
     // First tab at byte 1, col 1
     try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
     try testing.expectEqual(@as(u32, 1), result.items[0].col_offset);
 
     // Second tab at byte 3, col 6 (1 + 4 + 1)
     try testing.expectEqual(@as(u32, 3), result.items[1].byte_offset);
-    try testing.expectEqual(@as(u8, 1), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[1].width);
+    try testing.expectEqual(@as(u32, 1), result.items[1].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[1].width);
     try testing.expectEqual(@as(u32, 6), result.items[1].col_offset);
 }
 
@@ -2410,14 +2410,14 @@ test "findGraphemeInfo: CJK characters" {
 
     // 世 at byte 5
     try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
 
     // 界 at byte 8
     try testing.expectEqual(@as(u32, 8), result.items[1].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[1].width);
+    try testing.expectEqual(@as(u32, 3), result.items[1].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[1].width);
     try testing.expectEqual(@as(u32, 7), result.items[1].col_offset);
 }
 
@@ -2432,8 +2432,8 @@ test "findGraphemeInfo: emoji with skin tone" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len); // 4 + 4 bytes
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 8), result.items[0].byte_len); // 4 + 4 bytes
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
 }
 
@@ -2448,7 +2448,7 @@ test "findGraphemeInfo: emoji with ZWJ" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 1), result.items[0].col_offset);
 }
 
@@ -2463,8 +2463,8 @@ test "findGraphemeInfo: combining mark" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 3), result.items[0].byte_offset); // 'e' position
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len); // e (1 byte) + combining (2 bytes)
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len); // e (1 byte) + combining (2 bytes)
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
     try testing.expectEqual(@as(u32, 3), result.items[0].col_offset);
 }
 
@@ -2479,8 +2479,8 @@ test "findGraphemeInfo: flag emoji" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len); // Two 4-byte chars
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 8), result.items[0].byte_len); // Two 4-byte chars
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
 }
 
@@ -2496,20 +2496,20 @@ test "findGraphemeInfo: mixed content" {
 
     // Tab at byte 2, col 2
     try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
     try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
 
     // 世 at byte 3, col 6
     try testing.expectEqual(@as(u32, 3), result.items[1].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[1].width);
+    try testing.expectEqual(@as(u32, 3), result.items[1].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[1].width);
     try testing.expectEqual(@as(u32, 6), result.items[1].col_offset);
 
     // 界 at byte 6, col 8
     try testing.expectEqual(@as(u32, 6), result.items[2].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[2].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[2].width);
+    try testing.expectEqual(@as(u32, 3), result.items[2].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[2].width);
     try testing.expectEqual(@as(u32, 8), result.items[2].col_offset);
 }
 
@@ -2534,7 +2534,7 @@ test "findGraphemeInfo: emoji with VS16" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
 }
 
@@ -2561,8 +2561,8 @@ test "findGraphemeInfo: hiragana" {
 
     // Check first character
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
 }
 
 test "findGraphemeInfo: at SIMD boundary" {
@@ -2582,12 +2582,37 @@ test "findGraphemeInfo: at SIMD boundary" {
     for (result.items) |g| {
         if (g.byte_offset == 14) {
             found = true;
-            try testing.expectEqual(@as(u8, 3), g.byte_len);
-            try testing.expectEqual(@as(u8, 2), g.width);
+            try testing.expectEqual(@as(u32, 3), g.byte_len);
+            try testing.expectEqual(@as(u32, 2), g.width);
             break;
         }
     }
     try testing.expect(found);
+}
+
+test "findGraphemeInfo: long grapheme metadata exceeds u8 ranges" {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(testing.allocator);
+
+    for (0..130) |i| {
+        if (i > 0) try text.appendSlice(testing.allocator, "\u{200D}");
+        try text.appendSlice(testing.allocator, "👩");
+    }
+    try testing.expect(text.items.len > std.math.maxInt(u8));
+
+    for ([_]struct { method: utf8.WidthMethod, width: u32 }{
+        .{ .method = .unicode, .width = 2 },
+        .{ .method = .wcwidth, .width = 260 },
+    }) |case| {
+        var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+        defer result.deinit(testing.allocator);
+
+        try utf8.findGraphemeInfo(testing.allocator, text.items, 4, false, case.method, &result);
+        try testing.expectEqual(@as(usize, 1), result.items.len);
+        try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
+        try testing.expectEqual(@as(u32, @intCast(text.items.len)), result.items[0].byte_len);
+        try testing.expectEqual(case.width, result.items[0].width);
+    }
 }
 
 test "calculateTextWidth: book and writing hand emojis width 2" {
@@ -4015,7 +4040,7 @@ test "Thai: grapheme info for combining marks" {
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
 }
 
 test "Thai: grapheme info for word with combining marks" {
@@ -4027,8 +4052,8 @@ test "Thai: grapheme info for word with combining marks" {
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 2), result.items.len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
-    try testing.expectEqual(@as(u8, 1), result.items[1].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[1].width);
 }
 
 test "Thai: mixed Thai and ASCII" {
@@ -4074,5 +4099,5 @@ test "Thai: ว่ is a single grapheme cluster" {
     try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
 }

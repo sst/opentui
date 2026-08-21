@@ -548,7 +548,12 @@ pub const EditorView = struct {
 
         const visual_col = cursor.offset - vline.col_offset;
         var visual_col_max = vline.width_cols;
-        if (self.text_buffer_view.getSelectionOccupancy() == .cell and vline.width_cols > 0 and visual_row + 1 < vlines.len) {
+        const viewport_width = if (self.text_buffer_view.getViewport()) |vp| vp.width else vline.width_cols;
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell and
+            vline.width_cols > 0 and
+            vline.width_cols <= viewport_width and
+            visual_row + 1 < vlines.len)
+        {
             const next_vline = &vlines[visual_row + 1];
             if (next_vline.source_line == vline.source_line) visual_col_max -= 1;
         }
@@ -621,7 +626,7 @@ pub const EditorView = struct {
 
         // Calculate visual column within this virtual line
         const visual_col = if (clamped_col >= vline_start_col)
-            clamped_col - vline_start_col
+            @min(clamped_col - vline_start_col, vline.width_cols)
         else
             0;
 
@@ -857,11 +862,15 @@ pub const EditorView = struct {
         }
 
         const vline = &vlines[vcursor.visual_row];
+        const viewport_width = if (self.text_buffer_view.getViewport()) |vp| vp.width else vline.width_cols;
+        const oversized_visual_line = vline.width_cols > viewport_width;
         var target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
             vline.width_cols
+        else if (oversized_visual_line)
+            @min(vcursor.visual_col, vline.width_cols)
         else
             clampVisualColToStayOnVisualRow(vlines, vcursor.visual_row, vline.width_cols);
-        if (self.text_buffer_view.getSelectionOccupancy() == .cell) {
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell and !oversized_visual_line) {
             const target_offset = vline.col_offset + target_visual_col;
             if (self.edit_buffer.tb.cursorUnitBoundsAtOffset(target_offset)) |bounds| {
                 if (bounds.start < target_offset) {

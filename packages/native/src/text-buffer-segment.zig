@@ -31,16 +31,40 @@ pub const ChunkFitResult = struct {
 };
 
 pub const GraphemeInfo = utf8.GraphemeInfo;
+pub const ChunkLayoutInfo = utf8.ChunkLayoutInfo;
+
+pub const TextChunkColdState = struct {
+    graphemes: ?[]GraphemeInfo = null,
+    graphemes_capacity: usize = 0,
+    graphemes_tab_width: ?u8 = null,
+    graphemes_width_method: ?utf8.WidthMethod = null,
+    wrap_breaks: ?[]utf8.LayoutWrapBreak = null,
+    wrap_breaks_capacity: usize = 0,
+    wrap_breaks_tab_width: ?u8 = null,
+    wrap_breaks_width_method: ?utf8.WidthMethod = null,
+    first_word_class: utf8.WordClass = .other,
+    last_word_class: utf8.WordClass = .other,
+    measure_word_wrap_width: ?u32 = null,
+    measure_word_first_width: u32 = 0,
+    measure_word_tab_width: u8 = 0,
+    measure_word_width_method: utf8.WidthMethod = .unicode,
+    measure_word_line_count: u32 = 0,
+    measure_word_width_max: u32 = 0,
+};
+
+pub const WordMeasureSummary = struct {
+    line_count: u32,
+    width_max: u32,
+};
 
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
     mem_id: u8,
     byte_start: u32,
     byte_end: u32,
-    width: u16,
+    width: u32,
     flags: u8 = 0,
-    graphemes: ?[]GraphemeInfo = null,
-    wrap_offsets: ?[]utf8.WrapBreak = null,
+    cold: ?*TextChunkColdState = null,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
@@ -68,6 +92,66 @@ pub const TextChunk = struct {
         return mem_buf[self.byte_start..self.byte_end];
     }
 
+    fn getOrCreateCold(self: *const TextChunk, allocator: Allocator) TextBufferError!*TextChunkColdState {
+        if (self.cold) |cold| return cold;
+        const cold = allocator.create(TextChunkColdState) catch return TextBufferError.OutOfMemory;
+        cold.* = .{};
+        @constCast(self).cold = cold;
+        return cold;
+    }
+
+    pub fn resetCaches(self: *TextChunk) void {
+        self.cold = null;
+    }
+
+    pub fn getCachedLayoutInfo(
+        self: *const TextChunk,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) ?ChunkLayoutInfo {
+        const cold = self.cold orelse return null;
+        const cached = cold.wrap_breaks orelse return null;
+        if (cold.wrap_breaks_tab_width != tabwidth or cold.wrap_breaks_width_method != width_method) return null;
+        return .{
+            .wrap_breaks = cached,
+            .first_word_class = cold.first_word_class,
+            .last_word_class = cold.last_word_class,
+        };
+    }
+
+    pub fn getWordMeasureSummary(
+        self: *const TextChunk,
+        wrap_width: u32,
+        first_width: u32,
+        tab_width: u8,
+        width_method: utf8.WidthMethod,
+    ) ?WordMeasureSummary {
+        const cold = self.cold orelse return null;
+        if (cold.measure_word_wrap_width != wrap_width or
+            cold.measure_word_first_width != first_width or
+            cold.measure_word_tab_width != tab_width or
+            cold.measure_word_width_method != width_method) return null;
+        return .{ .line_count = cold.measure_word_line_count, .width_max = cold.measure_word_width_max };
+    }
+
+    pub fn setWordMeasureSummary(
+        self: *const TextChunk,
+        allocator: Allocator,
+        wrap_width: u32,
+        first_width: u32,
+        tab_width: u8,
+        width_method: utf8.WidthMethod,
+        summary: WordMeasureSummary,
+    ) TextBufferError!void {
+        const cold = try self.getOrCreateCold(allocator);
+        cold.measure_word_wrap_width = wrap_width;
+        cold.measure_word_first_width = first_width;
+        cold.measure_word_tab_width = tab_width;
+        cold.measure_word_width_method = width_method;
+        cold.measure_word_line_count = summary.line_count;
+        cold.measure_word_width_max = summary.width_max;
+    }
+
     /// Lazily compute and cache grapheme info for this chunk
     /// Returns a slice that is valid until the buffer is reset
     /// For ASCII-only chunks, returns an empty slice (sentinel)
@@ -79,15 +163,25 @@ pub const TextChunk = struct {
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError![]const GraphemeInfo {
-        const mut_self = @constCast(self);
-        if (self.graphemes) |cached| {
-            return cached;
-        }
+        if (self.isAsciiOnly()) return &[_]GraphemeInfo{};
 
-        if (self.isAsciiOnly()) {
-            const empty_slice = try allocator.alloc(GraphemeInfo, 0);
-            mut_self.graphemes = empty_slice;
-            return empty_slice;
+        const cold = try self.getOrCreateCold(allocator);
+        if (cold.graphemes) |cached| {
+            if (cold.graphemes_tab_width == tabwidth and cold.graphemes_width_method == width_method) {
+                return cached;
+            }
+
+            var reusable: std.ArrayListUnmanaged(GraphemeInfo) = .{
+                .items = cached,
+                .capacity = cold.graphemes_capacity,
+            };
+            reusable.clearRetainingCapacity();
+            try utf8.findGraphemeInfo(allocator, self.getBytes(mem_registry), tabwidth, self.isAsciiOnly(), width_method, &reusable);
+            cold.graphemes = reusable.items;
+            cold.graphemes_capacity = reusable.capacity;
+            cold.graphemes_tab_width = tabwidth;
+            cold.graphemes_width_method = width_method;
+            return reusable.items;
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
@@ -97,38 +191,77 @@ pub const TextChunk = struct {
 
         try utf8.findGraphemeInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);
 
-        // TODO: Calling this with an arena allocator will just double the memory usage?
-        const graphemes = try grapheme_list.toOwnedSlice(allocator);
-
-        mut_self.graphemes = graphemes;
-        return graphemes;
+        cold.graphemes = grapheme_list.items;
+        cold.graphemes_capacity = grapheme_list.capacity;
+        cold.graphemes_tab_width = tabwidth;
+        cold.graphemes_width_method = width_method;
+        return grapheme_list.items;
     }
 
-    /// Lazily compute and cache wrap offsets for this chunk
-    /// Returns a slice that is valid until the buffer is reset
-    pub fn getWrapOffsets(
+    /// Lazily compute and cache direct byte/column wrap metadata for this chunk.
+    pub fn getLayoutInfo(
         self: *const TextChunk,
         allocator: Allocator,
         mem_registry: *const MemRegistry,
+        tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError![]const utf8.WrapBreak {
-        const mut_self = @constCast(self);
-        if (self.wrap_offsets) |cached| {
-            return cached;
+    ) TextBufferError!ChunkLayoutInfo {
+        const cold = try self.getOrCreateCold(allocator);
+        if (cold.wrap_breaks) |cached| {
+            if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method) {
+                return .{
+                    .wrap_breaks = cached,
+                    .first_word_class = cold.first_word_class,
+                    .last_word_class = cold.last_word_class,
+                };
+            }
+
+            if (cold.wrap_breaks_width_method == width_method) {
+                var reusable: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .{
+                    .items = cached,
+                    .capacity = cold.wrap_breaks_capacity,
+                };
+                reusable.clearRetainingCapacity();
+                const word_classes = try utf8.findChunkLayoutInfo(
+                    allocator,
+                    self.getBytes(mem_registry),
+                    tabwidth,
+                    self.isAsciiOnly(),
+                    width_method,
+                    &reusable,
+                );
+                cold.wrap_breaks = reusable.items;
+                cold.wrap_breaks_capacity = reusable.capacity;
+                cold.wrap_breaks_tab_width = tabwidth;
+                cold.first_word_class = word_classes.first;
+                cold.last_word_class = word_classes.last;
+                return .{
+                    .wrap_breaks = reusable.items,
+                    .first_word_class = word_classes.first,
+                    .last_word_class = word_classes.last,
+                };
+            }
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
-        var wrap_result = utf8.WrapBreakResult.init(allocator);
-        errdefer wrap_result.deinit();
+        var wrap_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+        errdefer wrap_breaks.deinit(allocator);
 
-        try utf8.findWrapBreaks(chunk_bytes, &wrap_result, width_method);
+        const word_classes = try utf8.findChunkLayoutInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &wrap_breaks);
 
-        // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
-        // Use toOwnedSlice to transfer ownership without copying
-        const wrap_offsets = try wrap_result.breaks.toOwnedSlice(allocator);
-        mut_self.wrap_offsets = wrap_offsets;
+        const cached: []utf8.LayoutWrapBreak = if (wrap_breaks.items.len > 0) wrap_breaks.items else @constCast(&[_]utf8.LayoutWrapBreak{});
+        cold.wrap_breaks = cached;
+        cold.wrap_breaks_capacity = wrap_breaks.capacity;
+        cold.wrap_breaks_tab_width = tabwidth;
+        cold.wrap_breaks_width_method = width_method;
+        cold.first_word_class = word_classes.first;
+        cold.last_word_class = word_classes.last;
 
-        return wrap_offsets;
+        return .{
+            .wrap_breaks = cached,
+            .first_word_class = word_classes.first,
+            .last_word_class = word_classes.last,
+        };
     }
 };
 
@@ -301,8 +434,6 @@ pub const Segment = union(enum) {
                 .byte_end = right_chunk.byte_end,
                 .width = left_chunk.width + right_chunk.width,
                 .flags = left_chunk.flags,
-                .graphemes = null,
-                .wrap_offsets = null,
             },
         };
     }

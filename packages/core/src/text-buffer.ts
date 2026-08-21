@@ -213,6 +213,7 @@ export class TextBuffer {
   public setTabWidth(width: number): void {
     this.guard()
     this.lib.textBufferSetTabWidth(this.bufferPtr, width)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
   }
 
   public getTabWidth(): number {
