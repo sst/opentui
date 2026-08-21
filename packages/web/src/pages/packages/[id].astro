@@ -66,7 +66,13 @@ function groupPlatforms(platforms: PlatformFact[]) {
 }
 ---
 
-<SitePage wide title={`${entry.data.name} | OpenTUI Packages`} description={entry.data.summary} footerAnimation="equalizer">
+<SitePage
+  wide
+  reading
+  title={`${entry.data.name} | OpenTUI Packages`}
+  description={entry.data.summary}
+  footerAnimation="equalizer"
+>
   <article class="package prose">
     <p class="facts">
       <span>{entry.id}</span>

@@ -90,7 +90,8 @@ const { title, description, wide = false, robots } = Astro.props
     --frame-width: 64rem;
     /* Type scale, anchored to the 16px root so layout rem values hold:
      * 14px body prose and chrome, 13px dense text (code, tables), 12px
-     * captions and labels. Headings keep their own rem sizes. */
+     * captions and labels. Headings keep their own rem sizes. Reading
+     * surfaces step the scale up (see .reading below). */
     --text-body: 0.875rem;
     --text-small: 0.8125rem;
     --text-caption: 0.75rem;
@@ -123,6 +124,16 @@ const { title, description, wide = false, robots } = Astro.props
     font-family: "Berkeley Mono", monospace;
     font-size: var(--text-body);
     line-height: 1.5;
+  }
+
+  /* Reading surfaces (the landing page, scrollback, packages) step their
+   * content up to the 16px default: display and long-form text in an open
+   * viewport, with 24px lines on the 1.5rem grid. The dense documentation
+   * and the chrome around the column keep the 14px body. */
+  .reading {
+    --text-body: 1rem;
+    --text-small: 0.875rem;
+    font-size: var(--text-body);
   }
 
   .page {
