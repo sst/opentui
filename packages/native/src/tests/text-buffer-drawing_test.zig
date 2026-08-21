@@ -722,7 +722,7 @@ test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
 
     for (vlines) |vline| {
         var line_buffer: [200]u8 = undefined;
-        const line_start_offset = vline.col_offset;
+        const line_start_offset = vline.document_cell_offset;
         const line_end_offset = line_start_offset + vline.width_cols;
         const extracted = tb.getTextRange(line_start_offset, line_end_offset, &line_buffer);
 
@@ -733,10 +733,10 @@ test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
     try std.testing.expect(vlines.len == 2);
 
     var full_buffer: [200]u8 = undefined;
-    const line0_len = tb.getTextRange(vlines[0].col_offset, vlines[0].col_offset + vlines[0].width_cols, &full_buffer);
+    const line0_len = tb.getTextRange(vlines[0].document_cell_offset, vlines[0].document_cell_offset + vlines[0].width_cols, &full_buffer);
     const line0_text = full_buffer[0..line0_len];
 
-    const line1_len = tb.getTextRange(vlines[1].col_offset, vlines[1].col_offset + vlines[1].width_cols, &full_buffer);
+    const line1_len = tb.getTextRange(vlines[1].document_cell_offset, vlines[1].document_cell_offset + vlines[1].width_cols, &full_buffer);
     const line1_text = full_buffer[0..line1_len];
 
     const line0_ends_with_kai = std.mem.endsWith(u8, line0_text, "界");

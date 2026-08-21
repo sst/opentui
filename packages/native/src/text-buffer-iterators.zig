@@ -88,7 +88,7 @@ pub fn walkLinesAndSegments(
             if (seg.asText()) |chunk| {
                 walk_ctx.seg_callback(walk_ctx.user_ctx, walk_ctx.current_line_idx, chunk, walk_ctx.chunk_idx_in_line);
                 walk_ctx.chunk_idx_in_line += 1;
-                walk_ctx.line_width_cols += chunk.width;
+                walk_ctx.line_width_cols += chunk.width_cols;
             } else if (seg.isBreak()) {
                 walk_ctx.line_callback(walk_ctx.user_ctx, .{
                     .line_idx = walk_ctx.current_line_idx,
@@ -140,12 +140,12 @@ pub fn getLineCount(rope: *const UnifiedRope) u32 {
 
 pub fn getMaxLineWidth(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
-    return metrics.custom.max_line_width;
+    return metrics.custom.max_line_width_cols;
 }
 
 pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
-    return metrics.custom.total_width;
+    return metrics.custom.total_width_cols;
 }
 
 /// Optimized O(1) implementation using linestart marker lookups
@@ -249,7 +249,7 @@ fn getTextUnitBoundsAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row
         const seg = rope.get(seg_idx) orelse break;
         if (seg.isBreak() or seg.isLineStart()) break;
         if (seg.asText()) |chunk| {
-            const next_cols = cols_before + chunk.width;
+            const next_cols = cols_before + chunk.width_cols;
             if (col < next_cols) {
                 const local_col: u32 = col - cols_before;
                 const bytes = chunk.getBytes(mem_registry);
@@ -301,7 +301,7 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
         const seg = rope.get(seg_idx) orelse break;
         if (seg.isBreak() or seg.isLineStart()) break;
         if (seg.asText()) |chunk| {
-            const next_cols = cols_before + chunk.width;
+            const next_cols = cols_before + chunk.width_cols;
 
             if (clamped_col <= next_cols) {
                 if (clamped_col == cols_before and prev_chunk != null) {
@@ -401,7 +401,7 @@ pub fn extractTextBetweenOffsets(
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
             const chunk_start_offset = ctx.col_offset.*;
-            const chunk_end_offset = chunk_start_offset + chunk.width;
+            const chunk_end_offset = chunk_start_offset + chunk.width_cols;
 
             // Skip chunk if it's entirely outside range
             if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
@@ -413,7 +413,7 @@ pub fn extractTextBetweenOffsets(
             const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
             const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
-            const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
+            const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width_cols);
 
             var byte_start: u32 = 0;
             var byte_end: u32 = @intCast(chunk_bytes.len);
@@ -423,7 +423,7 @@ pub fn extractTextBetweenOffsets(
                 byte_start = start_result.byte_offset;
             }
 
-            if (local_end_col < chunk.width) {
+            if (local_end_col < chunk.width_cols) {
                 const end_result = utf8.findGraphemePosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, ctx.width_method);
                 byte_end = end_result.byte_offset;
             }

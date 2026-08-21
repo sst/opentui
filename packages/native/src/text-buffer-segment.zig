@@ -25,7 +25,7 @@ pub const WrapMode = enum {
     word,
 };
 
-pub const GraphemeInfo = utf8.GraphemeInfo;
+pub const RenderClusterInfo = utf8.RenderClusterInfo;
 pub const ChunkLayoutInfo = utf8.ChunkLayoutInfo;
 
 const CachedMeasure = struct {
@@ -37,10 +37,10 @@ const CachedMeasure = struct {
 };
 
 pub const TextChunkColdState = struct {
-    graphemes: ?[]GraphemeInfo = null,
-    graphemes_capacity: usize = 0,
-    graphemes_tab_width: ?u8 = null,
-    graphemes_width_method: ?utf8.WidthMethod = null,
+    render_clusters: ?[]RenderClusterInfo = null,
+    render_clusters_capacity: usize = 0,
+    render_clusters_tab_width: ?u8 = null,
+    render_clusters_width_method: ?utf8.WidthMethod = null,
     wrap_breaks: ?[]utf8.LayoutWrapBreak = null,
     wrap_breaks_capacity: usize = 0,
     wrap_breaks_tab_width: ?u8 = null,
@@ -59,7 +59,7 @@ pub const TextChunk = struct {
     mem_id: u8,
     byte_start: u32,
     byte_end: u32,
-    width: u32,
+    width_cols: u32,
     flags: u8 = 0,
     cold: ?*TextChunkColdState = null,
 
@@ -76,12 +76,12 @@ pub const TextChunk = struct {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 0,
-            .width = 0,
+            .width_cols = 0,
         };
     }
 
     pub fn is_empty(self: *const TextChunk) bool {
-        return self.width == 0;
+        return self.width_cols == 0;
     }
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
@@ -148,51 +148,51 @@ pub const TextChunk = struct {
         };
     }
 
-    /// Lazily compute and cache grapheme info for this chunk
+    /// Lazily compute and cache sparse render-cluster metadata for this chunk
     /// Returned storage is arena-owned until reset, but a lookup with different
     /// tab-dependent settings may overwrite it.
     /// For ASCII-only chunks, returns an empty slice (sentinel)
-    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
-    pub fn getGraphemes(
+    /// For mixed chunks, returns only multibyte render clusters and tabs with their cell-column starts
+    pub fn getRenderClusters(
         self: *const TextChunk,
         allocator: Allocator,
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError![]const GraphemeInfo {
-        if (self.isAsciiOnly()) return &[_]GraphemeInfo{};
+    ) TextBufferError![]const RenderClusterInfo {
+        if (self.isAsciiOnly()) return &[_]RenderClusterInfo{};
 
         const cold = try self.getOrCreateCold(allocator);
-        if (cold.graphemes) |cached| {
-            if (cold.graphemes_tab_width == tabwidth and cold.graphemes_width_method == width_method) {
+        if (cold.render_clusters) |cached| {
+            if (cold.render_clusters_tab_width == tabwidth and cold.render_clusters_width_method == width_method) {
                 return cached;
             }
 
-            var reusable: std.ArrayListUnmanaged(GraphemeInfo) = .{
+            var reusable: std.ArrayListUnmanaged(RenderClusterInfo) = .{
                 .items = cached,
-                .capacity = cold.graphemes_capacity,
+                .capacity = cold.render_clusters_capacity,
             };
             reusable.clearRetainingCapacity();
-            try utf8.findGraphemeInfo(allocator, self.getBytes(mem_registry), tabwidth, self.isAsciiOnly(), width_method, &reusable);
-            cold.graphemes = reusable.items;
-            cold.graphemes_capacity = reusable.capacity;
-            cold.graphemes_tab_width = tabwidth;
-            cold.graphemes_width_method = width_method;
+            try utf8.findRenderClusterInfo(allocator, self.getBytes(mem_registry), tabwidth, self.isAsciiOnly(), width_method, &reusable);
+            cold.render_clusters = reusable.items;
+            cold.render_clusters_capacity = reusable.capacity;
+            cold.render_clusters_tab_width = tabwidth;
+            cold.render_clusters_width_method = width_method;
             return reusable.items;
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
 
-        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .empty;
-        errdefer grapheme_list.deinit(allocator);
+        var render_cluster_list: std.ArrayListUnmanaged(RenderClusterInfo) = .empty;
+        errdefer render_cluster_list.deinit(allocator);
 
-        try utf8.findGraphemeInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);
+        try utf8.findRenderClusterInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &render_cluster_list);
 
-        cold.graphemes = grapheme_list.items;
-        cold.graphemes_capacity = grapheme_list.capacity;
-        cold.graphemes_tab_width = tabwidth;
-        cold.graphemes_width_method = width_method;
-        return grapheme_list.items;
+        cold.render_clusters = render_cluster_list.items;
+        cold.render_clusters_capacity = render_cluster_list.capacity;
+        cold.render_clusters_tab_width = tabwidth;
+        cold.render_clusters_width_method = width_method;
+        return render_cluster_list.items;
     }
 
     /// Lazily compute and cache direct byte/column wrap metadata for this chunk.
@@ -288,30 +288,30 @@ pub const Segment = union(enum) {
     /// Metrics for aggregation in the rope tree
     /// These enable O(log n) row/col coordinate mapping and efficient line queries
     pub const Metrics = struct {
-        total_width: u32 = 0,
+        total_width_cols: u32 = 0,
         total_bytes: u32 = 0,
         linestart_count: u32 = 0,
         newline_count: u32 = 0,
-        max_line_width: u32 = 0,
+        max_line_width_cols: u32 = 0,
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
         ascii_only: bool = true,
 
         pub fn add(self: *Metrics, other: Metrics) void {
-            self.total_width += other.total_width;
+            self.total_width_cols += other.total_width_cols;
             self.total_bytes += other.total_bytes;
             self.linestart_count += other.linestart_count;
             self.newline_count += other.newline_count;
 
-            self.max_line_width = @max(self.max_line_width, other.max_line_width);
+            self.max_line_width_cols = @max(self.max_line_width_cols, other.max_line_width_cols);
 
             self.ascii_only = self.ascii_only and other.ascii_only;
         }
 
         /// Get the balancing weight for the rope
-        /// We use total_width + newline_count to give each break a weight of 1
+        /// We use total_width_cols + newline_count to give each break a weight of 1
         /// This eliminates boundary ambiguity in coordinate/offset conversions
         pub fn weight(self: *const Metrics) u32 {
-            return self.total_width + self.newline_count;
+            return self.total_width_cols + self.newline_count;
         }
     };
 
@@ -322,28 +322,28 @@ pub const Segment = union(enum) {
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const byte_len = chunk.byte_end - chunk.byte_start;
                 break :blk Metrics{
-                    .total_width = chunk.width,
+                    .total_width_cols = chunk.width_cols,
                     .total_bytes = byte_len,
                     .linestart_count = 0,
                     .newline_count = 0,
-                    .max_line_width = chunk.width,
+                    .max_line_width_cols = chunk.width_cols,
                     .ascii_only = is_ascii,
                 };
             },
             .brk => Metrics{
-                .total_width = 0,
+                .total_width_cols = 0,
                 .total_bytes = 0,
                 .linestart_count = 0,
                 .newline_count = 1,
-                .max_line_width = 0,
+                .max_line_width_cols = 0,
                 .ascii_only = true,
             },
             .linestart => Metrics{
-                .total_width = 0,
+                .total_width_cols = 0,
                 .total_bytes = 0,
                 .linestart_count = 1,
                 .newline_count = 0,
-                .max_line_width = 0,
+                .max_line_width_cols = 0,
                 .ascii_only = true,
             },
         };
@@ -425,7 +425,7 @@ pub const Segment = union(enum) {
                 .mem_id = left_chunk.mem_id,
                 .byte_start = left_chunk.byte_start,
                 .byte_end = right_chunk.byte_end,
-                .width = left_chunk.width + right_chunk.width,
+                .width_cols = left_chunk.width_cols + right_chunk.width_cols,
                 .flags = left_chunk.flags,
             },
         };

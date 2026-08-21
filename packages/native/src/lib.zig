@@ -3709,13 +3709,13 @@ export fn encodeUnicode(
     // Check if ASCII only for optimization
     const is_ascii_only = utf8.isAsciiOnly(text);
 
-    // Find grapheme info
-    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
-    defer grapheme_list.deinit(globalAllocator);
+    // Find sparse render-cluster metadata.
+    var render_cluster_list: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
+    defer render_cluster_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;
-    utf8.findGraphemeInfo(globalAllocator, text, tab_width, is_ascii_only, wMethod, &grapheme_list) catch return false;
-    const specials = grapheme_list.items;
+    utf8.findRenderClusterInfo(globalAllocator, text, tab_width, is_ascii_only, wMethod, &render_cluster_list) catch return false;
+    const render_clusters = render_cluster_list.items;
 
     // Allocate output array
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
@@ -3751,27 +3751,27 @@ export fn encodeUnicode(
     var special_idx: usize = 0;
 
     while (byte_offset < text.len) {
-        const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+        const at_special = special_idx < render_clusters.len and render_clusters[special_idx].col_start == col;
 
         var grapheme_bytes: []const u8 = undefined;
-        var g_width: u32 = undefined;
+        var cluster_width_cols: u32 = undefined;
 
         if (at_special) {
-            const g = specials[special_idx];
-            grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
-            g_width = g.width;
-            byte_offset = g.byte_offset + g.byte_len;
+            const g = render_clusters[special_idx];
+            grapheme_bytes = text[g.byte_start .. g.byte_start + g.byte_len];
+            cluster_width_cols = g.width_cols;
+            byte_offset = g.byte_start + g.byte_len;
             special_idx += 1;
         } else {
             if (byte_offset >= text.len) break;
             grapheme_bytes = text[byte_offset .. byte_offset + 1];
-            g_width = 1;
+            cluster_width_cols = 1;
             byte_offset += 1;
         }
 
-        const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, wMethod);
+        const cell_width = utf8.getWidthAt(text, if (at_special) render_clusters[special_idx - 1].byte_start else byte_offset - 1, tab_width, wMethod);
         if (cell_width == 0) {
-            col += g_width;
+            col += cluster_width_cols;
             continue;
         }
 
@@ -3805,7 +3805,7 @@ export fn encodeUnicode(
         };
         pending_gid = null; // Successfully stored, no longer pending
         result_idx += 1;
-        col += g_width;
+        col += cluster_width_cols;
     }
 
     // Trim to actual size

@@ -28,7 +28,7 @@ pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
 pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
-pub const GraphemeInfo = seg_mod.GraphemeInfo;
+pub const RenderClusterInfo = seg_mod.RenderClusterInfo;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
@@ -381,7 +381,7 @@ pub const UnifiedTextBuffer = struct {
     // Basic queries using unified rope
     pub fn getLength(self: *const Self) u32 {
         const metrics = self._rope.root.metrics();
-        return metrics.custom.total_width;
+        return metrics.custom.total_width_cols;
     }
 
     pub fn getByteSize(self: *const Self) u32 {
@@ -584,7 +584,7 @@ pub const UnifiedTextBuffer = struct {
             .mem_id = mem_id,
             .byte_start = byte_start,
             .byte_end = byte_end,
-            .width = chunk_width,
+            .width_cols = chunk_width,
             .flags = flags,
         };
     }
@@ -598,7 +598,7 @@ pub const UnifiedTextBuffer = struct {
         mem_id: u8,
         byte_offset: u32,
         prepend_linestart: bool,
-    ) TextBufferError!struct { segments: std.ArrayListUnmanaged(Segment), total_width: u32, allocator: Allocator } {
+    ) TextBufferError!struct { segments: std.ArrayListUnmanaged(Segment), total_width_cols: u32, allocator: Allocator } {
         var break_result = utf8.LineBreakResult.init(allocator);
         defer break_result.deinit();
         try utf8.findLineBreaks(text, &break_result);
@@ -611,7 +611,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         var local_start: u32 = 0;
-        var total_width: u32 = 0;
+        var total_width_cols: u32 = 0;
 
         for (break_result.breaks.items) |line_break| {
             const break_pos: u32 = @intCast(line_break.pos);
@@ -623,7 +623,7 @@ pub const UnifiedTextBuffer = struct {
             if (local_end > local_start) {
                 const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
                 try segments.append(allocator, .{ .text = chunk });
-                total_width += chunk.width;
+                total_width_cols += chunk.width_cols;
             }
 
             try segments.append(allocator, .{ .brk = {} });
@@ -635,10 +635,10 @@ pub const UnifiedTextBuffer = struct {
         if (local_start < text.len) {
             const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
             try segments.append(allocator, .{ .text = chunk });
-            total_width += chunk.width;
+            total_width_cols += chunk.width_cols;
         }
 
-        return .{ .segments = segments, .total_width = total_width, .allocator = allocator };
+        return .{ .segments = segments, .total_width_cols = total_width_cols, .allocator = allocator };
     }
 
     pub fn getLineCount(self: *const Self) u32 {
@@ -1297,7 +1297,7 @@ pub const UnifiedTextBuffer = struct {
                 if (segment.asText()) |chunk| {
                     const mutable = @constCast(chunk);
                     const bytes = chunk.getBytes(&ctx.buffer.mem_registry);
-                    mutable.width = utf8.calculateTextWidth(
+                    mutable.width_cols = utf8.calculateTextWidth(
                         bytes,
                         ctx.buffer.tab_width,
                         chunk.isAsciiOnly(),

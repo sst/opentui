@@ -129,7 +129,7 @@ pub const MeasureResult = struct {
 pub const VirtualLineSpanInfo = struct {
     spans: []const StyleSpan,
     source_line: usize,
-    col_offset: u32,
+    source_col_start: u32,
 };
 
 /// Byte and display-column windows describe the same whole-grapheme slice;
@@ -143,38 +143,38 @@ pub const VirtualChunk = struct {
 };
 
 const PendingWordPiece = struct {
-    column_start: u32,
-    width: u32,
+    col_start_in_chunk: u32,
+    width_cols: u32,
     byte_start: u32,
     byte_end: u32,
     chunk: *const TextChunk,
 };
 
 const PendingWordPieceFit = struct {
-    width: u32,
+    width_cols: u32,
     bytes_used: u32,
 };
 
 pub const VirtualLine = struct {
     chunks: std.ArrayListUnmanaged(VirtualChunk),
     width_cols: u32,
-    col_offset: u32,
+    document_cell_offset: u32,
     source_line: usize,
-    source_col_offset: u32,
+    source_col_start: u32,
     is_truncated: bool,
-    ellipsis_pos: u32,
-    truncation_suffix_start: u32,
+    ellipsis_col: u32,
+    truncation_suffix_col_start: u32,
 
     pub fn init() VirtualLine {
         return .{
             .chunks = .empty,
             .width_cols = 0,
-            .col_offset = 0,
+            .document_cell_offset = 0,
             .source_line = 0,
-            .source_col_offset = 0,
+            .source_col_start = 0,
             .is_truncated = false,
-            .ellipsis_pos = 0,
-            .truncation_suffix_start = 0,
+            .ellipsis_col = 0,
+            .truncation_suffix_col_start = 0,
         };
     }
 
@@ -529,7 +529,7 @@ pub const UnifiedTextBufferView = struct {
             if (vline_idx >= vlines.len) break;
             // A soft-wrap boundary belongs to the following visual line. Consumed
             // separators before its source start remain on the previous line.
-            if (logical_col < vlines[vline_idx].source_col_offset) return vline_idx - 1;
+            if (logical_col < vlines[vline_idx].source_col_start) return vline_idx - 1;
         }
 
         // If not found, return last virtual line for this logical line
@@ -960,7 +960,7 @@ pub const UnifiedTextBufferView = struct {
             const seg = rope.get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             const chunk = seg.asText() orelse continue;
-            const next_cols = cols_before + chunk.width;
+            const next_cols = cols_before + chunk.width_cols;
             if (coords.col < next_cols) {
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
@@ -1052,7 +1052,7 @@ pub const UnifiedTextBufferView = struct {
         const last_vline = &self.virtual_lines.items[last_line_idx];
 
         if (last_vline.is_truncated) {
-            return last_vline.col_offset + last_vline.truncation_suffix_start + (last_vline.width_cols -| last_vline.ellipsis_pos -| 3);
+            return last_vline.document_cell_offset + last_vline.truncation_suffix_col_start + (last_vline.width_cols -| last_vline.ellipsis_col -| 3);
         }
 
         return self.text_buffer.rope().totalWeight();
@@ -1095,7 +1095,7 @@ pub const UnifiedTextBufferView = struct {
 
         const vline_idx: usize = @intCast(clamped_y);
         const vline = &self.virtual_lines.items[vline_idx];
-        const lineStart = vline.col_offset;
+        const lineStart = vline.document_cell_offset;
         const max_local_x = self.maxLocalXOnVisualLine(self.virtual_lines.items, vline_idx);
 
         var localX = @max(0, @min(abs_x, @as(i32, @intCast(max_local_x))));
@@ -1104,28 +1104,28 @@ pub const UnifiedTextBufferView = struct {
             const ellipsis_width: u32 = 3;
             const localX_u32: u32 = @intCast(localX);
 
-            if (localX_u32 >= vline.ellipsis_pos and localX_u32 < vline.ellipsis_pos + ellipsis_width) {
-                localX = @intCast(vline.ellipsis_pos);
-            } else if (localX_u32 >= vline.ellipsis_pos + ellipsis_width) {
-                const suffix_offset = localX_u32 - vline.ellipsis_pos - ellipsis_width;
-                localX = @intCast(vline.truncation_suffix_start + suffix_offset);
+            if (localX_u32 >= vline.ellipsis_col and localX_u32 < vline.ellipsis_col + ellipsis_width) {
+                localX = @intCast(vline.ellipsis_col);
+            } else if (localX_u32 >= vline.ellipsis_col + ellipsis_width) {
+                const suffix_offset = localX_u32 - vline.ellipsis_col - ellipsis_width;
+                localX = @intCast(vline.truncation_suffix_col_start + suffix_offset);
             }
         }
 
         if (!vline.is_truncated and localX == @as(i32, @intCast(vline.width_cols))) {
-            const rendered_source_end = vline.source_col_offset + vline.width_cols;
+            const rendered_source_end = vline.source_col_start + vline.width_cols;
             const next_idx = vline_idx + 1;
             const has_next_same_source = next_idx < self.virtual_lines.items.len and
                 self.virtual_lines.items[next_idx].source_line == vline.source_line;
             if (has_next_same_source and
-                self.virtual_lines.items[next_idx].source_col_offset > rendered_source_end)
+                self.virtual_lines.items[next_idx].source_col_start > rendered_source_end)
             {
-                return self.virtual_lines.items[next_idx].col_offset;
+                return self.virtual_lines.items[next_idx].document_cell_offset;
             }
             if (!has_next_same_source) {
                 const logical_line_width = self.text_buffer.lineWidthAt(@intCast(vline.source_line));
                 if (logical_line_width > rendered_source_end) {
-                    return lineStart - vline.source_col_offset + logical_line_width;
+                    return lineStart - vline.source_col_start + logical_line_width;
                 }
             }
         }
@@ -1157,7 +1157,7 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) VirtualLineSpanInfo {
         if (vline_idx >= self.virtual_lines.items.len) {
-            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
+            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .source_col_start = 0 };
         }
 
         const vline = &self.virtual_lines.items[vline_idx];
@@ -1166,7 +1166,7 @@ pub const UnifiedTextBufferView = struct {
         return .{
             .spans = spans,
             .source_line = vline.source_line,
-            .col_offset = vline.source_col_offset,
+            .source_col_start = vline.source_col_start,
         };
     }
 
@@ -1272,8 +1272,8 @@ pub const UnifiedTextBufferView = struct {
             chunks: std.ArrayListUnmanaged(VirtualChunk) = .empty,
             width_cols: u32 = 0,
             is_truncated: bool = false,
-            ellipsis_pos: u32 = 0,
-            truncation_suffix_start: u32 = 0,
+            ellipsis_col: u32 = 0,
+            truncation_suffix_col_start: u32 = 0,
         };
         // Stage all replacements first so OOM leaves the original layout retryable.
         const replacements = self.global_allocator.alloc(Replacement, self.virtual_lines.items.len) catch return false;
@@ -1351,8 +1351,8 @@ pub const UnifiedTextBufferView = struct {
 
             replacement.width_cols = prefix_accumulated + ellipsis_width + suffix_accumulated;
             replacement.is_truncated = true;
-            replacement.ellipsis_pos = prefix_accumulated;
-            replacement.truncation_suffix_start = actual_suffix_start orelse replacement.width_cols;
+            replacement.ellipsis_col = prefix_accumulated;
+            replacement.truncation_suffix_col_start = actual_suffix_start orelse replacement.width_cols;
         }
 
         for (self.virtual_lines.items, replacements) |*vline, replacement| {
@@ -1360,8 +1360,8 @@ pub const UnifiedTextBufferView = struct {
             vline.chunks = replacement.chunks;
             vline.width_cols = replacement.width_cols;
             vline.is_truncated = replacement.is_truncated;
-            vline.ellipsis_pos = replacement.ellipsis_pos;
-            vline.truncation_suffix_start = replacement.truncation_suffix_start;
+            vline.ellipsis_col = replacement.ellipsis_col;
+            vline.truncation_suffix_col_start = replacement.truncation_suffix_col_start;
         }
         return true;
     }
@@ -1457,7 +1457,7 @@ pub const UnifiedTextBufferView = struct {
                         .byte_start_in_chunk = 0,
                         .byte_len = chunk.byte_end - chunk.byte_start,
                         .col_start_in_chunk = 0,
-                        .width_cols = chunk.width,
+                        .width_cols = chunk.width_cols,
                     }) catch {
                         ctx.failed = true;
                     };
@@ -1480,15 +1480,15 @@ pub const UnifiedTextBufferView = struct {
 
                 var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
                 vline.width_cols = line_info.width_cols;
-                vline.col_offset = line_info.col_offset;
+                vline.document_cell_offset = line_info.col_offset;
                 vline.source_line = line_info.line_idx;
-                vline.source_col_offset = 0;
+                vline.source_col_start = 0;
 
                 ctx.output.virtual_lines.append(ctx.allocator, vline) catch {
                     ctx.failed = true;
                     return;
                 };
-                ctx.output.cached_line_starts.append(ctx.allocator, vline.col_offset) catch {
+                ctx.output.cached_line_starts.append(ctx.allocator, vline.document_cell_offset) catch {
                     ctx.failed = true;
                     return;
                 };
@@ -1538,15 +1538,15 @@ pub const UnifiedTextBufferView = struct {
             result: @TypeOf(result),
             wrap_w: u32,
             current_wrap_width: u32,
-            global_char_offset: u32 = 0,
+            document_cell_offset: u32 = 0,
             line_idx: u32 = 0,
-            line_col_offset: u32 = 0,
-            line_position: u32 = 0,
+            source_line_col_offset: u32 = 0,
+            current_vline_width_cols: u32 = 0,
             current_vline: if (calculation == .render) VirtualLine else void = if (calculation == .render) VirtualLine.init() else {},
             current_line_first_vline_idx: if (calculation == .render) u32 else void = if (calculation == .render) 0 else {},
             current_line_vline_count: if (calculation == .render) u32 else void = if (calculation == .render) 0 else {},
             pending_word_pieces: if (wrap_mode == .word) std.ArrayListUnmanaged(PendingWordPiece) else void = if (wrap_mode == .word) .empty else {},
-            pending_word_width: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
+            pending_word_width_cols: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
             source_line_has_non_whitespace: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
             word_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
@@ -1567,35 +1567,35 @@ pub const UnifiedTextBufferView = struct {
 
             fn commitVirtualLine(wctx: *@This()) Allocator.Error!void {
                 if (comptime calculation == .render) {
-                    wctx.current_vline.width_cols = wctx.line_position;
+                    wctx.current_vline.width_cols = wctx.current_vline_width_cols;
                     wctx.current_vline.source_line = wctx.line_idx;
-                    wctx.current_vline.source_col_offset = wctx.line_col_offset;
+                    wctx.current_vline.source_col_start = wctx.source_line_col_offset;
                 }
                 try wctx.recordVirtualLine();
 
                 if (comptime calculation == .render) wctx.current_line_vline_count += 1;
 
-                wctx.line_col_offset += wctx.line_position;
+                wctx.source_line_col_offset += wctx.current_vline_width_cols;
                 if (comptime calculation == .render) {
                     wctx.current_vline = VirtualLine.init();
-                    wctx.current_vline.col_offset = wctx.global_char_offset;
+                    wctx.current_vline.document_cell_offset = wctx.document_cell_offset;
                 }
-                wctx.line_position = 0;
+                wctx.current_vline_width_cols = 0;
                 wctx.current_wrap_width = wctx.wrap_w;
             }
 
             fn recordVirtualLine(wctx: *@This()) Allocator.Error!void {
                 if (comptime calculation == .measure) {
                     wctx.result.line_count += 1;
-                    wctx.result.width_cols_max = @max(wctx.result.width_cols_max, wctx.line_position);
+                    wctx.result.width_cols_max = @max(wctx.result.width_cols_max, wctx.current_vline_width_cols);
                     if (comptime wrap_mode == .word) {
                         wctx.logical_measure_line_count += 1;
-                        wctx.logical_measure_width_max = @max(wctx.logical_measure_width_max, wctx.line_position);
+                        wctx.logical_measure_width_max = @max(wctx.logical_measure_width_max, wctx.current_vline_width_cols);
                     }
                 } else {
                     const out = wctx.result;
                     try out.virtual_lines.append(wctx.allocator, wctx.current_vline);
-                    try out.cached_line_starts.append(wctx.allocator, wctx.current_vline.col_offset);
+                    try out.cached_line_starts.append(wctx.allocator, wctx.current_vline.document_cell_offset);
                     try out.cached_line_widths.append(wctx.allocator, wctx.current_vline.width_cols);
                     try out.cached_line_sources.append(wctx.allocator, wctx.line_idx);
                     try out.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count);
@@ -1614,8 +1614,8 @@ pub const UnifiedTextBufferView = struct {
                         {
                             last.byte_len += byte_len;
                             last.width_cols += width_cols;
-                            wctx.global_char_offset += width_cols;
-                            wctx.line_position += width_cols;
+                            wctx.document_cell_offset += width_cols;
+                            wctx.current_vline_width_cols += width_cols;
                             return;
                         }
                     }
@@ -1630,8 +1630,8 @@ pub const UnifiedTextBufferView = struct {
                         .width_cols = width_cols,
                     });
                 }
-                wctx.global_char_offset += width_cols;
-                wctx.line_position += width_cols;
+                wctx.document_cell_offset += width_cols;
+                wctx.current_vline_width_cols += width_cols;
             }
 
             fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
@@ -1650,30 +1650,30 @@ pub const UnifiedTextBufferView = struct {
                 return true;
             }
 
-            fn consumeDroppedWhitespace(wctx: *@This(), width: u32) void {
+            fn consumeDroppedWhitespace(wctx: *@This(), width_cols: u32) void {
                 // Wrapped separators are hidden on the continuation but remain in
                 // the preceding visual line's logical source interval.
-                wctx.global_char_offset += width;
-                wctx.line_col_offset += width;
-                if (comptime calculation == .render) wctx.current_vline.col_offset = wctx.global_char_offset;
+                wctx.document_cell_offset += width_cols;
+                wctx.source_line_col_offset += width_cols;
+                if (comptime calculation == .render) wctx.current_vline.document_cell_offset = wctx.document_cell_offset;
             }
 
-            fn queuePendingWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
-                if (width == 0 or wctx.failed) return;
+            fn queuePendingWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
+                if (width_cols == 0 or wctx.failed) return;
 
                 if (wctx.pending_word_pieces.items.len > 0) {
                     const last = &wctx.pending_word_pieces.items[wctx.pending_word_pieces.items.len - 1];
-                    if (last.chunk == chunk and last.column_start + last.width == start and last.byte_end == byte_start) {
-                        last.width += width;
+                    if (last.chunk == chunk and last.col_start_in_chunk + last.width_cols == col_start_in_chunk and last.byte_end == byte_start) {
+                        last.width_cols += width_cols;
                         last.byte_end = byte_end;
-                        wctx.pending_word_width += width;
+                        wctx.pending_word_width_cols += width_cols;
                         return;
                     }
                 }
 
                 wctx.pending_word_pieces.append(wctx.allocator, .{
-                    .column_start = start,
-                    .width = width,
+                    .col_start_in_chunk = col_start_in_chunk,
+                    .width_cols = width_cols,
                     .byte_start = byte_start,
                     .byte_end = byte_end,
                     .chunk = chunk,
@@ -1681,12 +1681,12 @@ pub const UnifiedTextBufferView = struct {
                     wctx.failed = true;
                     return;
                 };
-                wctx.pending_word_width += width;
+                wctx.pending_word_width_cols += width_cols;
             }
 
             fn clearPendingWord(wctx: *@This()) void {
                 wctx.pending_word_pieces.clearRetainingCapacity();
-                wctx.pending_word_width = 0;
+                wctx.pending_word_width_cols = 0;
                 wctx.pending_word_last_class = .other;
             }
 
@@ -1703,38 +1703,38 @@ pub const UnifiedTextBufferView = struct {
                 wctx.pending_word_pieces.items.len = remaining;
             }
 
-            fn fitPendingWordPiece(wctx: *@This(), piece: PendingWordPiece, max_width: u32, allow_forced_grapheme: bool) PendingWordPieceFit {
-                if (piece.width <= max_width) {
-                    return .{ .width = piece.width, .bytes_used = piece.byte_end - piece.byte_start };
+            fn fitPendingWordPiece(wctx: *@This(), piece: PendingWordPiece, max_width_cols: u32, allow_forced_grapheme: bool) PendingWordPieceFit {
+                if (piece.width_cols <= max_width_cols) {
+                    return .{ .width_cols = piece.width_cols, .bytes_used = piece.byte_end - piece.byte_start };
                 }
-                if (max_width == 0) return .{ .width = 0, .bytes_used = 0 };
+                if (max_width_cols == 0) return .{ .width_cols = 0, .bytes_used = 0 };
 
                 const chunk_bytes = piece.chunk.getBytes(wctx.text_buffer.memRegistry());
                 if (piece.byte_start > piece.byte_end or piece.byte_end > chunk_bytes.len) {
                     wctx.failed = true;
-                    return .{ .width = 0, .bytes_used = 0 };
+                    return .{ .width_cols = 0, .bytes_used = 0 };
                 }
                 const slice_bytes = chunk_bytes[piece.byte_start..piece.byte_end];
                 const is_ascii_only = (piece.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const fit = utf8.findWrapPosByWidthGraphemeSafe(
                     slice_bytes,
-                    max_width,
+                    max_width_cols,
                     wctx.text_buffer.tabWidth(),
                     is_ascii_only,
                     wctx.text_buffer.widthMethod(),
                 );
                 if (fit.columns_used > 0 and fit.byte_offset > 0) {
                     return .{
-                        .width = @min(fit.columns_used, piece.width),
+                        .width_cols = @min(fit.columns_used, piece.width_cols),
                         .bytes_used = @min(fit.byte_offset, piece.byte_end - piece.byte_start),
                     };
                 }
 
-                if (!allow_forced_grapheme) return .{ .width = 0, .bytes_used = 0 };
+                if (!allow_forced_grapheme) return .{ .width_cols = 0, .bytes_used = 0 };
 
                 const forced = utf8.findGraphemePosByWidth(
                     slice_bytes,
-                    max_width,
+                    max_width_cols,
                     wctx.text_buffer.tabWidth(),
                     is_ascii_only,
                     true,
@@ -1742,144 +1742,144 @@ pub const UnifiedTextBufferView = struct {
                 );
                 if (forced.columns_used == 0 or forced.byte_offset == 0) {
                     wctx.failed = true;
-                    return .{ .width = 0, .bytes_used = 0 };
+                    return .{ .width_cols = 0, .bytes_used = 0 };
                 }
                 return .{
-                    .width = @min(forced.columns_used, piece.width),
+                    .width_cols = @min(forced.columns_used, piece.width_cols),
                     .bytes_used = @min(forced.byte_offset, piece.byte_end - piece.byte_start),
                 };
             }
 
-            fn consumePendingWordPrefix(wctx: *@This(), max_width: u32) bool {
-                if (max_width == 0 or wctx.pending_word_width == 0 or wctx.failed) return false;
+            fn consumePendingWordPrefix(wctx: *@This(), max_width_cols: u32) bool {
+                if (max_width_cols == 0 or wctx.pending_word_width_cols == 0 or wctx.failed) return false;
 
-                const line_before = wctx.line_position;
-                var remaining = max_width;
+                const vline_width_cols_before = wctx.current_vline_width_cols;
+                var remaining_width_cols = max_width_cols;
                 var consumed_count: usize = 0;
-                while (consumed_count < wctx.pending_word_pieces.items.len and remaining > 0) {
+                while (consumed_count < wctx.pending_word_pieces.items.len and remaining_width_cols > 0) {
                     const piece = wctx.pending_word_pieces.items[consumed_count];
-                    if (piece.width <= remaining) {
-                        if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width)) return false;
-                        remaining -= piece.width;
+                    if (piece.width_cols <= remaining_width_cols) {
+                        if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.col_start_in_chunk, piece.width_cols)) return false;
+                        remaining_width_cols -= piece.width_cols;
                         consumed_count += 1;
                         continue;
                     }
 
-                    const fit = fitPendingWordPiece(wctx, piece, remaining, wctx.line_position == line_before);
-                    if (fit.width == 0) break;
-                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, fit.bytes_used, piece.column_start, fit.width)) return false;
-                    wctx.pending_word_pieces.items[consumed_count].column_start += fit.width;
-                    wctx.pending_word_pieces.items[consumed_count].width -= fit.width;
+                    const fit = fitPendingWordPiece(wctx, piece, remaining_width_cols, wctx.current_vline_width_cols == vline_width_cols_before);
+                    if (fit.width_cols == 0) break;
+                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, fit.bytes_used, piece.col_start_in_chunk, fit.width_cols)) return false;
+                    wctx.pending_word_pieces.items[consumed_count].col_start_in_chunk += fit.width_cols;
+                    wctx.pending_word_pieces.items[consumed_count].width_cols -= fit.width_cols;
                     wctx.pending_word_pieces.items[consumed_count].byte_start += fit.bytes_used;
-                    if (wctx.pending_word_pieces.items[consumed_count].width == 0) consumed_count += 1;
+                    if (wctx.pending_word_pieces.items[consumed_count].width_cols == 0) consumed_count += 1;
                     break;
                 }
 
                 dropPendingWordPrefix(wctx, consumed_count);
-                const consumed_width = wctx.line_position - line_before;
-                wctx.pending_word_width -= consumed_width;
-                return consumed_width > 0;
+                const consumed_width_cols = wctx.current_vline_width_cols - vline_width_cols_before;
+                wctx.pending_word_width_cols -= consumed_width_cols;
+                return consumed_width_cols > 0;
             }
 
             fn appendPendingWordToLine(wctx: *@This()) void {
                 for (wctx.pending_word_pieces.items) |piece| {
-                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width)) return;
+                    if (!addVirtualChunkSticky(wctx, piece.chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.col_start_in_chunk, piece.width_cols)) return;
                 }
                 clearPendingWord(wctx);
             }
 
             fn finalizePendingWord(wctx: *@This()) void {
-                while (wctx.pending_word_width > 0 and !wctx.failed) {
-                    const wrap_limit = wctx.wordWrapWidth();
-                    if (wctx.line_position > 0 and wctx.line_position + wctx.pending_word_width > wrap_limit) {
+                while (wctx.pending_word_width_cols > 0 and !wctx.failed) {
+                    const wrap_limit_cols = wctx.wordWrapWidth();
+                    if (wctx.current_vline_width_cols > 0 and wctx.current_vline_width_cols + wctx.pending_word_width_cols > wrap_limit_cols) {
                         if (!commitVirtualLineSticky(wctx)) return;
                         continue;
                     }
-                    if (wctx.line_position == 0 and wctx.pending_word_width > wrap_limit) {
-                        if (!consumePendingWordPrefix(wctx, wrap_limit)) return;
-                        if (wctx.pending_word_width > 0 and !commitVirtualLineSticky(wctx)) return;
+                    if (wctx.current_vline_width_cols == 0 and wctx.pending_word_width_cols > wrap_limit_cols) {
+                        if (!consumePendingWordPrefix(wctx, wrap_limit_cols)) return;
+                        if (wctx.pending_word_width_cols > 0 and !commitVirtualLineSticky(wctx)) return;
                         continue;
                     }
                     appendPendingWordToLine(wctx);
                 }
             }
 
-            fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
-                if (width == 0 or wctx.failed) return;
+            fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
+                if (width_cols == 0 or wctx.failed) return;
 
                 var piece: PendingWordPiece = .{
-                    .column_start = start,
-                    .width = width,
+                    .col_start_in_chunk = col_start_in_chunk,
+                    .width_cols = width_cols,
                     .byte_start = byte_start,
                     .byte_end = byte_end,
                     .chunk = chunk,
                 };
-                while (piece.width > 0 and !wctx.failed) {
-                    const wrap_limit = wctx.wordWrapWidth();
-                    if (piece.width <= wrap_limit) {
-                        if (wctx.line_position > 0 and wctx.line_position + piece.width > wrap_limit and !commitVirtualLineSticky(wctx)) return;
-                        _ = addVirtualChunkSticky(wctx, chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.column_start, piece.width);
+                while (piece.width_cols > 0 and !wctx.failed) {
+                    const wrap_limit_cols = wctx.wordWrapWidth();
+                    if (piece.width_cols <= wrap_limit_cols) {
+                        if (wctx.current_vline_width_cols > 0 and wctx.current_vline_width_cols + piece.width_cols > wrap_limit_cols and !commitVirtualLineSticky(wctx)) return;
+                        _ = addVirtualChunkSticky(wctx, chunk, piece.byte_start, piece.byte_end - piece.byte_start, piece.col_start_in_chunk, piece.width_cols);
                         return;
                     }
-                    if (wctx.line_position > 0 and !commitVirtualLineSticky(wctx)) return;
+                    if (wctx.current_vline_width_cols > 0 and !commitVirtualLineSticky(wctx)) return;
 
                     const fit = fitPendingWordPiece(wctx, piece, wctx.wordWrapWidth(), true);
-                    if (fit.width == 0) return;
-                    if (!addVirtualChunkSticky(wctx, chunk, piece.byte_start, fit.bytes_used, piece.column_start, fit.width)) return;
-                    piece.column_start += fit.width;
-                    piece.width -= fit.width;
+                    if (fit.width_cols == 0) return;
+                    if (!addVirtualChunkSticky(wctx, chunk, piece.byte_start, fit.bytes_used, piece.col_start_in_chunk, fit.width_cols)) return;
+                    piece.col_start_in_chunk += fit.width_cols;
+                    piece.width_cols -= fit.width_cols;
                     piece.byte_start += fit.bytes_used;
-                    if (piece.width > 0 and !commitVirtualLineSticky(wctx)) return;
+                    if (piece.width_cols > 0 and !commitVirtualLineSticky(wctx)) return;
                 }
             }
 
-            fn flushCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, start: u32, width: u32, byte_start: u32, byte_end: u32) void {
-                if (width == 0 or wctx.failed) return;
-                if (wctx.pending_word_width > 0) {
-                    queuePendingWordPiece(wctx, chunk, start, width, byte_start, byte_end);
+            fn flushCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
+                if (width_cols == 0 or wctx.failed) return;
+                if (wctx.pending_word_width_cols > 0) {
+                    queuePendingWordPiece(wctx, chunk, col_start_in_chunk, width_cols, byte_start, byte_end);
                     finalizePendingWord(wctx);
                 } else {
-                    placeCompleteWordPiece(wctx, chunk, start, width, byte_start, byte_end);
+                    placeCompleteWordPiece(wctx, chunk, col_start_in_chunk, width_cols, byte_start, byte_end);
                 }
             }
 
             fn processWhitespaceBreak(wctx: *@This(), chunk: *const TextChunk, col_start: u32, byte_start: u32, wrap_break: utf8.LayoutWrapBreak) void {
-                if (wrap_break.col_offset > col_start) {
+                if (wrap_break.col_start > col_start) {
                     flushCompleteWordPiece(
                         wctx,
                         chunk,
                         col_start,
-                        wrap_break.col_offset - col_start,
+                        wrap_break.col_start - col_start,
                         byte_start,
-                        wrap_break.byte_offset,
+                        wrap_break.byte_start,
                     );
                     if (wctx.failed) return;
                     wctx.source_line_has_non_whitespace = true;
-                } else if (wctx.pending_word_width > 0) {
+                } else if (wctx.pending_word_width_cols > 0) {
                     finalizePendingWord(wctx);
                     if (wctx.failed) return;
                 }
 
                 // Logical-line indentation is content; only later separators may be elided.
                 const preserve_leading = !wctx.source_line_has_non_whitespace;
-                const wrap_limit = wctx.wordWrapWidth();
-                if (!preserve_leading and wctx.line_position + wrap_break.width > wrap_limit) {
-                    if (wctx.line_position > 0 and !commitVirtualLineSticky(wctx)) return;
-                    consumeDroppedWhitespace(wctx, wrap_break.width);
+                const wrap_limit_cols = wctx.wordWrapWidth();
+                if (!preserve_leading and wctx.current_vline_width_cols + wrap_break.width_cols > wrap_limit_cols) {
+                    if (wctx.current_vline_width_cols > 0 and !commitVirtualLineSticky(wctx)) return;
+                    consumeDroppedWhitespace(wctx, wrap_break.width_cols);
                     return;
                 }
 
-                if (!preserve_leading and wctx.line_position == 0) {
-                    consumeDroppedWhitespace(wctx, wrap_break.width);
+                if (!preserve_leading and wctx.current_vline_width_cols == 0) {
+                    consumeDroppedWhitespace(wctx, wrap_break.width_cols);
                     return;
                 }
 
                 placeCompleteWordPiece(
                     wctx,
                     chunk,
-                    wrap_break.col_offset,
-                    wrap_break.width,
-                    wrap_break.byte_offset,
+                    wrap_break.col_start,
+                    wrap_break.width_cols,
+                    wrap_break.byte_start,
                     wrap_break.byteEnd(),
                 );
             }
@@ -1887,7 +1887,7 @@ pub const UnifiedTextBufferView = struct {
             fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
                 const chunk = wctx.word_chunk orelse return;
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
-                const col_end = @min(wrap_break.colEnd(), chunk.width);
+                const col_end = @min(wrap_break.colEnd(), chunk.width_cols);
                 const byte_end = @min(wrap_break.byteEnd(), @as(u32, @intCast(chunk_bytes.len)));
                 if (col_end < wctx.word_chunk_col_start or byte_end < wctx.word_chunk_byte_start) return;
                 if (wrap_break.kind == .whitespace) {
@@ -1908,7 +1908,7 @@ pub const UnifiedTextBufferView = struct {
                     );
                     if (wctx.failed) return;
                     wctx.source_line_has_non_whitespace = true;
-                } else if (byte_end > wctx.word_chunk_byte_start and wctx.pending_word_width > 0) {
+                } else if (byte_end > wctx.word_chunk_byte_start and wctx.pending_word_width_cols > 0) {
                     finalizePendingWord(wctx);
                     if (wctx.failed) return;
                 }
@@ -1946,7 +1946,7 @@ pub const UnifiedTextBufferView = struct {
                     info.word_classes
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
-                if (wctx.pending_word_width > 0 and
+                if (wctx.pending_word_width_cols > 0 and
                     utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first))
                 {
                     finalizePendingWord(wctx);
@@ -1976,12 +1976,12 @@ pub const UnifiedTextBufferView = struct {
                     break :blk streamed_layout.last;
                 };
 
-                if (wctx.word_chunk_col_start < chunk.width) {
+                if (wctx.word_chunk_col_start < chunk.width_cols) {
                     queuePendingWordPiece(
                         wctx,
                         chunk,
                         wctx.word_chunk_col_start,
-                        chunk.width - wctx.word_chunk_col_start,
+                        chunk.width_cols - wctx.word_chunk_col_start,
                         wctx.word_chunk_byte_start,
                         @intCast(chunk_bytes.len),
                     );
@@ -1995,52 +1995,52 @@ pub const UnifiedTextBufferView = struct {
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
                 const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const tab_width = wctx.text_buffer.tabWidth();
-                var byte_offset: usize = 0;
-                var char_offset: u32 = 0;
+                var chunk_byte_offset: usize = 0;
+                var chunk_col_offset: u32 = 0;
 
                 // Advance bytes with columns; re-deriving each byte boundary would
                 // make repeated wraps within a long chunk quadratic.
-                while (char_offset < chunk.width) {
-                    const line_wrap_w = wctx.lineWrapWidth();
-                    const remaining_width = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
+                while (chunk_col_offset < chunk.width_cols) {
+                    const line_wrap_width_cols = wctx.lineWrapWidth();
+                    const remaining_width_cols = if (wctx.current_vline_width_cols < line_wrap_width_cols) line_wrap_width_cols - wctx.current_vline_width_cols else 0;
 
-                    if (remaining_width == 0) {
-                        if (wctx.line_position > 0) {
+                    if (remaining_width_cols == 0) {
+                        if (wctx.current_vline_width_cols > 0) {
                             try commitVirtualLine(wctx);
                             continue;
                         }
-                        const remaining_bytes = chunk_bytes[byte_offset..];
+                        const remaining_bytes = chunk_bytes[chunk_byte_offset..];
                         const force_result = utf8.findGraphemePosByWidth(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
                         if (force_result.grapheme_count > 0) {
-                            try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
-                            char_offset += force_result.columns_used;
-                            byte_offset += force_result.byte_offset;
+                            try addVirtualChunk(wctx, chunk, @intCast(chunk_byte_offset), force_result.byte_offset, chunk_col_offset, force_result.columns_used);
+                            chunk_col_offset += force_result.columns_used;
+                            chunk_byte_offset += force_result.byte_offset;
                         } else {
                             break;
                         }
                         continue;
                     }
 
-                    const remaining_bytes = chunk_bytes[byte_offset..];
+                    const remaining_bytes = chunk_bytes[chunk_byte_offset..];
                     const wrap_result = utf8.findWrapPosByWidthGraphemeSafe(
                         remaining_bytes,
-                        remaining_width,
+                        remaining_width_cols,
                         tab_width,
                         is_ascii_only,
                         width_method,
                     );
 
                     if (wrap_result.grapheme_count == 0) {
-                        if (wctx.line_position > 0) {
+                        if (wctx.current_vline_width_cols > 0) {
                             try commitVirtualLine(wctx);
                             continue;
                         }
                         const force_result = utf8.findGraphemePosByWidth(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
                         if (force_result.grapheme_count > 0) {
-                            try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
-                            char_offset += force_result.columns_used;
-                            byte_offset += force_result.byte_offset;
-                            if (char_offset < chunk.width) {
+                            try addVirtualChunk(wctx, chunk, @intCast(chunk_byte_offset), force_result.byte_offset, chunk_col_offset, force_result.columns_used);
+                            chunk_col_offset += force_result.columns_used;
+                            chunk_byte_offset += force_result.byte_offset;
+                            if (chunk_col_offset < chunk.width_cols) {
                                 try commitVirtualLine(wctx);
                                 continue;
                             }
@@ -2048,11 +2048,11 @@ pub const UnifiedTextBufferView = struct {
                         break;
                     }
 
-                    try addVirtualChunk(wctx, chunk, @intCast(byte_offset), wrap_result.byte_offset, char_offset, wrap_result.columns_used);
-                    char_offset += wrap_result.columns_used;
-                    byte_offset += wrap_result.byte_offset;
+                    try addVirtualChunk(wctx, chunk, @intCast(chunk_byte_offset), wrap_result.byte_offset, chunk_col_offset, wrap_result.columns_used);
+                    chunk_col_offset += wrap_result.columns_used;
+                    chunk_byte_offset += wrap_result.byte_offset;
 
-                    if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
+                    if (wctx.current_vline_width_cols >= line_wrap_width_cols and chunk_col_offset < chunk.width_cols) {
                         try commitVirtualLine(wctx);
                     }
                 }
@@ -2107,7 +2107,7 @@ pub const UnifiedTextBufferView = struct {
                         )) |summary| {
                             wctx.result.line_count += summary.line_count;
                             wctx.result.width_cols_max = @max(wctx.result.width_cols_max, summary.width_max);
-                            wctx.global_char_offset += chunk.width;
+                            wctx.document_cell_offset += chunk.width_cols;
                             used_measure_cache = true;
                         } else {
                             processWordChunk(wctx, chunk);
@@ -2124,12 +2124,12 @@ pub const UnifiedTextBufferView = struct {
                 const has_content = if (comptime calculation == .render)
                     wctx.current_vline.chunks.items.len > 0
                 else
-                    wctx.line_position > 0;
+                    wctx.current_vline_width_cols > 0;
                 if (!used_measure_cache and (has_content or line_info.width_cols == 0)) {
                     if (comptime calculation == .render) {
-                        wctx.current_vline.width_cols = wctx.line_position;
+                        wctx.current_vline.width_cols = wctx.current_vline_width_cols;
                         wctx.current_vline.source_line = wctx.line_idx;
-                        wctx.current_vline.source_col_offset = wctx.line_col_offset;
+                        wctx.current_vline.source_col_start = wctx.source_line_col_offset;
                     }
                     wctx.recordVirtualLine() catch {
                         wctx.failed = true;
@@ -2175,15 +2175,15 @@ pub const UnifiedTextBufferView = struct {
                     };
                 }
 
-                wctx.global_char_offset += 1;
+                wctx.document_cell_offset += 1;
 
                 wctx.line_idx += 1;
-                wctx.line_col_offset = 0;
-                wctx.line_position = 0;
+                wctx.source_line_col_offset = 0;
+                wctx.current_vline_width_cols = 0;
                 wctx.current_wrap_width = wctx.wrap_w;
                 if (comptime calculation == .render) {
                     wctx.current_vline = VirtualLine.init();
-                    wctx.current_vline.col_offset = wctx.global_char_offset;
+                    wctx.current_vline.document_cell_offset = wctx.document_cell_offset;
                     wctx.current_line_first_vline_idx = @intCast(wctx.result.virtual_lines.items.len);
                     wctx.current_line_vline_count = 0;
                 }

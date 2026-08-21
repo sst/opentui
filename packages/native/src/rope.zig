@@ -830,8 +830,8 @@ pub fn Rope(comptime T: type) type {
                             try writer.writeByte(':');
                             try writer.print("w{d}", .{metrics.weight()});
 
-                            if (@hasDecl(T.Metrics, "total_width")) {
-                                try writer.print(",tw{d}", .{metrics.custom.total_width});
+                            if (@hasDecl(T.Metrics, "total_width_cols")) {
+                                try writer.print(",tw{d}", .{metrics.custom.total_width_cols});
                             }
                             if (@hasDecl(T.Metrics, "total_bytes")) {
                                 try writer.print(",b{d}", .{metrics.custom.total_bytes});
