@@ -222,6 +222,45 @@ test "MarkTree report capacity and position overflow reject splice atomically" {
     try tree.validateIntegrity();
 }
 
+test "MarkTree report rejects exact and partial used-range overlap atomically" {
+    var tree = testTree();
+    defer tree.deinit();
+    const first = try tree.addRange(.{ .start_byte = 11, .end_byte = 13 });
+    const second = try tree.addRange(.{ .start_byte = 14, .end_byte = 16 });
+    try tree.splice(0, 0, 1);
+    const original_generation = tree.generation;
+    const original_lazy_shift = tree.root.?.lazy_shift;
+    try std.testing.expect(original_lazy_shift != 0);
+    const sentinel = std.math.maxInt(u64);
+
+    var exact = [_]u64{sentinel} ** 2;
+    try std.testing.expectError(error.ReportBuffersOverlap, tree.spliceWithReport(10, 10, 0, &exact, &exact));
+    try std.testing.expectEqualSlices(u64, &([_]u64{sentinel} ** 2), &exact);
+    try std.testing.expectEqual(original_generation, tree.generation);
+    try std.testing.expectEqual(original_lazy_shift, tree.root.?.lazy_shift);
+    try expectRange(tree.getRange(first), first, 12, 14, .right, .left);
+    try expectRange(tree.getRange(second), second, 15, 17, .right, .left);
+    const original_first = tree.getRange(first);
+    const original_second = tree.getRange(second);
+
+    var partial = [_]u64{sentinel} ** 3;
+    try std.testing.expectError(
+        error.ReportBuffersOverlap,
+        tree.spliceWithReport(10, 10, 0, partial[0..2], partial[1..3]),
+    );
+    try std.testing.expectEqualSlices(u64, &([_]u64{sentinel} ** 3), &partial);
+    try std.testing.expectEqual(original_generation, tree.generation);
+    try std.testing.expectEqualDeep(original_first, tree.getRange(first));
+    try std.testing.expectEqualDeep(original_second, tree.getRange(second));
+
+    // Capacity beyond the used prefixes may alias; only bytes written by this report matter.
+    var disjoint_used = [_]u64{sentinel} ** 6;
+    const report = try tree.spliceWithReport(10, 10, 0, disjoint_used[0..4], disjoint_used[2..6]);
+    try std.testing.expectEqual(@as(usize, 2), report.affected_ids.len);
+    try std.testing.expectEqual(@as(usize, 2), report.covered_range_ids.len);
+    try tree.validateIntegrity();
+}
+
 test "MarkTree moveRegion preserves IDs and annotations inside moved text" {
     var tree = testTree();
     defer tree.deinit();
@@ -254,6 +293,38 @@ const MutationVisitor = struct {
     }
 };
 
+const DeinitVisitor = struct {
+    tree: *MarkTree,
+    attempts: usize = 0,
+
+    fn visitRange(self: *DeinitVisitor, _: Range) !void {
+        self.attempts += 1;
+        try std.testing.expectError(error.DeinitDuringVisit, self.tree.tryDeinit());
+    }
+
+    fn visitPoint(self: *DeinitVisitor, _: Point) !void {
+        self.attempts += 1;
+        try std.testing.expectError(error.DeinitDuringVisit, self.tree.tryDeinit());
+    }
+};
+
+test "MarkTree all visitor entry points reject deinit without releasing storage" {
+    var tree = testTree();
+    defer tree.deinit();
+    const range = try tree.addRange(.{ .start_byte = 2, .end_byte = 8 });
+    const point = try tree.addPoint(.{ .byte = 4 });
+    var context = DeinitVisitor{ .tree = &tree };
+
+    try tree.visitOverlapping(3, 5, &context, DeinitVisitor.visitRange);
+    try tree.visitStartingAt(2, &context, DeinitVisitor.visitRange);
+    try tree.visitPointsAt(4, &context, DeinitVisitor.visitPoint);
+
+    try std.testing.expectEqual(@as(usize, 3), context.attempts);
+    try std.testing.expect(tree.getRange(range) != null);
+    try std.testing.expect(tree.getPoint(point) != null);
+    try tree.validateIntegrity();
+}
+
 test "MarkTree visitors reject mutation and iterators detect generation changes before dereference" {
     var tree = testTree();
     defer tree.deinit();
@@ -269,6 +340,66 @@ test "MarkTree visitors reject mutation and iterators detect generation changes 
     try tree.splice(0, 0, 1);
     try std.testing.expectError(error.IteratorInvalidated, iterator.next());
     try tree.validateIntegrity();
+}
+
+test "MarkTree semantic no-ops preserve iterators while non-empty replacement invalidates" {
+    var tree = testTree();
+    defer tree.deinit();
+    const range = try tree.addRange(.{
+        .start_byte = 5,
+        .end_byte = 10,
+        .start_gravity = .left,
+        .end_gravity = .right,
+    });
+    const point = try tree.addPoint(.{ .byte = 12, .gravity = .left });
+    var iterator = tree.iterator();
+
+    try tree.splice(7, 0, 0);
+    var no_ids: [0]u64 = .{};
+    const report = try tree.spliceWithReport(7, 0, 0, &no_ids, &no_ids);
+    try std.testing.expectEqual(@as(usize, 0), report.affected_ids.len);
+    try std.testing.expectEqual(@as(usize, 0), report.covered_range_ids.len);
+    try tree.moveRegion(7, 0, 20);
+    try tree.moveRegion(5, 5, 5);
+    try std.testing.expect(try tree.updateRange(range, .{
+        .start_byte = 5,
+        .end_byte = 10,
+        .start_gravity = .left,
+        .end_gravity = .right,
+    }));
+    try std.testing.expect(try tree.updatePoint(point, .{ .byte = 12, .gravity = .left }));
+
+    try std.testing.expectEqual(range, (try iterator.next()).?.id());
+    try std.testing.expectEqual(point, (try iterator.next()).?.id());
+    try std.testing.expectEqual(@as(?Mark, null), try iterator.next());
+
+    iterator = tree.iterator();
+    try tree.splice(6, 2, 2);
+    try std.testing.expectError(error.IteratorInvalidated, iterator.next());
+    try tree.validateIntegrity();
+}
+
+test "MarkTree failed add restores deterministic priority state" {
+    const seed = 0x6d61726b74726565;
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    var failed_tree = MarkTree.initWithSeed(failing_allocator.allocator(), seed);
+    defer failed_tree.deinit();
+
+    const input = RangeInput{ .start_byte = 4, .end_byte = 9 };
+    try std.testing.expectError(error.OutOfMemory, failed_tree.addRange(input));
+    try std.testing.expectEqual(seed, failed_tree.priority_state);
+    try std.testing.expectEqual(@as(usize, 0), failed_tree.count());
+
+    failing_allocator.fail_index = std.math.maxInt(usize);
+    const failed_id = try failed_tree.addRange(input);
+    var control = MarkTree.initWithSeed(std.testing.allocator, seed);
+    defer control.deinit();
+    const control_id = try control.addRange(input);
+
+    try std.testing.expectEqual(control_id, failed_id);
+    try std.testing.expectEqual(control.priority_state, failed_tree.priority_state);
+    try std.testing.expectEqual(control.root.?.priority, failed_tree.root.?.priority);
+    try failed_tree.validateIntegrity();
 }
 
 const Oracle = struct {

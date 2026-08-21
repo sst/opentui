@@ -103,7 +103,14 @@ pub const MarkTree = struct {
         };
     }
 
+    /// Releases all storage, panicking if called from an active visitor.
     pub fn deinit(self: *Self) void {
+        self.tryDeinit() catch @panic("MarkTree.deinit called during an active visit");
+    }
+
+    /// Releases all storage, or reports a visitor that still retains tree nodes.
+    pub fn tryDeinit(self: *Self) !void {
+        if (self.active_visits != 0) return error.DeinitDuringVisit;
         self.destroyAllNodes();
         self.ids.deinit();
         self.* = undefined;
@@ -173,7 +180,10 @@ pub const MarkTree = struct {
         const node = self.ids.get(id) orelse return false;
         if (node.mark != .range) return false;
         try self.checkCanMutate();
-        try self.reindexNode(node, .{ .range = rangeFromInput(id, input) });
+        materialize(node);
+        const mark: Mark = .{ .range = rangeFromInput(id, input) };
+        if (std.meta.eql(node.mark, mark)) return true;
+        try self.reindexNode(node, mark);
         self.finishMutation();
         return true;
     }
@@ -182,7 +192,10 @@ pub const MarkTree = struct {
         const node = self.ids.get(id) orelse return false;
         if (node.mark != .point) return false;
         try self.checkCanMutate();
-        try self.reindexNode(node, .{ .point = .{ .id = id, .byte = input.byte, .gravity = input.gravity } });
+        materialize(node);
+        const mark: Mark = .{ .point = .{ .id = id, .byte = input.byte, .gravity = input.gravity } };
+        if (std.meta.eql(node.mark, mark)) return true;
+        try self.reindexNode(node, mark);
         self.finishMutation();
         return true;
     }
@@ -194,6 +207,7 @@ pub const MarkTree = struct {
     pub fn splice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !void {
         try self.checkCanMutate();
         const ends = try self.preflightSplice(start_byte, old_len, new_len);
+        if (old_len == 0 and new_len == 0) return;
         self.spliceUnchecked(start_byte, ends.old_end, ends.new_end);
         self.finishMutation();
     }
@@ -203,7 +217,8 @@ pub const MarkTree = struct {
     /// intersecting deleted text and marks with endpoints on either boundary.
     /// `covered_range_ids` is the subset whose two endpoints are wholly within
     /// the closed deletion extent. Insufficient buffers reject the operation
-    /// before either output or tree is modified.
+    /// before either output or tree is modified. Overlapping used portions of
+    /// the output buffers are rejected for the same reason.
     pub fn spliceWithReport(
         self: *Self,
         start_byte: u32,
@@ -214,9 +229,15 @@ pub const MarkTree = struct {
     ) !SpliceReport {
         try self.checkCanMutate();
         const ends = try self.preflightSplice(start_byte, old_len, new_len);
-        const counts = countDeletion(self.root, start_byte, ends.old_end, old_len);
+        const counts = countDeletion(self.root, start_byte, ends.old_end, old_len, 0);
         if (affected_buffer.len < counts.affected or covered_buffer.len < counts.covered) {
             return error.ReportBufferTooSmall;
+        }
+        const affected_output = affected_buffer[0..counts.affected];
+        const covered_output = covered_buffer[0..counts.covered];
+        if (slicesOverlap(affected_output, covered_output)) return error.ReportBuffersOverlap;
+        if (old_len == 0 and new_len == 0) {
+            return .{ .affected_ids = affected_output, .covered_range_ids = covered_output };
         }
 
         var affected_len: usize = 0;
@@ -246,6 +267,7 @@ pub const MarkTree = struct {
         try self.checkCanMutate();
         const end_byte = std.math.add(u32, start_byte, len) catch return error.PositionOverflow;
         _ = std.math.add(u32, destination_byte, len) catch return error.PositionOverflow;
+        if (len == 0 or destination_byte == start_byte) return;
 
         var id_iterator = self.ids.iterator();
         while (id_iterator.next()) |entry| {
@@ -352,6 +374,8 @@ pub const MarkTree = struct {
     }
 
     fn addMark(self: *Self, mark: Mark) !void {
+        const priority_state = self.priority_state;
+        errdefer self.priority_state = priority_state;
         const node = try self.allocator.create(Node);
         errdefer self.allocator.destroy(node);
         node.* = .{
@@ -845,16 +869,32 @@ pub const MarkTree = struct {
 
     const DeletionCounts = struct { affected: usize = 0, covered: usize = 0 };
 
-    fn countDeletion(maybe_node: ?*Node, start_byte: u32, old_end: u32, old_len: u32) DeletionCounts {
+    fn slicesOverlap(a: []const u64, b: []const u64) bool {
+        if (a.len == 0 or b.len == 0) return false;
+        const a_start = @intFromPtr(a.ptr);
+        const b_start = @intFromPtr(b.ptr);
+        if (a_start <= b_start) return b_start - a_start < a.len * @sizeOf(u64);
+        return a_start - b_start < b.len * @sizeOf(u64);
+    }
+
+    fn countDeletion(
+        maybe_node: ?*const Node,
+        start_byte: u32,
+        old_end: u32,
+        old_len: u32,
+        inherited_shift: i64,
+    ) DeletionCounts {
         const node = maybe_node orelse return .{};
-        if (old_len == 0 or node.max_byte < start_byte) return .{};
-        push(node);
-        var result = countDeletion(node.left, start_byte, old_end, old_len);
-        if (lowerByte(node.mark) <= old_end) {
-            const classification = deletionClassification(node.mark, start_byte, old_end, old_len);
+        if (old_len == 0 or shifted(node.max_byte, inherited_shift) < start_byte) return .{};
+        const child_shift = inherited_shift + node.lazy_shift;
+        var result = countDeletion(node.left, start_byte, old_end, old_len, child_shift);
+        var mark = node.mark;
+        shiftMark(&mark, inherited_shift);
+        if (lowerByte(mark) <= old_end) {
+            const classification = deletionClassification(mark, start_byte, old_end, old_len);
             result.affected += @intFromBool(classification.affected);
             result.covered += @intFromBool(classification.covered);
-            const right = countDeletion(node.right, start_byte, old_end, old_len);
+            const right = countDeletion(node.right, start_byte, old_end, old_len, child_shift);
             result.affected += right.affected;
             result.covered += right.covered;
         }
