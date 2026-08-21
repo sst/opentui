@@ -176,30 +176,39 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
     super(ctx, baseOptions)
 
-    // Store unfocused colors separately (parent's properties get overwritten when focused)
-    this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
-    this._unfocusedTextColor = parseColor(options.textColor || defaults.textColor)
-    this._focusedBackgroundColor = parseColor(
-      options.focusedBackgroundColor || options.backgroundColor || defaults.focusedBackgroundColor,
-    )
-    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
-    this._placeholder = options.placeholder ?? defaults.placeholder
-    this._placeholderColor = parseColor(options.placeholderColor ?? defaults.placeholderColor)
+    try {
+      // Store unfocused colors separately (parent's properties get overwritten when focused)
+      this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
+      this._unfocusedTextColor = parseColor(options.textColor || defaults.textColor)
+      this._focusedBackgroundColor = parseColor(
+        options.focusedBackgroundColor || options.backgroundColor || defaults.focusedBackgroundColor,
+      )
+      this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
+      this._placeholder = options.placeholder ?? defaults.placeholder
+      this._placeholderColor = parseColor(options.placeholderColor ?? defaults.placeholderColor)
 
-    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
-    this._keyBindings = options.keyBindings || []
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, this._keyBindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
-    this._actionHandlers = this.buildActionHandlers()
-    this._submitListener = options.onSubmit
+      this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+      this._keyBindings = options.keyBindings || []
+      const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, this._keyBindings)
+      this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+      this._actionHandlers = this.buildActionHandlers()
+      this._submitListener = options.onSubmit
 
-    if (options.initialValue) {
-      this.setText(options.initialValue)
-      this._initialValueSet = true
+      if (options.initialValue) {
+        this.setText(options.initialValue)
+        this._initialValueSet = true
+      }
+      this.updateColors()
+
+      this.applyPlaceholder(this._placeholder)
+    } catch (error) {
+      try {
+        super.destroy()
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
     }
-    this.updateColors()
-
-    this.applyPlaceholder(this._placeholder)
   }
 
   private applyPlaceholder(placeholder: StyledText | string | null): void {
