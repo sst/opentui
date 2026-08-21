@@ -1,4 +1,5 @@
 import { BaseRenderable } from "../Renderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
 import { parseColor, RGBA } from "../lib/RGBA.js"
@@ -322,6 +323,13 @@ export class TextRenderable extends TextBufferRenderable {
 
   public onLifecyclePass = (): void => {
     if (!isTextRenderable(this.parent) && this._textDocumentDirty) this.commitTextDocumentSnapshot()
+  }
+
+  public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    // Custom onUpdate hooks run after the lifecycle pass. Preserve their same-frame
+    // content updates without introducing a second document backend.
+    if (!isTextRenderable(this.parent) && this._textDocumentDirty) this.commitTextDocumentSnapshot()
+    super.render(buffer, deltaTime)
   }
 
   public destroyRecursively(): void {
