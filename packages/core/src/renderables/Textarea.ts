@@ -140,6 +140,13 @@ export interface TextareaOptions extends EditBufferOptions {
   keyBindings?: KeyBinding[]
   keyAliasMap?: TextareaKeyAliasMap
   onSubmit?: (event: SubmitEvent) => void
+  /**
+   * When enabled, typing two spaces after a word inserts a period followed by a
+   * space (`". "`) instead of two spaces, mirroring the native macOS/iOS
+   * "Add period with double-space" behavior. Pressing backspace immediately
+   * after the auto-insert reverts it back to two spaces. Defaults to `false`.
+   */
+  smartPunctuation?: boolean
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
@@ -155,6 +162,10 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
+  private _smartPunctuation: boolean = false
+  // Cursor offset right after an auto-inserted ". "; -1 when no revert is pending.
+  // Only the immediately-following keypress may revert it.
+  private _autoPeriodRevertOffset: number = -1
 
   private static readonly defaults = {
     backgroundColor: "transparent",
@@ -192,6 +203,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
     this._actionHandlers = this.buildActionHandlers()
     this._submitListener = options.onSubmit
+    this._smartPunctuation = options.smartPunctuation ?? false
 
     if (options.initialValue) {
       this.setText(options.initialValue)
@@ -258,11 +270,72 @@ export class TextareaRenderable extends EditBufferRenderable {
     ])
   }
 
+  /**
+   * macOS/iOS-style "double-space period": when a space is typed and the
+   * character before the cursor is already a space preceded by a word character,
+   * replace that space with ". ". Returns true when the conversion was applied.
+   *
+   * Deliberately context-gated (no keystroke timing): timing-based gating is
+   * non-deterministic and unsupported by editor input-rule systems. The escape
+   * hatch is revert-on-immediate-backspace (handled in handleKeyPress).
+   */
+  private trySmartPeriod(): boolean {
+    if (!this._smartPunctuation) return false
+    if (this.hasSelection()) return false
+
+    const offset = this.logicalCursor.offset
+    if (offset < 2) return false
+
+    // Read a small window ending at the cursor. UTF-8 is self-synchronizing, so
+    // even if the window starts mid-codepoint the trailing characters decode
+    // correctly, making the last-two-character inspection robust.
+    const start = Math.max(0, offset - 16)
+    const before = this.getTextRange(start, offset)
+    if (before.length < 2) return false
+
+    const prevChar = before[before.length - 1]
+    const prevPrevChar = before[before.length - 2]
+
+    // Must be exactly one existing space, preceded by a letter or digit.
+    if (prevChar !== " ") return false
+    if (!/[\p{L}\p{N}]/u.test(prevPrevChar)) return false
+
+    this.deleteCharBackward()
+    this.insertText(". ")
+    this._autoPeriodRevertOffset = this.logicalCursor.offset
+    return true
+  }
+
   public handlePaste(event: PasteEvent): void {
+    this._autoPeriodRevertOffset = -1
     this.insertText(stripAnsiSequences(decodePasteBytes(event.bytes)))
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
+    // Any keypress consumes the chance to revert a previous auto-period. Capture
+    // and clear the pending offset up front so only the immediately-following key
+    // can trigger the revert.
+    const revertOffset = this._autoPeriodRevertOffset
+    this._autoPeriodRevertOffset = -1
+
+    if (
+      this._smartPunctuation &&
+      revertOffset >= 0 &&
+      key.name === "backspace" &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super &&
+      !key.hyper &&
+      !this.hasSelection() &&
+      this.logicalCursor.offset === revertOffset
+    ) {
+      // Undo the ". " that was just auto-inserted, restoring the two spaces.
+      this.deleteCharBackward()
+      this.deleteCharBackward()
+      this.insertText("  ")
+      return true
+    }
+
     if (this.traits.suspend !== true) {
       const action = getKeyBindingAction(this._keyBindingsMap, key)
 
@@ -276,6 +349,9 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
       if (key.name === "space") {
+        if (this.trySmartPeriod()) {
+          return true
+        }
         this.insertText(" ")
         return true
       }
@@ -405,6 +481,15 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public get onSubmit(): ((event: SubmitEvent) => void) | undefined {
     return this._submitListener
+  }
+
+  public set smartPunctuation(value: boolean) {
+    this._smartPunctuation = value
+    if (!value) this._autoPeriodRevertOffset = -1
+  }
+
+  public get smartPunctuation(): boolean {
+    return this._smartPunctuation
   }
 
   public set keyBindings(bindings: KeyBinding[]) {
