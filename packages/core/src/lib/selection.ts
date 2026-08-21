@@ -1,6 +1,6 @@
 import { Renderable } from "../Renderable.js"
 import type { ViewportBounds } from "../types.js"
-import { coordinateToCharacterIndex, fonts } from "./ascii.font.js"
+import { coordinateToCharacterIndex, fonts, getCharacterPositions } from "./ascii.font.js"
 
 class SelectionAnchor {
   private relativeX: number
@@ -212,6 +212,7 @@ export class ASCIIFontSelectionHelper {
 
     const text = this.getText()
     const font = this.getFont()
+    const positions = getCharacterPositions(text, font)
     const minY = Math.min(localSelection.anchorY, localSelection.focusY)
     const maxY = Math.max(localSelection.anchorY, localSelection.focusY)
 
@@ -222,22 +223,27 @@ export class ASCIIFontSelectionHelper {
     }
 
     const indexAt = (x: number, y: number): number => {
-      if (y < 0 || x < 0) return 0
+      if (y < 0) return 0
       if (y > height - 1) return text.length
-      return coordinateToCharacterIndex(x, text, font)
+      if (x < 0) return 0
+      if (x >= width) return text.length
+      for (let index = 1; index < positions.length; index += 1) {
+        if (x < positions[index]) return index - 1
+      }
+      return text.length
     }
 
     const anchorIndex = indexAt(localSelection.anchorX, localSelection.anchorY)
     const focusIndex = indexAt(localSelection.focusX, localSelection.focusY)
     const start = Math.min(anchorIndex, focusIndex)
-    const end = Math.max(anchorIndex, focusIndex)
+    const end = Math.min(Math.max(anchorIndex, focusIndex) + 1, text.length)
+    const samePoint =
+      localSelection.anchorX === localSelection.focusX && localSelection.anchorY === localSelection.focusY
 
-    // Copy-select is cell occupancy: both endpoint characters included.
-    // Empty only when the mapped indices are equal (plain press / zero extent).
-    if (start === end || start < 0) {
+    if (samePoint || start >= end) {
       this.localSelection = null
     } else {
-      this.localSelection = { start, end: Math.min(end + 1, text.length) }
+      this.localSelection = { start, end }
     }
 
     return (

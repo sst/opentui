@@ -194,6 +194,10 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
     };
 }
 
+inline fn selectionOccupancy(value: u8) text_buffer_view.SelectionOccupancy {
+    return if (value == 1) .boundary else .cell;
+}
+
 comptime {
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalCursor) == 14);
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalKeyOptions) == 12);
@@ -2283,21 +2287,12 @@ export fn textBufferViewResetLocalSelection(view_handle: NativeHandle) void {
 
 export fn textBufferViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {
     const object_ptr = acquireTextBufferView(view_handle) orelse return;
-    const value: text_buffer_view.SelectionOccupancy = switch (occupancy) {
-        1 => .boundary,
-        else => .cell,
-    };
-    object_ptr.setSelectionOccupancy(value);
+    object_ptr.setSelectionOccupancy(selectionOccupancy(occupancy));
 }
 
 export fn textBufferViewGetSelectionOccupancy(view_handle: NativeHandle) u8 {
     const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
     return @intFromEnum(object_ptr.getSelectionOccupancy());
-}
-
-export fn textBufferViewSetSelectionInclusive(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
-    const object_ptr = acquireTextBufferView(view_handle) orelse return;
-    object_ptr.setSelectionInclusiveStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewSetWrapWidth(view_handle: NativeHandle, width: u32) void {
@@ -2885,12 +2880,12 @@ export fn editorViewSetWrapMode(view_handle: NativeHandle, mode: u8) void {
 // EditorView selection methods - delegate to TextBufferView
 export fn editorViewSetSelection(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
-    object_ptr.text_buffer_view.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    object_ptr.setSelection(start, end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
 export fn editorViewResetSelection(view_handle: NativeHandle) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
-    object_ptr.text_buffer_view.resetSelection();
+    object_ptr.resetSelection();
 }
 
 export fn editorViewGetSelection(view_handle: NativeHandle) u64 {
@@ -2901,51 +2896,44 @@ export fn editorViewGetSelection(view_handle: NativeHandle) u64 {
 export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
     object_ptr.setSelectionFollowCursor(followCursor);
-    const changed = object_ptr.text_buffer_view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
-    if (changed and updateCursor) {
-        object_ptr.syncCursorToSelectionFocus();
-    }
-    return changed;
+    return object_ptr.setLocalSelection(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor);
 }
 
 export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
-    object_ptr.text_buffer_view.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    object_ptr.updateSelection(end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
 export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
     object_ptr.setSelectionFollowCursor(followCursor);
-    const changed = object_ptr.text_buffer_view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
-    if (changed and updateCursor) {
-        object_ptr.syncCursorToSelectionFocus();
-    }
-    return changed;
+    return object_ptr.updateLocalSelection(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor);
 }
 
 export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     object_ptr.setSelectionFollowCursor(false);
-    object_ptr.text_buffer_view.resetLocalSelection();
+    object_ptr.resetLocalSelection();
 }
 
 export fn editorViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
-    const value: text_buffer_view.SelectionOccupancy = switch (occupancy) {
-        1 => .boundary,
-        else => .cell,
-    };
-    object_ptr.setSelectionOccupancy(value);
+    object_ptr.setSelectionOccupancy(selectionOccupancy(occupancy));
 }
 
-export fn editorViewGetSelectionOccupancy(view_handle: NativeHandle) u8 {
-    const object_ptr = acquireEditorView(view_handle) orelse return 0;
-    return @intFromEnum(object_ptr.getSelectionOccupancy());
+export fn editorViewGotoVisualLineEnd(view_handle: NativeHandle) void {
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.gotoVisualLineEnd();
 }
 
 export fn editorViewSetSelectionInclusive(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     object_ptr.setSelectionInclusive(start, end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
+}
+
+export fn editorViewSetSelectionColors(view_handle: NativeHandle, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.text_buffer_view.setSelectionColors(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
 export fn editorViewGetSelectedTextBytes(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {

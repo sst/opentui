@@ -3541,32 +3541,62 @@ test "occupancy - EditorView forwards occupancy and replays stored endpoints" {
     // Occupancy replay must not move the stored focus.
     const cursor_after = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 1), cursor_after.col);
-}
 
-test "occupancy - EditorView cursor still syncs to focus under boundary" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
+    try eb.setText("\u{1F44B}\u{1F3FF}X");
+    ev.resetLocalSelection();
+    ev.setSelectionOccupancy(.cell);
+    _ = ev.setLocalSelection(0, 0, 2, 0, null, null, true);
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
+    len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("\u{1F44B}\u{1F3FF}", out[0..len]);
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
-    defer eb.deinit();
+    ev.resetLocalSelection();
+    _ = ev.setLocalSelection(4, 0, 2, 0, null, null, true);
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
 
-    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
-    defer ev.deinit();
+    ev.resetLocalSelection();
+    _ = ev.setLocalSelection(0, 0, 2, 0, null, null, true);
 
-    try eb.insertText("Hello World");
-    try eb.setCursor(0, 0);
-    _ = ev.getVirtualLines();
+    try ev.deleteSelectedText();
+    len = ev.getText(&out);
+    try std.testing.expectEqualStrings("X", out[0..len]);
 
+    try eb.setText("Hello");
+    try eb.setCursor(0, 4);
+    _ = ev.updateLocalSelection(0, 0, 2, 0, null, null, false);
     ev.setSelectionOccupancy(.boundary);
-    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, true);
+    try std.testing.expectEqual(@as(u32, 4), ev.getPrimaryCursor().col);
 
-    var out: [100]u8 = undefined;
-    const len = ev.getSelectedTextIntoBuffer(&out);
-    try std.testing.expectEqualStrings("Hello", out[0..len]);
+    try eb.setText("abcdefgh");
+    ev.resetLocalSelection();
+    ev.setSelectionOccupancy(.boundary);
+    _ = ev.setLocalSelection(0, 0, 8, 0, null, null, true);
+    try eb.setText("abcde");
+    ev.setSelectionOccupancy(.cell);
+    try std.testing.expectEqual(@as(u32, 5), ev.getPrimaryCursor().col);
 
-    const cursor = ev.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.row);
-    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+    ev.resetLocalSelection();
+    try eb.setCursor(0, 3);
+    _ = ev.setLocalSelection(0, -1, 0, -1, null, null, true);
+    try std.testing.expectEqual(@as(u32, 3), ev.getPrimaryCursor().col);
+
+    try eb.setText("\u{1F44B}\u{1F3FF}X");
+    ev.setSelectionOccupancy(.cell);
+    ev.setWrapMode(.char);
+    ev.setViewportSize(2, 24);
+    try eb.setCursor(0, 2);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
+
+    try eb.setText("\u{4F60}a");
+    ev.setWrapMode(.word);
+    ev.setViewportSize(1, 24);
+    ev.setSelectionOccupancy(.boundary);
+    try eb.setCursor(0, 0);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 1), ev.getPrimaryCursor().offset);
+
+    ev.setSelectionOccupancy(.cell);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().offset);
 }

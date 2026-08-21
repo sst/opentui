@@ -1,19 +1,21 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it } from "bun:test"
+import { ASCIIFontRenderable } from "../renderables/ASCIIFont.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { ASCIIFontSelectionHelper, type LocalSelectionBounds } from "./selection.js"
 
-function helper(text = "HI") {
+function helper() {
   return new ASCIIFontSelectionHelper(
-    () => text,
+    () => "HI",
     () => "tiny",
   )
 }
 
-function bounds(anchorX: number, focusX: number, height = 2): LocalSelectionBounds {
+function bounds(anchorX: number, focusX: number, anchorY = 0, focusY = 0): LocalSelectionBounds {
   return {
     anchorX,
-    anchorY: 0,
+    anchorY,
     focusX,
-    focusY: 0,
+    focusY,
     isActive: true,
   }
 }
@@ -25,19 +27,16 @@ describe("ASCIIFontSelectionHelper", () => {
   const height = 2
   const width = 5
 
-  it("includes both endpoint characters on a forward drag", () => {
+  it.each([
+    ["within H", hStart, 1, { start: 0, end: 1 }],
+    ["at the right edge of H", hStart, 2, { start: 0, end: 1 }],
+    ["from H to I", hStart, iStart, { start: 0, end: 2 }],
+    ["from I to H", iStart, hStart, { start: 0, end: 2 }],
+  ] as const)("selects occupied characters %s", (_name, anchorX, focusX, expected) => {
     const sel = helper()
-    sel.onLocalSelectionChanged(bounds(hStart, iStart), width, height)
+    sel.onLocalSelectionChanged(bounds(anchorX, focusX), width, height)
 
-    expect(sel.getSelection()).toEqual({ start: 0, end: 2 })
-    expect(sel.hasSelection()).toBe(true)
-  })
-
-  it("includes both endpoint characters on a reverse drag", () => {
-    const sel = helper()
-    sel.onLocalSelectionChanged(bounds(iStart, hStart), width, height)
-
-    expect(sel.getSelection()).toEqual({ start: 0, end: 2 })
+    expect(sel.getSelection()).toEqual(expected)
   })
 
   it("stays empty on a press without drag", () => {
@@ -45,7 +44,6 @@ describe("ASCIIFontSelectionHelper", () => {
     const changed = sel.onLocalSelectionChanged(bounds(hStart, hStart), width, height)
 
     expect(sel.getSelection()).toBe(null)
-    expect(sel.hasSelection()).toBe(false)
     expect(changed).toBe(false)
   })
 
@@ -56,5 +54,32 @@ describe("ASCIIFontSelectionHelper", () => {
 
     sel.onLocalSelectionChanged(null, width, height)
     expect(sel.hasSelection()).toBe(false)
+  })
+
+  it("uses vertical reading order outside the glyph row", () => {
+    const sel = helper()
+    sel.onLocalSelectionChanged(bounds(width, -1, -1, height), width, height)
+
+    expect(sel.getSelection()).toEqual({ start: 0, end: 2 })
+  })
+})
+
+describe("ASCIIFontRenderable selection", () => {
+  let renderer: TestRenderer | undefined
+
+  afterEach(() => renderer?.destroy())
+
+  it("keeps unchanged active selections in renderer copy state", async () => {
+    const test = await createTestRenderer({ width: 20, height: 4 })
+    renderer = test.renderer
+    const font = new ASCIIFontRenderable(renderer, { text: "HI", font: "tiny" })
+    renderer.root.add(font)
+    await test.renderOnce()
+
+    renderer.startSelection(font, font.x, font.y)
+    renderer.updateSelection(font, font.x + 4, font.y)
+    renderer.updateSelection(font, font.x + 4, font.y, { finishDragging: true })
+
+    expect(renderer.getSelection()?.getSelectedText()).toBe("HI")
   })
 })

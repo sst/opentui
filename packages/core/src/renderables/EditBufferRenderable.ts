@@ -90,7 +90,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected _showCursor: boolean = true
   protected _cursorColor: RGBA
   protected _cursorStyle: CursorStyleOptions
-  protected _selectionOccupancy: SelectionOccupancy
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
   protected _tabIndicatorColor?: RGBA
@@ -123,7 +122,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       style: "block",
       blinking: true,
     },
-    selectionOccupancy: "cell" as SelectionOccupancy,
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
   } satisfies Partial<EditBufferOptions>
@@ -143,7 +141,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
     this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
     this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
-    this._selectionOccupancy = options.selectionOccupancy ?? this._defaultOptions.selectionOccupancy
     this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
@@ -154,8 +151,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     this.editorView.setWrapMode(this._wrapMode)
     this.editorView.setScrollMargin(this._scrollMargin)
-    if (this._selectionOccupancy !== "cell") {
-      this.editorView.setSelectionOccupancy(this._selectionOccupancy)
+    if (options.selectionOccupancy === "boundary") {
+      this.editorView.setSelectionOccupancy("boundary")
     }
 
     this.editBuffer.setDefaultFg(this._textColor)
@@ -234,6 +231,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   set cursorOffset(offset: number) {
+    this.clearSelection()
     this.editorView.setCursorByOffset(offset)
     this.requestRender()
   }
@@ -387,13 +385,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   get selectionOccupancy(): SelectionOccupancy {
-    return this._selectionOccupancy
+    return this.editorView.getSelectionOccupancy()
   }
 
-  set selectionOccupancy(value: SelectionOccupancy) {
-    if (this._selectionOccupancy === value) return
-    this._selectionOccupancy = value
-    this.editorView.setSelectionOccupancy(value)
+  set selectionOccupancy(value: SelectionOccupancy | null | undefined) {
+    const occupancy = value ?? "cell"
+    if (this.selectionOccupancy === occupancy) return
+    this.editorView.setSelectionOccupancy(occupancy)
     this.requestRender()
   }
 
@@ -607,14 +605,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   private refreshSelectionStyle(): void {
-    if (this.lastLocalSelection) {
-      this.updateLocalSelection(this.lastLocalSelection)
-      return
-    }
-
-    const selection = this.getSelection()
-    if (!selection) return
-    this.editorView.setSelection(selection.start, selection.end, this._selectionBg, this._selectionFg)
+    this.editorView.setSelectionColors(this._selectionBg, this._selectionFg)
   }
 
   private deleteSelectedText(): void {
@@ -642,7 +633,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   clearSelection(): boolean {
     const had = this.hasSelection()
     this.lastLocalSelection = null
-    this.editorView.resetSelection()
     this.editorView.resetLocalSelection()
     this._ctx.clearSelection()
     if (had) {
@@ -660,6 +650,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   setCursor(row: number, col: number): void {
+    this.clearSelection()
     this.editBuffer.setCursor(row, col)
     this.requestRender()
   }
@@ -720,18 +711,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return true
   }
 
-  /// Non-shift horizontal collapse: left/home/word-back land on range.start,
-  /// right/end/word-forward land on range.end, with no extra motion.
-  /// Vertical motion (up/down) clears and then applies the visual-line step
-  /// from the stored focus. Shift never collapses; it fake-drags through
-  /// occupancy. Every horizontal move wraps across lines (OpenTUI textarea
-  /// rule, including Home-at-col-0 and End-at-EOL).
+  // Horizontal movement collapses to an edge without taking another step.
   private collapseSelectionToEdge(edge: "start" | "end"): boolean {
-    if (!this.hasSelection()) return false
-    const selection = this.getSelection()!
+    const selection = this.getSelection()
+    if (!selection) return false
     this.editBuffer.setCursorByOffset(edge === "start" ? selection.start : selection.end)
-    this._ctx.clearSelection()
-    this.requestRender()
+    this.clearSelection()
     return true
   }
 
@@ -776,6 +761,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   public gotoLine(line: number): void {
+    this.clearSelection()
     this.editBuffer.gotoLine(line)
     this.requestRender()
   }
@@ -840,8 +826,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const select = options?.select ?? false
     if (!select && this.collapseSelectionToEdge("end")) return true
     this.updateSelectionForMovement(select, true)
-    const eol = this.editorView.getVisualEOL()
-    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
+    this.editorView.gotoVisualLineEnd()
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
@@ -1163,13 +1148,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
-    if (!this.selectable) return
-
     if (!shiftPressed) {
       this._keyboardSelectionActive = false
-      this._ctx.clearSelection()
+      this.clearSelection()
       return
     }
+
+    if (!this.selectable) return
 
     this._keyboardSelectionActive = true
 
@@ -1178,7 +1163,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow
 
     if (isBeforeMovement) {
-      if (!this._ctx.hasSelection) {
+      if (!this._ctx.hasSelection || !this.hasSelection()) {
         this._ctx.startSelection(this, cursorX, cursorY)
       }
       return

@@ -77,6 +77,7 @@ UNDO/REDO:
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
   • Shift+L to toggle line numbers
+  • Shift+S to toggle selection occupancy (cell/boundary)
   • Shift+H to toggle diff highlights (colors + +/- signs)
   • Shift+D to toggle diagnostics (error/warning/info emojis)
   • Shift+C to toggle cursor style (block/line)
@@ -294,9 +295,10 @@ function setupEditor(rendererInstance: CliRenderer): void {
         const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
         const highlights = highlightsEnabled ? "ON" : "OFF"
         const diagnostics = diagnosticsEnabled ? "ON" : "OFF"
+        const selectionOccupancy = editor.selectionOccupancy.toUpperCase()
         const cursorStyle = (editor.cursorStyle.style ?? "block").toUpperCase()
         const scrollSpeed = editor.scrollSpeed
-        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | ${clipboardStatus} | Wrap: ${wrap} | Diff: ${highlights} | Diag: ${diagnostics} | Cursor: ${cursorStyle} | Scroll: ${scrollSpeed} lines/s`
+        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | ${clipboardStatus} | Wrap: ${wrap} | Selection: ${selectionOccupancy} | Diff: ${highlights} | Diag: ${diagnostics} | Cursor: ${cursorStyle} | Scroll: ${scrollSpeed} lines/s`
       } catch (error) {
         // Ignore errors during shutdown
       }
@@ -334,6 +336,12 @@ function setupEditor(rendererInstance: CliRenderer): void {
         const currentMode = editor.wrapMode
         const nextMode = currentMode === "word" ? "char" : currentMode === "char" ? "none" : "word"
         editor.wrapMode = nextMode
+      }
+    }
+    if (key.shift && key.name === "s") {
+      key.preventDefault()
+      if (editor && !editor.isDestroyed) {
+        editor.selectionOccupancy = editor.selectionOccupancy === "cell" ? "boundary" : "cell"
       }
     }
     if (key.shift && key.name === "c") {

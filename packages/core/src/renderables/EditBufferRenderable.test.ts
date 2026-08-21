@@ -276,22 +276,6 @@ describe("EditBufferRenderable", () => {
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
       height: 3,
-      initialValue: "abcdefg",
-    })
-
-    renderer.root.add(textarea)
-    await renderOnce()
-
-    textarea.setSelectionInclusive(2, 3)
-
-    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
-    expect(textarea.getSelectedText()).toBe("cd")
-  })
-
-  test("setSelectionInclusive extends by grapheme width under cell occupancy", async () => {
-    const textarea = new TextareaRenderable(renderer, {
-      width: 20,
-      height: 3,
       initialValue: "ab你cd",
     })
 
@@ -300,24 +284,83 @@ describe("EditBufferRenderable", () => {
 
     textarea.setSelectionInclusive(2, 2)
 
-    expect(textarea.getSelectedText()).toBe("你")
     expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("你")
   })
 
   test("setSelectionInclusive does not extend under boundary occupancy", async () => {
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
       height: 3,
-      initialValue: "abcdefg",
+      initialValue: "ab你cd",
       selectionOccupancy: "boundary",
     })
 
     renderer.root.add(textarea)
     await renderOnce()
 
-    textarea.setSelectionInclusive(2, 3)
+    textarea.setSelectionInclusive(3, 4)
 
-    expect(textarea.getSelection()).toEqual({ start: 2, end: 3 })
-    expect(textarea.getSelectedText()).toBe("c")
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("你")
+    textarea.deleteSelection()
+    expect(textarea.plainText).toBe("abcd")
+  })
+
+  test("setSelectionInclusive uses current text bounds", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abc",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelection(0, 3)
+    textarea.replaceText("abcdefghij")
+    textarea.setSelectionInclusive(8, 8)
+
+    expect(textarea.getSelection()).toEqual({ start: 8, end: 9 })
+    expect(textarea.getSelectedText()).toBe("i")
+    textarea.deleteSelection()
+    expect(textarea.plainText).toBe("abcdefghj")
+
+    textarea.setText("abc")
+    textarea.setSelectionInclusive(0, 99)
+    expect(textarea.getSelection()).toEqual({ start: 0, end: 3 })
+    textarea.deleteSelection()
+    expect(textarea.plainText).toBe("")
+  })
+
+  test("reads selection occupancy from the editor view", async () => {
+    const textarea = new TextareaRenderable(renderer, { width: 20, height: 3 })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.editorView.setSelectionOccupancy("boundary")
+    expect(textarea.selectionOccupancy).toBe("boundary")
+
+    textarea.selectionOccupancy = "cell"
+    expect(textarea.editorView.getSelectionOccupancy()).toBe("cell")
+
+    textarea.selectionOccupancy = undefined
+    expect(textarea.selectionOccupancy).toBe("cell")
+  })
+
+  test("does not move the cursor when occupancy changes an offset selection", async () => {
+    const textarea = new TextareaRenderable(renderer, { width: 20, height: 3, initialValue: "ab你cd" })
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.cursorOffset = 4
+    textarea.setSelection(0, 2)
+    textarea.selectionOccupancy = "boundary"
+    expect(textarea.cursorOffset).toBe(4)
+
+    textarea.setSelection(3, 3)
+    textarea.selectionOccupancy = "cell"
+    expect(textarea.cursorOffset).toBe(4)
   })
 })

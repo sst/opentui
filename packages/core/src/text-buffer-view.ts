@@ -117,11 +117,6 @@ export class TextBufferView {
     return this.lib.textBufferViewGetSelectionOccupancy(this.viewPtr)
   }
 
-  public setSelectionInclusive(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
-    this.guard()
-    this.lib.textBufferViewSetSelectionInclusive(this.viewPtr, start, end, bgColor || null, fgColor || null)
-  }
-
   public setWrapWidth(width: number | null): void {
     this.guard()
     this.lib.textBufferViewSetWrapWidth(this.viewPtr, width ?? 0)

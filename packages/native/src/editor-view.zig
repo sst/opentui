@@ -30,6 +30,12 @@ pub const VisualCursor = struct {
     offset: u32, // Global display-width offset from buffer start
 };
 
+const CursorVisualAffinity = struct {
+    offset: u32,
+    visual_row: u32,
+    visual_col: u32,
+};
+
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
 /// It also holds a reference to an EditBuffer for cursor/editing operations
 pub const EditorView = struct {
@@ -37,6 +43,8 @@ pub const EditorView = struct {
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
+    cursor_visual_affinity: ?CursorVisualAffinity,
+    selection_updates_cursor: bool,
     selection_follow_cursor: bool, // Keep viewport synced during selection
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
@@ -52,10 +60,14 @@ pub const EditorView = struct {
         self.desired_visual_col = null;
         self.updatePlaceholderVisibility();
 
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        if (self.cursor_visual_affinity) |affinity| {
+            if (affinity.offset != cursor.offset) self.cursor_visual_affinity = null;
+        }
+
         const has_selection = self.text_buffer_view.selection != null;
         if (!has_selection or self.selection_follow_cursor) {
-            const cursor = self.edit_buffer.getPrimaryCursor();
-            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            const vcursor = self.getPrimaryVisualCursorAbsolute();
             self.ensureCursorVisible(vcursor.visual_row);
         }
     }
@@ -73,6 +85,8 @@ pub const EditorView = struct {
             .edit_buffer = edit_buffer,
             .scroll_margin = 0.15, // Default 15% margin
             .desired_visual_col = null,
+            .cursor_visual_affinity = null,
+            .selection_updates_cursor = false,
             .selection_follow_cursor = false,
             .cursor_changed_listener = .{
                 .ctx = undefined, // Will be set below
@@ -120,7 +134,11 @@ pub const EditorView = struct {
     /// this will trigger a reflow by updating the TextBufferView's wrap width.
     /// moveCursor: if true, moves cursor to stay within viewport bounds (prevents viewport reset)
     pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport, moveCursor: bool) void {
+        const old_viewport = self.text_buffer_view.getViewport();
         self.text_buffer_view.setViewport(vp);
+        if (old_viewport == null or vp == null or old_viewport.?.width != vp.?.width) {
+            self.cursor_visual_affinity = null;
+        }
 
         if (moveCursor) {
             self.makeCursorVisible();
@@ -137,7 +155,7 @@ pub const EditorView = struct {
     pub fn makeCursorVisible(self: *EditorView) void {
         const vp = self.text_buffer_view.getViewport() orelse return;
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
         const viewport_height = vp.height;
         const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
@@ -252,8 +270,7 @@ pub const EditorView = struct {
         const has_selection = self.text_buffer_view.selection != null;
 
         if (!has_selection or self.selection_follow_cursor) {
-            const cursor = self.edit_buffer.getPrimaryCursor();
-            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            const vcursor = self.getPrimaryVisualCursorAbsolute();
             self.ensureCursorVisible(vcursor.visual_row);
         }
     }
@@ -298,51 +315,78 @@ pub const EditorView = struct {
     }
 
     pub fn setSelection(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.selection_updates_cursor = false;
         self.text_buffer_view.setSelection(start, end, bgColor, fgColor);
     }
 
     pub fn updateSelection(self: *EditorView, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.selection_updates_cursor = false;
         self.text_buffer_view.updateSelection(end, bgColor, fgColor);
     }
 
+    pub fn setSelectionInclusive(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.selection_updates_cursor = false;
+        self.text_buffer_view.setSelectionInclusiveStyle(start, end, tbv.SelectionStyle.rgb(bgColor, fgColor));
+    }
+
     pub fn resetSelection(self: *EditorView) void {
+        self.selection_updates_cursor = false;
         self.text_buffer_view.resetSelection();
     }
 
     pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
         const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        self.selection_updates_cursor = updateCursor;
 
-        if (changed and updateCursor) {
+        if (updateCursor and self.text_buffer_view.selection_endpoints != null) {
             self.syncCursorToSelectionFocus();
+            self.setCursorAffinityForLocalRow(focusY);
         }
 
         return changed;
     }
 
     pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
+        const had_endpoints = self.text_buffer_view.selection_endpoints != null;
         const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        if (!had_endpoints) {
+            self.selection_updates_cursor = updateCursor;
+        } else if (updateCursor) {
+            self.selection_updates_cursor = true;
+        }
 
-        if (changed and updateCursor) {
+        if (updateCursor and self.text_buffer_view.selection_endpoints != null) {
             self.syncCursorToSelectionFocus();
+            self.setCursorAffinityForLocalRow(focusY);
         }
 
         return changed;
     }
 
     pub fn resetLocalSelection(self: *EditorView) void {
+        self.selection_updates_cursor = false;
         self.text_buffer_view.resetLocalSelection();
     }
 
     pub fn setSelectionOccupancy(self: *EditorView, occupancy: tbv.SelectionOccupancy) void {
+        const visual_row = if (self.cursor_visual_affinity) |affinity| affinity.visual_row else null;
+        const selection = self.text_buffer_view.getSelection();
+        const has_local_selection = self.selection_updates_cursor and self.text_buffer_view.selection_endpoints != null and selection != null and
+            selection.?.start != selection.?.end;
+        const cursor_offset_before = self.edit_buffer.getPrimaryCursor().offset;
         self.text_buffer_view.setSelectionOccupancy(occupancy);
+        if (has_local_selection) {
+            self.syncCursorToSelectionFocus();
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            if (cursor.offset != cursor_offset_before) {
+                self.edit_buffer.setCursor(cursor.row, cursor.col) catch {};
+            }
+        }
+        if (visual_row) |row| self.setCursorAffinityForAbsoluteRow(row);
     }
 
     pub fn getSelectionOccupancy(self: *const EditorView) tbv.SelectionOccupancy {
         return self.text_buffer_view.getSelectionOccupancy();
-    }
-
-    pub fn setSelectionInclusive(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
-        self.text_buffer_view.setSelectionInclusiveStyle(start, end, tbv.SelectionStyle.rgb(bgColor, fgColor));
     }
 
     /// Updates the cursor position to match the selection focus position.
@@ -355,7 +399,17 @@ pub const EditorView = struct {
         // be inferred from the normalized start/end pair. Offset APIs clear
         // stored focus; falling back to `selection.end` is then correct
         // because those ranges are already exclusive-end.
-        const focus_offset = self.text_buffer_view.selection_focus_offset orelse selection.end;
+        var focus_offset = selection.end;
+        if (self.text_buffer_view.selection_endpoints) |endpoints| {
+            focus_offset = endpoints.focus;
+            if (self.text_buffer_view.getSelectionOccupancy() == .boundary and focus_offset < endpoints.anchor) {
+                focus_offset = selection.start;
+            } else if (self.text_buffer_view.getSelectionOccupancy() == .boundary and focus_offset > endpoints.anchor) {
+                focus_offset = selection.end;
+            } else if (self.edit_buffer.tb.cursorUnitBoundsAtOffset(focus_offset)) |bounds| {
+                focus_offset = bounds.start;
+            }
+        }
 
         const focus_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), focus_offset) orelse return;
 
@@ -387,6 +441,8 @@ pub const EditorView = struct {
     /// This is a convenience method that preserves existing offset
     /// After resize, ensures cursor is visible and clamps viewport offset to valid range
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
+        const old_width = if (self.text_buffer_view.getViewport()) |viewport| viewport.width else 0;
+        if (old_width != width) self.cursor_visual_affinity = null;
         self.text_buffer_view.setViewportSize(width, height);
 
         const vp = self.text_buffer_view.getViewport() orelse return;
@@ -411,12 +467,12 @@ pub const EditorView = struct {
             });
         }
 
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
         self.ensureCursorVisible(vcursor.visual_row);
     }
 
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
+        self.cursor_visual_affinity = null;
         self.text_buffer_view.setWrapMode(mode);
     }
 
@@ -441,11 +497,66 @@ pub const EditorView = struct {
     // VisualCursor - Wrapping-aware cursor translation
     // ============================================================================
 
+    fn getPrimaryVisualCursorAbsolute(self: *EditorView) VisualCursor {
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        if (self.cursor_visual_affinity) |affinity| {
+            if (affinity.offset == cursor.offset) {
+                self.setCursorAffinityForAbsoluteRow(affinity.visual_row);
+                if (self.cursor_visual_affinity) |validated| {
+                    return .{
+                        .visual_row = validated.visual_row,
+                        .visual_col = validated.visual_col,
+                        .logical_row = cursor.row,
+                        .logical_col = cursor.col,
+                        .offset = cursor.offset,
+                    };
+                }
+            }
+        }
+        return self.logicalToVisualCursor(cursor.row, cursor.col);
+    }
+
+    fn setCursorAffinityForAbsoluteRow(self: *EditorView, visual_row: u32) void {
+        self.text_buffer_view.updateVirtualLines();
+        const vlines = self.text_buffer_view.virtual_lines.items;
+        if (visual_row >= vlines.len) {
+            self.cursor_visual_affinity = null;
+            return;
+        }
+
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vline = &vlines[visual_row];
+        if (vline.source_line != cursor.row or cursor.offset < vline.col_offset) {
+            self.cursor_visual_affinity = null;
+            return;
+        }
+
+        const visual_col = cursor.offset - vline.col_offset;
+        var visual_col_max = vline.width_cols;
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell and vline.width_cols > 0 and visual_row + 1 < vlines.len) {
+            const next_vline = &vlines[visual_row + 1];
+            if (next_vline.source_line == vline.source_line) visual_col_max -= 1;
+        }
+        if (visual_col > visual_col_max) {
+            self.cursor_visual_affinity = null;
+            return;
+        }
+        self.cursor_visual_affinity = .{ .offset = cursor.offset, .visual_row = visual_row, .visual_col = visual_col };
+    }
+
+    fn setCursorAffinityForLocalRow(self: *EditorView, visual_row: i32) void {
+        self.text_buffer_view.updateVirtualLines();
+        const line_count: i64 = @intCast(self.text_buffer_view.virtual_lines.items.len);
+        if (line_count == 0) return;
+        const viewport_y: i64 = if (self.text_buffer_view.getViewport()) |viewport| viewport.y else 0;
+        const absolute_row: u32 = @intCast(@max(0, @min(@as(i64, visual_row) + viewport_y, line_count - 1)));
+        self.setCursorAffinityForAbsoluteRow(absolute_row);
+    }
+
     /// Returns viewport-relative visual coordinates for external API consumers
     pub fn getVisualCursor(self: *EditorView) VisualCursor {
         self.updateBeforeRender();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
         // Convert absolute visual coordinates to viewport-relative for the API
         const vp = self.text_buffer_view.getViewport() orelse return vcursor;
@@ -553,8 +664,7 @@ pub const EditorView = struct {
     }
 
     pub fn moveUpVisual(self: *EditorView) void {
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
         if (vcursor.visual_row == 0) {
             return;
@@ -568,9 +678,11 @@ pub const EditorView = struct {
         }
         const desired_visual_col = self.desired_visual_col.?;
 
-        // logicalToVisualCursor refreshed this snapshot; keep navigation on it.
         const vlines = self.text_buffer_view.virtual_lines.items;
-        const target_visual_col = clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
+        const target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
+            @min(desired_visual_col, vlines[target_visual_row].width_cols)
+        else
+            clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
@@ -580,6 +692,10 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                     .offset = new_vcursor.offset,
                 };
+                self.cursor_visual_affinity = null;
+                if (self.text_buffer_view.getSelectionOccupancy() == .boundary) {
+                    self.setCursorAffinityForAbsoluteRow(target_visual_row);
+                }
                 self.ensureCursorVisible(new_vcursor.visual_row);
 
                 // Restore desired_visual_col after the cursor change event resets it
@@ -589,10 +705,8 @@ pub const EditorView = struct {
     }
 
     pub fn moveDownVisual(self: *EditorView) void {
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
-        // logicalToVisualCursor refreshed this snapshot; keep navigation on it.
         const vlines = self.text_buffer_view.virtual_lines.items;
 
         if (vcursor.visual_row + 1 >= vlines.len) {
@@ -606,7 +720,10 @@ pub const EditorView = struct {
             self.desired_visual_col = vcursor.visual_col;
         }
         const desired_visual_col = self.desired_visual_col.?;
-        const target_visual_col = clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
+        const target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
+            @min(desired_visual_col, vlines[target_visual_row].width_cols)
+        else
+            clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
@@ -616,6 +733,10 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                     .offset = new_vcursor.offset,
                 };
+                self.cursor_visual_affinity = null;
+                if (self.text_buffer_view.getSelectionOccupancy() == .boundary) {
+                    self.setCursorAffinityForAbsoluteRow(target_visual_row);
+                }
                 self.ensureCursorVisible(new_vcursor.visual_row);
 
                 // Restore desired_visual_col after the cursor change event resets it
@@ -648,7 +769,7 @@ pub const EditorView = struct {
         };
 
         try self.edit_buffer.deleteRange(start_cursor, end_cursor);
-        self.text_buffer_view.resetLocalSelection();
+        self.resetLocalSelection();
         self.updateBeforeRender();
     }
 
@@ -676,9 +797,8 @@ pub const EditorView = struct {
     /// Returns a cursor at column 0 of the current visual line
     pub fn getVisualSOL(self: *EditorView) VisualCursor {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
-        // logicalToVisualCursor refreshed this snapshot; keep SOL on the same row.
         const vlines = self.text_buffer_view.virtual_lines.items;
 
         if (vcursor.visual_row >= vlines.len) {
@@ -707,15 +827,12 @@ pub const EditorView = struct {
         };
     }
 
-    /// Get the end of the current visual line (EOL = End Of Line)
-    /// Returns a cursor at the last position of the current visual line
-    /// For wrapped lines, this is the position just before the wrap boundary to ensure
-    /// the cursor stays on the current visual line when used with setCursor()
+    /// Get the end of the current visual line (EOL = End Of Line).
+    /// Cell occupancy targets the last cell; boundary occupancy targets the
+    /// insertion gap after it. The latter needs visual affinity at soft wraps.
     pub fn getVisualEOL(self: *EditorView) VisualCursor {
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.getPrimaryVisualCursorAbsolute();
 
-        // logicalToVisualCursor refreshed this snapshot; keep EOL on the same row.
         const vlines = self.text_buffer_view.virtual_lines.items;
 
         if (vcursor.visual_row >= vlines.len) {
@@ -725,7 +842,19 @@ pub const EditorView = struct {
         }
 
         const vline = &vlines[vcursor.visual_row];
-        const target_visual_col = clampVisualColToStayOnVisualRow(vlines, vcursor.visual_row, vline.width_cols);
+        var target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
+            vline.width_cols
+        else
+            clampVisualColToStayOnVisualRow(vlines, vcursor.visual_row, vline.width_cols);
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell) {
+            const target_offset = vline.col_offset + target_visual_col;
+            if (self.edit_buffer.tb.cursorUnitBoundsAtOffset(target_offset)) |bounds| {
+                if (bounds.start < target_offset) {
+                    const target = if (bounds.start >= vline.col_offset) bounds.start else bounds.end;
+                    target_visual_col = @min(target -| vline.col_offset, vline.width_cols);
+                }
+            }
+        }
         const logical_row = @as(u32, @intCast(vline.source_line));
         const logical_col = vline.source_col_offset + target_visual_col;
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
@@ -736,6 +865,15 @@ pub const EditorView = struct {
             .logical_row = logical_row,
             .logical_col = logical_col,
             .offset = offset,
+        };
+    }
+
+    pub fn gotoVisualLineEnd(self: *EditorView) void {
+        const eol = self.getVisualEOL();
+        self.cursor_visual_affinity = .{ .offset = eol.offset, .visual_row = eol.visual_row, .visual_col = eol.visual_col };
+        self.edit_buffer.setCursor(eol.logical_row, eol.logical_col) catch {
+            self.cursor_visual_affinity = null;
+            return;
         };
     }
 

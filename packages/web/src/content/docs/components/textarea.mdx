@@ -71,28 +71,28 @@ const textarea = new TextareaRenderable(renderer, {
 
 ## Properties
 
-| Property                 | Type                                  | Default            | Description                                       |
-| ------------------------ | ------------------------------------- | ------------------ | ------------------------------------------------- |
-| `width`                  | `number` or `string`                  | -                  | Width in terminal columns or percentage           |
-| `height`                 | `number` or `string`                  | -                  | Height in rows or percentage                      |
-| `initialValue`           | `string`                              | `""`               | Initial text content                              |
-| `placeholder`            | `string`, `StyledText`, or `null`     | `null`             | Placeholder content                               |
-| `placeholderColor`       | `string` or `RGBA`                    | `#666666`          | Placeholder color                                 |
-| `backgroundColor`        | `string` or `RGBA`                    | transparent        | Background when unfocused                         |
-| `textColor`              | `string` or `RGBA`                    | `#FFFFFF`          | Text color when unfocused                         |
-| `focusedBackgroundColor` | `string` or `RGBA`                    | initial base color | Background when focused                           |
-| `focusedTextColor`       | `string` or `RGBA`                    | initial base color | Text color when focused                           |
-| `wrapMode`               | `"none"`, `"char"`, or `"word"`       | `"word"`           | Line wrapping mode                                |
-| `selectionBg`            | `string` or `RGBA`                    | -                  | Selection background                              |
-| `selectionFg`            | `string` or `RGBA`                    | -                  | Selection foreground                              |
-| `cursorColor`            | `string` or `RGBA`                    | `#FFFFFF`          | Cursor color                                      |
-| `cursorStyle`            | `CursorStyleOptions`                  | -                  | Cursor style and blinking                         |
-| `selectionOccupancy`     | `"cell"` or `"boundary"`              | `"cell"`           | Endpoint occupancy. Independent of `cursorStyle`. |
-| `keyBindings`            | `KeyBinding[]`                        | -                  | Custom key bindings                               |
-| `keyAliasMap`            | `Record<string, string>`              | -                  | Key alias mapping                                 |
-| `onSubmit`               | `(event: SubmitEvent) => void`        | -                  | Submit handler                                    |
-| `onContentChange`        | `(event: ContentChangeEvent) => void` | -                  | Fired on content changes                          |
-| `onCursorChange`         | `(event: CursorChangeEvent) => void`  | -                  | Fired on cursor movement                          |
+| Property                 | Type                                  | Default            | Description                             |
+| ------------------------ | ------------------------------------- | ------------------ | --------------------------------------- |
+| `width`                  | `number` or `string`                  | -                  | Width in terminal columns or percentage |
+| `height`                 | `number` or `string`                  | -                  | Height in rows or percentage            |
+| `initialValue`           | `string`                              | `""`               | Initial text content                    |
+| `placeholder`            | `string`, `StyledText`, or `null`     | `null`             | Placeholder content                     |
+| `placeholderColor`       | `string` or `RGBA`                    | `#666666`          | Placeholder color                       |
+| `backgroundColor`        | `string` or `RGBA`                    | transparent        | Background when unfocused               |
+| `textColor`              | `string` or `RGBA`                    | `#FFFFFF`          | Text color when unfocused               |
+| `focusedBackgroundColor` | `string` or `RGBA`                    | initial base color | Background when focused                 |
+| `focusedTextColor`       | `string` or `RGBA`                    | initial base color | Text color when focused                 |
+| `wrapMode`               | `"none"`, `"char"`, or `"word"`       | `"word"`           | Line wrapping mode                      |
+| `selectionBg`            | `string` or `RGBA`                    | -                  | Selection background                    |
+| `selectionFg`            | `string` or `RGBA`                    | -                  | Selection foreground                    |
+| `cursorColor`            | `string` or `RGBA`                    | `#FFFFFF`          | Cursor color                            |
+| `cursorStyle`            | `CursorStyleOptions`                  | -                  | Cursor style and blinking               |
+| `selectionOccupancy`     | `"cell"` or `"boundary"`              | `"cell"`           | Selection range model                   |
+| `keyBindings`            | `KeyBinding[]`                        | -                  | Custom key bindings                     |
+| `keyAliasMap`            | `Record<string, string>`              | -                  | Key alias mapping                       |
+| `onSubmit`               | `(event: SubmitEvent) => void`        | -                  | Submit handler                          |
+| `onContentChange`        | `(event: ContentChangeEvent) => void` | -                  | Fired on content changes                |
+| `onCursorChange`         | `(event: CursorChangeEvent) => void`  | -                  | Fired on cursor movement                |
 
 If you omit a focused color, the constructor copies the corresponding base color. If you omit both values, the focused
 background is transparent, and the focused text uses `#FFFFFF`.
@@ -141,7 +141,7 @@ textarea.gotoBufferEnd({ select: true })
 
 ```typescript
 textarea.setSelection(start, end) // already-exclusive [start, end)
-textarea.setSelectionInclusive(start, end) // cell occupancy: extend end by grapheme width
+textarea.setSelectionInclusive(start, end) // extends end in cell mode
 textarea.selectAll()
 textarea.clearSelection()
 textarea.deleteSelection()
