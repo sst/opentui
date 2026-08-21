@@ -88,6 +88,12 @@ const { title, description, wide = false, robots } = Astro.props
     --content-width: 36rem;
     /* Widest bounded composition: site chrome and wide pages align to it. */
     --frame-width: 64rem;
+    /* Type scale, anchored to the 16px root so layout rem values hold:
+     * 14px body prose and chrome, 13px dense text (code, tables), 12px
+     * captions and labels. Headings keep their own rem sizes. */
+    --text-body: 0.875rem;
+    --text-small: 0.8125rem;
+    --text-caption: 0.75rem;
     --page-gutter: 1.5rem;
     /* Sticky header: 1.875rem wordmark + 2rem block padding. Sticky sidebars
      * and anchored headings offset by this height. */
@@ -115,6 +121,7 @@ const { title, description, wide = false, robots } = Astro.props
     background: var(--page-background);
     color: var(--page-color);
     font-family: "Berkeley Mono", monospace;
+    font-size: var(--text-body);
     line-height: 1.5;
   }
 
