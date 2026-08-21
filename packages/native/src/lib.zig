@@ -2281,6 +2281,25 @@ export fn textBufferViewResetLocalSelection(view_handle: NativeHandle) void {
     object_ptr.resetLocalSelection();
 }
 
+export fn textBufferViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    const value: text_buffer_view.SelectionOccupancy = switch (occupancy) {
+        1 => .boundary,
+        else => .cell,
+    };
+    object_ptr.setSelectionOccupancy(value);
+}
+
+export fn textBufferViewGetSelectionOccupancy(view_handle: NativeHandle) u8 {
+    const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
+    return @intFromEnum(object_ptr.getSelectionOccupancy());
+}
+
+export fn textBufferViewSetSelectionInclusive(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setSelectionInclusiveStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+}
+
 export fn textBufferViewSetWrapWidth(view_handle: NativeHandle, width: u32) void {
     const object_ptr = acquireTextBufferView(view_handle) orelse return;
     object_ptr.setWrapWidth(if (width == 0) null else width);
@@ -2908,6 +2927,25 @@ export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     object_ptr.setSelectionFollowCursor(false);
     object_ptr.text_buffer_view.resetLocalSelection();
+}
+
+export fn editorViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    const value: text_buffer_view.SelectionOccupancy = switch (occupancy) {
+        1 => .boundary,
+        else => .cell,
+    };
+    object_ptr.setSelectionOccupancy(value);
+}
+
+export fn editorViewGetSelectionOccupancy(view_handle: NativeHandle) u8 {
+    const object_ptr = acquireEditorView(view_handle) orelse return 0;
+    return @intFromEnum(object_ptr.getSelectionOccupancy());
+}
+
+export fn editorViewSetSelectionInclusive(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setSelectionInclusive(start, end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
 export fn editorViewGetSelectedTextBytes(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {

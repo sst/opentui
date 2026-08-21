@@ -212,46 +212,32 @@ export class ASCIIFontSelectionHelper {
 
     const text = this.getText()
     const font = this.getFont()
+    const minY = Math.min(localSelection.anchorY, localSelection.focusY)
+    const maxY = Math.max(localSelection.anchorY, localSelection.focusY)
 
-    const selStart = { x: localSelection.anchorX, y: localSelection.anchorY }
-    const selEnd = { x: localSelection.focusX, y: localSelection.focusY }
-
-    if (height - 1 < selStart.y || 0 > selEnd.y) {
+    // Completely above or below this glyph row: not selected.
+    if (maxY < 0 || minY > height - 1) {
       this.localSelection = null
       return previousSelection !== null
     }
 
-    let startCharIndex = 0
-    let endCharIndex = text.length
-
-    if (selStart.y > height - 1) {
-      // Selection starts below us - we're not selected
-      this.localSelection = null
-      return previousSelection !== null
-    } else if (selStart.y >= 0 && selStart.y <= height - 1) {
-      // Selection starts within our Y range - use the actual start X coordinate
-      if (selStart.x > 0) {
-        startCharIndex = coordinateToCharacterIndex(selStart.x, text, font)
-      }
+    const indexAt = (x: number, y: number): number => {
+      if (y < 0 || x < 0) return 0
+      if (y > height - 1) return text.length
+      return coordinateToCharacterIndex(x, text, font)
     }
 
-    if (selEnd.y < 0) {
-      // Selection ends above us - we're not selected
-      this.localSelection = null
-      return previousSelection !== null
-    } else if (selEnd.y >= 0 && selEnd.y <= height - 1) {
-      // Selection ends within our Y range - use the actual end X coordinate
-      if (selEnd.x >= 0) {
-        endCharIndex = coordinateToCharacterIndex(selEnd.x, text, font)
-      } else {
-        endCharIndex = 0
-      }
-    }
+    const anchorIndex = indexAt(localSelection.anchorX, localSelection.anchorY)
+    const focusIndex = indexAt(localSelection.focusX, localSelection.focusY)
+    const start = Math.min(anchorIndex, focusIndex)
+    const end = Math.max(anchorIndex, focusIndex)
 
-    if (startCharIndex < endCharIndex && startCharIndex >= 0 && endCharIndex <= text.length) {
-      this.localSelection = { start: startCharIndex, end: endCharIndex }
+    // Copy-select is cell occupancy: both endpoint characters included.
+    // Empty only when the mapped indices are equal (plain press / zero extent).
+    if (start === end || start < 0) {
+      this.localSelection = null
     } else {
-      this.localSelection = null
+      this.localSelection = { start, end: Math.min(end + 1, text.length) }
     }
 
     return (

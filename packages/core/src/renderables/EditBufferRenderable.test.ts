@@ -287,4 +287,37 @@ describe("EditBufferRenderable", () => {
     expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
     expect(textarea.getSelectedText()).toBe("cd")
   })
+
+  test("setSelectionInclusive extends by grapheme width under cell occupancy", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "ab你cd",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelectionInclusive(2, 2)
+
+    expect(textarea.getSelectedText()).toBe("你")
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+  })
+
+  test("setSelectionInclusive does not extend under boundary occupancy", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+      selectionOccupancy: "boundary",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelectionInclusive(2, 3)
+
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 3 })
+    expect(textarea.getSelectedText()).toBe("c")
+  })
 })

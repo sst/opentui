@@ -1681,6 +1681,264 @@ describe("Textarea - Selection Tests", () => {
       expect(selectedText).toContain("Line 14")
     })
   })
+
+  describe("Occupancy contract", () => {
+    it("selects two cells on first shift+right in cell occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+
+      expect(editor.getSelectedText()).toBe("He")
+      expect(editor.getSelection()).toEqual({ start: 0, end: 2 })
+    })
+
+    it("selects one cell on first shift+right in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+
+      expect(editor.getSelectedText()).toBe("H")
+      expect(editor.getSelection()).toEqual({ start: 0, end: 1 })
+    })
+
+    it("selects bc when shifting left from ab|cd in cell occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abcd",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      editor.focus()
+      editor.editBuffer.setCursorToLineCol(0, 2)
+      editor.moveCursorLeft({ select: true })
+      expect(editor.getSelectedText()).toBe("bc")
+    })
+
+    it("selects b when shifting left from ab|cd in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abcd",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+      editor.focus()
+      editor.editBuffer.setCursorToLineCol(0, 2)
+      editor.moveCursorLeft({ select: true })
+      expect(editor.getSelectedText()).toBe("b")
+    })
+
+    it("never copies half a wide glyph in either occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ab你cd",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = 0
+      currentMockInput.pressArrow("right", { shift: true })
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.getSelectedText()).toBe("ab你")
+
+      editor.selectionOccupancy = "boundary"
+      expect(editor.getSelectedText()).toBe("ab")
+
+      editor.selectionOccupancy = "cell"
+      expect(editor.getSelectedText()).toBe("ab你")
+    })
+
+    it("keeps a press without drag empty", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.pressDown(editor.x + 2, editor.y)
+      await currentMouse.release(editor.x + 2, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.getSelectedText()).toBe("")
+    })
+
+    it("does not grab a bare newline at EOL", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello\nWorld",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd({ select: true })
+
+      expect(editor.getSelectedText()).toBe("Hello")
+    })
+
+    it("replays stored endpoints when occupancy changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.getSelectedText()).toBe("He")
+
+      editor.selectionOccupancy = "boundary"
+      expect(editor.getSelectedText()).toBe("H")
+
+      editor.selectionOccupancy = "cell"
+      expect(editor.getSelectedText()).toBe("He")
+    })
+
+    it("does not change selected text when cursorStyle changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.getSelectedText()).toBe("He")
+
+      editor.cursorStyle = { style: "line", blinking: true }
+      expect(editor.getSelectedText()).toBe("He")
+      expect(editor.selectionOccupancy).toBe("cell")
+
+      editor.cursorStyle = { style: "block", blinking: false }
+      expect(editor.getSelectedText()).toBe("He")
+    })
+
+    it("deletes exactly getSelectedText() on backspace in both occupancies", async () => {
+      const cell = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      cell.textarea.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      const cellSelected = cell.textarea.getSelectedText()
+      expect(cellSelected).toBe("He")
+      currentMockInput.pressBackspace()
+      expect(cell.textarea.plainText).toBe("llo")
+
+      const boundary = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+      boundary.textarea.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(boundary.textarea.getSelectedText()).toBe("H")
+      currentMockInput.pressBackspace()
+      expect(boundary.textarea.plainText).toBe("ello")
+    })
+  })
+
+  describe("Non-shift collapse", () => {
+    async function selectedHelloSpace() {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      editor.focus()
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("Hello ")
+      return editor
+    }
+
+    it.each([
+      ["left", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.moveCursorLeft(), 0],
+      ["right", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.moveCursorRight(), 6],
+      ["home", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.gotoLineHome(), 0],
+      ["end", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.gotoLineEnd(), 6],
+      ["word-back", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.moveWordBackward(), 0],
+      ["word-forward", (editor: Awaited<ReturnType<typeof selectedHelloSpace>>) => editor.moveWordForward(), 6],
+    ] as const)("collapses %s to the derived range edge", async (_name, move, offset) => {
+      const editor = await selectedHelloSpace()
+      move(editor)
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.cursorOffset).toBe(offset)
+    })
+
+    it("clears then moves from focus on up/down", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World\nSecond line",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+      editor.focus()
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("Hello ")
+
+      // Mouse drag focus is cell 5; down from focus lands on the next visual line.
+      editor.moveCursorDown()
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.row).toBe(1)
+    })
+  })
+
+  describe("Horizontal wrapping", () => {
+    it("includes newline when shift+right wraps from EOL onto the next line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello\nWorld",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = 5
+      currentMockInput.pressArrow("right", { shift: true })
+
+      expect(editor.getSelectedText()).toBe("\nW")
+    })
+
+    it("does not include a newline on shift+end of a single line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd({ select: true })
+
+      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText().includes("\n")).toBe(false)
+    })
+  })
 })
 
 function countSelectedCells(

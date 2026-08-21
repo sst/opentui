@@ -32,6 +32,15 @@ pub const SelectionStyle = struct {
     }
 };
 
+/// How a selection occupies cells between stored anchor and focus offsets.
+/// `cell` includes the grapheme under the max endpoint (block / Vim-visual).
+/// `boundary` is the half-open insert range `[min, max)` (thin / GUI carets).
+/// Occupancy is independent of cursor style; style is paint only.
+pub const SelectionOccupancy = enum(u8) {
+    cell = 0,
+    boundary = 1,
+};
+
 /// Viewport defines a rectangular window into the virtual line space
 pub const Viewport = struct {
     x: u32,
@@ -131,9 +140,10 @@ pub const UnifiedTextBufferView = struct {
     selection: ?TextSelection,
     selection_anchor_offset: ?u32,
     /// Focus (moving end) of the current local selection. Stored explicitly
-    /// because inclusive selection extends `selection.end` past the focus
-    /// grapheme, so the focus can no longer be inferred from start/end.
+    /// because cell occupancy extends `selection.end` past the focus grapheme,
+    /// so the focus can no longer be inferred from start/end.
     selection_focus_offset: ?u32,
+    selection_occupancy: SelectionOccupancy,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -193,6 +203,7 @@ pub const UnifiedTextBufferView = struct {
             .selection = null,
             .selection_anchor_offset = null,
             .selection_focus_offset = null,
+            .selection_occupancy = .cell,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -538,6 +549,11 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setSelectionStyle(self: *Self, start: u32, end: u32, style: SelectionStyle) void {
+        // Offset APIs write an already-exclusive [start, end) and do not go
+        // through occupancy. Clear stored cell-pin endpoints so a later
+        // occupancy change or cursor sync cannot replay a stale focus.
+        self.selection_anchor_offset = null;
+        self.selection_focus_offset = null;
         self.selection = selectionFromStyle(start, end, style);
     }
 
@@ -547,12 +563,48 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn updateSelectionStyle(self: *Self, end: u32, style: SelectionStyle) void {
         if (self.selection) |sel| {
+            self.selection_anchor_offset = null;
+            self.selection_focus_offset = null;
             self.selection = selectionFromStyle(sel.start, end, style);
         }
     }
 
     pub fn resetSelection(self: *Self) void {
         self.selection = null;
+        self.selection_anchor_offset = null;
+        self.selection_focus_offset = null;
+    }
+
+    pub fn setSelectionOccupancy(self: *Self, occupancy: SelectionOccupancy) void {
+        self.selection_occupancy = occupancy;
+        const anchor = self.selection_anchor_offset orelse return;
+        const focus = self.selection_focus_offset orelse return;
+        const sel = self.selection orelse return;
+        const range = self.selectionRange(anchor, focus, self.getTextEndOffset());
+        self.selection = selectionFromStyle(range.start, range.end, .{
+            .bgColor = sel.bgColor,
+            .fgColor = sel.fgColor,
+        });
+    }
+
+    pub fn getSelectionOccupancy(self: *const Self) SelectionOccupancy {
+        return self.selection_occupancy;
+    }
+
+    /// Inclusive-end offset helper: under `cell` occupancy, extend `end` by the
+    /// grapheme at that offset. Under `boundary`, write `[start, end)` as-is.
+    /// Does not store cell-pin endpoints (offset API).
+    pub fn setSelectionInclusiveStyle(self: *Self, start: u32, end: u32, style: SelectionStyle) void {
+        const lo = @min(start, end);
+        const hi = @max(start, end);
+        var exclusive_end = hi;
+        if (self.selection_occupancy == .cell) {
+            exclusive_end = @min(
+                hi + self.text_buffer.graphemeWidthAtOffset(hi),
+                self.getTextEndOffset(),
+            );
+        }
+        self.setSelectionStyle(lo, exclusive_end, style);
     }
 
     pub fn getSelection(self: *const Self) ?TextSelection {
@@ -630,7 +682,7 @@ pub const UnifiedTextBufferView = struct {
         self.selection_anchor_offset = anchor_offset;
         self.selection_focus_offset = focus_offset;
 
-        const range = self.inclusiveSelectionRange(anchor_offset, focus_offset, text_end_offset);
+        const range = self.selectionRange(anchor_offset, focus_offset, text_end_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
         const new_selection = selectionFromStyle(range.start, range.end, style);
@@ -679,22 +731,21 @@ pub const UnifiedTextBufferView = struct {
 
         self.selection_focus_offset = focus_col_offset;
 
-        const range = self.inclusiveSelectionRange(anchor_offset, focus_col_offset, text_end_offset);
+        const range = self.selectionRange(anchor_offset, focus_col_offset, text_end_offset);
         self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
     }
 
-    /// Inclusive (Vim visual) selection range: both endpoint cells are part of
-    /// the selection, so the end extends past the grapheme under the max
-    /// endpoint. This is symmetric in drag direction: the cell under the
-    /// cursor and the cell under the anchor are both selected. A zero-width
-    /// selection (anchor == focus) stays empty so a plain press selects
-    /// nothing until the focus moves to another cell.
-    fn inclusiveSelectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
+    /// Derive the exclusive highlight/copy/delete range from stored endpoints.
+    /// `cell`: `[min, max + width(max))` so both endpoint graphemes are occupied.
+    /// `boundary`: `[min, max)` — the insert range the caret swept.
+    /// Zero extent (`anchor == focus`) stays empty in both modes: a press is
+    /// not a cell to occupy.
+    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
         const start = @min(anchor_offset, focus_offset);
         var end = @max(anchor_offset, focus_offset);
-        if (anchor_offset != focus_offset) {
+        if (self.selection_occupancy == .cell and anchor_offset != focus_offset) {
             end = @min(end + self.text_buffer.graphemeWidthAtOffset(end), text_end_offset);
         }
         return .{ .start = start, .end = end };

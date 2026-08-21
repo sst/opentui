@@ -3506,3 +3506,67 @@ test "EditorView - backward selection keeps anchor cell and cursor at focus" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 }
+
+test "occupancy - EditorView forwards occupancy and replays stored endpoints" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    try std.testing.expectEqual(text_buffer_view.SelectionOccupancy.cell, ev.getSelectionOccupancy());
+
+    _ = ev.setLocalSelection(0, 0, 1, 0, null, null, true);
+    var out: [100]u8 = undefined;
+    var len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("He", out[0..len]);
+
+    const cursor_before = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor_before.col);
+
+    ev.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqual(text_buffer_view.SelectionOccupancy.boundary, ev.getSelectionOccupancy());
+    len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("H", out[0..len]);
+
+    // Occupancy replay must not move the stored focus.
+    const cursor_after = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor_after.col);
+}
+
+test "occupancy - EditorView cursor still syncs to focus under boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    ev.setSelectionOccupancy(.boundary);
+    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, true);
+
+    var out: [100]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("Hello", out[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}

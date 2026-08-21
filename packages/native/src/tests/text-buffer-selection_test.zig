@@ -1220,3 +1220,218 @@ test "Selection - wrap padding does not include the next visual line" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("hello my good ", out_buffer[0..len]);
 }
+
+fn occupancySelected(view: *TextBufferView, out: *[100]u8) []const u8 {
+    const len = view.getSelectedTextIntoBuffer(out);
+    return out[0..len];
+}
+
+fn occupancyPacked(view: *const TextBufferView) struct { start: u32, end: u32 } {
+    const packed_info = view.packSelectionInfo();
+    return .{
+        .start = @intCast(packed_info >> 32),
+        .end = @intCast(packed_info & 0xFFFFFFFF),
+    };
+}
+
+test "occupancy - cell first shift-right occupies two cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+
+    const range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 2), range.end);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+}
+
+test "occupancy - boundary first shift-right occupies one cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+
+    const range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 1), range.end);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+}
+
+test "occupancy - cell backward from ab|cd selects bc" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("abcd");
+    _ = view.setLocalSelection(2, 0, 1, 0, null, null);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("bc", occupancySelected(view, &out));
+}
+
+test "occupancy - boundary backward from ab|cd selects b" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("abcd");
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(2, 0, 1, 0, null, null);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("b", occupancySelected(view, &out));
+}
+
+test "occupancy - wide glyph is never half a cell or boundary range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Offsets: a=0 b=1 you=2..3 (width 2) c=4 d=5
+    try tb.setText("ab\u{4F60}cd");
+
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("ab\u{4F60}", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+    try std.testing.expectEqualStrings("ab", occupancySelected(view, &out));
+}
+
+test "occupancy - zero extent stays empty in both modes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), view.packSelectionInfo());
+
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), view.packSelectionInfo());
+}
+
+test "occupancy - EOL focus does not grab a bare newline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello\nWorld");
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("Hello", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+    try std.testing.expectEqualStrings("Hello", occupancySelected(view, &out));
+}
+
+test "occupancy - set and update agree then occupancy replay shrinks the range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(0, 0, 0, 0, null, null);
+    _ = view.updateLocalSelection(0, 0, 1, 0, null, null);
+    const drag_packed = view.packSelectionInfo();
+
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+    try std.testing.expectEqual(drag_packed, view.packSelectionInfo());
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+
+    view.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+    const after = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), after.start);
+    try std.testing.expectEqual(@as(u32, 1), after.end);
+
+    view.setSelectionOccupancy(.cell);
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+}
+
+test "occupancy - offset setSelection does not go through occupancy" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    view.setSelection(0, 1, null, null);
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+
+    view.setSelectionOccupancy(.cell);
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+}

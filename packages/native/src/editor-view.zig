@@ -333,14 +333,28 @@ pub const EditorView = struct {
         self.text_buffer_view.resetLocalSelection();
     }
 
+    pub fn setSelectionOccupancy(self: *EditorView, occupancy: tbv.SelectionOccupancy) void {
+        self.text_buffer_view.setSelectionOccupancy(occupancy);
+    }
+
+    pub fn getSelectionOccupancy(self: *const EditorView) tbv.SelectionOccupancy {
+        return self.text_buffer_view.getSelectionOccupancy();
+    }
+
+    pub fn setSelectionInclusive(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.text_buffer_view.setSelectionInclusiveStyle(start, end, tbv.SelectionStyle.rgb(bgColor, fgColor));
+    }
+
     /// Updates the cursor position to match the selection focus position.
     /// Does NOT trigger viewport scrolling - TypeScript layer handles that.
     pub fn syncCursorToSelectionFocus(self: *EditorView) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
-        // The stored focus offset is authoritative: with inclusive selection,
+        // The stored focus offset is authoritative: with cell occupancy,
         // `selection.end` extends past the focus grapheme, so the focus cannot
-        // be inferred from the normalized start/end pair.
+        // be inferred from the normalized start/end pair. Offset APIs clear
+        // stored focus; falling back to `selection.end` is then correct
+        // because those ranges are already exclusive-end.
         const focus_offset = self.text_buffer_view.selection_focus_offset orelse selection.end;
 
         const focus_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), focus_offset) orelse return;

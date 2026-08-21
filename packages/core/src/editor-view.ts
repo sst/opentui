@@ -9,6 +9,7 @@ import {
 } from "./zig.js"
 import type { EditBuffer } from "./edit-buffer.js"
 import { createExtmarksController } from "./lib/index.js"
+import type { SelectionOccupancy } from "./types.js"
 
 export interface Viewport {
   offsetY: number
@@ -159,6 +160,21 @@ export class EditorView {
   public resetLocalSelection(): void {
     this.guard()
     this.lib.editorViewResetLocalSelection(this.viewPtr)
+  }
+
+  public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
+    this.guard()
+    this.lib.editorViewSetSelectionOccupancy(this.viewPtr, occupancy)
+  }
+
+  public getSelectionOccupancy(): SelectionOccupancy {
+    this.guard()
+    return this.lib.editorViewGetSelectionOccupancy(this.viewPtr)
+  }
+
+  public setSelectionInclusive(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.editorViewSetSelectionInclusive(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
   public getSelectedText(): string {

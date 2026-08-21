@@ -15,6 +15,7 @@ import { EventEmitter } from "events"
 import {
   type CursorStyle,
   type CursorStyleOptions,
+  type SelectionOccupancy,
   type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
@@ -1123,6 +1124,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    textBufferViewSetSelectionOccupancy: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
+    textBufferViewGetSelectionOccupancy: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    textBufferViewSetSelectionInclusive: {
+      args: ["u32", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
     textBufferViewSetWrapWidth: {
       args: ["u32", "u32"],
       returns: "void",
@@ -1427,6 +1440,18 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewResetLocalSelection: {
       args: ["u32"],
+      returns: "void",
+    },
+    editorViewSetSelectionOccupancy: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
+    editorViewGetSelectionOccupancy: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    editorViewSetSelectionInclusive: {
+      args: ["u32", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     editorViewGetSelectedTextBytes: {
@@ -2812,6 +2837,15 @@ export interface RenderLib extends AudioEngineLib {
     fgColor: RGBA | null,
   ) => boolean
   textBufferViewResetLocalSelection: (view: TextBufferViewHandle) => void
+  textBufferViewSetSelectionOccupancy: (view: TextBufferViewHandle, occupancy: SelectionOccupancy) => void
+  textBufferViewGetSelectionOccupancy: (view: TextBufferViewHandle) => SelectionOccupancy
+  textBufferViewSetSelectionInclusive: (
+    view: TextBufferViewHandle,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
   textBufferViewSetWrapWidth: (view: TextBufferViewHandle, width: number) => void
   textBufferViewSetWrapMode: (view: TextBufferViewHandle, mode: "none" | "char" | "word") => void
   textBufferViewSetFirstLineOffset: (view: TextBufferViewHandle, offset: number) => void
@@ -2952,6 +2986,15 @@ export interface RenderLib extends AudioEngineLib {
   ) => boolean
 
   editorViewResetLocalSelection: (view: EditorViewHandle) => void
+  editorViewSetSelectionOccupancy: (view: EditorViewHandle, occupancy: SelectionOccupancy) => void
+  editorViewGetSelectionOccupancy: (view: EditorViewHandle) => SelectionOccupancy
+  editorViewSetSelectionInclusive: (
+    view: EditorViewHandle,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
   editorViewGetSelectedTextBytes: (view: EditorViewHandle, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: EditorViewHandle) => { row: number; col: number }
   editorViewGetText: (view: EditorViewHandle, maxLength: number) => Uint8Array | null
@@ -5114,6 +5157,26 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewResetLocalSelection(view)
   }
 
+  public textBufferViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {
+    this.opentui.symbols.textBufferViewSetSelectionOccupancy(view, occupancy === "boundary" ? 1 : 0)
+  }
+
+  public textBufferViewGetSelectionOccupancy(view: Pointer): SelectionOccupancy {
+    return this.opentui.symbols.textBufferViewGetSelectionOccupancy(view) === 1 ? "boundary" : "cell"
+  }
+
+  public textBufferViewSetSelectionInclusive(
+    view: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): void {
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
+    this.opentui.symbols.textBufferViewSetSelectionInclusive(view, start, end, bg, fg)
+  }
+
   public textBufferViewSetWrapWidth(view: Pointer, width: number): void {
     this.opentui.symbols.textBufferViewSetWrapWidth(view, width)
   }
@@ -5763,6 +5826,26 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewResetLocalSelection(view: Pointer): void {
     this.opentui.symbols.editorViewResetLocalSelection(view)
+  }
+
+  public editorViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {
+    this.opentui.symbols.editorViewSetSelectionOccupancy(view, occupancy === "boundary" ? 1 : 0)
+  }
+
+  public editorViewGetSelectionOccupancy(view: Pointer): SelectionOccupancy {
+    return this.opentui.symbols.editorViewGetSelectionOccupancy(view) === 1 ? "boundary" : "cell"
+  }
+
+  public editorViewSetSelectionInclusive(
+    view: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): void {
+    const bg = optionalRgbaBuffer(bgColor)
+    const fg = optionalRgbaBuffer(fgColor)
+    this.opentui.symbols.editorViewSetSelectionInclusive(view, start, end, bg, fg)
   }
 
   public editorViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
