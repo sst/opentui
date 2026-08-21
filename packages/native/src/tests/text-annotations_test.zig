@@ -142,6 +142,51 @@ test "TextAnnotations splice applies retain invalidate and covered policies" {
     try owner.validateIntegrity();
 }
 
+test "TextAnnotations splice policy merge handles scrambled IDs and deletion boundaries" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+
+    const outside = try owner.addRange(.{ .start_byte = 40, .end_byte = 50 }, .{
+        .namespace = 1,
+        .splice_policy = .invalidate,
+    });
+    const covered = try owner.addRange(.{ .start_byte = 12, .end_byte = 18 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const boundary = try owner.addRange(.{ .start_byte = 5, .end_byte = 10 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const reversed_covered = try owner.addRange(.{ .start_byte = 19, .end_byte = 11 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const reversed_partial = try owner.addRange(.{ .start_byte = 25, .end_byte = 15 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const boundary_point = try owner.addPoint(.{ .byte = 20 }, .{
+        .namespace = 1,
+        .splice_policy = .invalidate,
+    });
+    const retained_point = try owner.addPoint(.{ .byte = 15 }, .{
+        .namespace = 1,
+        .kind_flags = 9,
+        .splice_policy = .delete_when_covered,
+    });
+
+    try owner.splice(10, 10, 2);
+    try expectRange(&owner, outside, 32, 42, 0);
+    try std.testing.expect(owner.get(covered) == null);
+    try expectRange(&owner, boundary, 5, 10, 0);
+    try std.testing.expect(owner.get(reversed_covered) == null);
+    try expectRange(&owner, reversed_partial, 17, 10, 0);
+    try std.testing.expect(owner.get(boundary_point) == null);
+    try expectPoint(&owner, retained_point, 12, 9);
+    try owner.validateIntegrity();
+}
+
 test "TextAnnotations insertion splice and move preserve payload association" {
     var owner = testAnnotations();
     defer owner.deinit();
@@ -298,6 +343,52 @@ test "TextAnnotations namespace clear allocation failure preserves both structur
     try owner.validateIntegrity();
 }
 
+test "TextAnnotations absent and sparse namespace clears allocate only for matches" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var owner = TextAnnotations.initWithSeed(failing.allocator(), 1);
+    defer owner.deinit();
+
+    _ = try owner.addPoint(.{ .byte = 0 }, payload(1, 0, 0));
+    try std.testing.expectEqual(@as(usize, 1), try owner.clearNamespace(1));
+    for (0..300) |index| {
+        _ = try owner.addPoint(.{ .byte = @intCast(index) }, payload(2, @intCast(index), 0));
+    }
+    const sparse = try owner.addPoint(.{ .byte = 300 }, payload(1, 999, 0));
+
+    failing.fail_index = failing.alloc_index;
+    const allocation_index = failing.alloc_index;
+    try std.testing.expectEqual(@as(usize, 0), try owner.clearOwner(99));
+    try std.testing.expectEqual(allocation_index, failing.alloc_index);
+    try std.testing.expectEqual(@as(usize, 1), try owner.clearNamespace(1));
+    try std.testing.expectEqual(allocation_index, failing.alloc_index);
+    try std.testing.expect(owner.get(sparse) == null);
+    try owner.validateIntegrity();
+}
+
+test "TextAnnotations destructive clear and splice release scratch high-water storage" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+
+    _ = try owner.addPoint(.{ .byte = 0 }, payload(2, 0, 0));
+    for (0..600) |index| {
+        _ = try owner.addPoint(.{ .byte = @intCast(index) }, payload(1, @intCast(index), 0));
+    }
+    try std.testing.expectEqual(@as(usize, 600), try owner.clearNamespace(1));
+    try std.testing.expectEqual(@as(usize, 0), owner.affected_scratch.capacity);
+
+    for (0..600) |index| {
+        _ = try owner.addRange(.{ .start_byte = 10, .end_byte = 20 }, .{
+            .namespace = 3,
+            .style_id = @intCast(index),
+            .splice_policy = .invalidate,
+        });
+    }
+    try owner.splice(10, 10, 0);
+    try std.testing.expectEqual(@as(usize, 0), owner.affected_scratch.capacity);
+    try std.testing.expectEqual(@as(usize, 0), owner.covered_scratch.capacity);
+    try owner.validateIntegrity();
+}
+
 test "TextAnnotations position overflow preserves both structures" {
     var owner = testAnnotations();
     defer owner.deinit();
@@ -315,11 +406,110 @@ const ModelEntry = struct {
     payload: TextAnnotations.Payload,
 };
 
+const DeletionClassification = struct { affected: bool, covered: bool };
+
 fn endpoint(position: u32, gravity: TextAnnotations.Gravity, start: u32, old_len: u32, new_len: u32) u32 {
     if (position < start) return position;
     const distance = position - start;
     if (distance > old_len) return start + distance - old_len + new_len;
     return start + if (gravity == .right) new_len else 0;
+}
+
+fn classifyDeletion(mark: Mark, start: u32, old_len: u32) DeletionClassification {
+    if (old_len == 0) return .{ .affected = false, .covered = false };
+    const old_end = start + old_len;
+    return switch (mark) {
+        .point => |point| .{
+            .affected = point.byte >= start and point.byte <= old_end,
+            .covered = false,
+        },
+        .range => |range| blk: {
+            const lower = @min(range.start_byte, range.end_byte);
+            const upper = @max(range.start_byte, range.end_byte);
+            const endpoint_affected = (range.start_byte >= start and range.start_byte <= old_end) or
+                (range.end_byte >= start and range.end_byte <= old_end);
+            const overlaps = range.start_byte < range.end_byte and range.start_byte < old_end and range.end_byte > start;
+            break :blk .{
+                .affected = endpoint_affected or overlaps,
+                .covered = lower >= start and upper <= old_end,
+            };
+        },
+    };
+}
+
+fn applyModelSplice(entries: *std.ArrayList(ModelEntry), start: u32, old_len: u32, new_len: u32) void {
+    var index: usize = 0;
+    while (index < entries.items.len) {
+        const classification = classifyDeletion(entries.items[index].mark, start, old_len);
+        const policy = entries.items[index].payload.splice_policy;
+        if ((policy == .invalidate and classification.affected) or
+            (policy == .delete_when_covered and classification.covered))
+        {
+            _ = entries.swapRemove(index);
+            continue;
+        }
+        switch (entries.items[index].mark) {
+            .range => |*range| {
+                range.start_byte = endpoint(range.start_byte, range.start_gravity, start, old_len, new_len);
+                range.end_byte = endpoint(range.end_byte, range.end_gravity, start, old_len, new_len);
+            },
+            .point => |*point| point.byte = endpoint(point.byte, point.gravity, start, old_len, new_len),
+        }
+        index += 1;
+    }
+}
+
+fn movedEndpoint(position: u32, gravity: TextAnnotations.Gravity, start: u32, len: u32, destination: u32) u32 {
+    const end = start + len;
+    const captured = (position > start and position < end) or
+        (position == start and gravity == .right) or
+        (position == end and gravity == .left);
+    if (captured) return destination + position - start;
+    const removed = endpoint(position, gravity, start, len, 0);
+    return endpoint(removed, gravity, destination, 0, len);
+}
+
+fn applyModelMove(entries: []ModelEntry, start: u32, len: u32, destination: u32) void {
+    if (len == 0) return;
+    for (entries) |*entry| switch (entry.mark) {
+        .range => |*range| {
+            range.start_byte = movedEndpoint(range.start_byte, range.start_gravity, start, len, destination);
+            range.end_byte = movedEndpoint(range.end_byte, range.end_gravity, start, len, destination);
+        },
+        .point => |*point| point.byte = movedEndpoint(point.byte, point.gravity, start, len, destination),
+    };
+}
+
+fn randomPolicy(random: std.Random) TextAnnotations.SplicePolicy {
+    return switch (random.intRangeAtMost(u8, 0, 2)) {
+        0 => .retain,
+        1 => .invalidate,
+        2 => .delete_when_covered,
+        else => unreachable,
+    };
+}
+
+fn randomPayload(random: std.Random, namespace: u32) PayloadInput {
+    return .{
+        .namespace = namespace,
+        .style_id = random.int(u32),
+        .priority = random.int(u8),
+        .internal = random.boolean(),
+        .kind_flags = random.int(u32),
+        .splice_policy = randomPolicy(random),
+    };
+}
+
+fn modelPayload(input: PayloadInput, sequence: u64) TextAnnotations.Payload {
+    return .{
+        .namespace = input.namespace,
+        .style_id = input.style_id,
+        .priority = input.priority,
+        .sequence = sequence,
+        .internal = input.internal,
+        .kind_flags = input.kind_flags,
+        .splice_policy = input.splice_policy,
+    };
 }
 
 fn compareModel(owner: *TextAnnotations, entries: []const ModelEntry) !void {
@@ -336,7 +526,7 @@ fn compareModel(owner: *TextAnnotations, entries: []const ModelEntry) !void {
     try owner.validateIntegrity();
 }
 
-test "TextAnnotations randomized differential tree and payload map consistency" {
+test "TextAnnotations randomized differential owner operations and iterator invalidation" {
     var owner = testAnnotations();
     defer owner.deinit();
     var model: std.ArrayList(ModelEntry) = .empty;
@@ -345,53 +535,131 @@ test "TextAnnotations randomized differential tree and payload map consistency" 
     const random = random_state.random();
     var document_len: u32 = 100;
 
-    for (0..2500) |step| {
-        switch (random.intRangeAtMost(u8, 0, 5)) {
-            0, 1 => {
+    for (0..5000) |step| {
+        var iterator = owner.iterator();
+        var mutated = false;
+        switch (random.intRangeAtMost(u8, 0, 9)) {
+            0 => {
                 const input = TextAnnotations.RangeInput{
                     .start_byte = random.intRangeAtMost(u32, 0, document_len),
                     .end_byte = random.intRangeAtMost(u32, 0, document_len),
                     .start_gravity = if (random.boolean()) .left else .right,
                     .end_gravity = if (random.boolean()) .left else .right,
                 };
-                const id = try owner.addRange(input, payload(random.intRangeAtMost(u32, 0, 3), random.int(u32), random.int(u8)));
+                const id = try owner.addRange(input, randomPayload(random, random.intRangeAtMost(u32, 0, 5)));
                 try model.append(std.testing.allocator, .{ .mark = owner.get(id).?.mark, .payload = owner.get(id).?.payload });
+                mutated = true;
             },
-            2 => {
+            1 => {
                 const input = TextAnnotations.PointInput{
                     .byte = random.intRangeAtMost(u32, 0, document_len),
                     .gravity = if (random.boolean()) .left else .right,
                 };
-                const id = try owner.addPoint(input, .{ .namespace = random.intRangeAtMost(u32, 0, 3), .kind_flags = random.int(u32) });
+                const id = try owner.addPoint(input, randomPayload(random, random.intRangeAtMost(u32, 0, 5)));
                 try model.append(std.testing.allocator, .{ .mark = owner.get(id).?.mark, .payload = owner.get(id).?.payload });
+                mutated = true;
             },
-            3 => if (model.items.len != 0) {
+            2 => if (model.items.len != 0) {
                 const index = random.intRangeLessThan(usize, 0, model.items.len);
                 try std.testing.expect(try owner.remove(model.items[index].mark.id()));
                 _ = model.swapRemove(index);
+                mutated = true;
             },
-            4 => {
+            3 => {
                 const start = random.intRangeAtMost(u32, 0, document_len);
                 const old_len = random.intRangeAtMost(u32, 0, document_len - start);
                 const new_len = random.intRangeAtMost(u32, 0, 8);
                 try owner.splice(start, old_len, new_len);
-                for (model.items) |*entry| switch (entry.mark) {
-                    .range => |*range| {
-                        range.start_byte = endpoint(range.start_byte, range.start_gravity, start, old_len, new_len);
-                        range.end_byte = endpoint(range.end_byte, range.end_gravity, start, old_len, new_len);
-                    },
-                    .point => |*point| point.byte = endpoint(point.byte, point.gravity, start, old_len, new_len),
-                };
+                applyModelSplice(&model, start, old_len, new_len);
                 document_len = document_len - old_len + new_len;
+                mutated = old_len != 0 or new_len != 0;
+            },
+            4 => {
+                const namespace = random.intRangeAtMost(u32, 0, 5);
+                var index: usize = 0;
+                var removed: usize = 0;
+                while (index < model.items.len) {
+                    if (model.items[index].payload.namespace == namespace) {
+                        _ = model.swapRemove(index);
+                        removed += 1;
+                    } else {
+                        index += 1;
+                    }
+                }
+                try std.testing.expectEqual(removed, try owner.clearNamespace(namespace));
+                mutated = removed != 0;
             },
             5 => if (model.items.len != 0) {
                 const index = random.intRangeLessThan(usize, 0, model.items.len);
-                const style = random.int(u32);
                 const id = model.items[index].mark.id();
-                try std.testing.expect(try owner.updateStyle(id, style));
+                const input = TextAnnotations.RangeInput{
+                    .start_byte = random.intRangeAtMost(u32, 0, document_len),
+                    .end_byte = random.intRangeAtMost(u32, 0, document_len),
+                    .start_gravity = if (random.boolean()) .left else .right,
+                    .end_gravity = if (random.boolean()) .left else .right,
+                };
+                switch (model.items[index].mark) {
+                    .range => {
+                        const replacement: Mark = .{ .range = .{
+                            .id = id,
+                            .start_byte = input.start_byte,
+                            .end_byte = input.end_byte,
+                            .start_gravity = input.start_gravity,
+                            .end_gravity = input.end_gravity,
+                        } };
+                        mutated = !std.meta.eql(model.items[index].mark, replacement);
+                        try std.testing.expect(try owner.updateRange(id, input));
+                        model.items[index].mark = replacement;
+                    },
+                    .point => try std.testing.expect(!try owner.updateRange(id, input)),
+                }
+            },
+            6 => if (model.items.len != 0) {
+                const index = random.intRangeLessThan(usize, 0, model.items.len);
+                const id = model.items[index].mark.id();
+                const input = TextAnnotations.PointInput{
+                    .byte = random.intRangeAtMost(u32, 0, document_len),
+                    .gravity = if (random.boolean()) .left else .right,
+                };
+                switch (model.items[index].mark) {
+                    .point => {
+                        const replacement: Mark = .{ .point = .{ .id = id, .byte = input.byte, .gravity = input.gravity } };
+                        mutated = !std.meta.eql(model.items[index].mark, replacement);
+                        try std.testing.expect(try owner.updatePoint(id, input));
+                        model.items[index].mark = replacement;
+                    },
+                    .range => try std.testing.expect(!try owner.updatePoint(id, input)),
+                }
+            },
+            7 => if (model.items.len != 0) {
+                const index = random.intRangeLessThan(usize, 0, model.items.len);
+                const input = randomPayload(random, random.intRangeAtMost(u32, 0, 5));
+                const replacement = modelPayload(input, model.items[index].payload.sequence);
+                mutated = !std.meta.eql(model.items[index].payload, replacement);
+                try std.testing.expect(try owner.updatePayload(model.items[index].mark.id(), input));
+                model.items[index].payload = replacement;
+            },
+            8 => {
+                const start = random.intRangeAtMost(u32, 0, document_len);
+                const len = random.intRangeAtMost(u32, 0, document_len - start);
+                const destination = random.intRangeAtMost(u32, 0, document_len - len);
+                try owner.moveRegion(start, len, destination);
+                applyModelMove(model.items, start, len, destination);
+                mutated = len != 0 and destination != start;
+            },
+            9 => if (model.items.len != 0) {
+                const index = random.intRangeLessThan(usize, 0, model.items.len);
+                const style = random.int(u32);
+                mutated = model.items[index].payload.style_id != style;
+                try std.testing.expect(try owner.updateStyle(model.items[index].mark.id(), style));
                 model.items[index].payload.style_id = style;
             },
             else => unreachable,
+        }
+        if (mutated) {
+            try std.testing.expectError(error.IteratorInvalidated, iterator.next());
+        } else {
+            _ = try iterator.next();
         }
         if (step % 37 == 0) try compareModel(&owner, model.items);
     }

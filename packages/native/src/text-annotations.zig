@@ -59,6 +59,8 @@ pub const TextAnnotations = struct {
     allocator: Allocator,
     tree: MarkTree,
     payloads: std.AutoHashMap(u64, Payload),
+    // Report storage is retained across ordinary edits. After deletions, a
+    // buffer above both 256 IDs and four times the remaining count is released.
     affected_scratch: std.ArrayList(u64) = .empty,
     covered_scratch: std.ArrayList(u64) = .empty,
     next_sequence: u64 = 1,
@@ -175,20 +177,29 @@ pub const TextAnnotations = struct {
     /// Removes a namespace atomically with respect to allocation and preflight errors.
     pub fn clearNamespace(self: *Self, namespace: u32) !usize {
         try self.checkCanMutate(0);
-        try self.affected_scratch.ensureTotalCapacity(self.allocator, self.count());
+        var match_count: usize = 0;
+        var count_iterator = self.payloads.valueIterator();
+        while (count_iterator.next()) |value| {
+            match_count += @intFromBool(value.namespace == namespace);
+        }
+        if (match_count == 0) return 0;
+
+        try self.checkTreeGenerations(match_count);
+        try self.affected_scratch.ensureTotalCapacity(self.allocator, match_count);
         self.affected_scratch.clearRetainingCapacity();
         var payload_iterator = self.payloads.iterator();
         while (payload_iterator.next()) |entry| {
             if (entry.value_ptr.namespace == namespace) self.affected_scratch.appendAssumeCapacity(entry.key_ptr.*);
         }
-        try self.checkTreeGenerations(self.affected_scratch.items.len);
 
         for (self.affected_scratch.items) |id| {
-            std.debug.assert(try self.tree.remove(id));
+            const removed = try self.tree.remove(id);
+            std.debug.assert(removed);
             _ = self.payloads.remove(id);
         }
-        if (self.affected_scratch.items.len != 0) self.finishMutation();
-        return self.affected_scratch.items.len;
+        self.finishMutation();
+        self.finishScratchUse(true);
+        return match_count;
     }
 
     pub fn clearOwner(self: *Self, owner: u32) !usize {
@@ -200,6 +211,8 @@ pub const TextAnnotations = struct {
         const scratch_len = if (old_len == 0) 0 else self.count();
         try self.affected_scratch.resize(self.allocator, scratch_len);
         try self.covered_scratch.resize(self.allocator, scratch_len);
+        var deleted_count: usize = 0;
+        defer self.finishScratchUse(deleted_count != 0);
         const generation_budget = if (old_len == 0 and new_len == 0)
             0
         else
@@ -215,16 +228,23 @@ pub const TextAnnotations = struct {
             self.covered_scratch.items,
         );
 
+        sortIds(report.affected_ids);
+        sortIds(report.covered_range_ids);
         var covered_index: usize = 0;
         for (report.affected_ids) |id| {
+            while (covered_index < report.covered_range_ids.len and report.covered_range_ids[covered_index] < id) {
+                covered_index += 1;
+            }
             const covered = covered_index < report.covered_range_ids.len and report.covered_range_ids[covered_index] == id;
             if (covered) covered_index += 1;
             const payload = self.payloads.get(id).?;
             const should_delete = payload.splice_policy == .invalidate or
                 (payload.splice_policy == .delete_when_covered and covered);
             if (should_delete) {
-                std.debug.assert(try self.tree.remove(id));
+                const removed = try self.tree.remove(id);
+                std.debug.assert(removed);
                 _ = self.payloads.remove(id);
+                deleted_count += 1;
             }
         }
         if (self.tree.generation != tree_generation) self.finishMutation();
@@ -350,6 +370,20 @@ pub const TextAnnotations = struct {
         self.generation += 1;
     }
 
+    fn finishScratchUse(self: *Self, destructive: bool) void {
+        self.affected_scratch.clearRetainingCapacity();
+        self.covered_scratch.clearRetainingCapacity();
+        if (!destructive) return;
+        self.trimScratch(&self.affected_scratch);
+        self.trimScratch(&self.covered_scratch);
+    }
+
+    fn trimScratch(self: *Self, scratch: *std.ArrayList(u64)) void {
+        const proportional_limit = std.math.mul(usize, self.count(), 4) catch std.math.maxInt(usize);
+        const retained_limit = @max(@as(usize, 256), proportional_limit);
+        if (scratch.capacity > retained_limit) scratch.clearAndFree(self.allocator);
+    }
+
     fn payloadFromInput(input: PayloadInput, sequence: u64) Payload {
         return .{
             .namespace = input.namespace,
@@ -367,6 +401,14 @@ pub const TextAnnotations = struct {
             fn lessThan(_: void, a: Annotation, b: Annotation) bool {
                 if (a.payload.priority != b.payload.priority) return a.payload.priority > b.payload.priority;
                 return a.payload.sequence < b.payload.sequence;
+            }
+        }.lessThan);
+    }
+
+    fn sortIds(ids: []u64) void {
+        std.mem.sort(u64, ids, {}, struct {
+            fn lessThan(_: void, a: u64, b: u64) bool {
+                return a < b;
             }
         }.lessThan);
     }

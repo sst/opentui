@@ -4,7 +4,7 @@ const TextAnnotations = @import("../text-annotations.zig").TextAnnotations;
 
 pub const benchName = "TextAnnotations Ownership";
 
-const iterations: usize = 8;
+const iterations: usize = 10;
 
 fn addResult(
     results: *std.ArrayList(bench_utils.BenchResult),
@@ -58,13 +58,20 @@ pub fn run(
                         .priority = @intCast(index % 16),
                     });
                 }
+                try annotations.validateIntegrity();
                 var counter: Counter = .{};
+                for (0..100) |query| {
+                    const start: u32 = @intCast((query * 397) % 390_000);
+                    try annotations.visitOverlapping(start, start + 80, &counter, Counter.visit);
+                }
+                counter = .{};
                 const timer = bench_utils.BenchTimer.start(io);
                 for (0..2_000) |query| {
                     const start: u32 = @intCast((query * 397) % 390_000);
                     try annotations.visitOverlapping(start, start + 80, &counter, Counter.visit);
                 }
                 stats.record(timer.read());
+                try annotations.validateIntegrity();
                 std.mem.doNotOptimizeAway(counter.count);
             }
             try addResult(&results, allocator, name, stats);
@@ -85,10 +92,38 @@ pub fn run(
                         .splice_policy = if (index % 3 == 0) .invalidate else .delete_when_covered,
                     });
                 }
+                try annotations.validateIntegrity();
                 const timer = bench_utils.BenchTimer.start(io);
                 try annotations.splice(20_000, 40_000, 2_000);
                 stats.record(timer.read());
+                try annotations.validateIntegrity();
                 std.mem.doNotOptimizeAway(annotations.count());
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
+
+    {
+        const name = "warm policy splice: 200 replacements across 50k payloads";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |iteration| {
+                var annotations = TextAnnotations.initWithSeed(allocator, 0x7300 + iteration);
+                defer annotations.deinit();
+                for (0..50_000) |index| {
+                    const start: u32 = @intCast(index * 2);
+                    _ = try annotations.addRange(.{ .start_byte = start, .end_byte = start + 20 }, .{
+                        .namespace = 1,
+                        .splice_policy = .retain,
+                    });
+                }
+                for (0..20) |_| try annotations.splice(40_000, 2_000, 2_000);
+                try annotations.validateIntegrity();
+                const timer = bench_utils.BenchTimer.start(io);
+                for (0..200) |_| try annotations.splice(40_000, 2_000, 2_000);
+                stats.record(timer.read());
+                try annotations.validateIntegrity();
+                std.mem.doNotOptimizeAway(annotations.positionGeneration());
             }
             try addResult(&results, allocator, name, stats);
         }
