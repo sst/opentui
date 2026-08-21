@@ -1,12 +1,24 @@
 const std = @import("std");
-const mark_tree = @import("../mark-tree.zig");
+const MarkTree = @import("../mark-tree.zig").MarkTree;
 
-const MarkTree = mark_tree.MarkTree;
 const Gravity = MarkTree.Gravity;
+const Mark = MarkTree.Mark;
+const Point = MarkTree.Point;
 const Range = MarkTree.Range;
 const RangeInput = MarkTree.RangeInput;
 
-fn expectRange(actual: ?Range, id: u64, start_byte: u32, end_byte: u32, start_gravity: Gravity, end_gravity: Gravity) !void {
+fn testTree() MarkTree {
+    return MarkTree.initWithSeed(std.testing.allocator, 0x6d61726b74726565);
+}
+
+fn expectRange(
+    actual: ?Range,
+    id: u64,
+    start_byte: u32,
+    end_byte: u32,
+    start_gravity: Gravity,
+    end_gravity: Gravity,
+) !void {
     try std.testing.expectEqualDeep(Range{
         .id = id,
         .start_byte = start_byte,
@@ -16,286 +28,394 @@ fn expectRange(actual: ?Range, id: u64, start_byte: u32, end_byte: u32, start_gr
     }, actual.?);
 }
 
-test "MarkTree add, normalize, update, remove, and stable IDs" {
-    var tree = MarkTree.init(std.testing.allocator);
+fn expectPoint(actual: ?Point, id: u64, byte: u32, gravity: Gravity) !void {
+    try std.testing.expectEqualDeep(Point{ .id = id, .byte = byte, .gravity = gravity }, actual.?);
+}
+
+test "MarkTree range and point CRUD preserves endpoint identity and stable IDs" {
+    var tree = testTree();
     defer tree.deinit();
 
-    const first = try tree.add(.{
-        .start_byte = 9,
-        .end_byte = 3,
-        .start_gravity = .right,
-        .end_gravity = .left,
-    });
-    const second = try tree.add(.{ .start_byte = 4, .end_byte = 4 });
+    const reversed = try tree.addRange(.{ .start_byte = 9, .end_byte = 3 });
+    const point = try tree.addPoint(.{ .byte = 4, .gravity = .left });
+    try std.testing.expectEqual(@as(u64, 1), reversed);
+    try std.testing.expectEqual(@as(u64, 2), point);
+    try expectRange(tree.getRange(reversed), reversed, 9, 3, .right, .left);
+    try expectPoint(tree.getPoint(point), point, 4, .left);
+    try std.testing.expectEqual(@as(?Point, null), tree.getPoint(reversed));
+    try std.testing.expectEqual(@as(?Range, null), tree.getRange(point));
 
-    try std.testing.expectEqual(@as(u64, 1), first);
-    try std.testing.expectEqual(@as(u64, 2), second);
-    try expectRange(tree.get(first), first, 3, 9, .left, .right);
-    try std.testing.expect(tree.update(first, .{
+    try std.testing.expect(try tree.updateRange(reversed, .{
         .start_byte = 20,
         .end_byte = 12,
         .start_gravity = .left,
         .end_gravity = .right,
     }));
-    try expectRange(tree.get(first), first, 12, 20, .right, .left);
-    try std.testing.expect(!tree.update(999, .{ .start_byte = 0, .end_byte = 0 }));
-    try std.testing.expect(tree.remove(second));
-    try std.testing.expect(!tree.remove(second));
-    try std.testing.expectEqual(@as(?Range, null), tree.get(second));
-
-    const third = try tree.add(.{ .start_byte = 1, .end_byte = 2 });
-    try std.testing.expectEqual(@as(u64, 3), third);
-    try std.testing.expectEqual(@as(usize, 2), tree.count());
+    try expectRange(tree.getRange(reversed), reversed, 20, 12, .left, .right);
+    try std.testing.expect(!try tree.updateRange(point, .{ .start_byte = 0, .end_byte = 0 }));
+    try std.testing.expect(try tree.updatePoint(point, .{ .byte = 7 }));
+    try expectPoint(tree.getPoint(point), point, 7, .right);
+    try std.testing.expect(try tree.remove(point));
+    try std.testing.expect(!try tree.remove(point));
+    const next = try tree.addRange(.{ .start_byte = 1, .end_byte = 2 });
+    try std.testing.expectEqual(@as(u64, 3), next);
     try tree.validateIntegrity();
 }
 
-test "MarkTree insertion honors every zero-length gravity combination" {
+/// Independent endpoint oracle: model a replacement as deleting `old_len`
+/// units from an endpoint's distance to the edit, then inserting `new_len`.
+/// Endpoints consumed by the deletion attach to one insertion side by gravity.
+fn oracleEndpoint(position: u32, gravity: Gravity, edit_start: u32, old_len: u32, new_len: u32) u32 {
+    if (position < edit_start) return position;
+    const distance = position - edit_start;
+    if (distance > old_len) return edit_start + distance - old_len + new_len;
+    const attachment: u32 = if (gravity == .right) new_len else 0;
+    return edit_start + attachment;
+}
+
+test "MarkTree splice matches fixed Neovim-compatible endpoint boundary matrix" {
+    const positions = [_]u32{ 9, 10, 12, 15, 16 };
     const gravities = [_]Gravity{ .left, .right };
-
-    for (gravities) |start_gravity| {
-        for (gravities) |end_gravity| {
-            var tree = MarkTree.init(std.testing.allocator);
-            defer tree.deinit();
-            const id = try tree.add(.{
-                .start_byte = 10,
-                .end_byte = 10,
-                .start_gravity = start_gravity,
-                .end_gravity = end_gravity,
-            });
-
-            try tree.splice(10, 0, 5);
-            const actual = tree.get(id).?;
-            const transformed_start: u32 = if (start_gravity == .left) 10 else 15;
-            const transformed_end: u32 = if (end_gravity == .left) 10 else 15;
-            try std.testing.expectEqual(@min(transformed_start, transformed_end), actual.start_byte);
-            try std.testing.expectEqual(@max(transformed_start, transformed_end), actual.end_byte);
-            try tree.validateIntegrity();
+    var tree = testTree();
+    defer tree.deinit();
+    var ids: [positions.len * gravities.len]u64 = undefined;
+    var index: usize = 0;
+    for (positions) |position| {
+        for (gravities) |gravity| {
+            ids[index] = try tree.addPoint(.{ .byte = position, .gravity = gravity });
+            index += 1;
         }
     }
-}
 
-test "MarkTree endpoint gravity, replacement boundaries, and suffix shifts" {
-    var tree = MarkTree.init(std.testing.allocator);
-    defer tree.deinit();
-
-    const before = try tree.add(.{ .start_byte = 1, .end_byte = 4 });
-    const crossing = try tree.add(.{
-        .start_byte = 3,
-        .end_byte = 8,
-        .end_gravity = .left,
-    });
-    const left_inside = try tree.add(.{
-        .start_byte = 5,
-        .end_byte = 6,
-        .start_gravity = .left,
-        .end_gravity = .left,
-    });
-    const right_inside = try tree.add(.{
-        .start_byte = 5,
-        .end_byte = 6,
-        .start_gravity = .right,
-        .end_gravity = .right,
-    });
-    const right_boundary = try tree.add(.{ .start_byte = 8, .end_byte = 10 });
-    const suffix = try tree.add(.{ .start_byte = 20, .end_byte = 30 });
-
-    try tree.splice(4, 4, 2);
-    try expectRange(tree.get(before), before, 1, 6, .left, .right);
-    try expectRange(tree.get(crossing), crossing, 3, 6, .left, .left);
-    try expectRange(tree.get(left_inside), left_inside, 4, 4, .left, .left);
-    try expectRange(tree.get(right_inside), right_inside, 6, 6, .right, .right);
-    try expectRange(tree.get(right_boundary), right_boundary, 6, 8, .left, .right);
-    try expectRange(tree.get(suffix), suffix, 18, 28, .left, .right);
-
-    try tree.splice(0, 0, 3);
-    try expectRange(tree.get(suffix), suffix, 21, 31, .left, .right);
-    try tree.splice(25, 4, 0);
-    try expectRange(tree.get(suffix), suffix, 21, 27, .left, .right);
+    try tree.splice(10, 5, 3);
+    index = 0;
+    for (positions) |position| {
+        for (gravities) |gravity| {
+            try expectPoint(tree.getPoint(ids[index]), ids[index], oracleEndpoint(position, gravity, 10, 5, 3), gravity);
+            index += 1;
+        }
+    }
     try tree.validateIntegrity();
 }
 
-const CollectContext = struct {
+test "MarkTree mixed-gravity empty range crosses without swapping semantics" {
+    var tree = testTree();
+    defer tree.deinit();
+    const default_range = try tree.addRange(.{ .start_byte = 10, .end_byte = 10 });
+    const opposite = try tree.addRange(.{
+        .start_byte = 10,
+        .end_byte = 10,
+        .start_gravity = .left,
+        .end_gravity = .right,
+    });
+
+    try tree.splice(10, 0, 5);
+    try expectRange(tree.getRange(default_range), default_range, 15, 10, .right, .left);
+    try expectRange(tree.getRange(opposite), opposite, 10, 15, .left, .right);
+    try tree.validateIntegrity();
+}
+
+const RangeCollector = struct {
     allocator: std.mem.Allocator,
     ranges: *std.ArrayList(Range),
 
-    fn visit(self: *CollectContext, range: Range) !void {
+    fn visit(self: *RangeCollector, range: Range) !void {
         try self.ranges.append(self.allocator, range);
     }
 };
 
-test "MarkTree overlap query is half-open and ordered" {
-    var tree = MarkTree.init(std.testing.allocator);
+const PointCollector = struct {
+    allocator: std.mem.Allocator,
+    points: *std.ArrayList(Point),
+
+    fn visit(self: *PointCollector, point: Point) !void {
+        try self.points.append(self.allocator, point);
+    }
+};
+
+test "MarkTree overlap excludes reversed ranges and points while start and point queries find them" {
+    var tree = testTree();
     defer tree.deinit();
+    const forward = try tree.addRange(.{ .start_byte = 5, .end_byte = 10 });
+    const reversed = try tree.addRange(.{ .start_byte = 10, .end_byte = 5 });
+    const empty = try tree.addRange(.{ .start_byte = 7, .end_byte = 7 });
+    const point = try tree.addPoint(.{ .byte = 7 });
 
-    const a = try tree.add(.{ .start_byte = 0, .end_byte = 5 });
-    _ = try tree.add(.{ .start_byte = 5, .end_byte = 5 });
-    const c = try tree.add(.{ .start_byte = 5, .end_byte = 10 });
-    const d = try tree.add(.{ .start_byte = 7, .end_byte = 12 });
-    _ = try tree.add(.{ .start_byte = 12, .end_byte = 15 });
+    var ranges: std.ArrayList(Range) = .empty;
+    defer ranges.deinit(std.testing.allocator);
+    var range_collector = RangeCollector{ .allocator = std.testing.allocator, .ranges = &ranges };
+    try tree.visitOverlapping(6, 8, &range_collector, RangeCollector.visit);
+    try std.testing.expectEqual(@as(usize, 1), ranges.items.len);
+    try std.testing.expectEqual(forward, ranges.items[0].id);
 
-    var found: std.ArrayList(Range) = .empty;
-    defer found.deinit(std.testing.allocator);
-    var context = CollectContext{ .allocator = std.testing.allocator, .ranges = &found };
-    try tree.visitOverlapping(5, 8, &context, CollectContext.visit);
-    try std.testing.expectEqual(@as(usize, 2), found.items.len);
-    try std.testing.expectEqual(c, found.items[0].id);
-    try std.testing.expectEqual(d, found.items[1].id);
+    ranges.clearRetainingCapacity();
+    try tree.visitStartingAt(10, &range_collector, RangeCollector.visit);
+    try std.testing.expectEqual(@as(usize, 1), ranges.items.len);
+    try std.testing.expectEqual(reversed, ranges.items[0].id);
+    ranges.clearRetainingCapacity();
+    try tree.visitStartingAt(7, &range_collector, RangeCollector.visit);
+    try std.testing.expectEqual(empty, ranges.items[0].id);
 
-    found.clearRetainingCapacity();
-    try tree.visitOverlapping(5, 0, &context, CollectContext.visit);
-    try std.testing.expectEqual(@as(usize, 1), found.items.len);
-    try std.testing.expectEqual(a, found.items[0].id);
-
-    found.clearRetainingCapacity();
-    try tree.visitOverlapping(7, 7, &context, CollectContext.visit);
-    try std.testing.expectEqual(@as(usize, 0), found.items.len);
+    var points: std.ArrayList(Point) = .empty;
+    defer points.deinit(std.testing.allocator);
+    var point_collector = PointCollector{ .allocator = std.testing.allocator, .points = &points };
+    try tree.visitPointsAt(7, &point_collector, PointCollector.visit);
+    try std.testing.expectEqual(@as(usize, 1), points.items.len);
+    try std.testing.expectEqual(point, points.items[0].id);
     try tree.validateIntegrity();
 }
 
-test "MarkTree iteration has deterministic start then ID order after edits" {
-    var tree = MarkTree.init(std.testing.allocator);
-    defer tree.deinit();
+fn sortU64(values: []u64) void {
+    std.mem.sort(u64, values, {}, std.sort.asc(u64));
+}
 
-    const first = try tree.add(.{ .start_byte = 9, .end_byte = 12 });
-    const second = try tree.add(.{ .start_byte = 2, .end_byte = 50 });
-    const third = try tree.add(.{ .start_byte = 9, .end_byte = 10 });
-    const fourth = try tree.add(.{ .start_byte = 3, .end_byte = 4 });
-    try tree.splice(3, 6, 0);
+test "MarkTree deletion report distinguishes exact whole partial and boundary marks" {
+    var tree = testTree();
+    defer tree.deinit();
+    const exact = try tree.addRange(.{ .start_byte = 10, .end_byte = 20 });
+    const whole = try tree.addRange(.{ .start_byte = 12, .end_byte = 18 });
+    const partial_left = try tree.addRange(.{ .start_byte = 5, .end_byte = 15 });
+    const partial_right = try tree.addRange(.{ .start_byte = 15, .end_byte = 25 });
+    const surrounding = try tree.addRange(.{ .start_byte = 5, .end_byte = 25 });
+    const outside = try tree.addRange(.{ .start_byte = 21, .end_byte = 30 });
+    const starts_at_old_end = try tree.addRange(.{ .start_byte = 20, .end_byte = 25 });
+    const old_end_point = try tree.addPoint(.{ .byte = 20, .gravity = .left });
+
+    var affected_buffer: [16]u64 = undefined;
+    var covered_buffer: [16]u64 = undefined;
+    const report = try tree.spliceWithReport(10, 10, 2, &affected_buffer, &covered_buffer);
+    sortU64(report.affected_ids);
+    sortU64(report.covered_range_ids);
+    var expected_affected = [_]u64{
+        exact,
+        whole,
+        partial_left,
+        partial_right,
+        surrounding,
+        starts_at_old_end,
+        old_end_point,
+    };
+    var expected_covered = [_]u64{ exact, whole };
+    sortU64(&expected_affected);
+    sortU64(&expected_covered);
+    try std.testing.expectEqualSlices(u64, &expected_affected, report.affected_ids);
+    try std.testing.expectEqualSlices(u64, &expected_covered, report.covered_range_ids);
+    try std.testing.expect(tree.getRange(outside) != null);
+    try expectRange(tree.getRange(starts_at_old_end), starts_at_old_end, 12, 17, .right, .left);
+    try expectPoint(tree.getPoint(old_end_point), old_end_point, 10, .left);
+    try tree.validateIntegrity();
+}
+
+test "MarkTree report capacity and position overflow reject splice atomically" {
+    var tree = testTree();
+    defer tree.deinit();
+    const covered = try tree.addRange(.{ .start_byte = 10, .end_byte = 20 });
+    const high = try tree.addPoint(.{ .byte = std.math.maxInt(u32), .gravity = .right });
+    const original_covered = tree.getRange(covered);
+    const original_high = tree.getPoint(high);
+    var no_ids: [0]u64 = .{};
+    try std.testing.expectError(error.ReportBufferTooSmall, tree.spliceWithReport(10, 10, 0, &no_ids, &no_ids));
+    try std.testing.expectEqualDeep(original_covered, tree.getRange(covered));
+    try std.testing.expectError(error.PositionOverflow, tree.splice(0, 0, 1));
+    try std.testing.expectEqualDeep(original_high, tree.getPoint(high));
+    try std.testing.expectError(error.PositionOverflow, tree.splice(std.math.maxInt(u32), 1, 0));
+    try tree.validateIntegrity();
+}
+
+test "MarkTree moveRegion preserves IDs and annotations inside moved text" {
+    var tree = testTree();
+    defer tree.deinit();
+    const annotation = try tree.addRange(.{ .start_byte = 12, .end_byte = 18 });
+    const exact = try tree.addRange(.{ .start_byte = 10, .end_byte = 20 });
+    const inside_point = try tree.addPoint(.{ .byte = 14, .gravity = .left });
+    const source_left = try tree.addPoint(.{ .byte = 10, .gravity = .left });
+    const source_right = try tree.addPoint(.{ .byte = 10, .gravity = .right });
+    const end_right = try tree.addPoint(.{ .byte = 20, .gravity = .right });
+    const after = try tree.addPoint(.{ .byte = 25 });
+
+    try tree.moveRegion(10, 10, 30);
+    try expectRange(tree.getRange(annotation), annotation, 32, 38, .right, .left);
+    try expectRange(tree.getRange(exact), exact, 30, 40, .right, .left);
+    try expectPoint(tree.getPoint(inside_point), inside_point, 34, .left);
+    try expectPoint(tree.getPoint(source_right), source_right, 30, .right);
+    try expectPoint(tree.getPoint(source_left), source_left, 10, .left);
+    try expectPoint(tree.getPoint(end_right), end_right, 10, .right);
+    try expectPoint(tree.getPoint(after), after, 15, .right);
+    try tree.validateIntegrity();
+}
+
+const MutationVisitor = struct {
+    tree: *MarkTree,
+    attempted: bool = false,
+
+    fn visit(self: *MutationVisitor, range: Range) !void {
+        self.attempted = true;
+        try std.testing.expectError(error.MutationDuringVisit, self.tree.remove(range.id));
+    }
+};
+
+test "MarkTree visitors reject mutation and iterators detect generation changes before dereference" {
+    var tree = testTree();
+    defer tree.deinit();
+    const first = try tree.addRange(.{ .start_byte = 0, .end_byte = 10 });
+    _ = try tree.addRange(.{ .start_byte = 20, .end_byte = 30 });
+    var context = MutationVisitor{ .tree = &tree };
+    try tree.visitOverlapping(2, 3, &context, MutationVisitor.visit);
+    try std.testing.expect(context.attempted);
+    try std.testing.expect(tree.getRange(first) != null);
 
     var iterator = tree.iterator();
-    try std.testing.expectEqual(second, iterator.next().?.id);
-    try std.testing.expectEqual(first, iterator.next().?.id);
-    try std.testing.expectEqual(third, iterator.next().?.id);
-    try std.testing.expectEqual(fourth, iterator.next().?.id);
-    try std.testing.expectEqual(@as(?Range, null), iterator.next());
+    _ = (try iterator.next()).?;
+    try tree.splice(0, 0, 1);
+    try std.testing.expectError(error.IteratorInvalidated, iterator.next());
     try tree.validateIntegrity();
 }
 
-test "MarkTree splice overflow is rejected without mutation" {
-    var tree = MarkTree.init(std.testing.allocator);
-    defer tree.deinit();
-
-    const id = try tree.add(.{ .start_byte = std.math.maxInt(u32) - 2, .end_byte = std.math.maxInt(u32) });
-    const original = tree.get(id);
-    try std.testing.expectError(error.PositionOverflow, tree.splice(std.math.maxInt(u32), 1, 0));
-    try std.testing.expectError(error.PositionOverflow, tree.splice(0, 0, 1));
-    try std.testing.expectEqualDeep(original, tree.get(id));
-    try tree.validateIntegrity();
-}
-
-const Shadow = struct {
+const Oracle = struct {
     allocator: std.mem.Allocator,
-    ranges: std.ArrayList(Range) = .empty,
+    marks: std.ArrayList(Mark) = .empty,
     next_id: u64 = 1,
 
-    fn deinit(self: *Shadow) void {
-        self.ranges.deinit(self.allocator);
+    fn deinit(self: *Oracle) void {
+        self.marks.deinit(self.allocator);
     }
 
-    fn normalize(id: u64, input: RangeInput) Range {
-        if (input.start_byte <= input.end_byte) return .{
+    fn addRange(self: *Oracle, input: RangeInput) !u64 {
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.marks.append(self.allocator, .{ .range = .{
             .id = id,
             .start_byte = input.start_byte,
             .end_byte = input.end_byte,
             .start_gravity = input.start_gravity,
             .end_gravity = input.end_gravity,
-        };
-        return .{
-            .id = id,
-            .start_byte = input.end_byte,
-            .end_byte = input.start_byte,
-            .start_gravity = input.end_gravity,
-            .end_gravity = input.start_gravity,
-        };
-    }
-
-    fn add(self: *Shadow, input: RangeInput) !u64 {
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.ranges.append(self.allocator, normalize(id, input));
+        } });
         return id;
     }
 
-    fn indexOf(self: *const Shadow, id: u64) ?usize {
-        for (self.ranges.items, 0..) |range, index| {
-            if (range.id == id) return index;
-        }
+    fn addPoint(self: *Oracle, byte: u32, gravity: Gravity) !u64 {
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.marks.append(self.allocator, .{ .point = .{ .id = id, .byte = byte, .gravity = gravity } });
+        return id;
+    }
+
+    fn indexOf(self: *const Oracle, id: u64) ?usize {
+        for (self.marks.items, 0..) |mark, index| if (mark.id() == id) return index;
         return null;
     }
 
-    fn get(self: *const Shadow, id: u64) ?Range {
-        const index = self.indexOf(id) orelse return null;
-        return self.ranges.items[index];
-    }
-
-    fn remove(self: *Shadow, id: u64) bool {
+    fn remove(self: *Oracle, id: u64) bool {
         const index = self.indexOf(id) orelse return false;
-        _ = self.ranges.swapRemove(index);
+        _ = self.marks.swapRemove(index);
         return true;
     }
 
-    fn update(self: *Shadow, id: u64, input: RangeInput) bool {
-        const index = self.indexOf(id) orelse return false;
-        self.ranges.items[index] = normalize(id, input);
-        return true;
-    }
-
-    fn position(position_byte: u32, gravity: Gravity, start_byte: u32, old_end: u32, new_end: u32, old_len: u32) u32 {
-        if (position_byte < start_byte) return position_byte;
-        if (position_byte > old_end) {
-            return @intCast(@as(i64, position_byte) + @as(i64, new_end) - @as(i64, old_end));
+    fn splice(self: *Oracle, start_byte: u32, old_len: u32, new_len: u32) void {
+        for (self.marks.items) |*mark| {
+            switch (mark.*) {
+                .range => |*range| {
+                    range.start_byte = oracleEndpoint(range.start_byte, range.start_gravity, start_byte, old_len, new_len);
+                    range.end_byte = oracleEndpoint(range.end_byte, range.end_gravity, start_byte, old_len, new_len);
+                },
+                .point => |*point| {
+                    point.byte = oracleEndpoint(point.byte, point.gravity, start_byte, old_len, new_len);
+                },
+            }
         }
-        if (old_len != 0 and position_byte == old_end) return new_end;
-        return if (gravity == .left) start_byte else new_end;
     }
 
-    fn splice(self: *Shadow, start_byte: u32, old_len: u32, new_len: u32) void {
-        const old_end = start_byte + old_len;
-        const new_end = start_byte + new_len;
-        for (self.ranges.items) |*range| {
-            const transformed = RangeInput{
-                .start_byte = position(range.start_byte, range.start_gravity, start_byte, old_end, new_end, old_len),
-                .end_byte = position(range.end_byte, range.end_gravity, start_byte, old_end, new_end, old_len),
-                .start_gravity = range.start_gravity,
-                .end_gravity = range.end_gravity,
-            };
-            range.* = normalize(range.id, transformed);
+    fn movedEndpoint(position: u32, gravity: Gravity, start: u32, len: u32, destination: u32) u32 {
+        const end = start + len;
+        const captured = (position > start and position < end) or
+            (position == start and gravity == .right) or
+            (position == end and gravity == .left);
+        if (captured) return destination + position - start;
+        const removed = oracleEndpoint(position, gravity, start, len, 0);
+        return oracleEndpoint(removed, gravity, destination, 0, len);
+    }
+
+    fn moveRegion(self: *Oracle, start: u32, len: u32, destination: u32) void {
+        if (len == 0) return;
+        for (self.marks.items) |*mark| {
+            switch (mark.*) {
+                .range => |*range| {
+                    range.start_byte = movedEndpoint(range.start_byte, range.start_gravity, start, len, destination);
+                    range.end_byte = movedEndpoint(range.end_byte, range.end_gravity, start, len, destination);
+                },
+                .point => |*point| point.byte = movedEndpoint(point.byte, point.gravity, start, len, destination),
+            }
         }
     }
 };
 
-fn rangeLess(_: void, a: Range, b: Range) bool {
-    return a.start_byte < b.start_byte or (a.start_byte == b.start_byte and a.id < b.id);
+fn markLower(mark: Mark) u32 {
+    return switch (mark) {
+        .range => |range| @min(range.start_byte, range.end_byte),
+        .point => |point| point.byte,
+    };
 }
 
-fn compareTreeAndShadow(tree: *MarkTree, shadow: *const Shadow) !void {
-    try std.testing.expectEqual(shadow.ranges.items.len, tree.count());
-    for (shadow.ranges.items) |expected| {
-        try std.testing.expectEqualDeep(expected, tree.get(expected.id).?);
+fn markLess(_: void, a: Mark, b: Mark) bool {
+    return markLower(a) < markLower(b) or (markLower(a) == markLower(b) and a.id() < b.id());
+}
+
+fn rangeLess(_: void, a: Range, b: Range) bool {
+    const lower_a = @min(a.start_byte, a.end_byte);
+    const lower_b = @min(b.start_byte, b.end_byte);
+    return lower_a < lower_b or (lower_a == lower_b and a.id < b.id);
+}
+
+fn compareTreeAndOracle(tree: *MarkTree, oracle: *const Oracle) !void {
+    try std.testing.expectEqual(oracle.marks.items.len, tree.count());
+    for (oracle.marks.items) |expected| {
+        const actual = tree.get(expected.id()).?;
+        try std.testing.expectEqualDeep(expected, actual);
     }
 
-    const expected = try std.testing.allocator.dupe(Range, shadow.ranges.items);
+    const expected = try std.testing.allocator.dupe(Mark, oracle.marks.items);
     defer std.testing.allocator.free(expected);
-    std.mem.sort(Range, expected, {}, rangeLess);
+    std.mem.sort(Mark, expected, {}, markLess);
     var iterator = tree.iterator();
-    for (expected) |range| {
-        try std.testing.expectEqualDeep(range, iterator.next().?);
-    }
-    try std.testing.expectEqual(@as(?Range, null), iterator.next());
+    for (expected) |mark| try std.testing.expectEqualDeep(mark, (try iterator.next()).?);
+    try std.testing.expectEqual(@as(?Mark, null), try iterator.next());
     try tree.validateIntegrity();
 }
 
-test "MarkTree randomized differential shadow model" {
-    var tree = MarkTree.init(std.testing.allocator);
+fn compareOverlap(tree: *MarkTree, oracle: *const Oracle, first: u32, second: u32) !void {
+    try tree.validateIntegrity();
+    var actual: std.ArrayList(Range) = .empty;
+    defer actual.deinit(std.testing.allocator);
+    var collector = RangeCollector{ .allocator = std.testing.allocator, .ranges = &actual };
+    try tree.visitOverlapping(first, second, &collector, RangeCollector.visit);
+
+    var expected: std.ArrayList(Range) = .empty;
+    defer expected.deinit(std.testing.allocator);
+    const start = @min(first, second);
+    const end = @max(first, second);
+    if (start != end) {
+        for (oracle.marks.items) |mark| switch (mark) {
+            .range => |range| if (range.start_byte < range.end_byte and range.start_byte < end and range.end_byte > start) {
+                try expected.append(std.testing.allocator, range);
+            },
+            .point => {},
+        };
+    }
+    std.mem.sort(Range, expected.items, {}, rangeLess);
+    try std.testing.expectEqualDeep(expected.items, actual.items);
+}
+
+test "MarkTree randomized differential endpoint overlap iteration point and move model" {
+    var tree = testTree();
     defer tree.deinit();
-    var shadow = Shadow{ .allocator = std.testing.allocator };
-    defer shadow.deinit();
+    var oracle = Oracle{ .allocator = std.testing.allocator };
+    defer oracle.deinit();
     var document_len: u32 = 200;
-    var prng = std.Random.DefaultPrng.init(0x6d61726b74726565);
+    var prng = std.Random.DefaultPrng.init(0x4f7261636c654d54);
     const random = prng.random();
 
-    for (0..5000) |step| {
-        const operation = random.intRangeAtMost(u8, 0, 5);
+    for (0..6000) |step| {
+        const operation = random.intRangeAtMost(u8, 0, 6);
         switch (operation) {
             0, 1 => {
                 const input = RangeInput{
@@ -304,76 +424,57 @@ test "MarkTree randomized differential shadow model" {
                     .start_gravity = if (random.boolean()) .left else .right,
                     .end_gravity = if (random.boolean()) .left else .right,
                 };
-                try std.testing.expectEqual(try shadow.add(input), try tree.add(input));
+                try std.testing.expectEqual(try oracle.addRange(input), try tree.addRange(input));
             },
-            2 => if (shadow.ranges.items.len != 0) {
-                const index = random.intRangeLessThan(usize, 0, shadow.ranges.items.len);
-                const id = shadow.ranges.items[index].id;
-                try std.testing.expectEqual(shadow.remove(id), tree.remove(id));
+            2 => {
+                const byte = random.intRangeAtMost(u32, 0, document_len);
+                const gravity: Gravity = if (random.boolean()) .left else .right;
+                try std.testing.expectEqual(try oracle.addPoint(byte, gravity), try tree.addPoint(.{ .byte = byte, .gravity = gravity }));
             },
-            3 => if (shadow.ranges.items.len != 0) {
-                const index = random.intRangeLessThan(usize, 0, shadow.ranges.items.len);
-                const id = shadow.ranges.items[index].id;
-                const input = RangeInput{
-                    .start_byte = random.intRangeAtMost(u32, 0, document_len),
-                    .end_byte = random.intRangeAtMost(u32, 0, document_len),
-                    .start_gravity = if (random.boolean()) .left else .right,
-                    .end_gravity = if (random.boolean()) .left else .right,
-                };
-                try std.testing.expectEqual(shadow.update(id, input), tree.update(id, input));
+            3 => if (oracle.marks.items.len != 0) {
+                const index = random.intRangeLessThan(usize, 0, oracle.marks.items.len);
+                const id = oracle.marks.items[index].id();
+                try std.testing.expectEqual(oracle.remove(id), try tree.remove(id));
             },
             4 => {
-                const start_byte = random.intRangeAtMost(u32, 0, document_len);
-                const old_len = random.intRangeAtMost(u32, 0, document_len - start_byte);
-                const new_len = random.intRangeAtMost(u32, 0, 24);
-                shadow.splice(start_byte, old_len, new_len);
-                try tree.splice(start_byte, old_len, new_len);
+                const start = random.intRangeAtMost(u32, 0, document_len);
+                const old_len = random.intRangeAtMost(u32, 0, document_len - start);
+                const new_len = random.intRangeAtMost(u32, 0, 20);
+                oracle.splice(start, old_len, new_len);
+                try tree.splice(start, old_len, new_len);
                 document_len = document_len - old_len + new_len;
             },
             5 => {
                 const first = random.intRangeAtMost(u32, 0, document_len);
                 const second = random.intRangeAtMost(u32, 0, document_len);
-                const query_start = @min(first, second);
-                const query_end = @max(first, second);
-                var actual: std.ArrayList(Range) = .empty;
-                defer actual.deinit(std.testing.allocator);
-                var context = CollectContext{ .allocator = std.testing.allocator, .ranges = &actual };
-                try tree.visitOverlapping(first, second, &context, CollectContext.visit);
-
-                var expected: std.ArrayList(Range) = .empty;
-                defer expected.deinit(std.testing.allocator);
-                if (query_start != query_end) {
-                    for (shadow.ranges.items) |range| {
-                        if (range.start_byte < query_end and range.end_byte > query_start) {
-                            try expected.append(std.testing.allocator, range);
-                        }
-                    }
-                }
-                std.mem.sort(Range, expected.items, {}, rangeLess);
-                try std.testing.expectEqualDeep(expected.items, actual.items);
+                try compareOverlap(&tree, &oracle, first, second);
+            },
+            6 => if (document_len != 0) {
+                const start = random.intRangeAtMost(u32, 0, document_len);
+                const len = random.intRangeAtMost(u32, 0, document_len - start);
+                const destination = random.intRangeAtMost(u32, 0, document_len - len);
+                oracle.moveRegion(start, len, destination);
+                try tree.moveRegion(start, len, destination);
             },
             else => unreachable,
         }
-
-        if (step % 37 == 0) try compareTreeAndShadow(&tree, &shadow);
+        if (step % 41 == 0) try compareTreeAndOracle(&tree, &oracle);
     }
-    try compareTreeAndShadow(&tree, &shadow);
+    try compareTreeAndOracle(&tree, &oracle);
 }
 
-test "MarkTree stress many ranges and repeated suffix edits" {
-    var tree = MarkTree.init(std.testing.allocator);
+test "MarkTree randomized priorities handle dense sequential insertion and suffix edits" {
+    var tree = testTree();
     defer tree.deinit();
-
     var tracked_id: u64 = 0;
     for (0..20_000) |index| {
         const start_byte: u32 = @intCast(index * 8);
-        const id = try tree.add(.{ .start_byte = start_byte, .end_byte = start_byte + 4 });
-        if (index == 19_999) tracked_id = id;
+        tracked_id = try tree.addRange(.{ .start_byte = start_byte, .end_byte = start_byte + 4 });
     }
-    for (0..2_000) |_| try tree.splice(1, 0, 1);
-
-    try expectRange(tree.get(tracked_id), tracked_id, 161_992, 161_996, .left, .right);
-    try std.testing.expect(tree.remove(10_000));
-    try std.testing.expect(tree.update(15_000, .{ .start_byte = 0, .end_byte = 0 }));
+    for (0..2_000) |_| {
+        try tree.splice(1, 0, 1);
+        try tree.splice(1, 1, 0);
+    }
+    try expectRange(tree.getRange(tracked_id), tracked_id, 159_992, 159_996, .right, .left);
     try tree.validateIntegrity();
 }
