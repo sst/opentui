@@ -1099,8 +1099,8 @@ describe("Textarea - Selection Tests", () => {
       expect(codeText2.hasSelection()).toBe(true)
       const codeText2Selected = codeText2.getSelectedText()
       const codeText2Content = "  const selected = getText()"
-      // Inclusive selection: the cell under the pointer (15) is selected too.
-      expect(codeText2Selected).toBe(codeText2Content.substring(0, 16))
+      // The below-left anchor clamps to the text end, so selection runs back to the focus.
+      expect(codeText2Selected).toBe(codeText2Content.substring(15))
 
       bottomText.destroy()
       rightBox.destroy()
