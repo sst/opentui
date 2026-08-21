@@ -25,13 +25,16 @@ pub const WrapMode = enum {
     word,
 };
 
-pub const ChunkFitResult = struct {
-    char_count: u32,
-    width: u32,
-};
-
 pub const GraphemeInfo = utf8.GraphemeInfo;
 pub const ChunkLayoutInfo = utf8.ChunkLayoutInfo;
+
+const CachedMeasure = struct {
+    wrap_width: u32,
+    first_width: u32,
+    tab_width: u8,
+    width_method: utf8.WidthMethod,
+    result: WordMeasureSummary,
+};
 
 pub const TextChunkColdState = struct {
     graphemes: ?[]GraphemeInfo = null,
@@ -42,14 +45,8 @@ pub const TextChunkColdState = struct {
     wrap_breaks_capacity: usize = 0,
     wrap_breaks_tab_width: ?u8 = null,
     wrap_breaks_width_method: ?utf8.WidthMethod = null,
-    first_word_class: utf8.WordClass = .other,
-    last_word_class: utf8.WordClass = .other,
-    measure_word_wrap_width: ?u32 = null,
-    measure_word_first_width: u32 = 0,
-    measure_word_tab_width: u8 = 0,
-    measure_word_width_method: utf8.WidthMethod = .unicode,
-    measure_word_line_count: u32 = 0,
-    measure_word_width_max: u32 = 0,
+    word_classes: utf8.WordClassEdges = .{ .first = .other, .last = .other },
+    measure_word: ?CachedMeasure = null,
 };
 
 pub const WordMeasureSummary = struct {
@@ -100,10 +97,6 @@ pub const TextChunk = struct {
         return cold;
     }
 
-    pub fn resetCaches(self: *TextChunk) void {
-        self.cold = null;
-    }
-
     pub fn getCachedLayoutInfo(
         self: *const TextChunk,
         tabwidth: u8,
@@ -114,8 +107,7 @@ pub const TextChunk = struct {
         if (cold.wrap_breaks_tab_width != tabwidth or cold.wrap_breaks_width_method != width_method) return null;
         return .{
             .wrap_breaks = cached,
-            .first_word_class = cold.first_word_class,
-            .last_word_class = cold.last_word_class,
+            .word_classes = cold.word_classes,
         };
     }
 
@@ -127,11 +119,12 @@ pub const TextChunk = struct {
         width_method: utf8.WidthMethod,
     ) ?WordMeasureSummary {
         const cold = self.cold orelse return null;
-        if (cold.measure_word_wrap_width != wrap_width or
-            cold.measure_word_first_width != first_width or
-            cold.measure_word_tab_width != tab_width or
-            cold.measure_word_width_method != width_method) return null;
-        return .{ .line_count = cold.measure_word_line_count, .width_max = cold.measure_word_width_max };
+        const cached = cold.measure_word orelse return null;
+        if (cached.wrap_width != wrap_width or
+            cached.first_width != first_width or
+            cached.tab_width != tab_width or
+            cached.width_method != width_method) return null;
+        return cached.result;
     }
 
     pub fn setWordMeasureSummary(
@@ -144,12 +137,13 @@ pub const TextChunk = struct {
         summary: WordMeasureSummary,
     ) TextBufferError!void {
         const cold = try self.getOrCreateCold(allocator);
-        cold.measure_word_wrap_width = wrap_width;
-        cold.measure_word_first_width = first_width;
-        cold.measure_word_tab_width = tab_width;
-        cold.measure_word_width_method = width_method;
-        cold.measure_word_line_count = summary.line_count;
-        cold.measure_word_width_max = summary.width_max;
+        cold.measure_word = .{
+            .wrap_width = wrap_width,
+            .first_width = first_width,
+            .tab_width = tab_width,
+            .width_method = width_method,
+            .result = summary,
+        };
     }
 
     /// Lazily compute and cache grapheme info for this chunk
@@ -211,8 +205,7 @@ pub const TextChunk = struct {
             if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method) {
                 return .{
                     .wrap_breaks = cached,
-                    .first_word_class = cold.first_word_class,
-                    .last_word_class = cold.last_word_class,
+                    .word_classes = cold.word_classes,
                 };
             }
 
@@ -233,12 +226,10 @@ pub const TextChunk = struct {
                 cold.wrap_breaks = reusable.items;
                 cold.wrap_breaks_capacity = reusable.capacity;
                 cold.wrap_breaks_tab_width = tabwidth;
-                cold.first_word_class = word_classes.first;
-                cold.last_word_class = word_classes.last;
+                cold.word_classes = word_classes;
                 return .{
                     .wrap_breaks = reusable.items,
-                    .first_word_class = word_classes.first,
-                    .last_word_class = word_classes.last,
+                    .word_classes = word_classes,
                 };
             }
         }
@@ -254,13 +245,11 @@ pub const TextChunk = struct {
         cold.wrap_breaks_capacity = wrap_breaks.capacity;
         cold.wrap_breaks_tab_width = tabwidth;
         cold.wrap_breaks_width_method = width_method;
-        cold.first_word_class = word_classes.first;
-        cold.last_word_class = word_classes.last;
+        cold.word_classes = word_classes;
 
         return .{
             .wrap_breaks = cached,
-            .first_word_class = word_classes.first,
-            .last_word_class = word_classes.last,
+            .word_classes = word_classes,
         };
     }
 };

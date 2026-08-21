@@ -291,81 +291,6 @@ fn benchFindLineBreaks(
     return results.toOwnedSlice(results_alloc);
 }
 
-// Benchmark findWrapBreaks
-fn benchFindWrapBreaks(
-    io: std.Io,
-    results_alloc: std.mem.Allocator,
-    iterations: usize,
-    bench_filter: ?[]const u8,
-) ![]BenchResult {
-    var results: std.ArrayList(BenchResult) = .empty;
-    errdefer results.deinit(results_alloc);
-
-    // ASCII text
-    {
-        const name = "findWrapBreaks: ASCII (10KB)";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer temp.deinit();
-            const alloc = temp.allocator();
-            const text = try generateAsciiText(alloc, 10 * 1024);
-
-            var wrap_result = utf8.WrapBreakResult.init(alloc);
-            defer wrap_result.deinit();
-
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-                stats.record(timer.read());
-            }
-
-            try results.append(results_alloc, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-        }
-    }
-
-    // Mixed text
-    {
-        const name = "findWrapBreaks: Mixed (10KB)";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer temp.deinit();
-            const alloc = temp.allocator();
-            const text = try generateMixedText(alloc, 10 * 1024);
-
-            var wrap_result = utf8.WrapBreakResult.init(alloc);
-            defer wrap_result.deinit();
-
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-                stats.record(timer.read());
-            }
-
-            try results.append(results_alloc, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-        }
-    }
-
-    return results.toOwnedSlice(results_alloc);
-}
-
 // Benchmark findWrapPosByWidth
 fn benchFindWrapPosByWidth(
     io: std.Io,
@@ -785,10 +710,6 @@ pub fn run(
     // findLineBreaks benchmarks
     const line_breaks_results = try benchFindLineBreaks(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, line_breaks_results);
-
-    // findWrapBreaks benchmarks
-    const wrap_breaks_results = try benchFindWrapBreaks(io, allocator, iterations, bench_filter);
-    try all_results.appendSlice(allocator, wrap_breaks_results);
 
     // findWrapPosByWidth benchmarks
     const wrap_pos_results = try benchFindWrapPosByWidth(io, allocator, iterations, bench_filter);

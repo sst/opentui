@@ -102,16 +102,6 @@ pub const TabStopResult = struct {
     }
 };
 
-pub const WrapBreak = struct {
-    // byte_offset points at the grapheme that creates this break opportunity.
-    // For whitespace and punctuation, this is the delimiter grapheme.
-    // For CJK<->ASCII transitions, this is the last grapheme in the previous run.
-    byte_offset: u32,
-
-    // Legacy grapheme-count offset retained for findWrapBreaks callers.
-    char_offset: u32,
-};
-
 /// Direct byte and display-column metadata for a wrap opportunity.
 pub const LayoutWrapBreakKind = enum(u8) {
     none,
@@ -133,27 +123,6 @@ pub const LayoutWrapBreak = struct {
 
     pub fn byteEnd(self: LayoutWrapBreak) u32 {
         return self.byte_offset + self.byte_len;
-    }
-};
-
-pub const WrapBreakResult = struct {
-    breaks: std.ArrayListUnmanaged(WrapBreak),
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) WrapBreakResult {
-        return .{
-            .breaks = .empty,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *WrapBreakResult) void {
-        self.breaks.deinit(self.allocator);
-        self.* = undefined;
-    }
-
-    pub fn reset(self: *WrapBreakResult) void {
-        self.breaks.clearRetainingCapacity();
     }
 };
 
@@ -203,29 +172,6 @@ pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21
     const b3 = text[pos + 3];
     const cp4: u21 = @intCast((@as(u32, b0 & 0x07) << 18) | (@as(u32, b1 & 0x3F) << 12) | (@as(u32, b2 & 0x3F) << 6) | @as(u32, b3 & 0x3F));
     return .{ .cp = cp4, .len = 4 };
-}
-
-// Unicode wrap-break codepoints
-inline fn isUnicodeWrapBreak(cp: u21) bool {
-    return switch (cp) {
-        0x00A0, // NBSP
-        0x1680, // OGHAM SPACE MARK
-        0x2000...0x200A, // En quad..Hair space
-        0x202F, // NARROW NO-BREAK SPACE
-        0x205F, // MEDIUM MATHEMATICAL SPACE
-        0x3000, // IDEOGRAPHIC SPACE
-        0x200B, // ZERO WIDTH SPACE
-        0x00AD, // SOFT HYPHEN
-        0x2010, // HYPHEN
-        0x3001, // IDEOGRAPHIC COMMA
-        0x3002, // IDEOGRAPHIC FULL STOP
-        0xFF01, // FULLWIDTH EXCLAMATION MARK
-        0xFF0C, // FULLWIDTH COMMA
-        0xFF1A, // FULLWIDTH COLON
-        0xFF1F, // FULLWIDTH QUESTION MARK
-        => true,
-        else => false,
-    };
 }
 
 inline fn unicodeLayoutWrapBreakKind(cp: u21) LayoutWrapBreakKind {
@@ -308,255 +254,6 @@ pub inline fn isWordCodepoint(cp: u21) bool {
 pub inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
     return (prev_class == .cjk_word and curr_class == .ascii_word) or
         (prev_class == .ascii_word and curr_class == .cjk_word);
-}
-
-// Nothing needed here - using uucode.grapheme.isBreak directly
-
-pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
-    // This function clears previous results and writes fresh break points.
-    // Callers should treat `result.breaks` as replaced after the call.
-    _ = width_method; // Currently unused, but kept for API consistency
-    result.reset();
-    const vector_len = 16;
-
-    var pos: usize = 0;
-    var char_offset: u32 = 0;
-    var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
-    var break_state: uucode.grapheme.BreakState = .default;
-    // We keep track of the current grapheme so we can add a break at
-    // CJK<->ASCII transitions. The break is emitted at the previous grapheme,
-    // so callers that add grapheme width land exactly at the run boundary.
-    var have_current_grapheme = false;
-    var current_grapheme_byte_offset: u32 = 0;
-    var current_grapheme_char_offset: u32 = 0;
-    var current_grapheme_class: WordClass = .other;
-
-    while (pos + vector_len <= text.len) {
-        const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
-        const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
-        const is_non_ascii = chunk >= ascii_threshold;
-
-        // Fast path: all ASCII
-        if (!@reduce(.Or, is_non_ascii)) {
-            const first_class = classifyWordClass(text[pos]);
-            if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, first_class)) {
-                try result.breaks.append(result.allocator, .{
-                    .byte_offset = current_grapheme_byte_offset,
-                    .char_offset = current_grapheme_char_offset,
-                });
-            }
-
-            // Use SIMD to find break characters
-            var match_mask: @Vector(vector_len, bool) = @splat(false);
-
-            // Check whitespace
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(' ')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\t')));
-
-            // Check dashes and slashes
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('-')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('/')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\\')));
-
-            // Check punctuation
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('.')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(',')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(';')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(':')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('!')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('?')));
-
-            // Check brackets
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('(')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(')')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('[')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(']')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('{')));
-            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('}')));
-
-            // Convert boolean mask to integer bitmask for faster iteration
-            var bitmask: u16 = 0;
-            inline for (0..vector_len) |i| {
-                if (match_mask[i]) {
-                    bitmask |= @as(u16, 1) << @intCast(i);
-                }
-            }
-
-            // Use bit manipulation to extract positions
-            while (bitmask != 0) {
-                const bit_pos = @ctz(bitmask);
-                try result.breaks.append(result.allocator, .{
-                    .byte_offset = @intCast(pos + bit_pos),
-                    .char_offset = char_offset + @as(u32, @intCast(bit_pos)),
-                });
-                bitmask &= bitmask - 1;
-            }
-
-            pos += vector_len;
-            const block_start_char_offset = char_offset;
-            char_offset += vector_len;
-            prev_cp = text[pos - 1]; // Last ASCII char
-            break_state = .default;
-            have_current_grapheme = true;
-            current_grapheme_byte_offset = @intCast(pos - 1);
-            current_grapheme_char_offset = block_start_char_offset + (vector_len - 1);
-            current_grapheme_class = classifyWordClass(text[pos - 1]);
-            continue;
-        }
-
-        // Slow path: mixed ASCII/non-ASCII - need grapheme-aware counting
-        var i: usize = 0;
-        while (i < vector_len) {
-            const b0 = text[pos + i];
-            if (b0 < 0x80) {
-                const curr_cp: u21 = b0;
-
-                // Check if this starts a new grapheme cluster
-                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
-                const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                    break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
-                } else true;
-
-                if (is_break) {
-                    const curr_class = classifyWordClass(curr_cp);
-                    if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
-                        try result.breaks.append(result.allocator, .{
-                            .byte_offset = current_grapheme_byte_offset,
-                            .char_offset = current_grapheme_char_offset,
-                        });
-                    }
-                    have_current_grapheme = true;
-                    current_grapheme_byte_offset = @intCast(pos + i);
-                    current_grapheme_char_offset = char_offset;
-                    current_grapheme_class = curr_class;
-                }
-
-                if (isAsciiWrapBreak(b0)) {
-                    try result.breaks.append(result.allocator, .{
-                        .byte_offset = @intCast(pos + i),
-                        .char_offset = char_offset,
-                    });
-                }
-                i += 1;
-                if (is_break) {
-                    char_offset += 1;
-                }
-                prev_cp = curr_cp;
-            } else {
-                const dec = decodeUtf8Unchecked(text, pos + i);
-                if (pos + i + dec.len > text.len) break;
-                if (pos + i + dec.len > pos + vector_len) break;
-
-                // Check if this starts a new grapheme cluster
-                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
-                const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                    break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
-                } else true;
-
-                if (is_break) {
-                    const curr_class = classifyWordClass(dec.cp);
-                    if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
-                        try result.breaks.append(result.allocator, .{
-                            .byte_offset = current_grapheme_byte_offset,
-                            .char_offset = current_grapheme_char_offset,
-                        });
-                    }
-                    have_current_grapheme = true;
-                    current_grapheme_byte_offset = @intCast(pos + i);
-                    current_grapheme_char_offset = char_offset;
-                    current_grapheme_class = curr_class;
-                }
-
-                if (isUnicodeWrapBreak(dec.cp)) {
-                    try result.breaks.append(result.allocator, .{
-                        .byte_offset = @intCast(pos + i),
-                        .char_offset = char_offset,
-                    });
-                }
-                i += dec.len;
-                if (is_break) {
-                    char_offset += 1;
-                }
-                prev_cp = dec.cp;
-            }
-        }
-        pos += i;
-    }
-
-    // Tail
-    var i: usize = pos;
-    while (i < text.len) {
-        const b0 = text[i];
-        if (b0 < 0x80) {
-            const curr_cp: u21 = b0;
-            const is_break = if (prev_cp) |p| blk: {
-                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
-            } else true;
-
-            if (is_break) {
-                const curr_class = classifyWordClass(curr_cp);
-                if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
-                    try result.breaks.append(result.allocator, .{
-                        .byte_offset = current_grapheme_byte_offset,
-                        .char_offset = current_grapheme_char_offset,
-                    });
-                }
-                have_current_grapheme = true;
-                current_grapheme_byte_offset = @intCast(i);
-                current_grapheme_char_offset = char_offset;
-                current_grapheme_class = curr_class;
-            }
-
-            if (isAsciiWrapBreak(b0)) {
-                try result.breaks.append(result.allocator, .{
-                    .byte_offset = @intCast(i),
-                    .char_offset = char_offset,
-                });
-            }
-            i += 1;
-            if (is_break) {
-                char_offset += 1;
-            }
-            prev_cp = curr_cp;
-        } else {
-            const dec = decodeUtf8Unchecked(text, i);
-            if (i + dec.len > text.len) break;
-
-            const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
-            } else true;
-
-            if (is_break) {
-                const curr_class = classifyWordClass(dec.cp);
-                if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
-                    try result.breaks.append(result.allocator, .{
-                        .byte_offset = current_grapheme_byte_offset,
-                        .char_offset = current_grapheme_char_offset,
-                    });
-                }
-                have_current_grapheme = true;
-                current_grapheme_byte_offset = @intCast(i);
-                current_grapheme_char_offset = char_offset;
-                current_grapheme_class = curr_class;
-            }
-
-            if (isUnicodeWrapBreak(dec.cp)) {
-                try result.breaks.append(result.allocator, .{
-                    .byte_offset = @intCast(i),
-                    .char_offset = char_offset,
-                });
-            }
-            i += dec.len;
-            if (is_break) {
-                char_offset += 1;
-            }
-            prev_cp = dec.cp;
-        }
-    }
 }
 
 pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
@@ -1280,19 +977,6 @@ pub fn findGraphemePosByWidth(
     return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method);
 }
 
-/// Find a materialized byte window boundary without splitting a grapheme.
-/// Cursor-oriented callers should continue using findPosByWidth.
-pub fn findPosByWidthGraphemeSafe(
-    text: []const u8,
-    max_columns: u32,
-    tab_width: u8,
-    isASCIIOnly: bool,
-    include_start_before: bool,
-    width_method: WidthMethod,
-) PosByWidthResult {
-    return findGraphemePosByWidth(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method);
-}
-
 /// Find position by column width using Unicode grapheme cluster segmentation
 fn findPosByWidthUnicode(
     text: []const u8,
@@ -1747,43 +1431,12 @@ pub const GraphemeInfo = struct {
     col_offset: u32,
 };
 
-pub const GraphemeInfoResult = struct {
-    graphemes: std.ArrayList(GraphemeInfo),
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) GraphemeInfoResult {
-        return .{
-            .graphemes = .empty,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *GraphemeInfoResult) void {
-        self.graphemes.deinit(self.allocator);
-        self.* = undefined;
-    }
-
-    pub fn reset(self: *GraphemeInfoResult) void {
-        self.graphemes.clearRetainingCapacity();
-    }
-};
-
 pub const ChunkLayoutInfo = struct {
     wrap_breaks: []const LayoutWrapBreak,
-    first_word_class: WordClass,
-    last_word_class: WordClass,
+    word_classes: WordClassEdges,
 };
 
 pub const WordClassEdges = struct { first: WordClass, last: WordClass };
-
-pub const LayoutWrapBreakVisitor = struct {
-    context: *anyopaque,
-    callback: *const fn (context: *anyopaque, wrap_break: LayoutWrapBreak) error{OutOfMemory}!bool,
-
-    fn emit(self: LayoutWrapBreakVisitor, wrap_break: LayoutWrapBreak) !bool {
-        return self.callback(self.context, wrap_break);
-    }
-};
 
 pub fn chunkWordClassEdges(text: []const u8) WordClassEdges {
     if (text.len == 0) return .{ .first = .other, .last = .other };
@@ -1907,17 +1560,6 @@ pub fn findChunkLayoutInfo(
     };
     var ctx: Context = .{ .allocator = allocator, .wrap_breaks = wrap_breaks };
     return walkChunkLayoutInfoComptime(text, tab_width, isASCIIOnly, width_method, &ctx, Context.append);
-}
-
-/// Stream direct wrap metadata without retaining an entry for every break.
-pub fn walkChunkLayoutInfo(
-    text: []const u8,
-    tab_width: u8,
-    isASCIIOnly: bool,
-    width_method: WidthMethod,
-    visitor: LayoutWrapBreakVisitor,
-) !WordClassEdges {
-    return walkChunkLayoutInfoGeneric(text, tab_width, isASCIIOnly, width_method, visitor);
 }
 
 pub inline fn walkChunkLayoutInfoComptime(

@@ -28,7 +28,6 @@ pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
 pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
-pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
@@ -192,10 +191,6 @@ pub const UnifiedTextBuffer = struct {
         ) orelse return null;
         const line_start = offset - coords.col;
         return .{ .start = line_start + bounds.start, .end = line_start + bounds.end };
-    }
-
-    pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
-        return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
     }
 
     pub fn getLayoutInfoFor(self: *const Self, chunk: *const TextChunk) TextBufferError!seg_mod.ChunkLayoutInfo {

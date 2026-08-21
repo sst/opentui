@@ -120,10 +120,7 @@ test "walkChunkLayoutInfo stops streaming after visitor allocation failure" {
     };
     var ctx: Context = .{ .allocator = failing.allocator() };
     defer ctx.breaks.deinit(ctx.allocator);
-    _ = try utf8.walkChunkLayoutInfo(text, 2, true, .unicode, .{
-        .context = &ctx,
-        .callback = Context.visit,
-    });
+    _ = try utf8.walkChunkLayoutInfoComptime(text, 2, true, .unicode, &ctx, Context.visit);
     try testing.expect(failing.has_induced_failure);
     try testing.expect(ctx.failed);
     try testing.expectEqual(@as(usize, 1), ctx.callback_count);

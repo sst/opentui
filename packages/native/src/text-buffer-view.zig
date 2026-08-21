@@ -176,11 +176,6 @@ pub const VirtualLine = struct {
         };
     }
 
-    pub fn deinit(self: *VirtualLine, allocator: Allocator) void {
-        self.chunks.deinit(allocator);
-        self.* = undefined;
-    }
-
     fn appendChunk(self: *VirtualLine, allocator: Allocator, chunk: VirtualChunk) Allocator.Error!void {
         if (self.chunks.capacity == 0) {
             try self.chunks.ensureTotalCapacityPrecise(allocator, 1);
@@ -235,7 +230,6 @@ pub const UnifiedTextBufferView = struct {
     tab_indicator_color: ?RGBA,
     truncate: bool,
     ellipsis_chunk: TextChunk,
-    ellipsis_mem_id: u8,
 
     // Measurement cache for Yoga layout. Keyed by (buffer, epoch, width, wrap_mode).
     // Using epoch instead of dirty flag prevents stale returns when unrelated
@@ -248,8 +242,6 @@ pub const UnifiedTextBufferView = struct {
     cached_measure_buffer: ?*UnifiedTextBuffer,
 
     truncation_applied: bool,
-    truncation_epoch: u64,
-    truncation_viewport: ?Viewport,
 
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
@@ -262,8 +254,8 @@ pub const UnifiedTextBufferView = struct {
         const view_id = text_buffer.registerView() catch return TextBufferViewError.OutOfMemory;
 
         const ellipsis_text = "...";
-        const ellipsis_mem_id = text_buffer.registerMemBuffer(ellipsis_text, false) catch return TextBufferViewError.OutOfMemory;
-        const ellipsis_chunk = text_buffer.createChunk(ellipsis_mem_id, 0, 3);
+        const mem_id = text_buffer.registerMemBuffer(ellipsis_text, false) catch return TextBufferViewError.OutOfMemory;
+        const ellipsis_chunk = text_buffer.createChunk(mem_id, 0, 3);
 
         self.* = .{
             .text_buffer = text_buffer,
@@ -292,7 +284,6 @@ pub const UnifiedTextBufferView = struct {
             .tab_indicator_color = null,
             .truncate = false,
             .ellipsis_chunk = ellipsis_chunk,
-            .ellipsis_mem_id = ellipsis_mem_id,
             .cached_measure_width = null,
             .cached_measure_wrap_mode = .none,
             .cached_measure_first_line_offset = 0,
@@ -300,8 +291,6 @@ pub const UnifiedTextBufferView = struct {
             .cached_measure_epoch = 0,
             .cached_measure_buffer = null,
             .truncation_applied = false,
-            .truncation_epoch = 0,
-            .truncation_viewport = null,
         };
 
         return self;
@@ -1206,24 +1195,13 @@ pub const UnifiedTextBufferView = struct {
     fn ensureTruncation(self: *Self) void {
         if (!self.truncate or self.viewport == null) return;
 
-        const epoch = self.text_buffer.getContentEpoch();
-        if (self.truncation_applied and self.truncation_epoch == epoch and
-            self.truncation_viewport != null and self.viewport != null and
-            self.truncation_viewport.?.x == self.viewport.?.x and
-            self.truncation_viewport.?.y == self.viewport.?.y and
-            self.truncation_viewport.?.width == self.viewport.?.width and
-            self.truncation_viewport.?.height == self.viewport.?.height)
-        {
-            return;
-        }
+        if (self.truncation_applied) return;
 
         if (!self.applyTruncation()) {
             self.truncation_applied = false;
             return;
         }
         self.truncation_applied = true;
-        self.truncation_epoch = epoch;
-        self.truncation_viewport = self.viewport;
     }
 
     fn applyTruncation(self: *Self) bool {
@@ -1262,7 +1240,7 @@ pub const UnifiedTextBufferView = struct {
 
                 const bytes = chunk.chunk.getBytes(view.text_buffer.memRegistry());
                 const window = bytes[chunk.byte_start_in_chunk .. chunk.byte_start_in_chunk + chunk.byte_len];
-                const dropped = utf8.findPosByWidthGraphemeSafe(
+                const dropped = utf8.findGraphemePosByWidth(
                     window,
                     drop_cols,
                     view.text_buffer.tabWidth(),
@@ -1743,7 +1721,7 @@ pub const UnifiedTextBufferView = struct {
 
                 if (!allow_forced_grapheme) return .{ .width = 0, .bytes_used = 0 };
 
-                const forced = utf8.findPosByWidthGraphemeSafe(
+                const forced = utf8.findGraphemePosByWidth(
                     slice_bytes,
                     max_width,
                     wctx.text_buffer.tabWidth(),
@@ -1951,7 +1929,7 @@ pub const UnifiedTextBufferView = struct {
                     break :blk null;
                 };
                 const word_classes = if (layout) |info|
-                    utf8.WordClassEdges{ .first = info.first_word_class, .last = info.last_word_class }
+                    info.word_classes
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
                 if (wctx.pending_word_width > 0 and
@@ -1968,7 +1946,7 @@ pub const UnifiedTextBufferView = struct {
                         processWordWrapBreakValue(wctx, wrap_break);
                         if (wctx.failed) return;
                     }
-                    break :blk info.last_word_class;
+                    break :blk info.word_classes.last;
                 } else blk: {
                     const streamed_layout = utf8.walkChunkLayoutInfoComptime(
                         chunk_bytes,
@@ -2016,7 +1994,7 @@ pub const UnifiedTextBufferView = struct {
                             continue;
                         }
                         const remaining_bytes = chunk_bytes[byte_offset..];
-                        const force_result = utf8.findPosByWidthGraphemeSafe(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
+                        const force_result = utf8.findGraphemePosByWidth(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
                         if (force_result.grapheme_count > 0) {
                             try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
                             char_offset += force_result.columns_used;
@@ -2041,7 +2019,7 @@ pub const UnifiedTextBufferView = struct {
                             try commitVirtualLine(wctx);
                             continue;
                         }
-                        const force_result = utf8.findPosByWidthGraphemeSafe(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
+                        const force_result = utf8.findGraphemePosByWidth(remaining_bytes, 1, tab_width, is_ascii_only, true, width_method);
                         if (force_result.grapheme_count > 0) {
                             try addVirtualChunk(wctx, chunk, @intCast(byte_offset), force_result.byte_offset, char_offset, force_result.columns_used);
                             char_offset += force_result.columns_used;

@@ -103,14 +103,6 @@ fn benchGetGraphemes(
     // Create TextChunk
     // Width is approximate - clamped to u16 max
     const approx_width: u32 = @intCast(@min(text.len, std.math.maxInt(u32)));
-    var chunk: TextChunk = .{
-        .mem_id = mem_id,
-        .byte_start = 0,
-        .byte_end = @intCast(text.len),
-        .width = approx_width,
-        .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
-    };
-
     var stats: BenchStats = .{};
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
@@ -121,9 +113,13 @@ fn benchGetGraphemes(
         defer arena.deinit();
         const arena_alloc = arena.allocator();
 
-        // Clear cached graphemes
-        // Each iteration owns a fresh arena, so do not retain its sidecar pointer.
-        chunk.resetCaches();
+        const chunk: TextChunk = .{
+            .mem_id = mem_id,
+            .byte_start = 0,
+            .byte_end = @intCast(text.len),
+            .width = approx_width,
+            .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
+        };
 
         const timer = bench_utils.BenchTimer.start(io);
         const graphemes = try chunk.getGraphemes(
