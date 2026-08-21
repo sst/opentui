@@ -40,7 +40,7 @@ pub const TextChunk = struct {
     mem_id: u8,
     byte_start: u32,
     byte_end: u32,
-    width: u16,
+    width: u32,
     flags: u8 = 0,
     graphemes: ?[]GraphemeInfo = null,
     wrap_offsets: ?[]utf8.WrapBreak = null,
@@ -63,7 +63,7 @@ pub const TextChunk = struct {
     }
 
     pub fn is_empty(self: *const TextChunk) bool {
-        return self.width == 0;
+        return self.byte_start == self.byte_end;
     }
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
@@ -174,10 +174,10 @@ pub const Segment = union(enum) {
         ascii_only: bool = true,
 
         pub fn add(self: *Metrics, other: Metrics) void {
-            self.total_width += other.total_width;
-            self.total_bytes += other.total_bytes;
-            self.linestart_count += other.linestart_count;
-            self.newline_count += other.newline_count;
+            self.total_width +|= other.total_width;
+            self.total_bytes +|= other.total_bytes;
+            self.linestart_count +|= other.linestart_count;
+            self.newline_count +|= other.newline_count;
 
             self.max_line_width = @max(self.max_line_width, other.max_line_width);
 
@@ -188,7 +188,7 @@ pub const Segment = union(enum) {
         /// We use total_width + newline_count to give each break a weight of 1
         /// This eliminates boundary ambiguity in coordinate/offset conversions
         pub fn weight(self: *const Metrics) u32 {
-            return self.total_width + self.newline_count;
+            return self.total_width +| self.newline_count;
         }
     };
 
@@ -302,7 +302,7 @@ pub const Segment = union(enum) {
                 .mem_id = left_chunk.mem_id,
                 .byte_start = left_chunk.byte_start,
                 .byte_end = right_chunk.byte_end,
-                .width = left_chunk.width + right_chunk.width,
+                .width = left_chunk.width +| right_chunk.width,
                 .flags = left_chunk.flags,
                 .graphemes = null,
                 .wrap_offsets = null,

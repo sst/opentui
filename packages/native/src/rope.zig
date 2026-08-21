@@ -115,11 +115,11 @@ pub fn Rope(comptime T: type) type {
             fn is_balanced(self: *const Branch) bool {
                 const left_weight = self.left.metrics().weight();
                 const right_weight = self.right.metrics().weight();
-                const total_weight = left_weight + right_weight;
+                const total_weight = left_weight +| right_weight;
 
                 if (total_weight == 0) return true;
 
-                const max_side = (total_weight * 3) / 4;
+                const max_side: u32 = @intCast((@as(u64, total_weight) * 3) / 4);
                 return left_weight <= max_side and right_weight <= max_side;
             }
         };
@@ -363,16 +363,16 @@ pub fn Rope(comptime T: type) type {
 
                 const left_weight = left.metrics().weight();
                 const right_weight = right.metrics().weight();
-                const total_weight = left_weight + right_weight;
+                const total_weight = left_weight +| right_weight;
 
                 if (total_weight > 0) {
-                    const max_side = (total_weight * 3) / 4;
+                    const max_side: u32 = @intCast((@as(u64, total_weight) * 3) / 4);
                     if (left_weight <= max_side and right_weight <= max_side) {
                         return try new_branch(allocator, left, right);
                     }
                 }
 
-                if (left_weight > right_weight * 3) {
+                if (@as(u64, left_weight) > @as(u64, right_weight) * 3) {
                     return switch (left.*) {
                         .leaf => try new_branch(allocator, left, right),
                         .branch => |*b| {
@@ -401,6 +401,73 @@ pub fn Rope(comptime T: type) type {
                     return self.splitFn(allocator, self.ctx, leaf, weight);
                 }
             };
+
+            /// Split policy for a coordinate derived from aggregated subtree metrics.
+            /// Zero-metric leaves at a boundary have right affinity: they stay with
+            /// the content beginning at that coordinate.
+            pub const MetricSplitFn = struct {
+                ctx: ?*anyopaque = null,
+                metricFn: *const fn (metrics: Metrics) u32,
+                splitFn: *const fn (allocator: Allocator, ctx: ?*anyopaque, leaf: *const T, metric_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult,
+
+                pub fn metric(self: *const @This(), measured: Metrics) u32 {
+                    return self.metricFn(measured);
+                }
+
+                pub fn splitLeaf(self: *const @This(), allocator: Allocator, leaf: *const T, position: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult {
+                    return self.splitFn(allocator, self.ctx, leaf, position);
+                }
+            };
+
+            pub fn split_at_metric(
+                node: *const Node,
+                target: u32,
+                allocator: Allocator,
+                empty_leaf: *const Node,
+                splitter: *const MetricSplitFn,
+            ) error{ OutOfMemory, OutOfBounds }!struct { left: *const Node, right: *const Node } {
+                const node_metric = splitter.metric(node.metrics());
+                if (target > node_metric) return error.OutOfBounds;
+
+                return switch (node.*) {
+                    .leaf => |*leaf| {
+                        // This ordering gives zero-metric leaves right affinity.
+                        if (target == 0) return .{ .left = empty_leaf, .right = node };
+                        if (target == node_metric) return .{ .left = node, .right = empty_leaf };
+
+                        const leaf_split = try splitter.splitLeaf(allocator, &leaf.data, target);
+                        return .{
+                            .left = try new_leaf(allocator, leaf_split.left),
+                            .right = try new_leaf(allocator, leaf_split.right),
+                        };
+                    },
+                    .branch => |*branch| {
+                        const left_metric = splitter.metric(branch.left_metrics);
+                        if (target < left_metric) {
+                            const subtree_split = try split_at_metric(branch.left, target, allocator, empty_leaf, splitter);
+                            return .{
+                                .left = subtree_split.left,
+                                .right = try join_balanced(subtree_split.right, branch.right, allocator),
+                            };
+                        }
+                        if (target > left_metric) {
+                            const subtree_split = try split_at_metric(branch.right, target - left_metric, allocator, empty_leaf, splitter);
+                            return .{
+                                .left = try join_balanced(branch.left, subtree_split.left, allocator),
+                                .right = subtree_split.right,
+                            };
+                        }
+
+                        // Move trailing zero-metric leaves from the left subtree to
+                        // the right side instead of making tree shape define affinity.
+                        const subtree_split = try split_at_metric(branch.left, target, allocator, empty_leaf, splitter);
+                        return .{
+                            .left = subtree_split.left,
+                            .right = try join_balanced(subtree_split.right, branch.right, allocator),
+                        };
+                    },
+                };
+            }
 
             pub fn split_at_weight(
                 node: *const Node,
@@ -999,6 +1066,40 @@ pub fn Rope(comptime T: type) type {
             self.version += 1;
         }
 
+        pub const PreparedRoot = struct {
+            root: *const Node,
+        };
+
+        /// Build a replacement root without publishing it. Failed preparation may
+        /// consume arena storage but cannot change the logical rope or its version.
+        pub fn prepareReplaceRangeByMetric(
+            self: *Self,
+            start: u32,
+            end: u32,
+            items: []const T,
+            splitter: *const Node.MetricSplitFn,
+        ) error{ OutOfMemory, OutOfBounds }!PreparedRoot {
+            const total = splitter.metric(self.root.metrics());
+            if (start > end or end > total) return error.OutOfBounds;
+
+            const first = try Node.split_at_metric(self.root, start, self.allocator, self.empty_leaf, splitter);
+            const second = try Node.split_at_metric(first.right, end - start, self.allocator, self.empty_leaf, splitter);
+
+            var next_root = first.left;
+            if (items.len > 0) {
+                const insert_rope = try Self.from_slice(self.allocator, items);
+                next_root = try self.joinWithBoundary(next_root, insert_rope.root);
+            }
+            next_root = try self.joinWithBoundary(next_root, second.right);
+            next_root = try self.rootWithEndsInvariant(next_root);
+            return .{ .root = next_root };
+        }
+
+        pub fn commitPreparedRoot(self: *Self, prepared: PreparedRoot) void {
+            self.root = prepared.root;
+            self.version += 1;
+        }
+
         pub const WeightFindResult = struct { leaf: *const T, start_weight: u32 };
 
         pub fn findByWeight(self: *const Self, weight: u32) ?WeightFindResult {
@@ -1212,7 +1313,7 @@ pub fn Rope(comptime T: type) type {
                     }
 
                     context.current_leaf += 1;
-                    context.current_weight += leaf_weight;
+                    context.current_weight +|= leaf_weight;
                     return .{};
                 }
             };

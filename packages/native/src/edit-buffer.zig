@@ -263,7 +263,7 @@ pub const EditBuffer = struct {
                 num_breaks += 1;
                 width_after_last_break = 0;
             } else if (seg.asText()) |chunk| {
-                width_after_last_break += chunk.width;
+                width_after_last_break +|= chunk.width;
             }
         }
 
@@ -672,7 +672,7 @@ pub const EditBuffer = struct {
             const seg = self.tb.rope().get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
+                const next_cols = cols_before +| chunk.width;
 
                 // Check this chunk if cursor is within it OR if we've already passed the cursor
                 if (cursor.col < next_cols or passed_cursor) {
@@ -758,7 +758,7 @@ pub const EditBuffer = struct {
             const seg = self.tb.rope().get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
+                const next_cols = cols_before +| chunk.width;
 
                 const wrap_offsets = self.tb.getWrapOffsetsFor(chunk) catch {
                     cols_before = next_cols;

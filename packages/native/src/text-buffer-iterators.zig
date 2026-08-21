@@ -89,7 +89,7 @@ pub fn walkLinesAndSegments(
             if (seg.asText()) |chunk| {
                 walk_ctx.seg_callback(walk_ctx.user_ctx, walk_ctx.current_line_idx, chunk, walk_ctx.chunk_idx_in_line);
                 walk_ctx.chunk_idx_in_line += 1;
-                walk_ctx.line_width_cols += chunk.width;
+                walk_ctx.line_width_cols +|= chunk.width;
             } else if (seg.isBreak()) {
                 walk_ctx.line_callback(walk_ctx.user_ctx, .{
                     .line_idx = walk_ctx.current_line_idx,
@@ -245,7 +245,7 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
         const seg = rope.get(seg_idx) orelse break;
         if (seg.isBreak() or seg.isLineStart()) break;
         if (seg.asText()) |chunk| {
-            const next_cols = cols_before + chunk.width;
+            const next_cols = cols_before +| chunk.width;
             if (col < next_cols) {
                 const local_col: u32 = col - cols_before;
                 const bytes = chunk.getBytes(mem_registry);
@@ -283,7 +283,7 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
         const seg = rope.get(seg_idx) orelse break;
         if (seg.isBreak() or seg.isLineStart()) break;
         if (seg.asText()) |chunk| {
-            const next_cols = cols_before + chunk.width;
+            const next_cols = cols_before +| chunk.width;
 
             if (clamped_col <= next_cols) {
                 if (clamped_col == cols_before and prev_chunk != null) {

@@ -64,6 +64,14 @@ pub const MemRegistry = struct {
         return id;
     }
 
+    /// ID that the next successful register call will return. This allows a
+    /// caller to prepare immutable references before publishing registry state.
+    pub fn nextId(self: *const MemRegistry) ?u8 {
+        if (self.free_slots.items.len > 0) return self.free_slots.items[self.free_slots.items.len - 1];
+        if (self.buffers.items.len >= 255) return null;
+        return @intCast(self.buffers.items.len);
+    }
+
     pub fn get(self: *const MemRegistry, id: u8) ?[]const u8 {
         if (id >= self.buffers.items.len) return null;
         const buf = self.buffers.items[id];
@@ -86,6 +94,9 @@ pub const MemRegistry = struct {
         var buf = &self.buffers.items[id];
         if (!buf.active) return MemRegistryError.InvalidMemId;
 
+        // Reserve bookkeeping before releasing the live entry so failure is atomic.
+        try self.free_slots.ensureUnusedCapacity(self.allocator, 1);
+
         // Free owned memory
         if (buf.owned) {
             self.allocator.free(buf.data);
@@ -97,7 +108,7 @@ pub const MemRegistry = struct {
         buf.owned = false;
 
         // Add to free slots list
-        try self.free_slots.append(self.allocator, id);
+        self.free_slots.appendAssumeCapacity(id);
     }
 
     pub fn clear(self: *MemRegistry) void {

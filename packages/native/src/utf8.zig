@@ -1551,6 +1551,78 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, wi
     }
 }
 
+pub const BoundaryAffinity = enum {
+    before,
+    after,
+};
+
+pub const ByteToDisplayResult = struct {
+    column: u32,
+    exact: bool,
+};
+
+/// Map a UTF-8 byte boundary to a display column without assigning display
+/// positions to codepoints inside a grapheme. Interior boundaries snap to the
+/// containing grapheme's start or end according to affinity.
+pub fn byteOffsetToDisplayColumn(
+    text: []const u8,
+    byte_offset: u32,
+    tab_width: u8,
+    width_method: WidthMethod,
+    affinity: BoundaryAffinity,
+) ?ByteToDisplayResult {
+    if (byte_offset > text.len) return null;
+    if (!std.unicode.utf8ValidateSlice(text[0..byte_offset])) return null;
+
+    var pos: usize = 0;
+    var column: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+    var width_state: GraphemeWidthState = undefined;
+    var cluster_started = false;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+        if (pos + cp_len > text.len) return null;
+
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+        if (is_break) {
+            if (cluster_started) {
+                const end_column = column +| width_state.width;
+                if (byte_offset < pos) {
+                    return .{
+                        .column = if (affinity == .before) column else end_column,
+                        .exact = false,
+                    };
+                }
+                column = end_column;
+            }
+
+            if (byte_offset == pos) return .{ .column = column, .exact = true };
+
+            width_state = GraphemeWidthState.init(curr_cp, charWidth(b0, curr_cp, tab_width), width_method);
+            cluster_started = true;
+        } else {
+            width_state.addCodepoint(curr_cp, charWidth(b0, curr_cp, tab_width));
+        }
+
+        prev_cp = curr_cp;
+        pos += cp_len;
+    }
+
+    if (!cluster_started) return .{ .column = 0, .exact = true };
+    const end_column = column +| width_state.width;
+    if (byte_offset < text.len) {
+        return .{
+            .column = if (affinity == .before) column else end_column,
+            .exact = false,
+        };
+    }
+    return .{ .column = end_column, .exact = true };
+}
+
 /// Calculate text width using Unicode grapheme cluster segmentation
 fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
     if (text.len == 0) return 0;
