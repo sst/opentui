@@ -1,4 +1,4 @@
-import { ImageRenderable, TextRenderable, type Renderable } from "@opentui/core"
+import { ImageRenderable, isTextRenderable, TextRenderable, type Renderable } from "@opentui/core"
 import pkgJson from "../../package.json" with { type: "json" }
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
@@ -66,7 +66,7 @@ export const hostConfig: HostConfig<
       id,
       ...initialInstanceProps(type, props),
     })
-    if (type === "text" && !hostContext.isInsideText && instance instanceof TextRenderable) {
+    if (type === "text" && !hostContext.isInsideText && isTextRenderable(instance)) {
       instance.allowLayoutTextDocumentPromotion()
     }
     return instance

@@ -1935,6 +1935,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           firstLineOffsetOwner = null
         }
 
+        if (firstLineOffsetOwner === renderable) {
+          return firstLineOffset
+        }
+
         if (firstLineOffsetOwner) {
           return 0
         }

@@ -76,6 +76,7 @@ function createSnapshotRendererValue(
     },
     claimFirstLineOffset: {
       value: (renderable?: Renderable) => {
+        if (offsetOwner === renderable) return offset
         if (offsetOwner) return 0
         const out = offset
         offsetOwner = renderable

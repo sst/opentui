@@ -5,6 +5,8 @@ import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.
 import { TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { TextAttributes, type CapturedFrame, type CapturedSpan } from "../types.js"
+import { Renderable } from "../Renderable.js"
+import { resolveRenderLib } from "../zig.js"
 import { TextRenderable } from "./Text.js"
 
 function findSpan(spans: CapturedSpan[], text: string): CapturedSpan | undefined {
@@ -250,20 +252,38 @@ describe("nested TextRenderable", () => {
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
-  test("mutable children demote adopted backends without leaving duplicates", () => {
+  test("children snapshots cannot bypass structural mutation", () => {
     const root = new TextRenderable(renderer, { content: "root" })
     const child = new TextRenderable(renderer, { content: "child" })
     expect((child as any).hasTextDocumentState).toBe(true)
 
-    root.children.push(child)
+    const snapshot = root.children as (string | TextRenderable)[]
+    snapshot.push(child)
+    delete snapshot[0]
+    Object.defineProperty(snapshot, 0, { value: child })
+    expect(root.children).toEqual(["root"])
+    expect(child.parent).toBeNull()
+    expect((child as any).hasTextDocumentState).toBe(true)
+
+    root.children = [...root.children, child]
     expect(child.parent).toBe(root)
     expect((child as any).hasTextDocumentState).toBe(false)
     expect(root.plainText).toBe("rootchild")
 
-    root.children.splice(root.children.indexOf(child), 1)
+    root.remove(child)
     expect(child.parent).toBeNull()
     expect((child as any).hasTextDocumentState).toBe(true)
     child.destroy()
+  })
+
+  test("rejects sparse setter input without changing the tree", () => {
+    const root = new TextRenderable(renderer, { content: "stable" })
+    const sparse = new Array<string | TextRenderable>(2)
+    sparse[1] = "tail"
+    expect(() => {
+      root.children = sparse
+    }).toThrow("strings or TextRenderable")
+    expect(root.children).toEqual(["stable"])
   })
 
   test("uses native normalization and terminal display width for public text getters", () => {
@@ -317,6 +337,34 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("does not claim first-line ownership until layout attachment", () => {
+    const claim = mock(() => 2)
+    renderer.claimFirstLineOffset = claim
+    const text = new TextRenderable(renderer, { content: "detached owner" })
+    try {
+      expect((text as any).hasTextDocumentState).toBe(true)
+      expect(claim).not.toHaveBeenCalled()
+      renderer.root.add(text)
+      expect(claim).toHaveBeenCalledTimes(1)
+    } finally {
+      text.destroy()
+      delete (renderer as Partial<typeof renderer>).claimFirstLineOffset
+    }
+  })
+
+  test("publishes promotion events only after parent insertion commits", () => {
+    const text = new TextRenderable(renderer, { content: "candidate" }, false)
+    text.allowLayoutTextDocumentPromotion()
+    const listener = mock(() => {
+      expect(text.parent).toBe(renderer.root)
+      expect(renderer.root.getChildren()).toContain(text)
+    })
+    text.on("line-info-change", listener)
+
+    renderer.root.add(text)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
   test("unwinds native promotion resources and releases a claim after late failure", () => {
     const claim = mock(() => 3)
     const release = mock(() => {})
@@ -325,8 +373,10 @@ describe("nested TextRenderable", () => {
     const text = new TextRenderable(renderer, { content: "candidate" }, false)
     text.allowLayoutTextDocumentPromotion()
 
-    const setOffset = spyOn(TextBufferView.prototype, "setFirstLineOffset").mockImplementationOnce(() => {
-      throw new Error("injected offset failure")
+    const originalSetOffset = TextBufferView.prototype.setFirstLineOffset
+    const setOffset = spyOn(TextBufferView.prototype, "setFirstLineOffset").mockImplementation(function (offset) {
+      if (offset === 3) throw new Error("injected offset failure")
+      return originalSetOffset.call(this, offset)
     })
     const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
     const destroyView = spyOn(TextBufferView.prototype, "destroy")
@@ -382,5 +432,226 @@ describe("nested TextRenderable", () => {
     expect(left.getTextChildren()).toEqual([sibling])
     expect(child.parent).toBe(right)
     expect((child as any).hasTextDocumentState).toBe(false)
+  })
+
+  test("rolls back a multi-child setter when a later adoption fails", () => {
+    const source = new TextRenderable(renderer, { content: "source" })
+    const first = new TextRenderable(renderer, { content: "first" })
+    const second = new TextRenderable(renderer, { content: "second" })
+    const target = new TextRenderable(renderer, {
+      content: new StyledText([{ __isChunk: true, text: "old" }]),
+    })
+    const oldGenerated = target.getTextChildren()[0]!
+    source.add(first)
+    source.add(second)
+
+    const detach = spyOn(second as any, "detachTextDocumentState").mockImplementationOnce(() => {
+      throw new Error("injected adoption failure")
+    })
+    try {
+      expect(() => {
+        target.children = [first, second]
+      }).toThrow("injected adoption failure")
+      expect(target.getTextChildren()).toEqual([oldGenerated])
+      expect(oldGenerated.isDestroyed).toBe(false)
+      expect(source.getTextChildren()).toEqual([first, second])
+      expect(first.parent).toBe(source)
+      expect(second.parent).toBe(source)
+    } finally {
+      detach.mockRestore()
+      source.destroyRecursively()
+      target.destroyRecursively()
+    }
+  })
+
+  test("destroys generated replacement children when adoption fails", () => {
+    const text = new TextRenderable(renderer, { content: "old" })
+    const before = new Set(Renderable.renderablesByNumber.keys())
+    const originalDetach = (TextRenderable.prototype as any).detachTextDocumentState
+    const detach = spyOn(TextRenderable.prototype as any, "detachTextDocumentState").mockImplementation(function () {
+      if (this !== text && this.parent === null) throw new Error("injected generated adoption failure")
+      return originalDetach.call(this)
+    })
+    try {
+      expect(() => {
+        text.content = new StyledText([
+          { __isChunk: true, text: "new-a" },
+          { __isChunk: true, text: "new-b", attributes: TextAttributes.BOLD },
+        ])
+      }).toThrow("injected generated adoption failure")
+      expect(text.plainText).toBe("old")
+      expect(new Set(Renderable.renderablesByNumber.keys())).toEqual(before)
+    } finally {
+      detach.mockRestore()
+      text.destroy()
+    }
+  })
+
+  test("rolls back content when restoring a later displaced owner fails", () => {
+    const text = new TextRenderable(renderer, {})
+    const first = new TextRenderable(renderer, { content: "first" })
+    const second = new TextRenderable(renderer, { content: "second" })
+    text.add(first)
+    text.add(second)
+    const attach = spyOn(second as any, "attachTextDocumentState").mockImplementationOnce(() => {
+      throw new Error("injected displaced owner failure")
+    })
+    try {
+      expect(() => {
+        text.content = "replacement"
+      }).toThrow("injected displaced owner failure")
+      expect(text.getTextChildren()).toEqual([first, second])
+      expect(first.parent).toBe(text)
+      expect(second.parent).toBe(text)
+      expect((first as any).hasTextDocumentState).toBe(false)
+      expect((second as any).hasTextDocumentState).toBe(false)
+      expect(text.plainText).toBe("firstsecond")
+    } finally {
+      attach.mockRestore()
+      text.destroyRecursively()
+    }
+  })
+
+  test("cleans all constructor resources when the initial snapshot fails", () => {
+    const before = new Set(Renderable.renderablesByNumber.keys())
+    const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
+    const destroyView = spyOn(TextBufferView.prototype, "destroy")
+    const setStyledText = spyOn(TextBuffer.prototype, "setStyledText").mockImplementationOnce(() => {
+      throw new Error("injected snapshot failure")
+    })
+    try {
+      expect(() => new TextRenderable(renderer, { content: "failure" })).toThrow("injected snapshot failure")
+      expect(destroyView).toHaveBeenCalled()
+      expect(destroyBuffer).toHaveBeenCalled()
+      expect(new Set(Renderable.renderablesByNumber.keys())).toEqual(before)
+    } finally {
+      setStyledText.mockRestore()
+      destroyView.mockRestore()
+      destroyBuffer.mockRestore()
+    }
+  })
+
+  test("destroys a local native handle when either attach call throws", () => {
+    const lib = resolveRenderLib()
+    const destroyNative = spyOn(lib, "destroyNativeRenderable")
+    const attachYoga = spyOn(lib, "nativeRenderableAttachYogaNode").mockImplementationOnce(() => {
+      throw new Error("injected yoga attach failure")
+    })
+    try {
+      expect(() => new TextRenderable(renderer, {})).toThrow("injected yoga attach failure")
+      expect(destroyNative).toHaveBeenCalledTimes(1)
+    } finally {
+      attachYoga.mockRestore()
+      destroyNative.mockRestore()
+    }
+
+    const destroyNativeTarget = spyOn(lib, "destroyNativeRenderable")
+    const attachTarget = spyOn(lib, "nativeRenderableSetMeasureTarget").mockImplementationOnce(() => {
+      throw new Error("injected measure attach failure")
+    })
+    try {
+      expect(() => new TextRenderable(renderer, {})).toThrow("injected measure attach failure")
+      expect(destroyNativeTarget).toHaveBeenCalledTimes(1)
+    } finally {
+      attachTarget.mockRestore()
+      destroyNativeTarget.mockRestore()
+    }
+  })
+
+  test("keeps detached aliases backend-free until measurement", () => {
+    const createBuffer = spyOn(TextBuffer, "create")
+    const createNative = spyOn(resolveRenderLib(), "createNativeRenderable")
+    const text = new TextRenderable({ content: "detached" })
+    try {
+      expect((text as any).hasTextDocumentState).toBe(false)
+      expect(createBuffer).not.toHaveBeenCalled()
+      expect(createNative).not.toHaveBeenCalled()
+      expect(text.plainText).toBe("detached")
+      expect(createBuffer).toHaveBeenCalledTimes(1)
+      expect(createNative).not.toHaveBeenCalled()
+      expect(() => text.focus()).not.toThrow()
+    } finally {
+      text.destroy()
+      createNative.mockRestore()
+      createBuffer.mockRestore()
+    }
+  })
+
+  test("destroys temporary views and buffers independently while preserving the primary error", () => {
+    const text = new TextRenderable({ content: "detached" })
+    const getPlainText = spyOn(TextBuffer.prototype, "getPlainText").mockImplementationOnce(() => {
+      throw new Error("primary measurement failure")
+    })
+    const destroyView = spyOn(TextBufferView.prototype, "destroy").mockImplementationOnce(() => {
+      throw new Error("view cleanup failure")
+    })
+    const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
+    try {
+      expect(() => text.plainText).toThrow("primary measurement failure")
+      expect(destroyView).toHaveBeenCalledTimes(1)
+      expect(destroyBuffer).toHaveBeenCalledTimes(1)
+    } finally {
+      destroyBuffer.mockRestore()
+      destroyView.mockRestore()
+      getPlainText.mockRestore()
+      text.destroy()
+    }
+  })
+
+  test("lets a mounted candidate reclaim the first-line offset after release", () => {
+    let owner: TextRenderable | null = null
+    renderer.claimFirstLineOffset = mock((candidate?: TextRenderable) => {
+      if (owner === candidate) return 4
+      if (owner) return 0
+      owner = candidate ?? null
+      return 4
+    })
+    renderer.releaseFirstLineOffset = mock((candidate: TextRenderable) => {
+      if (owner === candidate) owner = null
+    })
+    const first = new TextRenderable(renderer, { content: "first" })
+    const second = new TextRenderable(renderer, { content: "second" })
+    try {
+      renderer.root.add(first)
+      renderer.root.add(second)
+      expect((first as any)._firstLineOffset).toBe(4)
+      expect((second as any)._firstLineOffset).toBe(0)
+
+      renderer.root.remove(first)
+      second.onLifecyclePass?.()
+      expect((second as any)._firstLineOffset).toBe(4)
+    } finally {
+      first.destroy()
+      second.destroy()
+      delete (renderer as Partial<typeof renderer>).claimFirstLineOffset
+      delete (renderer as Partial<typeof renderer>).releaseFirstLineOffset
+    }
+  })
+
+  test("continues post-order text destruction after node cleanup errors", () => {
+    const root = new TextRenderable({}, false)
+    const first = new TextRenderable({}, false)
+    const second = new TextRenderable({}, false)
+    root.add(first)
+    root.add(second)
+    const calls: string[] = []
+    const firstDestroy = first.destroy.bind(first)
+    const secondDestroy = second.destroy.bind(second)
+    first.destroy = () => {
+      calls.push("first")
+      firstDestroy()
+      throw new Error("first cleanup failure")
+    }
+    second.destroy = () => {
+      calls.push("second")
+      secondDestroy()
+      throw new Error("second cleanup failure")
+    }
+
+    expect(() => root.destroyRecursively()).toThrow(AggregateError)
+    expect(calls).toEqual(["first", "second"])
+    expect(root.isDestroyed).toBe(true)
+    expect(first.isDestroyed).toBe(true)
+    expect(second.isDestroyed).toBe(true)
   })
 })

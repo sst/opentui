@@ -940,17 +940,22 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     // Yoga node for now. The intended direction is for every Renderable to become
     // native-backed and for Yoga node ownership to move native-side with it.
     const nativeRenderable = lib.createNativeRenderable()
-    if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
-      lib.destroyNativeRenderable(nativeRenderable)
-      throw new Error("Failed to attach native renderable Yoga node")
+    try {
+      if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
+        throw new Error("Failed to attach native renderable Yoga node")
+      }
+      if (
+        !lib.nativeRenderableSetMeasureTarget(nativeRenderable, NativeMeasureTargetKind.EditorView, this.editorView.ptr)
+      ) {
+        throw new Error("Failed to attach editor native measure target")
+      }
+      this.nativeRenderable = nativeRenderable
+    } catch (error) {
+      try {
+        lib.destroyNativeRenderable(nativeRenderable)
+      } catch {}
+      throw error
     }
-    if (
-      !lib.nativeRenderableSetMeasureTarget(nativeRenderable, NativeMeasureTargetKind.EditorView, this.editorView.ptr)
-    ) {
-      lib.destroyNativeRenderable(nativeRenderable)
-      throw new Error("Failed to attach editor native measure target")
-    }
-    this.nativeRenderable = nativeRenderable
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {

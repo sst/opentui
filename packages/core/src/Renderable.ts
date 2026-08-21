@@ -160,6 +160,10 @@ export abstract class BaseRenderable extends EventEmitter {
 
   public onLayoutAttach(_ctx: RenderContext): void {}
 
+  public onLayoutAttached(): void {}
+
+  public onLayoutDetach(_ctx: RenderContext): void {}
+
   protected assertCanAdopt(child: BaseRenderable): void {
     let current: BaseRenderable | null = this
     const visited = new Set<BaseRenderable>()
@@ -1219,7 +1223,6 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this.assertCanAdopt(renderable)
-    renderable.onLayoutAttach(this._ctx)
 
     const anchorRenderable = index !== undefined ? this._childrenInLayoutOrder[index] : undefined
 
@@ -1232,6 +1235,12 @@ export abstract class Renderable extends BaseRenderable {
       this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
     } else {
       this.replaceParent(renderable)
+      try {
+        renderable.onLayoutAttach(this._ctx)
+      } catch (error) {
+        renderable.parent = null
+        throw error
+      }
       this.needsZIndexSort = true
       this._childrenInZIndexOrder.push(renderable)
 
@@ -1254,6 +1263,15 @@ export abstract class Renderable extends BaseRenderable {
     bumpRenderListRevision(this._ctx)
 
     this.requestRender()
+
+    try {
+      renderable.onLayoutAttached()
+    } catch (error) {
+      try {
+        this.remove(renderable)
+      } catch {}
+      throw error
+    }
 
     return insertedIndex
   }
@@ -1306,13 +1324,17 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    renderable.onLayoutAttach(this._ctx)
-
     if (renderable.parent === this) {
       this.yogaNode.removeChild(renderable.getLayoutNode())
       this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
     } else {
       this.replaceParent(renderable)
+      try {
+        renderable.onLayoutAttach(this._ctx)
+      } catch (error) {
+        renderable.parent = null
+        throw error
+      }
       this.needsZIndexSort = true
       this._childrenInZIndexOrder.push(renderable)
 
@@ -1337,6 +1359,15 @@ export abstract class Renderable extends BaseRenderable {
     bumpRenderListRevision(this._ctx)
 
     this.requestRender()
+
+    try {
+      renderable.onLayoutAttached()
+    } catch (error) {
+      try {
+        this.remove(renderable)
+      } catch {}
+      throw error
+    }
 
     return insertedIndex
   }
@@ -1379,12 +1410,24 @@ export abstract class Renderable extends BaseRenderable {
     this._shouldUpdateBefore.delete(renderable)
     this.requestRender()
 
-    renderable.onRemove()
     renderable.parent = null
     this._ctx.unregisterLifecyclePass(renderable)
 
     this.childrenPrimarySortDirty = true
     bumpRenderListRevision(this._ctx)
+
+    let removeError: unknown
+    try {
+      renderable.onRemove()
+    } catch (error) {
+      removeError = error
+    }
+    try {
+      renderable.onLayoutDetach(this._ctx)
+    } catch (error) {
+      removeError ??= error
+    }
+    if (removeError) throw removeError
   }
 
   protected onRemove(): void {
@@ -1545,7 +1588,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._isDestroyed) return
     this.ensureZIndexSorted()
     for (const child of [...this._childrenInZIndexOrder]) {
-      if (typeof child.runUpdatePass === "function") child.runUpdatePass(deltaTime)
+      if (child.parent === this && typeof child.runUpdatePass === "function") child.runUpdatePass(deltaTime)
     }
   }
 
@@ -1578,19 +1621,37 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this._isDestroyed = true
-    this.emit(RenderableEvents.DESTROYED)
+    let destroyError: unknown
+    try {
+      this.emit(RenderableEvents.DESTROYED)
+    } catch (error) {
+      destroyError = error
+    }
 
     if (this.parent) {
-      this.parent.remove(this)
+      try {
+        this.parent.remove(this)
+      } catch (error) {
+        destroyError ??= error
+      }
     }
 
     if (this.frameBuffer) {
-      this.frameBuffer.destroy()
+      const frameBuffer = this.frameBuffer
       this.frameBuffer = null
+      try {
+        frameBuffer.destroy()
+      } catch (error) {
+        destroyError ??= error
+      }
     }
 
     for (const child of [...this._childrenInLayoutOrder]) {
-      this.remove(child)
+      try {
+        this.remove(child)
+      } catch (error) {
+        destroyError ??= error
+      }
     }
 
     this._childrenInLayoutOrder = []
@@ -1598,26 +1659,50 @@ export abstract class Renderable extends BaseRenderable {
     this._shouldUpdateBefore.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
-    this.blur()
-    this.removeAllListeners()
+    try {
+      this.blur()
+    } catch (error) {
+      destroyError ??= error
+    }
+    try {
+      this.removeAllListeners()
+    } catch (error) {
+      destroyError ??= error
+    }
 
-    this.destroySelf()
+    try {
+      this.destroySelf()
+    } catch (error) {
+      destroyError ??= error
+    }
 
     try {
       this.yogaNode.free()
     } catch (e) {
       // Might be already freed and will throw an error if we try to free it again
     }
+    if (destroyError) throw destroyError
   }
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
     // Make a copy of the children array to avoid iteration issues when children are destroyed
     const children = [...this._childrenInLayoutOrder]
+    const errors: unknown[] = []
     for (const child of children) {
-      child.destroyRecursively()
+      try {
+        child.destroyRecursively()
+      } catch (error) {
+        errors.push(error)
+      }
     }
-    this.destroy()
+    try {
+      this.destroy()
+    } catch (error) {
+      errors.push(error)
+    }
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) throw new AggregateError(errors, `Failed to destroy renderable tree rooted at ${this.id}`)
   }
 
   protected destroySelf(): void {

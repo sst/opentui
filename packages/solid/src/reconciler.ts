@@ -5,6 +5,7 @@ import {
   ImageRenderable,
   InputRenderable,
   InputRenderableEvents,
+  isTextRenderable,
   parseColor,
   Renderable,
   ScrollBoxRenderable,
@@ -42,7 +43,7 @@ const logId = (node?: DomNode): string | undefined => {
 
 const getNodeChildren = (node: DomNode): BaseRenderable[] => {
   let children: BaseRenderable[]
-  if (node instanceof TextRenderable) {
+  if (isTextRenderable(node)) {
     children = node.getTextChildren()
   } else {
     children = node.getChildren()
@@ -71,7 +72,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   }
 
   if (node instanceof TextNode || node instanceof SpanRenderable) {
-    if (!(parent instanceof TextRenderable)) {
+    if (!isTextRenderable(parent)) {
       throw new Error(
         `Orphan text error: "${node
           .toChunks()

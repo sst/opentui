@@ -93,9 +93,14 @@ describe("TextNodeRenderable", () => {
       expect(isTextNodeRenderable(undefined)).toBe(false)
     })
 
-    it("recognizes the legacy cross-version TextNode brand", () => {
+    it("rejects the unsupported legacy TextNode brand", () => {
       const legacy = { [Symbol.for("@opentui/core/TextNodeRenderable")]: true }
-      expect(isTextNodeRenderable(legacy)).toBe(true)
+      expect(isTextNodeRenderable(legacy)).toBe(false)
+    })
+
+    it("recognizes the current cross-copy TextRenderable brand", () => {
+      const current = { [Symbol.for("@opentui/core/TextRenderable")]: true }
+      expect(isTextNodeRenderable(current)).toBe(true)
     })
 
     it("keeps RootTextNodeRenderable constructor argument compatibility", () => {
@@ -231,8 +236,9 @@ describe("TextNodeRenderable", () => {
       node.add(anchor)
       node.add("Last")
 
-      node.insertBefore("Middle", anchor)
+      const insertedIndex = node.insertBefore("Middle", anchor)
 
+      expect(insertedIndex).toBe(1)
       expect(node.children).toEqual(["First", "Middle", anchor, "Last"])
     })
 

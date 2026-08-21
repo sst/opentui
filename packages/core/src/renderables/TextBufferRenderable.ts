@@ -24,9 +24,9 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
   public selectable: boolean = true
 
-  protected _defaultFg: RGBA
-  protected _defaultBg: RGBA
-  protected _defaultAttributes: number
+  protected _defaultFg: RGBA = RGBA.fromValues(1, 1, 1, 1)
+  protected _defaultBg: RGBA = RGBA.fromValues(0, 0, 0, 0)
+  protected _defaultAttributes: number = 0
   protected _selectionBg: RGBA | undefined
   protected _selectionFg: RGBA | undefined
   protected _wrapMode: "none" | "char" | "word" = "word"
@@ -75,20 +75,27 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   constructor(ctx: RenderContext, options: TextBufferOptions, attachTextDocumentState: boolean = true) {
     super(ctx, options)
 
-    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
-    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
-    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
-    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
-    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
-    this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
-    this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
-    this._tabIndicatorColor = options.tabIndicatorColor
-      ? parseColor(options.tabIndicatorColor)
-      : this._defaultOptions.tabIndicatorColor
-    this._truncate = options.truncate ?? this._defaultOptions.truncate
+    try {
+      this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
+      this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+      this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+      this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
+      this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+      this.selectable = options.selectable ?? this._defaultOptions.selectable
+      this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+      this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
+      this._tabIndicatorColor = options.tabIndicatorColor
+        ? parseColor(options.tabIndicatorColor)
+        : this._defaultOptions.tabIndicatorColor
+      this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    if (attachTextDocumentState) this.attachTextDocumentState()
+      if (attachTextDocumentState) this.attachTextDocumentState()
+    } catch (error) {
+      try {
+        super.destroy()
+      } catch {}
+      throw error
+    }
   }
 
   protected get hasTextDocumentState(): boolean {
@@ -102,8 +109,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     let textBufferView: TextBufferView | null = null
     let syntaxStyle: SyntaxStyle | null = null
     let nativeRenderable: NativeRenderableHandle | null = null
-    let claimedOffset = false
-
     try {
       textBuffer = TextBuffer.create(this._ctx.widthMethod)
       textBufferView = TextBufferView.create(textBuffer)
@@ -125,18 +130,14 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       }
       textBufferView.setTruncate(this._truncate)
 
-      this._firstLineOffset = this._ctx.claimFirstLineOffset?.(this) ?? 0
-      claimedOffset = true
       textBufferView.setFirstLineOffset(this._firstLineOffset)
 
       this._textBuffer = textBuffer
       this._textBufferView = textBufferView
       this._textDocumentSyntaxStyle = syntaxStyle
       this.nativeRenderable = nativeRenderable
-      this.firstLineOffsetContext = this._ctx
     } catch (error) {
       const cleanup = [
-        () => claimedOffset && this._ctx.releaseFirstLineOffset?.(this),
         () => nativeRenderable && resolveRenderLib().destroyNativeRenderable(nativeRenderable),
         () => textBuffer && syntaxStyle && textBuffer.setSyntaxStyle(null),
         () => syntaxStyle?.destroy(),
@@ -205,6 +206,52 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this.attachTextDocumentState()
       throw error
     }
+  }
+
+  public override onLayoutAttach(ctx: RenderContext): void {
+    this.adoptTextDocumentContext(ctx)
+    if (!this.hasTextDocumentState || this.firstLineOffsetContext === ctx) return
+
+    const firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
+    try {
+      this.textBufferView.setFirstLineOffset(firstLineOffset)
+    } catch (error) {
+      try {
+        ctx.releaseFirstLineOffset?.(this)
+      } catch {}
+      throw error
+    }
+    this._firstLineOffset = firstLineOffset
+    this.firstLineOffsetContext = ctx
+  }
+
+  protected refreshFirstLineOffsetClaim(): void {
+    const ctx = this.firstLineOffsetContext
+    if (!ctx || !this.hasTextDocumentState) return
+    const firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
+    if (firstLineOffset === this._firstLineOffset) return
+    this.textBufferView.setFirstLineOffset(firstLineOffset)
+    this._firstLineOffset = firstLineOffset
+    this.yogaNode.markDirty()
+  }
+
+  public override onLayoutDetach(_ctx: RenderContext): void {
+    const claimedContext = this.firstLineOffsetContext
+    this.firstLineOffsetContext = null
+    this._firstLineOffset = 0
+
+    let releaseError: unknown
+    try {
+      claimedContext?.releaseFirstLineOffset?.(this)
+    } catch (error) {
+      releaseError = error
+    }
+    try {
+      if (this.hasTextDocumentState) this.textBufferView.setFirstLineOffset(0)
+    } catch (error) {
+      releaseError ??= error
+    }
+    if (releaseError) throw releaseError
   }
 
   protected onMouseEvent(event: any): void {
@@ -486,21 +533,26 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     // Yoga node for now. The intended direction is for every Renderable to become
     // native-backed and for Yoga node ownership to move native-side with it.
     const nativeRenderable = lib.createNativeRenderable()
-    if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
-      lib.destroyNativeRenderable(nativeRenderable)
-      throw new Error("Failed to attach native renderable Yoga node")
+    try {
+      if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
+        throw new Error("Failed to attach native renderable Yoga node")
+      }
+      if (
+        !lib.nativeRenderableSetMeasureTarget(
+          nativeRenderable,
+          NativeMeasureTargetKind.TextBufferView,
+          textBufferView.ptr,
+        )
+      ) {
+        throw new Error("Failed to attach text buffer native measure target")
+      }
+      return nativeRenderable
+    } catch (error) {
+      try {
+        lib.destroyNativeRenderable(nativeRenderable)
+      } catch {}
+      throw error
     }
-    if (
-      !lib.nativeRenderableSetMeasureTarget(
-        nativeRenderable,
-        NativeMeasureTargetKind.TextBufferView,
-        textBufferView.ptr,
-      )
-    ) {
-      lib.destroyNativeRenderable(nativeRenderable)
-      throw new Error("Failed to attach text buffer native measure target")
-    }
-    return nativeRenderable
   }
 
   shouldStartSelection(x: number, y: number): boolean {

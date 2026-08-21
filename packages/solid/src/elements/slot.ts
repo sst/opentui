@@ -1,4 +1,4 @@
-import { BaseRenderable, TextRenderable, Yoga } from "@opentui/core"
+import { BaseRenderable, isTextRenderable, TextRenderable, Yoga } from "@opentui/core"
 
 type LayoutNodeProvider = {
   getLayoutNode?: () => Yoga.Node
@@ -182,7 +182,7 @@ export class SlotRenderable extends SlotBaseRenderable {
   }
 
   private isTextSlotParent(parent: BaseRenderable): boolean {
-    return parent instanceof TextRenderable
+    return isTextRenderable(parent)
   }
 
   private getCurrentSlotChild<T extends BaseRenderable>(nodesByParent: Map<BaseRenderable, T>): T | undefined {

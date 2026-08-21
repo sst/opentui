@@ -67,6 +67,20 @@ class CountingRenderable extends Renderable {
   }
 }
 
+class UpdatingRenderable extends Renderable {
+  public updateCount = 0
+  public updateAction?: () => void
+
+  protected onUpdate(): void {
+    this.updateCount += 1
+    this.updateAction?.()
+  }
+
+  public runUpdates(): void {
+    this.runUpdatePass(0)
+  }
+}
+
 class TestFocusableRenderable extends Renderable {
   _focusable = true
 
@@ -258,6 +272,30 @@ describe("Renderable", () => {
 
     expect(parent.getScreenPosition()).toEqual({ x: parent.x, y: parent.y })
     expect(child.getScreenPosition()).toEqual({ x: child.x, y: child.y })
+  })
+
+  test("update snapshots skip removed children and defer inserted siblings", () => {
+    const parent = new UpdatingRenderable(testRenderer, {})
+    const first = new UpdatingRenderable(testRenderer, {})
+    const removed = new UpdatingRenderable(testRenderer, {})
+    const inserted = new UpdatingRenderable(testRenderer, {})
+    let mutated = false
+    first.updateAction = () => {
+      if (mutated) return
+      mutated = true
+      parent.remove(removed)
+      parent.add(inserted)
+    }
+    parent.add(first)
+    parent.add(removed)
+    parent.runUpdates()
+    expect(first.updateCount).toBe(1)
+    expect(removed.updateCount).toBe(0)
+    expect(inserted.updateCount).toBe(0)
+
+    parent.runUpdates()
+    expect(inserted.updateCount).toBe(1)
+    removed.destroy()
   })
 })
 
@@ -778,6 +816,32 @@ describe("Renderable - Child Management", () => {
     expect(parent.isDestroyed).toBe(false)
     expect(() => parent.destroyRecursively()).not.toThrow()
     expect(parent.isDestroyed).toBe(true)
+  })
+
+  test("destroyRecursively continues post-order after cleanup errors", () => {
+    const calls: string[] = []
+    class ThrowingDestroyRenderable extends TestRenderable {
+      constructor(id: string) {
+        super(testRenderer, { id })
+      }
+
+      public override destroy(): void {
+        calls.push(this.id)
+        super.destroy()
+        if (this.id !== "parent") throw new Error(`${this.id} cleanup failure`)
+      }
+    }
+    const parent = new ThrowingDestroyRenderable("parent")
+    const first = new ThrowingDestroyRenderable("first")
+    const second = new ThrowingDestroyRenderable("second")
+    parent.add(first)
+    parent.add(second)
+
+    expect(() => parent.destroyRecursively()).toThrow(AggregateError)
+    expect(calls).toEqual(["first", "second", "parent"])
+    expect(parent.isDestroyed).toBe(true)
+    expect(first.isDestroyed).toBe(true)
+    expect(second.isDestroyed).toBe(true)
   })
 
   test("destroyRecursively destroys all children correctly with multiple children", () => {

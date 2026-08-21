@@ -1,4 +1,5 @@
-import { BaseRenderable } from "../Renderable.js"
+import { EventEmitter } from "events"
+import { BaseRenderable, type Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
@@ -8,6 +9,7 @@ import { parseColor, RGBA } from "../lib/RGBA.js"
 import type { Selection } from "../lib/selection.js"
 import { type RenderContext } from "../types.js"
 import type { LineInfo } from "../zig.js"
+import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
 
 export interface TextOptions extends TextBufferOptions {
@@ -23,18 +25,53 @@ export type TextStyle = {
 }
 
 const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRenderable")
-const BrandedTextNodeRenderable: unique symbol = Symbol.for("@opentui/core/TextNodeRenderable")
 
 export function isTextRenderable(obj: any): obj is TextRenderable {
-  return !!(obj?.[BrandedTextRenderable] || obj?.[BrandedTextNodeRenderable])
+  return obj?.[BrandedTextRenderable] === true
 }
 
-const detachedTextContext = {
-  widthMethod: "wcwidth",
+const detachedLifecyclePasses = new Set<Renderable>()
+const detachedTextContext = Object.assign(new EventEmitter(), {
+  widthMethod: "wcwidth" as const,
   width: 0,
   height: 0,
+  frameId: 0,
+  capabilities: null,
+  hasSelection: false,
+  currentFocusedRenderable: null,
+  currentFocusedEditor: null,
+  keyInput: new KeyHandler(),
+  _internalKeyInput: new InternalKeyHandler(),
   requestRender() {},
-} as unknown as RenderContext
+  requestLive() {},
+  dropLive() {},
+  addToHitGrid() {},
+  pushHitGridScissorRect() {},
+  popHitGridScissorRect() {},
+  clearHitGridScissorRects() {},
+  setCursorPosition() {},
+  setCursorStyle() {},
+  setCursorColor() {},
+  setMousePointer() {},
+  getSelection() {
+    return null
+  },
+  requestSelectionUpdate() {},
+  focusRenderable() {},
+  blurRenderable() {},
+  registerLifecyclePass(renderable: Renderable) {
+    detachedLifecyclePasses.add(renderable)
+  },
+  unregisterLifecyclePass(renderable: Renderable) {
+    detachedLifecyclePasses.delete(renderable)
+  },
+  getLifecyclePasses() {
+    return detachedLifecyclePasses
+  },
+  clearSelection() {},
+  startSelection() {},
+  updateSelection() {},
+}) satisfies RenderContext
 
 function isRenderContext(value: RenderContext | TextOptions): value is RenderContext {
   return typeof (value as RenderContext).requestRender === "function"
@@ -45,21 +82,17 @@ export class TextRenderable extends TextBufferRenderable {
     return true
   }
 
-  get [BrandedTextNodeRenderable](): true {
-    return true
-  }
-
   private _children: (string | TextRenderable)[] = []
-  private _childrenProxy: (string | TextRenderable)[] | null = null
   private _localFg?: RGBA
   private _localBg?: RGBA
-  private _localAttributes: number
+  private _localAttributes: number = 0
   private _link?: { url: string }
   private _textDocumentDirty: boolean = true
-  private _textDocumentRole: "owner" | "promotable" | "inline"
+  private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
   private _lastCommittedLineInfoFrame: number = -1
+  private _layoutPromotionPending: boolean = false
 
   constructor(ctx: RenderContext, options: TextOptions, attachTextDocumentState?: boolean)
   constructor(options: TextOptions, attachTextDocumentState?: boolean)
@@ -71,76 +104,168 @@ export class TextRenderable extends TextBufferRenderable {
     const hasContext = isRenderContext(ctxOrOptions)
     const ctx = hasContext ? ctxOrOptions : detachedTextContext
     const options = (hasContext ? (maybeOptions ?? {}) : ctxOrOptions) as TextOptions
-    const shouldAttach = hasContext ? attachTextDocumentState : ((maybeOptions as boolean | undefined) ?? true)
+    const detachedRole = maybeOptions === false ? "inline" : "promotable"
+    const shouldAttach = hasContext ? attachTextDocumentState : false
 
     super(ctx, options, shouldAttach)
 
-    this._textDocumentRole = shouldAttach ? "owner" : "inline"
-    this._localFg = options.fg ? parseColor(options.fg) : undefined
-    this._localBg = options.bg ? parseColor(options.bg) : undefined
-    this._localAttributes = options.attributes ?? 0
-    this._link = options.link
+    try {
+      this._textDocumentRole = hasContext ? (shouldAttach ? "owner" : "inline") : detachedRole
+      this._localFg = options.fg ? parseColor(options.fg) : undefined
+      this._localBg = options.bg ? parseColor(options.bg) : undefined
+      this._localAttributes = options.attributes ?? 0
+      this._link = options.link
 
-    if (options.content !== undefined) this.replaceContent(options.content, false)
-    if (this.hasTextDocumentState) this.commitTextDocumentSnapshot()
+      if (options.content !== undefined) this.replaceContent(options.content, false)
+      if (this.hasTextDocumentState) this.commitTextDocumentSnapshot()
+    } catch (error) {
+      try {
+        this.destroy()
+      } catch {}
+      throw error
+    }
   }
 
-  public get children(): (string | TextRenderable)[] {
-    if (!this._childrenProxy) {
-      const mutators = new Set(["copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift"])
-      this._childrenProxy = new Proxy(this._children, {
-        get: (target, property, receiver) => {
-          if (typeof property !== "string" || !mutators.has(property)) return Reflect.get(target, property, receiver)
-          return (...args: unknown[]) => {
-            const next = [...target]
-            const result = (Array.prototype as any)[property].apply(next, args)
-            this.children = next
-            return result === next ? receiver : result
-          }
-        },
-        set: (target, property, value) => {
-          const next = [...target]
-          Reflect.set(next, property, value)
-          this.children = next
-          return true
-        },
-      })
-    }
-    return this._childrenProxy
+  public get children(): readonly (string | TextRenderable)[] {
+    return [...this._children]
   }
 
   public set children(children: (string | TextRenderable)[]) {
     const nextChildren = [...children]
+    const seenChildren = new Set<TextRenderable>()
     for (const child of nextChildren) {
-      if (isTextRenderable(child)) this.assertCanInsertTextChild(child)
+      if (typeof child === "string") continue
+      if (!isTextRenderable(child))
+        throw new Error("TextRenderable children must be strings or TextRenderable instances")
+      if (seenChildren.has(child)) throw new Error("A TextRenderable child cannot appear more than once")
+      seenChildren.add(child)
+      this.assertCanInsertTextChild(child)
     }
 
     const previousChildren = [...this._children]
     const previousOwnedChildren = new Set(this._ownedChildren)
-    this._children.splice(0)
-    this._ownedChildren.clear()
-    for (const child of previousChildren) {
-      if (!isTextRenderable(child) || child.parent !== this) continue
-      child.parent = null
-      if (previousOwnedChildren.has(child) && !nextChildren.includes(child)) child.destroyRecursively()
+    const parentSnapshots = new Map<
+      TextRenderable,
+      {
+        children: (string | TextRenderable)[]
+        ownedChildren: Set<TextRenderable>
+        manualStyledText: StyledText | null
+        dirty: boolean
+      }
+    >()
+    const snapshotParent = (parent: TextRenderable): void => {
+      if (parentSnapshots.has(parent)) return
+      parentSnapshots.set(parent, {
+        children: [...parent._children],
+        ownedChildren: new Set(parent._ownedChildren),
+        manualStyledText: parent._manualStyledText,
+        dirty: parent._textDocumentDirty,
+      })
     }
-    for (const child of nextChildren) {
-      if (isTextRenderable(child) && previousOwnedChildren.has(child)) this._ownedChildren.add(child)
-      this.insertTextChild(child, this._children.length)
+    snapshotParent(this)
+
+    const childSnapshots = new Map<
+      TextRenderable,
+      {
+        parent: BaseRenderable | null
+        context: RenderContext
+        hadDocumentState: boolean
+        layoutIndex: number
+      }
+    >()
+    const snapshotChild = (child: TextRenderable): void => {
+      if (childSnapshots.has(child)) return
+      const parent = child.parent
+      if (isTextRenderable(parent)) snapshotParent(parent)
+      childSnapshots.set(child, {
+        parent,
+        context: child.ctx,
+        hadDocumentState: child.hasTextDocumentState,
+        layoutIndex: parent && !isTextRenderable(parent) ? parent.getChildren().indexOf(child) : -1,
+      })
     }
+    for (const child of seenChildren) snapshotChild(child)
     for (const child of previousChildren) {
-      if (
-        isTextRenderable(child) &&
-        !nextChildren.includes(child) &&
-        !previousOwnedChildren.has(child) &&
-        child._textDocumentRole === "owner"
-      ) {
-        child.attachTextDocumentState()
-        child.commitTextDocumentSnapshot()
+      if (isTextRenderable(child)) snapshotChild(child)
+    }
+
+    const rollback = (): void => {
+      for (const [parent, snapshot] of parentSnapshots) {
+        parent._children = [...snapshot.children]
+        parent._ownedChildren.clear()
+        for (const child of snapshot.ownedChildren) parent._ownedChildren.add(child)
+        parent._manualStyledText = snapshot.manualStyledText
+        parent._textDocumentDirty = snapshot.dirty
+        for (const child of parent.getTextChildren()) child.parent = parent
+      }
+      for (const [child, snapshot] of childSnapshots) {
+        if (snapshot.parent && !isTextRenderable(snapshot.parent) && child.parent !== snapshot.parent) {
+          try {
+            snapshot.parent.add(child, snapshot.layoutIndex < 0 ? undefined : snapshot.layoutIndex)
+          } catch {}
+        } else if (!snapshot.parent) {
+          child.parent = null
+        }
+        try {
+          child.adoptTextContext(snapshot.context)
+          if (snapshot.hadDocumentState && !child.hasTextDocumentState) child.attachTextDocumentState()
+          if (!snapshot.hadDocumentState && child.hasTextDocumentState) child.detachTextDocumentState()
+        } catch {}
       }
     }
+
+    try {
+      for (const child of seenChildren) {
+        const parent = child.parent
+        if (isTextRenderable(parent) && parent !== this) {
+          const index = parent._children.indexOf(child)
+          if (index !== -1) parent._children.splice(index, 1)
+          parent._ownedChildren.delete(child)
+          child.parent = null
+        } else if (parent && parent !== this) {
+          parent.remove(child)
+        }
+        child.detachTextDocumentState()
+        child.adoptTextContext(this._ctx)
+        child.parent = this
+      }
+
+      this._children = nextChildren
+      this._ownedChildren.clear()
+      for (const child of previousOwnedChildren) {
+        if (seenChildren.has(child)) this._ownedChildren.add(child)
+      }
+
+      for (const child of previousChildren) {
+        if (!isTextRenderable(child) || seenChildren.has(child) || child.parent !== this) continue
+        child.parent = null
+        if (!previousOwnedChildren.has(child) && child._textDocumentRole === "owner") {
+          child.attachTextDocumentState()
+          child.commitTextDocumentSnapshot()
+        }
+      }
+    } catch (error) {
+      rollback()
+      throw error
+    }
+
     this._manualStyledText = null
+    for (const parent of parentSnapshots.keys()) {
+      if (parent !== this) parent.invalidateTextDocument()
+    }
     this.invalidateTextDocument()
+
+    const destroyErrors: unknown[] = []
+    for (const child of previousOwnedChildren) {
+      if (seenChildren.has(child)) continue
+      try {
+        child.destroyRecursively()
+      } catch (error) {
+        destroyErrors.push(error)
+      }
+    }
+    if (destroyErrors.length === 1) throw destroyErrors[0]
+    if (destroyErrors.length > 1) throw new AggregateError(destroyErrors, "Failed to destroy replaced text children")
   }
 
   public get content(): StyledText {
@@ -341,33 +466,41 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public add(obj: TextRenderable | StyledText | string, index?: number): number {
-    this._manualStyledText = null
     if (typeof obj === "string" || isTextRenderable(obj)) {
-      const insertIndex = this.insertTextChild(obj, index ?? this._children.length)
-      this.invalidateTextDocument()
+      let insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
+      const nextChildren = [...this._children]
+      if (isTextRenderable(obj) && obj.parent === this) {
+        const currentIndex = nextChildren.indexOf(obj)
+        if (currentIndex !== -1) {
+          nextChildren.splice(currentIndex, 1)
+          if (currentIndex < insertIndex) insertIndex -= 1
+        }
+      }
+      nextChildren.splice(insertIndex, 0, obj)
+      this.children = nextChildren
       return insertIndex
     }
 
     if (isStyledText(obj)) {
       const children = this.styledTextToChildren(obj)
-      let insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
+      const insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
       const firstIndex = insertIndex
       try {
-        for (const child of children) {
-          this._ownedChildren.add(child)
-          this.insertTextChild(child, insertIndex)
-          insertIndex += 1
-        }
+        const nextChildren = [...this._children]
+        nextChildren.splice(insertIndex, 0, ...children)
+        this.children = nextChildren
+        for (const child of children) this._ownedChildren.add(child)
       } catch (error) {
-        for (const child of children.reverse()) {
-          const childIndex = this._children.indexOf(child)
-          if (childIndex !== -1) this._children.splice(childIndex, 1)
-          this._ownedChildren.delete(child)
-          if (!child.isDestroyed) child.destroyRecursively()
+        const committed = children.every((child, childIndex) => this._children[insertIndex + childIndex] === child)
+        if (committed) {
+          for (const child of children) this._ownedChildren.add(child)
+        } else {
+          for (const child of children.reverse()) {
+            if (!child.isDestroyed) child.destroyRecursively()
+          }
         }
         throw error
       }
-      this.invalidateTextDocument()
       return firstIndex
     }
 
@@ -383,31 +516,17 @@ export class TextRenderable extends TextBufferRenderable {
       return
     }
 
-    if (isTextRenderable(existing) && existing !== obj && existing.parent === this) {
-      this.detachTextChild(existing, this._ownedChildren.has(existing))
-    }
-    if (isTextRenderable(obj)) {
-      let targetIndex = index
-      if (obj.parent) {
-        if (obj.parent === this) {
-          const currentIndex = this._children.indexOf(obj)
-          if (currentIndex !== -1 && currentIndex !== index) {
-            this._children.splice(currentIndex, 1)
-            if (currentIndex < targetIndex) targetIndex -= 1
-          }
-        } else {
-          this.detachFromCurrentTextParent(obj)
-        }
+    const nextChildren = [...this._children]
+    let targetIndex = index
+    if (isTextRenderable(obj) && obj.parent === this) {
+      const currentIndex = nextChildren.indexOf(obj)
+      if (currentIndex !== -1 && currentIndex !== targetIndex) {
+        nextChildren.splice(currentIndex, 1)
+        if (currentIndex < targetIndex) targetIndex -= 1
       }
-      obj.detachTextDocumentState()
-      obj.adoptTextContext(this._ctx)
-      obj.parent = this
-      this._children[targetIndex] = obj
-    } else {
-      this._children[index] = obj
     }
-    this._manualStyledText = null
-    this.invalidateTextDocument()
+    nextChildren[targetIndex] = obj
+    this.children = nextChildren
   }
 
   public insertBefore(
@@ -418,10 +537,8 @@ export class TextRenderable extends TextBufferRenderable {
 
     const anchorIndex = this._children.indexOf(anchorNode)
     if (anchorIndex === -1) throw new Error("Anchor node not found in children")
-    if (child !== anchorNode) this.add(child, anchorIndex)
-    // TextNodeRenderable historically returns itself at runtime. Keep that
-    // behavior while satisfying Renderable's numeric structural signature.
-    return this as unknown as number
+    if (child === anchorNode) return anchorIndex
+    return this.add(child, anchorIndex)
   }
 
   public remove(child: BaseRenderable): void {
@@ -505,6 +622,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public onLifecyclePass = (): void => {
+    this.refreshFirstLineOffsetClaim()
     if (!isTextRenderable(this.parent) && this._textDocumentDirty) this.commitTextDocumentSnapshot()
   }
 
@@ -516,10 +634,15 @@ export class TextRenderable extends TextBufferRenderable {
   public destroyRecursively(): void {
     const stack: Array<{ node: TextRenderable; visited: boolean }> = [{ node: this, visited: false }]
     const seen = new Set<TextRenderable>()
+    const errors: unknown[] = []
     while (stack.length > 0) {
       const entry = stack.pop()!
       if (entry.visited) {
-        entry.node.destroy()
+        try {
+          entry.node.destroy()
+        } catch (error) {
+          errors.push(error)
+        }
         continue
       }
       if (seen.has(entry.node) || entry.node.isDestroyed) continue
@@ -530,6 +653,8 @@ export class TextRenderable extends TextBufferRenderable {
         stack.push({ node: children[index]!, visited: false })
       }
     }
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) throw new AggregateError(errors, `Failed to destroy text tree rooted at ${this.id}`)
   }
 
   public destroy(): void {
@@ -563,7 +688,7 @@ export class TextRenderable extends TextBufferRenderable {
     const ctx = hasContext ? ctxOrText : detachedTextContext
     const text = hasContext ? (textOrOptions as string) : ctxOrText
     const options = (hasContext ? maybeOptions : textOrOptions) as Partial<TextOptions>
-    const node = new TextRenderable(ctx, options, hasContext ? false : true)
+    const node = hasContext ? new TextRenderable(ctx, options, false) : new TextRenderable(options)
     node._children.push(text)
     node._textDocumentDirty = true
     return node
@@ -580,27 +705,46 @@ export class TextRenderable extends TextBufferRenderable {
     const ctx = hasContext ? ctxOrNodes : detachedTextContext
     const nodes = (hasContext ? nodesOrOptions : ctxOrNodes) as TextRenderable[]
     const options = (hasContext ? maybeOptions : nodesOrOptions) as Partial<TextOptions>
-    const node = new TextRenderable(ctx, options, hasContext ? false : true)
-    for (const child of nodes) node.insertTextChild(child, node._children.length)
-    node._textDocumentDirty = true
-    return node
+    const node = hasContext ? new TextRenderable(ctx, options, false) : new TextRenderable(options)
+    try {
+      node.children = nodes
+      node._textDocumentDirty = true
+      return node
+    } catch (error) {
+      try {
+        node.destroyRecursively()
+      } catch {}
+      throw error
+    }
   }
 
   private replaceContent(content: StyledText | string, requestRender: boolean): void {
     const styledChildren = typeof content === "string" ? [] : this.styledTextToChildren(content)
-    this.clearChildren(false)
-
-    if (typeof content === "string") {
-      this._manualStyledText = null
-      if (content !== "") this._children.push(content)
-    } else {
-      this._manualStyledText = content
-      for (const child of styledChildren) {
-        this._ownedChildren.add(child)
-        this.insertTextChild(child, this._children.length)
+    const nextChildren: (string | TextRenderable)[] =
+      typeof content === "string" ? (content === "" ? [] : [content]) : styledChildren
+    try {
+      this.children = nextChildren
+    } catch (error) {
+      const committed =
+        this._children.length === nextChildren.length &&
+        this._children.every((child, index) => child === nextChildren[index])
+      if (committed && typeof content !== "string") {
+        for (const child of styledChildren) this._ownedChildren.add(child)
+        this._manualStyledText = content
+      } else {
+        for (const child of styledChildren.reverse()) {
+          if (!child.isDestroyed) {
+            try {
+              child.destroyRecursively()
+            } catch {}
+          }
+        }
       }
+      throw error
     }
 
+    this._manualStyledText = typeof content === "string" ? null : content
+    for (const child of styledChildren) this._ownedChildren.add(child)
     this._textDocumentDirty = true
     if (requestRender) {
       this.invalidateTextDocument()
@@ -716,12 +860,45 @@ export class TextRenderable extends TextBufferRenderable {
 
   public override onLayoutAttach(ctx: RenderContext): void {
     this.assertNotNestedForLayout()
-    this.adoptTextContext(ctx)
-    if (this._textDocumentRole === "promotable") {
-      this.attachTextDocumentState()
-      this._textDocumentRole = "owner"
-      this.commitTextDocumentSnapshot()
+    const shouldPromote = this._textDocumentRole === "promotable"
+    try {
+      this.adoptTextContext(ctx)
+      if (shouldPromote) {
+        this.attachTextDocumentState()
+        this._textDocumentRole = "owner"
+        this._layoutPromotionPending = true
+      }
+      super.onLayoutAttach(ctx)
+    } catch (error) {
+      if (shouldPromote) {
+        try {
+          this.detachTextDocumentState()
+        } catch {}
+        this._textDocumentRole = "promotable"
+        this._layoutPromotionPending = false
+      }
+      throw error
     }
+  }
+
+  public override onLayoutAttached(): void {
+    try {
+      if (this._textDocumentDirty) this.commitTextDocumentSnapshot()
+      this._layoutPromotionPending = false
+    } catch (error) {
+      if (this._layoutPromotionPending) {
+        try {
+          this.detachTextDocumentState()
+        } catch {}
+        this._textDocumentRole = "promotable"
+        this._layoutPromotionPending = false
+      }
+      throw error
+    }
+  }
+
+  public override onLayoutDetach(ctx: RenderContext): void {
+    super.onLayoutDetach(ctx)
   }
 
   private assertNotNestedForLayout(): void {
@@ -793,21 +970,44 @@ export class TextRenderable extends TextBufferRenderable {
   } {
     const buffer = TextBuffer.create(this._ctx.widthMethod)
     let view: TextBufferView | null = null
+    let result:
+      | {
+          plainText: string
+          textLength: number
+          lineInfo: LineInfo
+          lineCount: number
+          virtualLineCount: number
+        }
+      | undefined
+    let primaryError: unknown
     try {
       buffer.setStyledText(new StyledText(this.gatherOwnContent()))
       view = TextBufferView.create(buffer)
       view.setWrapMode(this._wrapMode)
       if (this._wrapMode !== "none" && this.width > 0) view.setWrapWidth(this.width)
-      return {
+      result = {
         plainText: buffer.getPlainText(),
         textLength: buffer.length,
         lineInfo: view.logicalLineInfo,
         lineCount: buffer.getLineCount(),
         virtualLineCount: view.getVirtualLineCount(),
       }
-    } finally {
-      view?.destroy()
-      buffer.destroy()
+    } catch (error) {
+      primaryError = error
     }
+    let cleanupError: unknown
+    try {
+      view?.destroy()
+    } catch (error) {
+      cleanupError = error
+    }
+    try {
+      buffer.destroy()
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (primaryError) throw primaryError
+    if (cleanupError) throw cleanupError
+    return result!
   }
 }
