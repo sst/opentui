@@ -584,6 +584,7 @@ if (buildLib) {
         homepage: packageJson.homepage,
         repository: packageJson.repository,
         bugs: packageJson.bugs,
+        engines: packageJson.engines,
         exports,
         dependencies: packageJson.dependencies,
         peerDependencies: packageJson.peerDependencies,

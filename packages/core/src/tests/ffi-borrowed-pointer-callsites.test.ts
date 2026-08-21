@@ -180,7 +180,7 @@ describe("borrowed pointer call sites", () => {
       textBufferViewMeasureForDimensions: symbols.textBufferViewMeasureForDimensions,
       audioGetStreamStats: symbols.audioGetStreamStats,
     }
-    const outputBuffers: Record<string, ArrayBuffer[]> = {
+    const outputViews: Record<string, DataView[]> = {
       logical: [],
       visual: [],
       measure: [],
@@ -191,25 +191,25 @@ describe("borrowed pointer call sites", () => {
     let lineCount = 2
     let bytesReceived = 20n
 
-    symbols.editBufferGetCursorPosition = (_buffer, output: ArrayBuffer) => {
-      outputBuffers.logical.push(output)
-      LogicalCursorStruct.packInto({ row: 0, col: logicalOffset, offset: logicalOffset++ }, new DataView(output), 0)
+    symbols.editBufferGetCursorPosition = (_buffer, output: DataView) => {
+      outputViews.logical.push(output)
+      LogicalCursorStruct.packInto({ row: 0, col: logicalOffset, offset: logicalOffset++ }, output, 0)
     }
-    symbols.editorViewGetVisualCursor = (_view, output: ArrayBuffer) => {
-      outputBuffers.visual.push(output)
+    symbols.editorViewGetVisualCursor = (_view, output: DataView) => {
+      outputViews.visual.push(output)
       VisualCursorStruct.packInto(
         { visualRow: 0, visualCol: visualOffset, logicalRow: 0, logicalCol: visualOffset, offset: visualOffset++ },
-        new DataView(output),
+        output,
         0,
       )
     }
-    symbols.textBufferViewMeasureForDimensions = (_view, _width, _height, output: ArrayBuffer) => {
-      outputBuffers.measure.push(output)
-      MeasureResultStruct.packInto({ lineCount: lineCount++, widthColsMax: 8 }, new DataView(output), 0)
+    symbols.textBufferViewMeasureForDimensions = (_view, _width, _height, output: DataView) => {
+      outputViews.measure.push(output)
+      MeasureResultStruct.packInto({ lineCount: lineCount++, widthColsMax: 8 }, output, 0)
       return 1
     }
-    symbols.audioGetStreamStats = (_engine, _streamId, output: ArrayBuffer) => {
-      outputBuffers.audio.push(output)
+    symbols.audioGetStreamStats = (_engine, _streamId, output: DataView) => {
+      outputViews.audio.push(output)
       AudioStreamStatsStruct.packInto(
         {
           bytesReceived: bytesReceived++,
@@ -224,7 +224,7 @@ describe("borrowed pointer call sites", () => {
           errorCode: 0,
           readyGeneration: 1,
         },
-        new DataView(output),
+        output,
         0,
       )
       return 0
@@ -255,17 +255,17 @@ describe("borrowed pointer call sites", () => {
       expect(audioFirst.bytesReceived).toBe(20n)
       expect(audioSecond.bytesReceived).toBe(21n)
 
-      for (const buffers of Object.values(outputBuffers)) {
-        expect(buffers).toHaveLength(2)
-        expect(buffers[0]).toBeInstanceOf(ArrayBuffer)
-        expect(buffers[1]).toBe(buffers[0])
+      for (const views of Object.values(outputViews)) {
+        expect(views).toHaveLength(2)
+        expect(views[0]).toBeInstanceOf(DataView)
+        expect(views[1]).toBe(views[0])
       }
     } finally {
       Object.assign(symbols, originals)
     }
   })
 
-  test("grid draw repacks and forwards one owning ArrayBuffer", () => {
+  test("grid draw repacks and forwards one owning DataView", () => {
     const calls: any[][] = []
     const original = symbols.bufferDrawGrid
     const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -278,16 +278,20 @@ describe("borrowed pointer call sites", () => {
         drawInner: true,
         drawOuter: false,
       })
-      const firstBuffer = calls[0]![8] as ArrayBuffer
-      expect(firstBuffer).toBeInstanceOf(ArrayBuffer)
-      expect(new Uint8Array(firstBuffer).slice(0, GridDrawOptionsStruct.size)).toEqual(new Uint8Array([1, 0]))
+      const firstView = calls[0]![8] as DataView
+      expect(firstView).toBeInstanceOf(DataView)
+      expect(new Uint8Array(firstView.buffer, firstView.byteOffset, GridDrawOptionsStruct.size)).toEqual(
+        new Uint8Array([1, 0]),
+      )
 
       lib.bufferDrawGrid(1 as any, chars, fg, bg, offsets, 1, offsets, 1, {
         drawInner: false,
         drawOuter: true,
       })
-      expect(calls[1]![8]).toBe(firstBuffer)
-      expect(new Uint8Array(firstBuffer).slice(0, GridDrawOptionsStruct.size)).toEqual(new Uint8Array([0, 1]))
+      expect(calls[1]![8]).toBe(firstView)
+      expect(new Uint8Array(firstView.buffer, firstView.byteOffset, GridDrawOptionsStruct.size)).toEqual(
+        new Uint8Array([0, 1]),
+      )
     } finally {
       symbols.bufferDrawGrid = original
     }
@@ -313,41 +317,43 @@ describe("borrowed pointer call sites", () => {
     try {
       for (const [index, name] of logicalQueries.entries()) {
         originals.set(name, symbols[name])
-        const outputBuffers: ArrayBuffer[] = []
+        const outputViews: DataView[] = []
         let offset = index + 2
         symbols[name] = (...args: any[]) => {
-          const output = args.at(-1) as ArrayBuffer
-          outputBuffers.push(output)
-          LogicalCursorStruct.packInto({ row: index, col: index + 1, offset: offset++ }, new DataView(output), 0)
+          const output = args.at(-1) as DataView
+          outputViews.push(output)
+          LogicalCursorStruct.packInto({ row: index, col: index + 1, offset: offset++ }, output, 0)
         }
         const first = (lib as any)[name](1)
         const second = (lib as any)[name](1)
         expect(first).not.toBe(second)
         expect(first).toEqual({ row: index, col: index + 1, offset: index + 2 })
         expect(second).toEqual({ row: index, col: index + 1, offset: index + 3 })
-        expect(outputBuffers[1]).toBe(outputBuffers[0])
+        expect(outputViews[0]).toBeInstanceOf(DataView)
+        expect(outputViews[1]).toBe(outputViews[0])
       }
 
       originals.set("editBufferOffsetToPosition", symbols.editBufferOffsetToPosition)
-      const positionBuffers: ArrayBuffer[] = []
-      symbols.editBufferOffsetToPosition = (_buffer, offset: number, output: ArrayBuffer) => {
-        positionBuffers.push(output)
-        LogicalCursorStruct.packInto({ row: 1, col: 2, offset }, new DataView(output), 0)
+      const positionViews: DataView[] = []
+      symbols.editBufferOffsetToPosition = (_buffer, offset: number, output: DataView) => {
+        positionViews.push(output)
+        LogicalCursorStruct.packInto({ row: 1, col: 2, offset }, output, 0)
         return 1
       }
       const firstPosition = lib.editBufferOffsetToPosition(1 as any, 9)
       const secondPosition = lib.editBufferOffsetToPosition(1 as any, 10)
       expect(firstPosition).toEqual({ row: 1, col: 2, offset: 9 })
       expect(secondPosition).toEqual({ row: 1, col: 2, offset: 10 })
-      expect(positionBuffers[1]).toBe(positionBuffers[0])
+      expect(positionViews[0]).toBeInstanceOf(DataView)
+      expect(positionViews[1]).toBe(positionViews[0])
 
       for (const [index, name] of visualQueries.entries()) {
         originals.set(name, symbols[name])
-        const outputBuffers: ArrayBuffer[] = []
+        const outputViews: DataView[] = []
         let offset = index + 4
         symbols[name] = (...args: any[]) => {
-          const output = args.at(-1) as ArrayBuffer
-          outputBuffers.push(output)
+          const output = args.at(-1) as DataView
+          outputViews.push(output)
           VisualCursorStruct.packInto(
             {
               visualRow: index,
@@ -356,7 +362,7 @@ describe("borrowed pointer call sites", () => {
               logicalCol: index + 3,
               offset: offset++,
             },
-            new DataView(output),
+            output,
             0,
           )
         }
@@ -365,7 +371,8 @@ describe("borrowed pointer call sites", () => {
         expect(first).not.toBe(second)
         expect(first.offset).toBe(index + 4)
         expect(second.offset).toBe(index + 5)
-        expect(outputBuffers[1]).toBe(outputBuffers[0])
+        expect(outputViews[0]).toBeInstanceOf(DataView)
+        expect(outputViews[1]).toBe(outputViews[0])
       }
     } finally {
       for (const [name, original] of originals) symbols[name] = original
@@ -602,7 +609,7 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
-  test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {
+  test("audioCloseStream forwards its reason and unpacks the owned output view", () => {
     const calls: any[][] = []
     const original = symbols.audioCloseStream
     symbols.audioCloseStream = (...args: any[]) => {
@@ -621,7 +628,7 @@ describe("borrowed pointer call sites", () => {
           errorCode: -3,
           readyGeneration: 7,
         },
-        new DataView(args[3]),
+        args[3],
         0,
       )
       return 0
@@ -632,7 +639,7 @@ describe("borrowed pointer call sites", () => {
       expect(calls[0]![0]).toBe(11)
       expect(calls[0]![1]).toBe(22)
       expect(calls[0]![2]).toBe(NativeAudioStreamCloseReason.TransportError)
-      expect(calls[0]![3]).toBeInstanceOf(ArrayBuffer)
+      expect(calls[0]![3]).toBeInstanceOf(DataView)
       expect(result).toEqual({
         status: 0,
         stats: {
@@ -817,9 +824,9 @@ describe("borrowed pointer call sites", () => {
       lib.imageComposite(handle, handle, 0, 0, 0, 255)
 
       expect(calls.get("bufferDrawImage")![2]).toBe(firstImageOptions)
-      expect(firstImageOptions).toBeInstanceOf(ArrayBuffer)
-      expect((firstImageOptions as ArrayBuffer).byteLength).toBe(ImageDrawOptionsStruct.size)
-      expect(ImageDrawOptionsStruct.unpack(firstImageOptions as ArrayBuffer)).toMatchObject({
+      expect(firstImageOptions).toBeInstanceOf(DataView)
+      expect((firstImageOptions as DataView).byteLength).toBe(ImageDrawOptionsStruct.size)
+      expect(ImageDrawOptionsStruct.unpack((firstImageOptions as DataView).buffer)).toMatchObject({
         x: 2,
         y: 3,
         width: 4,

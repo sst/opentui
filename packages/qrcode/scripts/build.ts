@@ -148,6 +148,7 @@ writeFileSync(
       homepage: packageJson.homepage,
       repository: packageJson.repository,
       bugs: packageJson.bugs,
+      engines: packageJson.engines,
       exports,
       dependencies: processedDependencies,
       devDependencies: packageJson.devDependencies,

@@ -454,11 +454,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     embeddedTerminalCursor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "i32",
     },
     embeddedTerminalEncodeKey: {
-      args: ["u32", "ptr", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr"],
+      args: ["u32", "buffer", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     embeddedTerminalEncodeMouse: {
@@ -818,7 +818,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawImage: {
-      args: ["u32", "u32", "ptr"],
+      args: ["u32", "u32", "buffer"],
       returns: "u8",
     },
     bufferDrawPackedBuffer: {
@@ -834,7 +834,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawGrid: {
-      args: ["u32", "buffer", "buffer", "buffer", "buffer", "u32", "buffer", "u32", "ptr"],
+      args: ["u32", "buffer", "buffer", "buffer", "buffer", "u32", "buffer", "u32", "buffer"],
       returns: "void",
     },
     bufferDrawBox: {
@@ -1207,7 +1207,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewMeasureForDimensions: {
-      args: ["u32", "u32", "u32", "ptr"],
+      args: ["u32", "u32", "u32", "buffer"],
       returns: "bool",
     },
     bufferDrawTextBufferView: {
@@ -1359,7 +1359,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetCursorPosition: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editBufferGetId: {
@@ -1403,19 +1403,19 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetNextWordBoundary: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editBufferGetPrevWordBoundary: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editBufferGetEOL: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editBufferOffsetToPosition: {
-      args: ["u32", "u32", "ptr"],
+      args: ["u32", "u32", "buffer"],
       returns: "bool",
     },
     editBufferPositionToOffset: {
@@ -1495,7 +1495,7 @@ function getOpenTUILib(libPath?: string) {
 
     // EditorView VisualCursor methods
     editorViewGetVisualCursor: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
 
@@ -1516,23 +1516,23 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewGetNextWordBoundary: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editorViewGetPrevWordBoundary: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editorViewGetEOL: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editorViewGetVisualSOL: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editorViewGetVisualEOL: {
-      args: ["u32", "ptr"],
+      args: ["u32", "buffer"],
       returns: "void",
     },
     editorViewGotoVisualLineEnd: {
@@ -1958,11 +1958,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioGetStreamStats: {
-      args: ["u32", "u32", "ptr"],
+      args: ["u32", "u32", "buffer"],
       returns: "i32",
     },
     audioCloseStream: {
-      args: ["u32", "u32", "u32", "ptr"],
+      args: ["u32", "u32", "u32", "buffer"],
       returns: "i32",
     },
     audioLoad: {
@@ -3400,7 +3400,7 @@ class FFIRenderLib implements RenderLib {
 
   public embeddedTerminalCursor(handle: EmbeddedTerminalHandle): EmbeddedTerminalCursor {
     const storage = this.ffiStructStorage.embeddedTerminalCursor
-    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalCursor(handle, storage.buffer), "cursor query")
+    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalCursor(handle, storage.view), "cursor query")
     const result = EmbeddedTerminalCursorStruct.unpack(storage.buffer)
     return {
       x: result.x,
@@ -3436,7 +3436,7 @@ class FFIRenderLib implements RenderLib {
     const encode = (output: Uint8Array) =>
       this.opentui.symbols.embeddedTerminalEncodeKey(
         handle,
-        options.buffer,
+        options.view,
         keyCodeLength === 0 ? null : keyCode,
         keyCodeLength,
         textLength === 0 ? null : text,
@@ -4063,7 +4063,7 @@ class FFIRenderLib implements RenderLib {
       storage.view,
       0,
     )
-    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.buffer))
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.view))
   }
 
   public bufferDrawPackedBuffer(
@@ -4156,7 +4156,7 @@ class FFIRenderLib implements RenderLib {
       columnCount,
       rowOffsets,
       rowCount,
-      this.ffiStructStorage.gridDrawOptions.buffer,
+      this.ffiStructStorage.gridDrawOptions.view,
     )
   }
 
@@ -5373,7 +5373,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewMeasureForDimensions(view: Pointer, width: number, height: number): MeasureResult | null {
     const storage = this.ffiStructStorage.measureResult
-    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, storage.buffer)
+    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, storage.view)
     if (!success) return null
     const result = MeasureResultStruct.unpackInto(storage.view, storage.result)
     return { lineCount: result.lineCount, widthColsMax: result.widthColsMax }
@@ -5686,7 +5686,7 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, storage.buffer)
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, storage.view)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
@@ -5745,28 +5745,28 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetNextWordBoundary(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, storage.buffer)
+    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, storage.view)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferGetPrevWordBoundary(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, storage.buffer)
+    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, storage.view)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferGetEOL(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetEOL(buffer, storage.buffer)
+    this.opentui.symbols.editBufferGetEOL(buffer, storage.view)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferOffsetToPosition(buffer: Pointer, offset: number): LogicalCursor | null {
     const storage = this.ffiStructStorage.logicalCursor
-    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, storage.buffer)
+    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, storage.view)
     if (!success) return null
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
@@ -5966,7 +5966,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetVisualCursor(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualCursor(view, storage.buffer)
+    this.opentui.symbols.editorViewGetVisualCursor(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
@@ -5989,35 +5989,35 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetNextWordBoundary(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetNextWordBoundary(view, storage.buffer)
+    this.opentui.symbols.editorViewGetNextWordBoundary(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetPrevWordBoundary(view, storage.buffer)
+    this.opentui.symbols.editorViewGetPrevWordBoundary(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetEOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetEOL(view, storage.buffer)
+    this.opentui.symbols.editorViewGetEOL(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetVisualSOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualSOL(view, storage.buffer)
+    this.opentui.symbols.editorViewGetVisualSOL(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetVisualEOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualEOL(view, storage.buffer)
+    this.opentui.symbols.editorViewGetVisualEOL(view, storage.view)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
@@ -6371,7 +6371,7 @@ class FFIRenderLib implements RenderLib {
 
   public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
     const storage = this.ffiStructStorage.audioStreamStats
-    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, storage.buffer)
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, storage.view)
     if (status !== 0) return null
     const stats = AudioStreamStatsStruct.unpackInto(storage.view, storage.result) as NativeAudioStreamStats
     return { ...stats }
@@ -6383,7 +6383,7 @@ class FFIRenderLib implements RenderLib {
     reason: NativeAudioStreamCloseReason,
   ): { status: number; stats: NativeAudioStreamStats | null } {
     const storage = this.ffiStructStorage.audioStreamStats
-    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, storage.buffer)
+    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, storage.view)
     if (status !== 0) return { status, stats: null }
     const stats = AudioStreamStatsStruct.unpackInto(storage.view, storage.result) as NativeAudioStreamStats
     return { status, stats: { ...stats } }
