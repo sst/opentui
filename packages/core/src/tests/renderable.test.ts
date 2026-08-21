@@ -730,7 +730,7 @@ describe("Renderable - Child Management", () => {
 
     expect(parent.findDescendantById("child1")).toBe(child1)
     expect(parent.findDescendantById("child2")).toBe(child2)
-    expect(parent.findDescendantById("text-node")).toBeUndefined()
+    expect(parent.findDescendantById("text-node")).toBe(textNode)
   })
 
   test("destroyRecursively destroys nested children recursively", () => {

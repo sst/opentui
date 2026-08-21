@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { RGBA } from "../lib/RGBA.js"
+import { StyledText } from "../lib/styled-text.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { TextBuffer } from "../text-buffer.js"
 import { TextAttributes, type CapturedFrame, type CapturedSpan } from "../types.js"
 import { TextRenderable } from "./Text.js"
 
@@ -99,5 +101,107 @@ describe("nested TextRenderable", () => {
 
     expect(root.plainText).toBe("AC")
     expect(middle.parent).toBeNull()
+  })
+
+  test("keeps native document state only on the outer text and restores it after detach", async () => {
+    const root = new TextRenderable(renderer, { content: "root" })
+    const child = new TextRenderable(renderer, { content: "child", width: 7 })
+    const yogaNode = child.getLayoutNode()
+
+    expect((child as any).hasTextDocumentState).toBe(true)
+    root.add(child)
+
+    expect((root as any).hasTextDocumentState).toBe(true)
+    expect((child as any).hasTextDocumentState).toBe(false)
+    expect(child.getLayoutNode()).toBe(yogaNode)
+    expect(child.width).toBe(7)
+
+    root.remove(child)
+    expect((child as any).hasTextDocumentState).toBe(true)
+    expect(child.getLayoutNode()).toBe(yogaNode)
+    expect(child.plainText).toBe("child")
+
+    root.add(child)
+    expect((child as any).hasTextDocumentState).toBe(false)
+    renderer.root.add(root)
+  })
+
+  test("commits one canonical snapshot for batched nested text and style changes", async () => {
+    const setStyledText = spyOn(TextBuffer.prototype, "setStyledText")
+    try {
+      const root = new TextRenderable(renderer, {})
+      const child = new TextRenderable(renderer, { content: "before" })
+      root.add(child)
+      renderer.root.add(root)
+      await renderOnce()
+
+      const callsBeforeUpdate = setStyledText.mock.calls.length
+      child.content = "after"
+      child.fg = "#00ff00"
+      child.attributes = TextAttributes.BOLD
+
+      expect(setStyledText.mock.calls.length).toBe(callsBeforeUpdate)
+      await renderOnce()
+      expect(setStyledText.mock.calls.length).toBe(callsBeforeUpdate + 1)
+      expect(root.plainText).toBe("after")
+    } finally {
+      setStyledText.mockRestore()
+    }
+  })
+
+  test("preserves CRLF, wide characters, tabs, and nested visibility", async () => {
+    const root = new TextRenderable(renderer, { wrapMode: "none" })
+    const child = new TextRenderable(renderer, { content: "A\r\n界\tB" })
+    root.add(child)
+    renderer.root.add(root)
+    await renderOnce()
+
+    expect(root.plainText).toBe("A\r\n界\tB")
+    expect(root.lineCount).toBe(2)
+    expect(root.width).toBeGreaterThanOrEqual(4)
+
+    child.visible = false
+    await renderOnce()
+    expect(root.plainText).toBe("")
+
+    child.visible = true
+    await renderOnce()
+    expect(root.plainText).toBe("A\r\n界\tB")
+  })
+
+  test("converts StyledText into canonical styled children", () => {
+    const text = new TextRenderable(renderer, {
+      content: new StyledText([
+        { __isChunk: true, text: "red", fg: RGBA.fromHex("#ff0000") },
+        { __isChunk: true, text: " bold", attributes: TextAttributes.BOLD },
+      ]),
+    })
+    renderer.root.add(text)
+
+    expect(text.children).toHaveLength(2)
+    expect(text.children.every((child) => child instanceof TextRenderable)).toBe(true)
+    expect(text.chunks.map((chunk) => chunk.text)).toEqual(["red", " bold"])
+  })
+
+  test("moves a nested node between outer documents without retaining transient state", async () => {
+    const left = new TextRenderable(renderer, { content: "L" })
+    const right = new TextRenderable(renderer, { content: "R" })
+    const child = new TextRenderable(renderer, { id: "duplicate", content: "X" })
+    const sibling = new TextRenderable(renderer, { id: "duplicate", content: "Y" })
+
+    left.add(child)
+    left.add(sibling)
+    renderer.root.add(left)
+    renderer.root.add(right)
+    await renderOnce()
+
+    right.add(child)
+    await renderOnce()
+
+    expect(left.plainText).toBe("LY")
+    expect(right.plainText).toBe("RX")
+    expect(left.getTextChildren()).toEqual([sibling])
+    expect(child.parent).toBe(right)
+    expect((child as any).hasTextDocumentState).toBe(false)
   })
 })

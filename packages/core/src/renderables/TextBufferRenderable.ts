@@ -38,10 +38,25 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _truncate: boolean = false
   protected _firstLineOffset: number = 0
 
-  protected textBuffer: TextBuffer
-  protected textBufferView: TextBufferView
-  protected _textBufferSyntaxStyle: SyntaxStyle
+  private _textBuffer: TextBuffer | null = null
+  private _textBufferView: TextBufferView | null = null
+  private _textDocumentSyntaxStyle: SyntaxStyle | null = null
   private nativeRenderable: NativeRenderableHandle | null = null
+
+  protected get textBuffer(): TextBuffer {
+    if (!this._textBuffer) throw new Error("Text document state is not attached")
+    return this._textBuffer
+  }
+
+  protected get textBufferView(): TextBufferView {
+    if (!this._textBufferView) throw new Error("Text document state is not attached")
+    return this._textBufferView
+  }
+
+  protected get _textBufferSyntaxStyle(): SyntaxStyle {
+    if (!this._textDocumentSyntaxStyle) throw new Error("Text document state is not attached")
+    return this._textDocumentSyntaxStyle
+  }
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -56,7 +71,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     truncate: false,
   } satisfies Partial<TextBufferOptions>
 
-  constructor(ctx: RenderContext, options: TextBufferOptions) {
+  constructor(ctx: RenderContext, options: TextBufferOptions, attachTextDocumentState: boolean = true) {
     super(ctx, options)
 
     this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
@@ -72,39 +87,66 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       : this._defaultOptions.tabIndicatorColor
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
-    this.textBufferView = TextBufferView.create(this.textBuffer)
-    this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
+    this._firstLineOffset = attachTextDocumentState ? (ctx.claimFirstLineOffset?.(this) ?? 0) : 0
 
-    this._textBufferSyntaxStyle = SyntaxStyle.create()
-    this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
+    if (attachTextDocumentState) this.attachTextDocumentState()
+  }
 
-    this.textBufferView.setWrapMode(this._wrapMode)
-    this.textBufferView.setFirstLineOffset(this._firstLineOffset)
+  protected get hasTextDocumentState(): boolean {
+    return this._textBuffer != null
+  }
+
+  protected attachTextDocumentState(): void {
+    if (this.hasTextDocumentState || this.isDestroyed) return
+
+    const textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    const textBufferView = TextBufferView.create(textBuffer)
+    const syntaxStyle = SyntaxStyle.create()
+
+    this._textBuffer = textBuffer
+    this._textBufferView = textBufferView
+    this._textDocumentSyntaxStyle = syntaxStyle
+
+    textBuffer.setSyntaxStyle(syntaxStyle)
+    textBufferView.setWrapMode(this._wrapMode)
+    textBufferView.setFirstLineOffset(this._firstLineOffset)
     this.setupNativeRenderable()
 
-    this.textBuffer.setDefaultFg(this._defaultFg)
-    this.textBuffer.setDefaultBg(this._defaultBg)
-    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+    textBuffer.setDefaultFg(this._defaultFg)
+    textBuffer.setDefaultBg(this._defaultBg)
+    textBuffer.setDefaultAttributes(this._defaultAttributes)
 
-    if (this._tabIndicator !== undefined) {
-      this.textBufferView.setTabIndicator(this._tabIndicator)
-    }
-    if (this._tabIndicatorColor !== undefined) {
-      this.textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
-    }
-
-    if (this._wrapMode !== "none" && this.width > 0) {
-      this.textBufferView.setWrapWidth(this.width)
-    }
-
+    if (this._tabIndicator !== undefined) textBufferView.setTabIndicator(this._tabIndicator)
+    if (this._tabIndicatorColor !== undefined) textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
+    if (this._wrapMode !== "none" && this.width > 0) textBufferView.setWrapWidth(this.width)
     if (this.width > 0 && this.height > 0) {
-      this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+    }
+    textBufferView.setTruncate(this._truncate)
+
+    this.yogaNode.markDirty()
+    this._ctx.requestRender()
+  }
+
+  protected detachTextDocumentState(): void {
+    if (!this.hasTextDocumentState) return
+
+    if (this.nativeRenderable) {
+      resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
+      this.nativeRenderable = null
     }
 
-    this.textBufferView.setTruncate(this._truncate)
+    const textBuffer = this._textBuffer!
+    const textBufferView = this._textBufferView!
+    const syntaxStyle = this._textDocumentSyntaxStyle!
+    this._textBuffer = null
+    this._textBufferView = null
+    this._textDocumentSyntaxStyle = null
 
-    this.updateTextInfo()
+    textBuffer.setSyntaxStyle(null)
+    syntaxStyle.destroy()
+    textBufferView.destroy()
+    textBuffer.destroy()
   }
 
   protected onMouseEvent(event: any): void {
@@ -191,7 +233,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected updateViewportOffset(): void {
     // Update the viewport with the new scroll position
-    if (this.width > 0 && this.height > 0) {
+    if (this.hasTextDocumentState && this.width > 0 && this.height > 0) {
       this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
   }
@@ -204,7 +246,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBuffer.length
   }
 
-  get fg(): RGBA {
+  get fg(): RGBA | undefined {
     return this._defaultFg
   }
 
@@ -248,7 +290,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  get bg(): RGBA {
+  get bg(): RGBA | undefined {
     return this._defaultBg
   }
 
@@ -282,9 +324,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set wrapMode(value: "none" | "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.textBufferView.setWrapMode(this._wrapMode)
-      if (value !== "none" && this.width > 0) {
-        this.textBufferView.setWrapWidth(this.width)
+      if (this.hasTextDocumentState) {
+        this.textBufferView.setWrapMode(this._wrapMode)
+        if (value !== "none" && this.width > 0) {
+          this.textBufferView.setWrapWidth(this.width)
+        }
       }
       // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
       this.yogaNode.markDirty()
@@ -299,7 +343,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set tabIndicator(value: string | number | undefined) {
     if (this._tabIndicator !== value) {
       this._tabIndicator = value
-      if (value !== undefined) {
+      if (value !== undefined && this.hasTextDocumentState) {
         this.textBufferView.setTabIndicator(value)
       }
       this.requestRender()
@@ -314,7 +358,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     const newColor = value ? parseColor(value) : undefined
     if (this._tabIndicatorColor !== newColor) {
       this._tabIndicatorColor = newColor
-      if (newColor !== undefined) {
+      if (newColor !== undefined && this.hasTextDocumentState) {
         this.textBufferView.setTabIndicatorColor(newColor)
       }
       this.requestRender()
@@ -328,7 +372,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set truncate(value: boolean) {
     if (this._truncate !== value) {
       this._truncate = value
-      this.textBufferView.setTruncate(value)
+      if (this.hasTextDocumentState) this.textBufferView.setTruncate(value)
       this.requestRender()
     }
   }
@@ -398,7 +442,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   shouldStartSelection(x: number, y: number): boolean {
-    if (!this.selectable) return false
+    if (!this.hasTextDocumentState || !this.selectable) return false
 
     const localX = x - this.x
     const localY = y - this.y
@@ -407,6 +451,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   onSelectionChanged(selection: Selection | null): boolean {
+    if (!this.hasTextDocumentState) return false
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
@@ -442,14 +487,17 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   getSelectedText(): string {
+    if (!this.hasTextDocumentState) return ""
     return this.textBufferView.getSelectedText()
   }
 
   hasSelection(): boolean {
+    if (!this.hasTextDocumentState) return false
     return this.textBufferView.hasSelection()
   }
 
   getSelection(): { start: number; end: number } | null {
+    if (!this.hasTextDocumentState) return null
     return this.textBufferView.getSelection()
   }
 
@@ -471,7 +519,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    if (this.textBuffer.ptr) {
+    if (this.hasTextDocumentState && this.textBuffer.ptr) {
       buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
     }
   }
@@ -479,14 +527,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   destroy(): void {
     if (this.isDestroyed) return
 
-    if (this.nativeRenderable) {
-      resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
-      this.nativeRenderable = null
-    }
-    this.textBuffer.setSyntaxStyle(null)
-    this._textBufferSyntaxStyle.destroy()
-    this.textBufferView.destroy()
-    this.textBuffer.destroy()
+    this.detachTextDocumentState()
     super.destroy()
   }
 
