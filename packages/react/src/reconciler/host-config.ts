@@ -1,4 +1,4 @@
-import { ImageRenderable, TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
+import { ImageRenderable, TextRenderable, type Renderable } from "@opentui/core"
 import pkgJson from "../../package.json" with { type: "json" }
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
@@ -132,7 +132,7 @@ export const hostConfig: HostConfig<
       throw new Error("Text must be created inside of a text node")
     }
 
-    return TextNodeRenderable.fromString(text)
+    return TextRenderable.fromString(rootContainerInstance.ctx, text)
   },
 
   // Schedule timeout

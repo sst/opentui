@@ -29,7 +29,6 @@ import type {
   TextareaOptions,
   TextareaRenderable,
   TextNodeOptions,
-  TextNodeRenderable,
   TextOptions,
   TextRenderable,
   CursorChangeEvent,
@@ -128,7 +127,7 @@ export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
   children?: TextChildren
 }
 
-export type SpanProps = ComponentProps<TextNodeOptions, TextNodeRenderable> & {
+export type SpanProps = ComponentProps<TextNodeOptions, TextRenderable> & {
   children?: TextChildren
 }
 

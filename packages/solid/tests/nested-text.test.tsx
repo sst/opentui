@@ -66,4 +66,28 @@ describe("Solid nested text", () => {
     await setup.renderOnce()
     expect(setup.captureCharFrame()).toContain("ready stable")
   })
+
+  test("resets reactive inline styles instead of retaining stale attributes", async () => {
+    const [active, setActive] = createSignal(true)
+
+    setup = await testRender(
+      () => (
+        <text>
+          <span style={active() ? { fg: "#ff0000", bold: true } : {}}>status</span>
+        </text>
+      ),
+      { width: 20, height: 2 },
+    )
+
+    await setup.renderOnce()
+    let span = setup.captureSpans().lines[0]!.spans.find((candidate) => candidate.text.includes("status"))!
+    expect(span.attributes & TextAttributes.BOLD).toBeTruthy()
+    expect(span.fg.toInts()).toEqual([255, 0, 0, 255])
+
+    setActive(false)
+    await setup.renderOnce()
+    span = setup.captureSpans().lines[0]!.spans.find((candidate) => candidate.text.includes("status"))!
+    expect(span.attributes & TextAttributes.BOLD).toBeFalsy()
+    expect(span.fg.toInts()).not.toEqual([255, 0, 0, 255])
+  })
 })

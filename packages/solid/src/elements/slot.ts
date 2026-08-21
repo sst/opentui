@@ -1,4 +1,4 @@
-import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable, Yoga } from "@opentui/core"
+import { BaseRenderable, TextRenderable, Yoga } from "@opentui/core"
 
 type LayoutNodeProvider = {
   getLayoutNode?: () => Yoga.Node
@@ -51,7 +51,7 @@ class SlotBaseRenderable extends BaseRenderable {
   }
 }
 
-export class TextSlotRenderable extends TextNodeRenderable {
+export class TextSlotRenderable extends TextRenderable {
   protected slotParent?: SlotRenderable
   protected destroyed: boolean = false
 
@@ -72,6 +72,7 @@ export class TextSlotRenderable extends TextNodeRenderable {
 
     this.destroyed = true
     this.detachFromSlot()
+    super.destroy()
   }
 
   public override destroy(): void {
@@ -181,7 +182,7 @@ export class SlotRenderable extends SlotBaseRenderable {
   }
 
   private isTextSlotParent(parent: BaseRenderable): boolean {
-    return isTextNodeRenderable(parent) || parent instanceof TextRenderable
+    return parent instanceof TextRenderable
   }
 
   private getCurrentSlotChild<T extends BaseRenderable>(nodesByParent: Map<BaseRenderable, T>): T | undefined {

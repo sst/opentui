@@ -1,54 +1,50 @@
-import { TextAttributes, TextNodeRenderable, type RenderContext, type TextNodeOptions } from "@opentui/core"
+import { TextAttributes, TextRenderable, type RenderContext, type TextNodeOptions } from "@opentui/core"
 
 export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "br", "a"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
-export class SpanRenderable extends TextNodeRenderable {
-  constructor(
-    private readonly ctx: RenderContext | null,
-    options: TextNodeOptions,
-  ) {
-    super(options)
+export class SpanRenderable extends TextRenderable {
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, false)
   }
 }
 
 // Custom TextNode component for text modifiers
 class TextModifierRenderable extends SpanRenderable {
-  constructor(options: TextNodeOptions, modifier?: TextNodeKey) {
-    super(null, options)
-
-    // Set appropriate attributes based on modifier type
+  constructor(ctx: RenderContext, options: TextNodeOptions, modifier?: TextNodeKey) {
+    let attributes = options.attributes ?? 0
     if (modifier === "b" || modifier === "strong") {
-      this.attributes = (this.attributes || 0) | TextAttributes.BOLD
+      attributes |= TextAttributes.BOLD
     } else if (modifier === "i" || modifier === "em") {
-      this.attributes = (this.attributes || 0) | TextAttributes.ITALIC
+      attributes |= TextAttributes.ITALIC
     } else if (modifier === "u") {
-      this.attributes = (this.attributes || 0) | TextAttributes.UNDERLINE
+      attributes |= TextAttributes.UNDERLINE
     }
+    super(ctx, { ...options, attributes })
   }
 }
 
 export class BoldSpanRenderable extends TextModifierRenderable {
-  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
-    super(options, "b")
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, "b")
   }
 }
 
 export class ItalicSpanRenderable extends TextModifierRenderable {
-  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
-    super(options, "i")
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, "i")
   }
 }
 
 export class UnderlineSpanRenderable extends TextModifierRenderable {
-  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
-    super(options, "u")
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options, "u")
   }
 }
 
 export class LineBreakRenderable extends SpanRenderable {
-  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
-    super(null, options)
+  constructor(ctx: RenderContext, options: TextNodeOptions) {
+    super(ctx, options)
     this.add() // Add a newline
   }
 
@@ -62,11 +58,11 @@ export interface LinkOptions extends TextNodeOptions {
 }
 
 export class LinkRenderable extends SpanRenderable {
-  constructor(_ctx: RenderContext | null, options: LinkOptions) {
+  constructor(ctx: RenderContext, options: LinkOptions) {
     const linkOptions: TextNodeOptions = {
       ...options,
       link: { url: options.href },
     }
-    super(null, linkOptions)
+    super(ctx, linkOptions)
   }
 }

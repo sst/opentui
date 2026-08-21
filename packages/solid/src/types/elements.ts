@@ -25,7 +25,7 @@ import type {
   TabSelectRenderableOptions,
   TextareaOptions,
   TextareaRenderable,
-  TextNodeRenderable,
+  TextNodeOptions,
   TextOptions,
   TextRenderable,
 } from "@opentui/core"
@@ -113,7 +113,7 @@ export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
   children?: TextChildren | Array<TextChildren>
 }
 
-export type SpanProps = ComponentProps<{}, TextNodeRenderable> & {
+export type SpanProps = ComponentProps<TextNodeOptions, TextRenderable> & {
   children?: TextChildren | Array<TextChildren>
 }
 

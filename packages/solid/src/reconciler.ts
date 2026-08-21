@@ -5,33 +5,23 @@ import {
   ImageRenderable,
   InputRenderable,
   InputRenderableEvents,
-  isTextNodeRenderable,
   parseColor,
   Renderable,
-  RootTextNodeRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
-  TextNodeRenderable,
   TextRenderable,
-  type TextNodeOptions,
 } from "@opentui/core"
 import { decodeHTMLStrict } from "entities"
 import { onCleanup, useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"
-import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
+import { getComponentCatalogue, RendererContext, SlotRenderable, SpanRenderable } from "./elements/index.js"
 import { getNextId } from "./utils/id-counter.js"
 import { log } from "./utils/log.js"
 
-class TextNode extends TextNodeRenderable {
-  public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
-    const node = new TextNode(options)
-    node.add(text)
-    return node
-  }
-}
+class TextNode extends TextRenderable {}
 
 export type DomNode = BaseRenderable
 
@@ -46,8 +36,8 @@ const logId = (node?: DomNode): string | undefined => {
   return node.id
 }
 
-const getNodeChildren = (node: DomNode) => {
-  let children
+const getNodeChildren = (node: DomNode): BaseRenderable[] => {
+  let children: BaseRenderable[]
   if (node instanceof TextRenderable) {
     children = node.getTextChildren()
   } else {
@@ -76,8 +66,8 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     anchor = anchor.getSlotChild(parent)
   }
 
-  if (isTextNodeRenderable(node)) {
-    if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
+  if (node instanceof TextNode || node instanceof SpanRenderable) {
+    if (!(parent instanceof TextRenderable)) {
       throw new Error(
         `Orphan text error: "${node
           .toChunks()
@@ -148,7 +138,9 @@ function _createTextNode(value: string | number, decodeEntities: boolean): TextN
     value = value.toString()
   }
 
-  return TextNode.fromString(decodeEntities ? decodeHTMLStrict(value) : value, { id })
+  const node = new TextNode({ id })
+  node.add(decodeEntities ? decodeHTMLStrict(value) : value)
+  return node
 }
 
 export function createSlotNode(): SlotRenderable {
@@ -161,9 +153,6 @@ function _getParentNode(childNode: DomNode): DomNode | undefined {
   log("Getting parent of node:", logId(childNode))
 
   let parent = childNode.parent ?? undefined
-  if (parent instanceof RootTextNodeRenderable) {
-    parent = parent.textParent ?? undefined
-  }
   // ScrollBox delegates add/remove to its internal `content` wrapper
   // (scrollbox → wrapper → viewport → content), so children report
   // `content` as their parent. Return the ScrollBox so the identity
@@ -239,16 +228,23 @@ export const {
       return
     }
 
-    if (isTextNodeRenderable(node)) {
+    if (node instanceof TextNode || node instanceof SpanRenderable) {
       if (name === "href") {
         node.link = { url: value }
         return
       }
 
       if (name === "style") {
-        node.attributes |= createTextAttributes(value)
-        node.fg = value.fg ? parseColor(value.fg) : node.fg
-        node.bg = value.bg ? parseColor(value.bg) : node.bg
+        const intrinsicAttributes = node instanceof SpanRenderable ? node.intrinsicAttributes : 0
+        node.attributes = intrinsicAttributes | createTextAttributes(value ?? {})
+        node.fg = value?.fg ? parseColor(value.fg) : undefined
+        node.bg = value?.bg ? parseColor(value.bg) : undefined
+        return
+      }
+
+      if (name === "attributes") {
+        const intrinsicAttributes = node instanceof SpanRenderable ? node.intrinsicAttributes : 0
+        node.attributes = intrinsicAttributes | (value ?? 0)
         return
       }
 
