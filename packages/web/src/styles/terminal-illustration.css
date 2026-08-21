@@ -34,7 +34,7 @@
 .terminal-illustration__screen {
   color: inherit;
   flex: none;
-  font-family: "Berkeley Mono", ui-monospace, monospace;
+  font-family: "Commit Mono", ui-monospace, monospace;
   font-variant-ligatures: none;
   white-space: pre;
 }

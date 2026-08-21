@@ -685,7 +685,7 @@
 
   function loadAndMount(illustration, config) {
     // `fitScreenToBox` sizes the screen from a measured glyph width. Measuring
-    // against the fallback monospace font while Berkeley Mono is still
+    // against the fallback monospace font while Commit Mono is still
     // loading leaves the rendered screen narrower or wider than the box, so
     // wait for fonts before mounting.
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()
