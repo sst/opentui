@@ -1166,6 +1166,37 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("selection mouseUp without drag events updates focus to release coordinates", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "selectable-no-drag",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 20,
+        height: 6,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      const startX = target.x + 1
+      const startY = target.y + 1
+      const endX = target.x + 15
+      const endY = target.y + 1
+
+      await mockMouse.pressDown(startX, startY)
+      // No moveTo — simulates a terminal multiplexer that does not forward drag events
+      await mockMouse.release(endX, endY)
+
+      const selection = renderer.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection?.focus).toEqual({ x: endX, y: endY })
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("mouse out is not fired on a destroyed renderable before render", async () => {
     try {
       const target = new TestRenderable(renderer, {

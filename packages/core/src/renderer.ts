@@ -3622,6 +3622,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+      this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
           ...mouseEvent,
