@@ -149,9 +149,12 @@ export type TextBufferDebugMetrics = {
   transactionArenaCount: number
   transactionArenaBytes: number
   arenaBytes: number
-  backingStoreBytes: number
-  backingStoreCapacity: number
-  historyRetainedBytes: number
+  currentReachableBytes: number
+  historyReachableBytes: number
+  committedUnreachableBytes: number
+  liveBackingBytes: number
+  liveBackingCapacity: number
+  liveBackingBlocks: number
 }
 
 export type DocumentOperation = DocumentStyle & {
@@ -5105,7 +5108,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferGetDebugMetrics(buffer: Pointer): TextBufferDebugMetrics {
-    const metrics = new BigUint64Array(6)
+    const metrics = new BigUint64Array(9)
     if (!this.opentui.symbols.textBufferGetDebugMetrics(buffer, metrics)) {
       throw new Error("Failed to read TextBuffer debug metrics")
     }
@@ -5113,9 +5116,12 @@ class FFIRenderLib implements RenderLib {
       transactionArenaCount: toNumber(metrics[0]),
       transactionArenaBytes: toSafeByteCount(metrics[1], "TextBuffer transaction arena bytes"),
       arenaBytes: toSafeByteCount(metrics[2], "TextBuffer arena bytes"),
-      backingStoreBytes: toSafeByteCount(metrics[3], "TextBuffer backing-store bytes"),
-      backingStoreCapacity: toSafeByteCount(metrics[4], "TextBuffer backing-store capacity"),
-      historyRetainedBytes: toSafeByteCount(metrics[5], "TextBuffer history-retained bytes"),
+      currentReachableBytes: toSafeByteCount(metrics[3], "TextBuffer current reachable bytes"),
+      historyReachableBytes: toSafeByteCount(metrics[4], "TextBuffer history reachable bytes"),
+      committedUnreachableBytes: toSafeByteCount(metrics[5], "TextBuffer committed unreachable bytes"),
+      liveBackingBytes: toSafeByteCount(metrics[6], "TextBuffer live backing bytes"),
+      liveBackingCapacity: toSafeByteCount(metrics[7], "TextBuffer live backing capacity"),
+      liveBackingBlocks: toSafeByteCount(metrics[8], "TextBuffer live backing blocks"),
     }
   }
 

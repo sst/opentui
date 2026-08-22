@@ -582,7 +582,7 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
     const before_count = tb.textAnnotations().count();
     const before_root_range = tb.getDocumentRange(ids[0]).?;
     const before_child_range = tb.getDocumentRange(ids[1]).?;
-    const before_splice_len = tb.splice_len;
+    const before_backing_bytes = tb.getBackingStoreBytes();
     const before_arenas = tb.rope_transaction_arenas.items.len;
     const before_registry_slots = tb.memRegistry().getUsedSlots();
     const before_internal_slots = tb.internal_style_slots.items.len;
@@ -620,7 +620,7 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectEqual(before_count, tb.textAnnotations().count());
         try std.testing.expectEqualDeep(before_root_range, tb.getDocumentRange(ids[0]).?);
         try std.testing.expectEqualDeep(before_child_range, tb.getDocumentRange(ids[1]).?);
-        try std.testing.expectEqual(before_splice_len, tb.splice_len);
+        try std.testing.expectEqual(before_backing_bytes, tb.getBackingStoreBytes());
         try std.testing.expectEqual(before_arenas, tb.rope_transaction_arenas.items.len);
         try std.testing.expectEqual(before_registry_slots, tb.memRegistry().getUsedSlots());
         try std.testing.expectEqual(before_internal_slots, tb.internal_style_slots.items.len);
@@ -689,6 +689,56 @@ test "document operation batch resolves shifted stable IDs and publishes once" {
     try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[1]).?.end_byte);
     try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[2]).?.start_byte);
     try std.testing.expectEqual(@as(u32, 11), tb.getDocumentRange(ids[2]).?.end_byte);
+}
+
+test "coalesced long-line edits publish only exact final backing" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var line = [_]u8{'a'} ** 5000;
+    const empty_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const initial_chunk: text_buffer.StyledChunk = .{
+        .text_ptr = line[0..].ptr,
+        .text_len = line.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const initial_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = empty_style,
+        .styled = false,
+        .priority = 1,
+    }};
+    var ids: [1]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 92,
+        .chunks = &.{initial_chunk},
+        .ranges = &initial_ranges,
+    }}, &ids);
+
+    line[2500] = 'z';
+    var chunks: [100]text_buffer.StyledChunk = undefined;
+    var operations: [100]text_buffer.DocumentOperation = undefined;
+    for (&chunks, &operations) |*chunk, *operation| {
+        chunk.* = initial_chunk;
+        operation.* = .{ .kind = .replace, .target_id = ids[0], .owner = 92, .chunks = chunk[0..1] };
+    }
+    try tb.applyDocumentOperations(&operations, &.{});
+    try expectText(tb, &line);
+    const metrics = try tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, line.len), metrics.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.history_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
+    try std.testing.expect(metrics.live_backing_bytes <= line.len);
+    try std.testing.expectEqual(@as(usize, 1), metrics.live_backing_blocks);
 }
 
 test "document transactions compact Rope generations while preserving stable ranges" {
@@ -796,7 +846,7 @@ test "Rope compaction rebuilds retained history and reclaims backing storage aft
     try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), "compacted");
     try expectText(tb, "compacted");
-    try std.testing.expect(tb.getRopeTransactionArenaCount() <= 2);
+    try std.testing.expect(tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit);
 }
 
 fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {

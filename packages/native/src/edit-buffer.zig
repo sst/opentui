@@ -85,14 +85,15 @@ const PreparedEditHistory = struct {
     fn deinit(self: *PreparedEditHistory, edit_buffer: *EditBuffer) void {
         if (!self.committed) edit_buffer.tb.releaseAnnotationCheckpoint(&self.annotations);
         self.rope.deinit();
+        edit_buffer.tb.finishEditStorage();
         self.* = undefined;
     }
 };
 
 pub const EditBuffer = struct {
-    /// Matches the long-standing Rope history stress convention while keeping
-    /// product buffers bounded. Unlimited history remains an explicit opt-in.
-    pub const default_max_undo_depth: usize = 100;
+    /// Public compatibility default. Applications may opt into a finite bound
+    /// at construction time or with setMaxUndoDepth.
+    pub const default_max_undo_depth: ?usize = null;
     id: u16,
     tb: *UnifiedTextBuffer,
     cursors: std.ArrayListUnmanaged(Cursor),
@@ -540,6 +541,7 @@ pub const EditBuffer = struct {
 
     fn prepareAutoStoreUndo(self: *EditBuffer) !PreparedEditHistory {
         try self.tb.prepareEditStorage();
+        errdefer self.tb.finishEditStorage();
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
         try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
@@ -648,8 +650,8 @@ pub const EditBuffer = struct {
     }
 
     pub fn clear(self: *EditBuffer) !void {
-        self.clearHistory();
         self.tb.clear();
+        self.clearHistory();
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
     }

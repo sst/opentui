@@ -69,6 +69,13 @@ pub const MemRegistry = struct {
             return id;
         }
 
+        for (self.buffers.items, 0..) |buffer, index| {
+            if (!buffer.active) {
+                self.buffers.items[index] = .{ .data = data, .owned = owned, .active = true };
+                return @intCast(index);
+            }
+        }
+
         // No free slots, allocate a new one
         if (self.buffers.items.len >= 255) {
             return MemRegistryError.OutOfMemory;
@@ -84,6 +91,7 @@ pub const MemRegistry = struct {
 
     pub fn prepareRegister(self: *MemRegistry) MemRegistryError!void {
         if (self.free_slots.items.len != 0) return;
+        for (self.buffers.items) |buffer| if (!buffer.active) return;
         if (self.buffers.items.len >= 255) return MemRegistryError.OutOfMemory;
         try self.buffers.ensureUnusedCapacity(self.allocator, 1);
     }
@@ -92,6 +100,7 @@ pub const MemRegistry = struct {
     /// caller to prepare immutable references before publishing registry state.
     pub fn nextId(self: *const MemRegistry) ?u8 {
         if (self.free_slots.items.len > 0) return self.free_slots.items[self.free_slots.items.len - 1];
+        for (self.buffers.items, 0..) |buffer, index| if (!buffer.active) return @intCast(index);
         if (self.buffers.items.len >= 255) return null;
         return @intCast(self.buffers.items.len);
     }
@@ -115,7 +124,7 @@ pub const MemRegistry = struct {
 
     pub fn unregister(self: *MemRegistry, id: u8) MemRegistryError!void {
         if (id >= self.buffers.items.len) return MemRegistryError.InvalidMemId;
-        var buf = &self.buffers.items[id];
+        const buf = &self.buffers.items[id];
         if (!buf.active) return MemRegistryError.InvalidMemId;
 
         // Reserve bookkeeping before releasing the live entry so failure is atomic.
@@ -133,6 +142,17 @@ pub const MemRegistry = struct {
 
         // Add to free slots list
         self.free_slots.appendAssumeCapacity(id);
+    }
+
+    /// Release a slot without allocator bookkeeping. register/nextId also scan
+    /// inactive slots, so reclamation after an infallible publication never
+    /// needs to reserve a free-slot list entry.
+    pub fn unregisterNoAlloc(self: *MemRegistry, id: u8) MemRegistryError!void {
+        if (id >= self.buffers.items.len) return MemRegistryError.InvalidMemId;
+        const buf = &self.buffers.items[id];
+        if (!buf.active) return MemRegistryError.InvalidMemId;
+        if (buf.owned) self.allocator.free(buf.data);
+        buf.* = .{ .data = &[_]u8{}, .owned = false, .active = false };
     }
 
     pub fn prepareUnregister(self: *MemRegistry, id: u8) MemRegistryError!void {

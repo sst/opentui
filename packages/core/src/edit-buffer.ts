@@ -18,8 +18,8 @@ export type { LogicalCursor }
  * incremental editing, and grapheme-aware operations.
  */
 export class EditBuffer extends EventEmitter {
-  /** Product default. Pass null to setMaxUndoDepth only for explicit unlimited history. */
-  public static readonly DEFAULT_MAX_UNDO_DEPTH = 100
+  /** Unlimited by default. Set a finite value to opt into exact oldest-first trimming. */
+  public static readonly DEFAULT_MAX_UNDO_DEPTH: null = null
   private static registry = new Map<number, EditBuffer>()
   private static nativeEventsSubscribed = false
 

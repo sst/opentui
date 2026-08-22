@@ -12,20 +12,7 @@ const rounds = Number(process.env.TEXT_RANGE_ROUNDS ?? 5)
 
 if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS must be a positive integer")
 
-type BufferMemory = {
-  peakArenaCount: number
-  peakArenaBytes: number
-  peakTotalArenaBytes: number
-  peakBackingStoreBytes: number
-  peakBackingStoreCapacity: number
-  peakHistoryRetainedBytes: number
-  endLiveArenaCount: number
-  endLiveArenaBytes: number
-  endTotalArenaBytes: number
-  endBackingStoreBytes: number
-  endBackingStoreCapacity: number
-  endHistoryRetainedBytes: number
-}
+type BufferMemory = { peak: TextBufferDebugMetrics; endLive: TextBufferDebugMetrics }
 type LiveMemory = {
   range: BufferMemory
   replacement: BufferMemory
@@ -45,42 +32,36 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
     (root as unknown as { textBuffer: { getDebugMetrics(): TextBufferDebugMetrics } }).textBuffer
   const start = lib.getAllocatorStats()
   let peakActiveGrowth = 0
-  let rangePeak = {
+  const emptyMetrics = (): TextBufferDebugMetrics => ({
     transactionArenaCount: 0,
     transactionArenaBytes: 0,
     arenaBytes: 0,
-    backingStoreBytes: 0,
-    backingStoreCapacity: 0,
-    historyRetainedBytes: 0,
-  }
+    currentReachableBytes: 0,
+    historyReachableBytes: 0,
+    committedUnreachableBytes: 0,
+    liveBackingBytes: 0,
+    liveBackingCapacity: 0,
+    liveBackingBlocks: 0,
+  })
+  let rangePeak = emptyMetrics()
   let replacementPeak = { ...rangePeak }
+  const updatePeak = (peak: TextBufferDebugMetrics, current: TextBufferDebugMetrics) => {
+    for (const key of Object.keys(peak) as Array<keyof TextBufferDebugMetrics>) {
+      peak[key] = Math.max(peak[key], current[key])
+    }
+  }
   const sample = () => {
     const allocations = lib.getAllocatorStats()
     const range = textBuffer(rangeRoot).getDebugMetrics()
     const replacement = textBuffer(replacementRoot).getDebugMetrics()
     peakActiveGrowth = Math.max(peakActiveGrowth, allocations.activeAllocations - start.activeAllocations)
-    if (range.transactionArenaCount > rangePeak.transactionArenaCount)
-      rangePeak.transactionArenaCount = range.transactionArenaCount
-    if (range.transactionArenaBytes > rangePeak.transactionArenaBytes)
-      rangePeak.transactionArenaBytes = range.transactionArenaBytes
-    if (replacement.transactionArenaCount > replacementPeak.transactionArenaCount)
-      replacementPeak.transactionArenaCount = replacement.transactionArenaCount
-    if (replacement.transactionArenaBytes > replacementPeak.transactionArenaBytes)
-      replacementPeak.transactionArenaBytes = replacement.transactionArenaBytes
-    rangePeak.arenaBytes = Math.max(rangePeak.arenaBytes, range.arenaBytes)
-    rangePeak.backingStoreBytes = Math.max(rangePeak.backingStoreBytes, range.backingStoreBytes)
-    rangePeak.backingStoreCapacity = Math.max(rangePeak.backingStoreCapacity, range.backingStoreCapacity)
-    rangePeak.historyRetainedBytes = Math.max(rangePeak.historyRetainedBytes, range.historyRetainedBytes)
-    replacementPeak.arenaBytes = Math.max(replacementPeak.arenaBytes, replacement.arenaBytes)
-    replacementPeak.backingStoreBytes = Math.max(replacementPeak.backingStoreBytes, replacement.backingStoreBytes)
-    replacementPeak.backingStoreCapacity = Math.max(
-      replacementPeak.backingStoreCapacity,
-      replacement.backingStoreCapacity,
-    )
-    replacementPeak.historyRetainedBytes = Math.max(
-      replacementPeak.historyRetainedBytes,
-      replacement.historyRetainedBytes,
-    )
+    updatePeak(rangePeak, range)
+    updatePeak(replacementPeak, replacement)
+    // Publication sweeps every unreachable owned block; non-zero is a regression,
+    // not allocator noise or history retention.
+    if (range.committedUnreachableBytes !== 0 || replacement.committedUnreachableBytes !== 0) {
+      throw new Error("committed unreachable backing exceeded the documented zero-byte post-commit bound")
+    }
   }
   sample()
   return {
@@ -94,32 +75,12 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
         start,
         memory: {
           range: {
-            peakArenaCount: rangePeak.transactionArenaCount,
-            peakArenaBytes: rangePeak.transactionArenaBytes,
-            peakTotalArenaBytes: rangePeak.arenaBytes,
-            peakBackingStoreBytes: rangePeak.backingStoreBytes,
-            peakBackingStoreCapacity: rangePeak.backingStoreCapacity,
-            peakHistoryRetainedBytes: rangePeak.historyRetainedBytes,
-            endLiveArenaCount: rangeEnd.transactionArenaCount,
-            endLiveArenaBytes: rangeEnd.transactionArenaBytes,
-            endTotalArenaBytes: rangeEnd.arenaBytes,
-            endBackingStoreBytes: rangeEnd.backingStoreBytes,
-            endBackingStoreCapacity: rangeEnd.backingStoreCapacity,
-            endHistoryRetainedBytes: rangeEnd.historyRetainedBytes,
+            peak: rangePeak,
+            endLive: rangeEnd,
           },
           replacement: {
-            peakArenaCount: replacementPeak.transactionArenaCount,
-            peakArenaBytes: replacementPeak.transactionArenaBytes,
-            peakTotalArenaBytes: replacementPeak.arenaBytes,
-            peakBackingStoreBytes: replacementPeak.backingStoreBytes,
-            peakBackingStoreCapacity: replacementPeak.backingStoreCapacity,
-            peakHistoryRetainedBytes: replacementPeak.historyRetainedBytes,
-            endLiveArenaCount: replacementEnd.transactionArenaCount,
-            endLiveArenaBytes: replacementEnd.transactionArenaBytes,
-            endTotalArenaBytes: replacementEnd.arenaBytes,
-            endBackingStoreBytes: replacementEnd.backingStoreBytes,
-            endBackingStoreCapacity: replacementEnd.backingStoreCapacity,
-            endHistoryRetainedBytes: replacementEnd.historyRetainedBytes,
+            peak: replacementPeak,
+            endLive: replacementEnd,
           },
           activeAllocations: {
             start: start.activeAllocations,
@@ -330,21 +291,23 @@ const summarize = (samples: Sample[]) => ({
   renderCounts: samples.map((sample) => sample.renderCount),
   liveMemoryByRound: samples.map((sample) => sample.memory),
   liveMemoryBounds: {
-    rangePeakArenaCount: Math.max(...samples.map((sample) => sample.memory.range.peakArenaCount)),
-    rangePeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.range.peakArenaBytes)),
-    replacementPeakArenaCount: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaCount)),
-    replacementPeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaBytes)),
-    rangePeakBackingStoreBytes: Math.max(...samples.map((sample) => sample.memory.range.peakBackingStoreBytes)),
-    rangePeakBackingStoreCapacity: Math.max(...samples.map((sample) => sample.memory.range.peakBackingStoreCapacity)),
-    rangePeakHistoryRetainedBytes: Math.max(...samples.map((sample) => sample.memory.range.peakHistoryRetainedBytes)),
-    replacementPeakBackingStoreBytes: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peakBackingStoreBytes),
+    rangePeakArenaCount: Math.max(...samples.map((sample) => sample.memory.range.peak.transactionArenaCount)),
+    rangePeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.range.peak.transactionArenaBytes)),
+    replacementPeakArenaCount: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peak.transactionArenaCount),
     ),
-    replacementPeakBackingStoreCapacity: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peakBackingStoreCapacity),
+    replacementPeakArenaBytes: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peak.transactionArenaBytes),
     ),
-    replacementPeakHistoryRetainedBytes: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peakHistoryRetainedBytes),
+    rangePeakLiveBackingBytes: Math.max(...samples.map((sample) => sample.memory.range.peak.liveBackingBytes)),
+    rangePeakHistoryReachableBytes: Math.max(
+      ...samples.map((sample) => sample.memory.range.peak.historyReachableBytes),
+    ),
+    replacementPeakLiveBackingBytes: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peak.liveBackingBytes),
+    ),
+    replacementPeakHistoryReachableBytes: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peak.historyReachableBytes),
     ),
     peakActiveAllocationGrowth: Math.max(...samples.map((sample) => sample.memory.activeAllocations.peakGrowth)),
   },
@@ -364,8 +327,11 @@ console.log(
       coalescedFrameworkCommit: summarize(coalesced),
       nativeMemory: {
         activeAllocationDelta: allocationEnd.activeAllocations - allocationStart.activeAllocations,
-        requestedByteDelta: allocationEnd.totalRequestedBytes - allocationStart.totalRequestedBytes,
         requestedBytesValid: allocationStart.requestedBytesValid && allocationEnd.requestedBytesValid,
+        requestedByteDelta:
+          allocationStart.requestedBytesValid && allocationEnd.requestedBytesValid
+            ? allocationEnd.totalRequestedBytes - allocationStart.totalRequestedBytes
+            : null,
         persistentArenaByteDelta: arenaEnd - arenaStart,
       },
     },

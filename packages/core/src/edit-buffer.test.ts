@@ -1271,7 +1271,7 @@ describe("EditBuffer History Management", () => {
   })
 
   describe("replaceText with history", () => {
-    it("uses the documented bounded default and supports runtime limits", () => {
+    it("keeps unlimited compatibility by default and supports exact runtime limits", () => {
       expect(buffer.maxUndoDepth).toBe(EditBuffer.DEFAULT_MAX_UNDO_DEPTH)
       buffer.setMaxUndoDepth(3)
       for (const value of ["1", "2", "3", "4", "5"]) buffer.replaceText(value)
@@ -1286,16 +1286,30 @@ describe("EditBuffer History Management", () => {
       expect(buffer.maxUndoDepth).toBeNull()
     })
 
+    it("keeps more than 105 default undo checkpoints reachable", () => {
+      for (let index = 0; index < 110; index++) buffer.replaceText(`value-${index}`)
+      for (let index = 0; index < 110; index++) expect(buffer.undo()).not.toBeNull()
+      expect(buffer.undo()).toBeNull()
+    })
+
+    it("trims an explicit 100-checkpoint limit exactly", () => {
+      buffer.setMaxUndoDepth(100)
+      for (let index = 0; index < 110; index++) buffer.replaceText(`value-${index}`)
+      for (let index = 0; index < 100; index++) expect(buffer.undo()).not.toBeNull()
+      expect(buffer.undo()).toBeNull()
+    })
+
     it("does not exhaust registry IDs during sustained replacements", () => {
+      buffer.setMaxUndoDepth(100)
       for (let index = 0; index < 300; index++) buffer.replaceText(`value-${index.toString().padStart(3, "0")}`)
       expect(buffer.getText()).toBe("value-299")
       expect(buffer.canUndo()).toBe(true)
       const retained = buffer.getDebugMetrics()
-      expect(retained.backingStoreCapacity).toBeLessThan(64 * 1024)
+      expect(retained.liveBackingCapacity).toBeLessThan(64 * 1024)
       expect(retained.arenaBytes).toBeGreaterThanOrEqual(retained.transactionArenaBytes)
       buffer.clearHistory()
       const cleared = buffer.getDebugMetrics()
-      expect(cleared.backingStoreBytes).toBeLessThanOrEqual("value-299".length)
+      expect(cleared.liveBackingBytes).toBeLessThanOrEqual("value-299".length)
     })
 
     it("should create undo history when using replaceText", () => {

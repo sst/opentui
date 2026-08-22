@@ -2125,13 +2125,17 @@ export fn textBufferGetByteSize(tb_handle: NativeHandle) u32 {
 export fn textBufferGetDebugMetrics(tb_handle: NativeHandle, out_metrics: ?*ExternalTextBufferDebugMetrics) bool {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
     const output = out_metrics orelse return false;
+    const backing = object_ptr.getDebugMetrics() catch return false;
     output.* = .{
         .rope_transaction_arena_count = @intCast(object_ptr.getRopeTransactionArenaCount()),
         .rope_transaction_arena_bytes = @intCast(object_ptr.getRopeTransactionArenaBytes()),
         .arena_bytes = @intCast(object_ptr.getArenaAllocatedBytes()),
-        .backing_store_bytes = @intCast(object_ptr.getBackingStoreBytes()),
-        .backing_store_capacity = @intCast(object_ptr.getBackingStoreCapacity()),
-        .history_retained_bytes = @intCast(object_ptr.getBackingStoreBytes() -| object_ptr.getByteSize()),
+        .current_reachable_bytes = @intCast(backing.current_reachable_bytes),
+        .history_reachable_bytes = @intCast(backing.history_reachable_bytes),
+        .committed_unreachable_bytes = @intCast(backing.committed_unreachable_bytes),
+        .live_backing_bytes = @intCast(backing.live_backing_bytes),
+        .live_backing_capacity = @intCast(backing.live_backing_capacity),
+        .live_backing_blocks = @intCast(backing.live_backing_blocks),
     };
     return true;
 }
@@ -3244,9 +3248,12 @@ pub const ExternalTextBufferDebugMetrics = extern struct {
     rope_transaction_arena_count: u64,
     rope_transaction_arena_bytes: u64,
     arena_bytes: u64,
-    backing_store_bytes: u64,
-    backing_store_capacity: u64,
-    history_retained_bytes: u64,
+    current_reachable_bytes: u64,
+    history_reachable_bytes: u64,
+    committed_unreachable_bytes: u64,
+    live_backing_bytes: u64,
+    live_backing_capacity: u64,
+    live_backing_blocks: u64,
 };
 
 comptime {
@@ -3264,7 +3271,7 @@ comptime {
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
-    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 48);
+    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 72);
 }
 
 const TextDocumentStatus = enum(u32) {

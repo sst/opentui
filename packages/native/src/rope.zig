@@ -561,6 +561,97 @@ pub fn Rope(comptime T: type) type {
 
         pub const CloneItemFn = *const fn (ctx: ?*anyopaque, item: *const T) anyerror!T;
 
+        pub const RetainedItemFn = *const fn (ctx: *anyopaque, item: *const T) void;
+
+        fn walkItemsInNode(node: *const Node, ctx: *anyopaque, callback: RetainedItemFn) void {
+            switch (node.*) {
+                .branch => |*branch| {
+                    walkItemsInNode(branch.left, ctx, callback);
+                    walkItemsInNode(branch.right, ctx, callback);
+                },
+                .leaf => |*leaf| if (!leaf.is_sentinel) callback(ctx, &leaf.data),
+            }
+        }
+
+        fn walkItemsInBranches(branch: ?*UndoBranch, ctx: *anyopaque, callback: RetainedItemFn) void {
+            var current = branch;
+            while (current) |value| : (current = value.next) walkItemsInHistory(value.redo, ctx, callback);
+        }
+
+        fn walkItemsInHistory(first: ?*UndoNode, ctx: *anyopaque, callback: RetainedItemFn) void {
+            var current = first;
+            while (current) |value| : (current = value.next) {
+                walkItemsInNode(value.root, ctx, callback);
+                walkItemsInBranches(value.branches, ctx, callback);
+            }
+        }
+
+        pub fn walkCurrentItems(self: *const Self, ctx: *anyopaque, callback: RetainedItemFn) void {
+            walkItemsInNode(self.root, ctx, callback);
+        }
+
+        pub fn walkHistoryItems(self: *const Self, ctx: *anyopaque, callback: RetainedItemFn) void {
+            walkItemsInHistory(self.undo_history, ctx, callback);
+            walkItemsInHistory(self.redo_history, ctx, callback);
+            walkItemsInHistory(self.curr_history, ctx, callback);
+        }
+
+        pub fn walkRetainedItems(self: *const Self, ctx: *anyopaque, callback: RetainedItemFn) void {
+            self.walkCurrentItems(ctx, callback);
+            self.walkHistoryItems(ctx, callback);
+        }
+
+        /// Clone only the published current root. History roots remain borrowed
+        /// from their immutable arenas and retain their existing backing IDs.
+        pub fn cloneCurrent(
+            self: *const Self,
+            allocator: Allocator,
+            temporary_allocator: Allocator,
+            ctx: ?*anyopaque,
+            clone_item: CloneItemFn,
+        ) !Self {
+            var nodes = std.AutoHashMap(*const Node, *const Node).init(temporary_allocator);
+            defer nodes.deinit();
+            const Cloner = struct {
+                allocator: Allocator,
+                nodes: *std.AutoHashMap(*const Node, *const Node),
+                ctx: ?*anyopaque,
+                clone_item: CloneItemFn,
+
+                fn node(cloner: *@This(), source: *const Node) !*const Node {
+                    if (cloner.nodes.get(source)) |existing| return existing;
+                    const target = try cloner.allocator.create(Node);
+                    try cloner.nodes.put(source, target);
+                    target.* = switch (source.*) {
+                        .leaf => |leaf| .{ .leaf = .{
+                            .data = try cloner.clone_item(cloner.ctx, &leaf.data),
+                            .is_sentinel = leaf.is_sentinel,
+                        } },
+                        .branch => |branch| .{ .branch = .{
+                            .left = try cloner.node(branch.left),
+                            .right = try cloner.node(branch.right),
+                            .left_metrics = branch.left_metrics,
+                            .total_metrics = branch.total_metrics,
+                        } },
+                    };
+                    return target;
+                }
+            };
+            var cloner: Cloner = .{ .allocator = allocator, .nodes = &nodes, .ctx = ctx, .clone_item = clone_item };
+            return .{
+                .root = try cloner.node(self.root),
+                .allocator = allocator,
+                .empty_leaf = try cloner.node(self.empty_leaf),
+                .undo_history = self.undo_history,
+                .redo_history = self.redo_history,
+                .curr_history = self.curr_history,
+                .config = self.config,
+                .undo_depth = self.undo_depth,
+                .version = self.version,
+                .marker_cache = MarkerCache.init(allocator),
+            };
+        }
+
         /// Clone every root retained by the Rope, including undo/redo branches.
         /// Node identity and sharing are preserved within the clone.
         pub fn cloneRetained(

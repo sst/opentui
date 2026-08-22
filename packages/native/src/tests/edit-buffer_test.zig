@@ -1613,7 +1613,34 @@ test "EditBuffer - configured history has exact depth and trims redo at runtime"
     try std.testing.expectEqual(@as(?usize, null), eb.getMaxUndoDepth());
 }
 
-test "EditBuffer - default bounded history keeps sustained same-length edits bounded" {
+test "EditBuffer - backing metrics categorize current and history roots exactly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abc");
+    try eb.replaceText("wxyz");
+    var metrics = try eb.tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 4), metrics.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 3), metrics.history_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
+    try std.testing.expectEqual(@as(usize, 7), metrics.live_backing_bytes);
+
+    _ = try eb.undo();
+    metrics = try eb.tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 3), metrics.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 4), metrics.history_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
+    eb.clearHistory();
+    metrics = try eb.tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 3), metrics.live_backing_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.history_reachable_bytes);
+}
+
+test "EditBuffer - explicit bounded history keeps sustained same-length edits bounded" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1621,18 +1648,43 @@ test "EditBuffer - default bounded history keeps sustained same-length edits bou
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
     defer eb.deinit();
+    const max_depth = 100;
+    eb.setMaxUndoDepth(max_depth);
     var line = [_]u8{'a'} ** 1024;
     try eb.setText(&line);
     for (0..500) |index| {
         line[index % line.len] = if (line[index % line.len] == 'a') 'b' else 'a';
         try eb.replaceText(&line);
     }
-    try std.testing.expectEqual(EditBuffer.default_max_undo_depth, eb.tb.rope().undoDepth());
-    try std.testing.expect(eb.tb.getBackingStoreCapacity() <= 4 * EditBuffer.default_max_undo_depth * line.len);
+    try std.testing.expectEqual(max_depth, eb.tb.rope().undoDepth());
+    try std.testing.expect(eb.tb.getBackingStoreCapacity() <= 4 * max_depth * line.len);
 
     eb.clearHistory();
     try std.testing.expect(eb.tb.getBackingStoreBytes() <= line.len);
     try std.testing.expect(!eb.canUndo());
+}
+
+test "EditBuffer - clear releases one MiB backing and accepts a subsequent byte edit" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    const large = try std.testing.allocator.alloc(u8, 1024 * 1024);
+    defer std.testing.allocator.free(large);
+    @memset(large, 'x');
+    try eb.setText(large);
+    try eb.clear();
+    const cleared = try eb.tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 0), cleared.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.history_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_capacity);
+    try eb.insertText("x");
+    var output: [1]u8 = undefined;
+    try std.testing.expectEqualStrings("x", output[0..eb.getText(&output)]);
 }
 
 test "EditBuffer - setText clears all history" {
