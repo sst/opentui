@@ -2418,6 +2418,7 @@ pub const UnifiedTextBuffer = struct {
         created_ids: []u64,
         content_changed: bool,
         annotations_changed: bool,
+        initial_style_slot_len: usize,
         committed: bool = false,
 
         pub fn ids(self: *const PreparedDocumentOperations) []const u64 {
@@ -2464,6 +2465,7 @@ pub const UnifiedTextBuffer = struct {
             const owner = self.owner;
             if (!self.committed) {
                 for (self.acquired_styles.items) |style_id| owner.releaseInternalStyle(style_id);
+                owner.internal_style_slots.shrinkRetainingCapacity(self.initial_style_slot_len);
                 self.annotations.deinit();
                 self.transaction_arena.deinit();
                 owner.global_allocator.destroy(self.transaction_arena);
@@ -2484,6 +2486,8 @@ pub const UnifiedTextBuffer = struct {
         operations: []const DocumentOperation,
         output_id_count: usize,
     ) TextBufferError!PreparedDocumentOperations {
+        const initial_style_slot_len = self.internal_style_slots.items.len;
+        errdefer self.internal_style_slots.shrinkRetainingCapacity(initial_style_slot_len);
         var output_count: usize = 0;
         var replacement_bytes: usize = 0;
         var content_operation_count: usize = 0;
@@ -2876,6 +2880,7 @@ pub const UnifiedTextBuffer = struct {
             .created_ids = created_ids,
             .content_changed = content_changed,
             .annotations_changed = annotations_changed,
+            .initial_style_slot_len = initial_style_slot_len,
         };
         acquired_styles = .empty;
         released_styles = .empty;

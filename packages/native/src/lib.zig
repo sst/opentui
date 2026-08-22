@@ -3505,6 +3505,8 @@ fn decodeDocumentBatch(
             return error.InvalidArgument;
     }
     var expected_ids: usize = 0;
+    var expected_chunk_start: u32 = 0;
+    var expected_range_start: u32 = 0;
     for (external_operations) |operation| {
         if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.target_mode > 2 or
             operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null) or
@@ -3512,7 +3514,10 @@ fn decodeDocumentBatch(
             return error.InvalidArgument;
         const chunk_end = std.math.add(u32, operation.chunk_start, operation.chunk_count) catch return error.InvalidArgument;
         const range_end = std.math.add(u32, operation.range_start, operation.range_count) catch return error.InvalidArgument;
-        if (chunk_end > external_chunks.len or range_end > external_ranges.len) return error.InvalidArgument;
+        if (operation.chunk_start != expected_chunk_start or operation.range_start != expected_range_start or
+            chunk_end > external_chunks.len or range_end > external_ranges.len) return error.InvalidArgument;
+        expected_chunk_start = chunk_end;
+        expected_range_start = range_end;
         const kind: text_buffer.DocumentOperationKind = @enumFromInt(operation.kind);
         switch (kind) {
             .replace => {
@@ -3536,7 +3541,8 @@ fn decodeDocumentBatch(
         }
         expected_ids = std.math.add(usize, expected_ids, operation.range_count) catch return error.InvalidArgument;
     }
-    if (expected_ids != out_id_count or external_operations.len == 0) return error.InvalidArgument;
+    if (expected_ids != out_id_count or external_operations.len == 0 or
+        expected_chunk_start != external_chunks.len or expected_range_start != external_ranges.len) return error.InvalidArgument;
 
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return error.OutOfMemory;
     errdefer globalAllocator.free(chunks);
@@ -4048,6 +4054,144 @@ test "text document FFI rejects invalid registered style discriminants and owner
         1,
         1,
         &output,
+    ));
+}
+
+test "document operation FFI validates complete descriptors before outputs" {
+    const handle = createTextBuffer(1);
+    try std.testing.expect(handle != INVALID_HANDLE);
+    defer destroyTextBuffer(handle);
+    const base: ExternalDocumentOperation = .{
+        .kind = @intFromEnum(text_buffer.DocumentOperationKind.clear_owner),
+        .target_mode = 0,
+        .target_id = 0,
+        .anchor_id = 0,
+        .use_target = 0,
+        .before = 1,
+        .start_byte = 0,
+        .end_byte = 0,
+        .owner = 1,
+        .chunk_start = 0,
+        .chunk_count = 0,
+        .range_start = 0,
+        .range_count = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .style_id = 0,
+        .style_kind = 0,
+        .syntax_style_handle = INVALID_HANDLE,
+        .link_ptr = null,
+        .link_len = 0,
+    };
+    const chunk: ExternalStyledChunk32 = .{
+        .text_ptr = "x".ptr,
+        .text_len = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .link_ptr = null,
+        .link_len = 0,
+    };
+    const range: ExternalDocumentRangeInput = .{
+        .id = 0,
+        .remove = 0,
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .link_ptr = null,
+        .link_len = 0,
+        .styled = 0,
+        .priority = 1,
+    };
+    const invalid = [_]ExternalDocumentOperation{
+        blk: {
+            var operation = base;
+            operation.kind = 99;
+            break :blk operation;
+        },
+        blk: {
+            var operation = base;
+            operation.target_id = 1;
+            break :blk operation;
+        },
+        blk: {
+            var operation = base;
+            operation.kind = @intFromEnum(text_buffer.DocumentOperationKind.move);
+            operation.target_id = 1;
+            operation.use_target = 1;
+            break :blk operation;
+        },
+        blk: {
+            var operation = base;
+            operation.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
+            operation.chunk_start = std.math.maxInt(u32);
+            operation.chunk_count = 1;
+            break :blk operation;
+        },
+        blk: {
+            var operation = base;
+            operation.kind = @intFromEnum(text_buffer.DocumentOperationKind.remove);
+            operation.target_id = 1;
+            operation.use_target = 1;
+            operation.chunk_count = 1;
+            break :blk operation;
+        },
+    };
+    var sentinel = [_]u64{std.math.maxInt(u64)};
+    for (invalid) |operation| {
+        var operations = [_]ExternalDocumentOperation{operation};
+        try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferApplyDocumentOperations(
+            handle,
+            &operations,
+            1,
+            &.{chunk},
+            1,
+            null,
+            0,
+            &sentinel,
+            1,
+        ));
+        try std.testing.expectEqual(std.math.maxInt(u64), sentinel[0]);
+    }
+
+    var replacement = base;
+    replacement.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
+    replacement.chunk_count = 1;
+    replacement.range_count = 1;
+    var replacement_operations = [_]ExternalDocumentOperation{replacement};
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferApplyDocumentOperations(
+        handle,
+        &replacement_operations,
+        1,
+        &.{chunk},
+        1,
+        &.{range},
+        1,
+        null,
+        0,
+    ));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferApplyTwoDocumentOperations(
+        handle,
+        handle,
+        &.{base},
+        1,
+        null,
+        0,
+        null,
+        0,
+        &.{base},
+        1,
+        null,
+        0,
+        null,
+        0,
+        null,
+        0,
+        null,
+        0,
     ));
 }
 

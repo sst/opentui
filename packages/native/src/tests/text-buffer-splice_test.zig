@@ -504,6 +504,9 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
     defer link.deinitGlobalLinkPool();
     const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
     defer tb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
 
     const empty_style: text_buffer.StyledChunk = .{
         .text_ptr = "".ptr,
@@ -543,24 +546,72 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
         .styled = true,
         .priority = 2,
     }};
-    var output_id: [1]u64 = undefined;
+    const second_text = "final";
+    const second_url = "https://second.test";
+    const second = [_]text_buffer.StyledChunk{.{
+        .text_ptr = second_text.ptr,
+        .text_len = second_text.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 8,
+        .link_ptr = second_url.ptr,
+        .link_len = second_url.len,
+    }};
+    const second_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .id = ids[1],
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = second[0],
+        .styled = true,
+        .priority = 2,
+    }};
+    const final_url = "https://final.test";
+    const final_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 16,
+        .link_ptr = final_url.ptr,
+        .link_len = final_url.len,
+    };
+    var output_ids: [2]u64 = undefined;
     const before_root = tb.rope().root;
     const before_epoch = tb.getContentEpoch();
     const before_annotation_epoch = tb.getAnnotationEpoch();
     const before_count = tb.textAnnotations().count();
     const before_root_range = tb.getDocumentRange(ids[0]).?;
     const before_child_range = tb.getDocumentRange(ids[1]).?;
+    const before_splice_len = tb.splice_len;
+    const before_arenas = tb.rope_transaction_arenas.items.len;
+    const before_registry_slots = tb.memRegistry().getUsedSlots();
+    const before_internal_slots = tb.internal_style_slots.items.len;
+    var before_refs: u32 = 0;
+    for (tb.internal_style_slots.items) |slot| before_refs += slot.refs;
+    _ = tb.getLineHighlights(0);
+    const before_anonymous = syntax.getAnonymousStyleCount();
+    const before_links = link_pool.getLiveSlotCount();
     const before_alloc = failing.alloc_index;
     if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
 
-    const operations = [_]text_buffer.DocumentOperation{.{
-        .kind = .replace,
-        .target_id = ids[1],
-        .owner = 91,
-        .chunks = &replacement,
-        .ranges = &replacement_ranges,
-    }};
-    const transaction = tb.applyDocumentOperations(&operations, &output_id);
+    const operations = [_]text_buffer.DocumentOperation{
+        .{
+            .kind = .replace,
+            .target_id = ids[1],
+            .owner = 91,
+            .chunks = &replacement,
+            .ranges = &replacement_ranges,
+        },
+        .{
+            .kind = .replace,
+            .target_id = ids[1],
+            .owner = 91,
+            .chunks = &second,
+            .ranges = &second_ranges,
+        },
+        .{ .kind = .update_style, .target_id = ids[1], .owner = 91, .style = final_style },
+    };
+    const transaction = tb.applyDocumentOperations(&operations, &output_ids);
     if (fail_offset != null) {
         try std.testing.expectError(error.OutOfMemory, transaction);
         try std.testing.expect(tb.rope().root == before_root);
@@ -569,9 +620,20 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectEqual(before_count, tb.textAnnotations().count());
         try std.testing.expectEqualDeep(before_root_range, tb.getDocumentRange(ids[0]).?);
         try std.testing.expectEqualDeep(before_child_range, tb.getDocumentRange(ids[1]).?);
+        try std.testing.expectEqual(before_splice_len, tb.splice_len);
+        try std.testing.expectEqual(before_arenas, tb.rope_transaction_arenas.items.len);
+        try std.testing.expectEqual(before_registry_slots, tb.memRegistry().getUsedSlots());
+        try std.testing.expectEqual(before_internal_slots, tb.internal_style_slots.items.len);
+        var after_refs: u32 = 0;
+        for (tb.internal_style_slots.items) |slot| after_refs += slot.refs;
+        try std.testing.expectEqual(before_refs, after_refs);
+        try std.testing.expectEqual(before_anonymous, syntax.getAnonymousStyleCount());
+        try std.testing.expectEqual(before_links, link_pool.getLiveSlotCount());
         try expectText(tb, initial_text);
     } else {
         _ = try transaction;
+        try expectText(tb, second_text);
+        try std.testing.expectEqualSlices(u64, &.{ ids[1], ids[1] }, &output_ids);
     }
     return failing.alloc_index - before_alloc;
 }
