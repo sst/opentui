@@ -31,6 +31,8 @@ pub const SyntaxStyle = struct {
     next_id: u32,
 
     merged_cache: std.StringHashMapUnmanaged(StyleDefinition),
+    anonymous_ids: std.AutoHashMapUnmanaged(u32, void),
+    anonymous_free_ids: std.ArrayListUnmanaged(u32),
 
     emitter: events.EventEmitter(Event),
 
@@ -52,6 +54,8 @@ pub const SyntaxStyle = struct {
             .id_to_style = .empty,
             .next_id = 1, // Start from 1, 0 can be used as "invalid"
             .merged_cache = .empty,
+            .anonymous_ids = .empty,
+            .anonymous_free_ids = .empty,
             .emitter = events.EventEmitter(Event).init(internal_allocator),
         };
 
@@ -64,6 +68,7 @@ pub const SyntaxStyle = struct {
 
         self.emitter.emit(.Destroy);
         self.emitter.deinit();
+        self.anonymous_free_ids.deinit(global_allocator);
         self.arena.deinit();
         global_allocator.destroy(self.arena);
         self.* = undefined;
@@ -102,11 +107,28 @@ pub const SyntaxStyle = struct {
     /// document annotations because later updates to a named style cannot alter
     /// a surviving range's appearance.
     pub fn registerAnonymousStyleDefinition(self: *SyntaxStyle, definition: StyleDefinition) SyntaxStyleError!u32 {
-        if (self.next_id == std.math.maxInt(u32)) return SyntaxStyleError.OutOfMemory;
-        const id = self.next_id;
-        try self.id_to_style.put(self.allocator, id, definition);
-        self.next_id += 1;
+        try self.anonymous_free_ids.ensureUnusedCapacity(self.global_allocator, 1);
+        try self.anonymous_ids.ensureUnusedCapacity(self.allocator, 1);
+        try self.id_to_style.ensureUnusedCapacity(self.allocator, 1);
+        const reused = self.anonymous_free_ids.items.len != 0;
+        const id = if (reused) self.anonymous_free_ids.pop().? else blk: {
+            if (self.next_id == std.math.maxInt(u32)) return SyntaxStyleError.OutOfMemory;
+            const next = self.next_id;
+            self.next_id += 1;
+            break :blk next;
+        };
+        errdefer {
+            if (reused) self.anonymous_free_ids.appendAssumeCapacity(id) else self.next_id -= 1;
+        }
+        self.id_to_style.putAssumeCapacity(id, definition);
+        self.anonymous_ids.putAssumeCapacity(id, {});
         return id;
+    }
+
+    pub fn unregisterAnonymousStyleDefinition(self: *SyntaxStyle, id: u32) void {
+        if (!self.anonymous_ids.remove(id)) return;
+        _ = self.id_to_style.remove(id);
+        self.anonymous_free_ids.appendAssumeCapacity(id);
     }
 
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {

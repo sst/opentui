@@ -418,7 +418,7 @@ test "setStyledText releases splice backing and history before arena reset" {
     try tb.setText("old");
     _ = try tb.replaceNormalizedBytes(3, 3, " splice");
     try tb.rope().store_undo("old");
-    try std.testing.expectEqual(@as(usize, 2), tb.memRegistry().getUsedSlots());
+    try std.testing.expectEqual(@as(usize, 1), tb.memRegistry().getUsedSlots());
 
     const replacement = "styled";
     const chunks = [_]text_buffer.StyledChunk{.{
@@ -431,11 +431,11 @@ test "setStyledText releases splice backing and history before arena reset" {
     try tb.setStyledText(&chunks);
     try expectText(tb, "styled");
     try std.testing.expect(!tb.rope().can_undo());
-    try std.testing.expectEqual(@as(usize, 2), tb.memRegistry().getUsedSlots());
+    try std.testing.expectEqual(@as(usize, 1), tb.memRegistry().getUsedSlots());
 
     _ = try tb.replaceNormalizedBytes(6, 6, " again");
     try expectText(tb, "styled again");
-    try std.testing.expectEqual(@as(usize, 3), tb.memRegistry().getUsedSlots());
+    try std.testing.expectEqual(@as(usize, 1), tb.memRegistry().getUsedSlots());
 }
 
 test "splice backing survives undo roots and reset releases it" {
@@ -623,4 +623,124 @@ test "EditBuffer display splitter preserves interior wide and tab behavior" {
     try eb.setCursor(0, 2);
     try eb.insertText("X");
     try expectText(eb.getTextBuffer(), "AX\tB");
+}
+
+test "EditBuffer undo and redo restore exact annotation identity payload and lifecycle" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("abcdef");
+    const id = try eb.tb.textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
+        .namespace = 71,
+        .style_id = 99,
+        .priority = 7,
+        .kind_flags = 0x42,
+        .splice_policy = .invalidate,
+    });
+
+    try eb.setCursor(0, 1);
+    try eb.insertText("X");
+    try std.testing.expectEqual(@as(u32, 3), eb.tb.textAnnotations().get(id).?.mark.range.start_byte);
+    _ = try eb.undo();
+    const undone = eb.tb.textAnnotations().get(id).?;
+    try std.testing.expectEqual(@as(u32, 2), undone.mark.range.start_byte);
+    try std.testing.expectEqual(@as(u32, 99), undone.payload.style_id);
+    try std.testing.expectEqual(@as(u32, 0x42), undone.payload.kind_flags);
+    _ = try eb.redo();
+    try std.testing.expectEqual(@as(u32, 3), eb.tb.textAnnotations().get(id).?.mark.range.start_byte);
+
+    try eb.deleteRange(.{ .row = 0, .col = 3 }, .{ .row = 0, .col = 5 });
+    try std.testing.expect(eb.tb.textAnnotations().get(id) == null);
+    _ = try eb.undo();
+    try std.testing.expectEqual(@as(u32, 3), eb.tb.textAnnotations().get(id).?.mark.range.start_byte);
+}
+
+test "styled owner replacement clips and splits old coverage atomically" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("abcdef");
+    const initial = "abcdef";
+    const first = [_]text_buffer.StyledChunk{.{ .text_ptr = initial.ptr, .text_len = initial.len, .fg_ptr = null, .bg_ptr = null, .attributes = 1 }};
+    _ = try tb.replaceStyledRangeBytes(0, 6, &first, 9);
+    const replacement = "XY";
+    const second = [_]text_buffer.StyledChunk{.{ .text_ptr = replacement.ptr, .text_len = replacement.len, .fg_ptr = null, .bg_ptr = null, .attributes = 2 }};
+    _ = try tb.replaceStyledRangeBytes(2, 4, &second, 9);
+
+    var ranges: [3]struct { start: u32, end: u32 } = undefined;
+    var count: usize = 0;
+    var it = tb.textAnnotations().iterator();
+    while (try it.next()) |annotation| {
+        if (annotation.payload.namespace != 9) continue;
+        ranges[count] = .{ .start = annotation.mark.range.start_byte, .end = annotation.mark.range.end_byte };
+        count += 1;
+    }
+    std.mem.sort(@TypeOf(ranges[0]), ranges[0..count], {}, struct {
+        fn lessThan(_: void, a: @TypeOf(ranges[0]), b: @TypeOf(ranges[0])) bool {
+            return a.start < b.start;
+        }
+    }.lessThan);
+    try std.testing.expectEqual(@as(usize, 3), count);
+    try std.testing.expectEqualSlices(@TypeOf(ranges[0]), &.{ .{ .start = 0, .end = 2 }, .{ .start = 2, .end = 4 }, .{ .start = 4, .end = 6 } }, &ranges);
+    try std.testing.expectEqual(@as(u32, 3), tb.getHighlightCount());
+}
+
+test "annotation IDs do not alias after clear and highlight clears include style ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("aa\nbb");
+    const old_id = try tb.createStyleRange(4, 0, 5, 12, 1);
+    tb.clearLineHighlights(0);
+    const clipped = tb.textAnnotations().get(old_id).?;
+    try std.testing.expectEqual(@as(u32, 3), clipped.mark.range.start_byte);
+    try std.testing.expectEqual(@as(u32, 5), clipped.mark.range.end_byte);
+    tb.clearAllHighlights();
+    try std.testing.expectEqual(@as(u32, 0), tb.getHighlightCount());
+
+    tb.clear();
+    try tb.setText("x");
+    const new_id = try tb.createStyleRange(4, 0, 1, 13, 1);
+    try std.testing.expect(old_id != new_id);
+    try std.testing.expect(tb.textAnnotations().get(old_id) == null);
+}
+
+test "anonymous styles and links reclaim under ten thousand range updates" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+    try tb.setText("x");
+    const url = "https://example.test/churn";
+    const style_value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    for (0..10000) |_| {
+        const id = try tb.createStyleValueRange(88, 0, 1, style_value, 1);
+        try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
+        try std.testing.expect(try tb.removeStyleRange(id));
+    }
+    try std.testing.expectEqual(@as(usize, 1), tb.internal_style_slots.items.len);
+    try std.testing.expectEqual(@as(usize, 0), syntax.getStyleCount());
+    try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }

@@ -71,11 +71,12 @@ pub const LinkPool = struct {
         const add_bytes = self.slot_size_bytes * self.slots_per_page;
 
         try self.slots.ensureTotalCapacity(self.allocator, self.slots.items.len + add_bytes);
+        try self.free_list.ensureUnusedCapacity(self.allocator, self.slots_per_page);
         try self.slots.appendNTimes(self.allocator, 0, add_bytes);
 
         var i: u32 = 0;
         while (i < self.slots_per_page) : (i += 1) {
-            try self.free_list.append(self.allocator, self.num_slots + i);
+            self.free_list.appendAssumeCapacity(self.num_slots + i);
         }
         self.num_slots += self.slots_per_page;
     }
@@ -178,6 +179,28 @@ pub const LinkPool = struct {
         return packId(slot_index, new_generation);
     }
 
+    pub fn acquire(self: *LinkPool, url: []const u8) LinkPoolError!IdPayload {
+        const id = try self.alloc(url);
+        self.incref(id) catch |err| {
+            self.discardUnreferenced(id);
+            return err;
+        };
+        return id;
+    }
+
+    fn discardUnreferenced(self: *LinkPool, id: IdPayload) void {
+        const unpacked = unpackId(id);
+        if (unpacked.slot_index >= self.num_slots) return;
+        const header = slotHeaderPtr(self.slotPtr(unpacked.slot_index));
+        if (header.generation != unpacked.generation or header.refcount != 0) return;
+        if (header.generation == GEN_MASK) {
+            header.generation = RETIRED_GENERATION;
+            self.retired_slot_count += 1;
+        } else {
+            self.free_list.append(self.allocator, unpacked.slot_index) catch {};
+        }
+    }
+
     pub fn incref(self: *LinkPool, id: IdPayload) LinkPoolError!void {
         const unpacked = unpackId(id);
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
@@ -189,13 +212,12 @@ pub const LinkPool = struct {
             return LinkPoolError.WrongGeneration;
         }
 
-        const old_refcount = header_ptr.refcount;
-        header_ptr.refcount +%= 1;
-
-        if (old_refcount == 0) {
+        if (header_ptr.refcount == std.math.maxInt(u32)) return LinkPoolError.OutOfMemory;
+        if (header_ptr.refcount == 0) {
             const live_url = try self.get(id);
             try self.internLiveId(id, live_url);
         }
+        header_ptr.refcount += 1;
     }
 
     pub fn decref(self: *LinkPool, id: IdPayload) LinkPoolError!void {
@@ -207,6 +229,10 @@ pub const LinkPool = struct {
 
         if (header_ptr.refcount == 0) return LinkPoolError.InvalidId;
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
+
+        if (header_ptr.refcount == 1 and header_ptr.generation != GEN_MASK) {
+            try self.free_list.ensureUnusedCapacity(self.allocator, 1);
+        }
 
         if (header_ptr.refcount == 1) {
             const live_url = try self.get(id);
@@ -220,7 +246,7 @@ pub const LinkPool = struct {
                 header_ptr.generation = RETIRED_GENERATION;
                 self.retired_slot_count += 1;
             } else {
-                try self.free_list.append(self.allocator, unpacked.slot_index);
+                self.free_list.appendAssumeCapacity(unpacked.slot_index);
             }
         }
     }

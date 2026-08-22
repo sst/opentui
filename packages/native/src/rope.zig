@@ -626,6 +626,39 @@ pub fn Rope(comptime T: type) type {
             return self.root.get(index);
         }
 
+        /// Finds the Nth marker directly from subtree aggregates without
+        /// rebuilding the whole marker cache.
+        pub fn findMarker(self: *const Self, marker_type: std.meta.Tag(T), marker_index: u32) ?MarkerPosition {
+            if (!marker_enabled) return null;
+            var type_index: ?usize = null;
+            inline for (T.MarkerTypes, 0..) |candidate, index| {
+                if (marker_type == candidate) type_index = index;
+            }
+            return findMarkerInNode(self.root, type_index orelse return null, marker_index, 0, 0);
+        }
+
+        fn findMarkerInNode(node: *const Node, type_index: usize, marker_index: u32, leaves_before: u32, weight_before: u32) ?MarkerPosition {
+            return switch (node.*) {
+                .branch => |*branch| blk: {
+                    const left_count = branch.left_metrics.marker_counts[type_index];
+                    if (marker_index < left_count) {
+                        break :blk findMarkerInNode(branch.left, type_index, marker_index, leaves_before, weight_before);
+                    }
+                    break :blk findMarkerInNode(
+                        branch.right,
+                        type_index,
+                        marker_index - left_count,
+                        leaves_before + branch.left_metrics.count,
+                        weight_before + branch.left_metrics.weight(),
+                    );
+                },
+                .leaf => |*leaf| if (!leaf.is_sentinel and leaf.metrics().marker_counts[type_index] != 0 and marker_index == 0)
+                    .{ .leaf_index = leaves_before, .global_weight = weight_before }
+                else
+                    null,
+            };
+        }
+
         pub fn walk(self: *const Self, ctx: *anyopaque, f: Node.WalkerFn) !void {
             var index: u32 = 0;
             const result = self.walkNode(self.root, ctx, f, &index);

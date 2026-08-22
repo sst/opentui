@@ -5,6 +5,7 @@ const iter_mod = @import("text-buffer-iterators.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
+const TextAnnotations = @import("text-annotations.zig").TextAnnotations;
 
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
@@ -129,6 +130,8 @@ pub const EditBuffer = struct {
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
     event_sink: ?*event_bus.EventSink,
+    annotation_undo: std.ArrayListUnmanaged(TextAnnotations),
+    annotation_redo: std.ArrayListUnmanaged(TextAnnotations),
 
     pub fn init(
         allocator: Allocator,
@@ -162,6 +165,8 @@ pub const EditBuffer = struct {
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
             .event_sink = event_sink,
+            .annotation_undo = .empty,
+            .annotation_redo = .empty,
         };
 
         return self;
@@ -173,6 +178,10 @@ pub const EditBuffer = struct {
 
         // Registry owns all AddBuffer memory, don't free it manually
         self.events.deinit();
+        self.clearAnnotationHistory(&self.annotation_undo);
+        self.clearAnnotationHistory(&self.annotation_redo);
+        self.annotation_undo.deinit(self.allocator);
+        self.annotation_redo.deinit(self.allocator);
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.* = undefined;
@@ -241,72 +250,11 @@ pub const EditBuffer = struct {
         try self.autoStoreUndo();
 
         const cursor = self.cursors.items[0];
-
-        try self.ensureAddCapacity(bytes.len);
-
-        const insert_offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
         const insert_byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = cursor.row, .col = cursor.col }, .before) catch return EditBufferError.InvalidCursor;
-
-        const chunk_ref = self.add_buffer.append(bytes);
-        const base_mem_id = chunk_ref.mem_id;
-        const base_start = chunk_ref.start;
-
-        var result = try self.tb.textToSegments(self.allocator, bytes, base_mem_id, base_start, false);
-        defer result.segments.deinit(result.allocator);
-
-        const inserted_width = result.total_width;
-
-        // Calculate width after last break
-        var width_after_last_break: u32 = 0;
-        var num_breaks: usize = 0;
-        for (result.segments.items) |seg| {
-            if (seg.isBreak()) {
-                num_breaks += 1;
-                width_after_last_break = 0;
-            } else if (seg.asText()) |chunk| {
-                width_after_last_break +|= chunk.width;
-            }
-        }
-
-        const inserted_bytes = blk: {
-            var normalized_len: u32 = @intCast(bytes.len);
-            var index: usize = 0;
-            while (index + 1 < bytes.len) : (index += 1) {
-                if (bytes[index] == '\r' and bytes[index + 1] == '\n') {
-                    normalized_len -= 1;
-                    index += 1;
-                }
-            }
-            break :blk normalized_len;
-        };
-        var prepared_annotations = try self.tb.textAnnotations().prepareSplice(insert_byte, 0, inserted_bytes);
-        defer prepared_annotations.deinit();
-        if (result.segments.items.len > 0) {
-            try self.tb.rope().insertSliceByWeight(insert_offset, result.segments.items, self.tb.segmentSplitter());
-        }
-        self.tb.textAnnotations().commitPreparedSplice(&prepared_annotations);
-        if (num_breaks > 0) {
-            const new_row = cursor.row + @as(u32, @intCast(num_breaks));
-            const new_col = width_after_last_break;
-            const new_offset = iter_mod.coordsToOffset(self.tb.rope(), new_row, new_col) orelse 0;
-            self.cursors.items[0] = .{
-                .row = new_row,
-                .col = new_col,
-                .desired_col = new_col,
-                .offset = new_offset,
-            };
-        } else {
-            const new_col = cursor.col + inserted_width;
-            const new_offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, new_col) orelse 0;
-            self.cursors.items[0] = .{
-                .row = cursor.row,
-                .col = new_col,
-                .desired_col = new_col,
-                .offset = new_offset,
-            };
-        }
-
-        self.tb.markViewsDirty();
+        const result = try self.tb.replaceNormalizedBytes(insert_byte, insert_byte, bytes);
+        const point = result.new_display.end.point;
+        const new_offset = iter_mod.coordsToOffset(self.tb.rope(), point.row, point.col) orelse 0;
+        self.cursors.items[0] = .{ .row = point.row, .col = point.col, .desired_col = point.col, .offset = new_offset };
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
         self.emitNativeEvent("content-changed");
@@ -326,18 +274,18 @@ pub const EditBuffer = struct {
         try self.autoStoreUndo();
 
         const start_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = start.row, .col = start.col }, .before) catch return EditBufferError.InvalidCursor;
-        const end_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = end.row, .col = end.col }, .after) catch return EditBufferError.InvalidCursor;
+        var end_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = end.row, .col = end.col }, .after) catch return EditBufferError.InvalidCursor;
+        const end_line_width = iter_mod.lineWidthAt(self.tb.rope(), end.row);
+        if (end.col >= end_line_width) {
+            end_offset = if (end.row + 1 >= self.tb.getLineCount())
+                self.tb.getByteSize()
+            else
+                (self.tb.displayPointToNormalizedByteOffset(.{ .row = end.row + 1, .col = 0 }, .before) catch return EditBufferError.InvalidCursor) - 1;
+        }
 
         if (start_offset >= end_offset) return;
 
-        var prepared_annotations = try self.tb.textAnnotations().prepareSplice(start_offset, end_offset - start_offset, 0);
-        defer prepared_annotations.deinit();
-        const start_weight = iter_mod.coordsToOffset(self.tb.rope(), start.row, start.col) orelse return EditBufferError.InvalidCursor;
-        const end_weight = iter_mod.coordsToOffset(self.tb.rope(), end.row, end.col) orelse return EditBufferError.InvalidCursor;
-        try self.tb.rope().deleteRangeByWeight(start_weight, end_weight, self.tb.segmentSplitter());
-        self.tb.textAnnotations().commitPreparedSplice(&prepared_annotations);
-
-        self.tb.markViewsDirty();
+        _ = try self.tb.replaceNormalizedBytes(start_offset, end_offset, "");
 
         if (self.cursors.items.len > 0) {
             const line_count = self.tb.lineCount();
@@ -385,8 +333,6 @@ pub const EditBuffer = struct {
     pub fn deleteForward(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
         const cursor = self.cursors.items[0];
-
-        try self.autoStoreUndo();
 
         const line_width = iter_mod.lineWidthAt(self.tb.rope(), cursor.row);
         const line_count = self.tb.lineCount();
@@ -496,14 +442,16 @@ pub const EditBuffer = struct {
 
     /// Set text and completely reset the buffer state (clears history, resets add_buffer)
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
-        const owned_text = try self.allocator.dupe(u8, text);
-        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.setTextFromMemId(mem_id);
+        self.clearHistory();
+        self.add_buffer.len = 0;
+        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        try self.setCursor(0, 0);
+        self.emitNativeEvent("content-changed");
     }
 
     /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
-        self.tb.rope().clear_history();
+        self.clearHistory();
         self.add_buffer.len = 0;
 
         try self.tb.setTextFromMemId(mem_id);
@@ -514,9 +462,10 @@ pub const EditBuffer = struct {
 
     /// Replace text while preserving undo history (creates an undo point)
     pub fn replaceText(self: *EditBuffer, text: []const u8) !void {
-        const owned_text = try self.allocator.dupe(u8, text);
-        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.replaceTextFromMemId(mem_id);
+        try self.autoStoreUndo();
+        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        try self.setCursor(0, 0);
+        self.emitNativeEvent("content-changed");
     }
 
     /// Replace text from memory ID while preserving undo history (creates an undo point)
@@ -617,13 +566,25 @@ pub const EditBuffer = struct {
     fn autoStoreUndo(self: *EditBuffer) !void {
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
+        var checkpoint = try self.tb.checkpointAnnotations();
+        errdefer self.tb.releaseAnnotationCheckpoint(&checkpoint);
+        try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
         try self.tb.rope().store_undo(meta);
+        self.annotation_undo.appendAssumeCapacity(checkpoint);
+        self.clearAnnotationHistory(&self.annotation_redo);
     }
 
     pub fn undo(self: *EditBuffer) ![]const u8 {
+        if (self.annotation_undo.items.len == 0) return error.Stop;
+        var current_annotations = try self.tb.checkpointAnnotations();
+        errdefer self.tb.releaseAnnotationCheckpoint(&current_annotations);
+        try self.annotation_redo.ensureUnusedCapacity(self.allocator, 1);
         var current_meta_buffer: [64]u8 = undefined;
         const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
         const prev_meta = try self.tb.rope().undo(current_meta);
+        const previous_annotations = self.annotation_undo.pop().?;
+        self.annotation_redo.appendAssumeCapacity(current_annotations);
+        self.tb.restoreAnnotationCheckpoint(previous_annotations);
 
         const restored = try self.restoreCursorFromMeta(prev_meta);
 
@@ -640,7 +601,14 @@ pub const EditBuffer = struct {
     }
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
+        if (self.annotation_redo.items.len == 0) return error.Stop;
+        var current_annotations = try self.tb.checkpointAnnotations();
+        errdefer self.tb.releaseAnnotationCheckpoint(&current_annotations);
+        try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
         const next_meta = try self.tb.rope().redo();
+        const next_annotations = self.annotation_redo.pop().?;
+        self.annotation_undo.appendAssumeCapacity(current_annotations);
+        self.tb.restoreAnnotationCheckpoint(next_annotations);
 
         const restored = try self.restoreCursorFromMeta(next_meta);
 
@@ -666,9 +634,17 @@ pub const EditBuffer = struct {
 
     pub fn clearHistory(self: *EditBuffer) void {
         self.tb.rope().clear_history();
+        self.clearAnnotationHistory(&self.annotation_undo);
+        self.clearAnnotationHistory(&self.annotation_redo);
+    }
+
+    fn clearAnnotationHistory(self: *EditBuffer, history: *std.ArrayListUnmanaged(TextAnnotations)) void {
+        for (history.items) |*checkpoint| self.tb.releaseAnnotationCheckpoint(checkpoint);
+        history.clearRetainingCapacity();
     }
 
     pub fn clear(self: *EditBuffer) !void {
+        self.clearHistory();
         self.tb.clear();
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");

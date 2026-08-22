@@ -64,6 +64,12 @@ pub const MemRegistry = struct {
         return id;
     }
 
+    pub fn prepareRegister(self: *MemRegistry) MemRegistryError!void {
+        if (self.free_slots.items.len != 0) return;
+        if (self.buffers.items.len >= 255) return MemRegistryError.OutOfMemory;
+        try self.buffers.ensureUnusedCapacity(self.allocator, 1);
+    }
+
     /// ID that the next successful register call will return. This allows a
     /// caller to prepare immutable references before publishing registry state.
     pub fn nextId(self: *const MemRegistry) ?u8 {

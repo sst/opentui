@@ -1605,9 +1605,9 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
 
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.brk));
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.linestart));
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().rope().markerCount(.linestart));
 }
 
 test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduction)" {

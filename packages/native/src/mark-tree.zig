@@ -60,6 +60,7 @@ pub const MarkTree = struct {
     };
 
     pub const PreparedSplice = struct {
+        source_generation: u64,
         old_end: u32,
         new_end: u32,
         affected_ids: []u64,
@@ -70,6 +71,7 @@ pub const MarkTree = struct {
         owner: *Self,
         nodes: []*Node,
         next_priority_state: u64,
+        source_generation: u64,
         committed: bool = false,
 
         pub fn idAt(self: *const PreparedRanges, index: usize) u64 {
@@ -111,22 +113,46 @@ pub const MarkTree = struct {
     ids: std.AutoHashMap(u64, *Node),
     next_id: u64 = 1,
     priority_state: u64,
+    id_nonce: u32,
     len: usize = 0,
     generation: u64 = 0,
     active_visits: usize = 0,
 
     /// Uses a process-unique seed so independent trees do not share priorities.
     pub fn init(allocator: Allocator) Self {
-        return initWithSeed(allocator, next_seed.fetchAdd(0x9e3779b97f4a7c15, .monotonic));
+        const seed = next_seed.fetchAdd(0x9e3779b97f4a7c15, .monotonic);
+        return initWithSeedAndNonce(allocator, seed, @truncate(seed ^ (seed >> 32)));
     }
 
     /// Deterministic construction for tests and reproducible benchmarks.
     pub fn initWithSeed(allocator: Allocator, seed: u64) Self {
+        return initWithSeedAndNonce(allocator, seed, 0);
+    }
+
+    pub fn initWithSeedAndNonce(allocator: Allocator, seed: u64, nonce: u32) Self {
         return .{
             .allocator = allocator,
             .ids = std.AutoHashMap(u64, *Node).init(allocator),
             .priority_state = seed,
+            .id_nonce = nonce,
         };
+    }
+
+    /// Creates an independent tree with identical IDs, positions, and mutation
+    /// counters. This is used to prepare compound Rope/annotation transactions
+    /// without exposing a partially-mutated mark index.
+    pub fn clone(self: *Self, allocator: Allocator) !Self {
+        var result = initWithSeedAndNonce(allocator, self.priority_state, self.id_nonce);
+        errdefer result.deinit();
+        result.id_nonce = self.id_nonce;
+        try result.ids.ensureTotalCapacity(@intCast(self.len));
+
+        var it = self.iterator();
+        while (try it.next()) |mark| try result.addMarkWithId(mark);
+        result.next_id = self.next_id;
+        result.priority_state = self.priority_state;
+        result.generation = self.generation;
+        return result;
     }
 
     /// Releases all storage, panicking if called from an active visitor.
@@ -158,7 +184,7 @@ pub const MarkTree = struct {
         try self.checkCanMutate();
         if (inputs.len > std.math.maxInt(u64) - self.generation) return error.GenerationExhausted;
         const count_u64 = std.math.cast(u64, inputs.len) orelse return error.IdExhausted;
-        if (self.next_id == 0 or count_u64 > std.math.maxInt(u64) - self.next_id) return error.IdExhausted;
+        if (self.next_id == 0 or count_u64 > std.math.maxInt(u32) + 1 - self.next_id) return error.IdExhausted;
         const additional_count = std.math.cast(u32, inputs.len) orelse return error.IdExhausted;
         try self.ids.ensureUnusedCapacity(additional_count);
 
@@ -170,7 +196,7 @@ pub const MarkTree = struct {
         var priority_state = self.priority_state;
         for (inputs, 0..) |input, index| {
             const node = try self.allocator.create(Node);
-            const id = self.next_id + @as(u64, @intCast(index));
+            const id = self.makeId(self.next_id + @as(u64, @intCast(index)));
             node.* = .{
                 .mark = .{ .range = rangeFromInput(id, input) },
                 .priority = nextPriorityValue(&priority_state),
@@ -180,11 +206,12 @@ pub const MarkTree = struct {
             nodes[index] = node;
             initialized += 1;
         }
-        return .{ .owner = self, .nodes = nodes, .next_priority_state = priority_state };
+        return .{ .owner = self, .nodes = nodes, .next_priority_state = priority_state, .source_generation = self.generation };
     }
 
-    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) void {
+    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) !void {
         std.debug.assert(prepared.owner == self and !prepared.committed);
+        if (prepared.source_generation != self.generation) return error.StalePreparation;
         for (prepared.nodes) |node| {
             self.ids.putAssumeCapacity(node.mark.id(), node);
             self.root = insert(self.root, node);
@@ -297,7 +324,7 @@ pub const MarkTree = struct {
         covered_buffer: []u64,
     ) !SpliceReport {
         const prepared = try self.prepareSpliceWithReport(start_byte, old_len, new_len, affected_buffer, covered_buffer);
-        self.commitPreparedSplice(start_byte, old_len, new_len, prepared);
+        try self.commitPreparedSplice(start_byte, old_len, new_len, prepared);
         return .{
             .affected_ids = prepared.affected_ids,
             .covered_range_ids = prepared.covered_range_ids,
@@ -340,6 +367,7 @@ pub const MarkTree = struct {
             );
         }
         return .{
+            .source_generation = self.generation,
             .old_end = ends.old_end,
             .new_end = ends.new_end,
             .affected_ids = affected_buffer[0..affected_len],
@@ -350,7 +378,8 @@ pub const MarkTree = struct {
     /// Publishes a splice previously prepared against the current tree. No
     /// allocation or error is possible between the position update and the
     /// generation change.
-    pub fn commitPreparedSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32, prepared: PreparedSplice) void {
+    pub fn commitPreparedSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32, prepared: PreparedSplice) !void {
+        if (prepared.source_generation != self.generation) return error.StalePreparation;
         if (old_len == 0 and new_len == 0) return;
         self.spliceUnchecked(start_byte, prepared.old_end, prepared.new_end);
         self.finishMutation();
@@ -465,8 +494,27 @@ pub const MarkTree = struct {
     }
 
     fn reserveId(self: *const Self) !u64 {
-        if (self.next_id == 0 or self.next_id == std.math.maxInt(u64)) return error.IdExhausted;
-        return self.next_id;
+        if (self.next_id == 0 or self.next_id > std.math.maxInt(u32)) return error.IdExhausted;
+        return self.makeId(self.next_id);
+    }
+
+    fn makeId(self: *const Self, local_id: u64) u64 {
+        return (@as(u64, self.id_nonce) << 32) | local_id;
+    }
+
+    fn addMarkWithId(self: *Self, mark: Mark) !void {
+        const node = try self.allocator.create(Node);
+        errdefer self.allocator.destroy(node);
+        node.* = .{
+            .mark = mark,
+            .priority = self.nextPriority(),
+            .max_byte = upperByte(mark),
+            .max_overlap_end_byte = overlapEndByte(mark),
+        };
+        self.ids.putAssumeCapacity(mark.id(), node);
+        self.root = insert(self.root, node);
+        if (self.root) |root| root.parent = null;
+        self.len += 1;
     }
 
     fn addMark(self: *Self, mark: Mark) !void {

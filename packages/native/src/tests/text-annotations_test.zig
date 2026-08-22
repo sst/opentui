@@ -243,7 +243,7 @@ test "TextAnnotations visitors return deterministic priority and stable sequence
     defer values.deinit(std.testing.allocator);
     var collector = Collector{ .allocator = std.testing.allocator, .values = &values };
     try owner.visitOverlapping(6, 7, &collector, Collector.visit);
-    try std.testing.expectEqualSlices(u64, &.{ high, old_equal, new_equal }, &.{
+    try std.testing.expectEqualSlices(u64, &.{ high, new_equal, old_equal }, &.{
         values.items[0].id(),
         values.items[1].id(),
         values.items[2].id(),
@@ -251,7 +251,7 @@ test "TextAnnotations visitors return deterministic priority and stable sequence
 
     values.clearRetainingCapacity();
     try owner.visitStartingAt(5, &collector, Collector.visit);
-    try std.testing.expectEqualSlices(u64, &.{ high, old_equal, new_equal }, &.{
+    try std.testing.expectEqualSlices(u64, &.{ high, new_equal, old_equal }, &.{
         values.items[0].id(),
         values.items[1].id(),
         values.items[2].id(),
@@ -259,7 +259,7 @@ test "TextAnnotations visitors return deterministic priority and stable sequence
 
     values.clearRetainingCapacity();
     try owner.visitPointsAt(5, &collector, Collector.visit);
-    try std.testing.expectEqualSlices(u64, &.{ point_old, point_new }, &.{
+    try std.testing.expectEqualSlices(u64, &.{ point_new, point_old }, &.{
         values.items[0].id(),
         values.items[1].id(),
     });
@@ -399,6 +399,17 @@ test "TextAnnotations position overflow preserves both structures" {
     try expectRange(&owner, range, 2, 4, 10);
     try expectPoint(&owner, high, std.math.maxInt(u32), 9);
     try owner.validateIntegrity();
+}
+
+test "TextAnnotations rejects prepared operations after any source mutation" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    const id = try owner.addRange(.{ .start_byte = 1, .end_byte = 3 }, payload(1, 7, 1));
+    var prepared = try owner.prepareSplice(1, 1, 0);
+    defer prepared.deinit();
+    try std.testing.expect(try owner.updateStyle(id, 8));
+    try std.testing.expectError(error.StalePreparation, owner.commitPreparedSplice(&prepared));
+    try expectRange(&owner, id, 1, 3, 8);
 }
 
 const ModelEntry = struct {

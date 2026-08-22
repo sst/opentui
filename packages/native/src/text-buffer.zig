@@ -117,6 +117,7 @@ const InternalStyleSlot = struct {
     definition: ss.StyleDefinition,
     resolved_syntax_style: ?*const SyntaxStyle,
     resolved_style_id: u32,
+    link_url: ?[]u8,
     link_id: u32,
     refs: u32,
 };
@@ -135,6 +136,7 @@ pub const UnifiedTextBuffer = struct {
     allocator: Allocator,
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
+    rope_transaction_arenas: std.ArrayListUnmanaged(*std.heap.ArenaAllocator),
 
     _rope: UnifiedRope,
     syntax_style: ?*const SyntaxStyle,
@@ -296,6 +298,7 @@ pub const UnifiedTextBuffer = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
+            .rope_transaction_arenas = .empty,
             ._rope = init_rope,
             .syntax_style = null,
             .pool = pool,
@@ -375,12 +378,15 @@ pub const UnifiedTextBuffer = struct {
         if (self.link_tracker) |*tracker| {
             tracker.deinit();
         }
-        for (self.internal_style_slots.items) |slot| {
-            if (slot.refs != 0 and slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
-        }
+        for (self.internal_style_slots.items, 0..) |*slot, index| if (slot.refs != 0) {
+            slot.refs = 1;
+            self.releaseInternalStyle(internal_style_base | @as(u32, @intCast(index)));
+        };
         self.internal_style_slots.deinit(self.global_allocator);
 
         self.mem_registry.deinit();
+        self.releaseRopeTransactionArenas();
+        self.rope_transaction_arenas.deinit(self.global_allocator);
         self.arena.deinit();
         global_allocator.destroy(self.arena);
         self.* = undefined;
@@ -434,6 +440,79 @@ pub const UnifiedTextBuffer = struct {
         return &self.annotations;
     }
 
+    pub fn checkpointAnnotations(self: *Self) TextBufferError!TextAnnotations {
+        var checkpoint = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
+        errdefer checkpoint.deinit();
+        var retained: std.ArrayListUnmanaged(u32) = .empty;
+        defer retained.deinit(self.global_allocator);
+        var it = checkpoint.iterator();
+        while (it.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            self.retainInternalStyle(annotation.payload.style_id) catch |err| {
+                for (retained.items) |style_id| self.releaseInternalStyle(style_id);
+                return err;
+            };
+            retained.append(self.global_allocator, annotation.payload.style_id) catch {
+                self.releaseInternalStyle(annotation.payload.style_id);
+                for (retained.items) |style_id| self.releaseInternalStyle(style_id);
+                return TextBufferError.OutOfMemory;
+            };
+        }
+        return checkpoint;
+    }
+
+    pub fn releaseAnnotationCheckpoint(self: *Self, checkpoint: *TextAnnotations) void {
+        var it = checkpoint.iterator();
+        while (it.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        checkpoint.deinit();
+    }
+
+    /// Transfers checkpoint-owned style references to the live annotation set.
+    pub fn restoreAnnotationCheckpoint(self: *Self, checkpoint: TextAnnotations) void {
+        var current = self.annotations.iterator();
+        while (current.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        var old = self.annotations;
+        self.annotations = checkpoint;
+        old.deinit();
+        self.annotation_epoch +%= 1;
+        self.projection_epoch +%= 1;
+    }
+
+    fn publishAnnotationCandidate(self: *Self, candidate_value: TextAnnotations) TextBufferError!void {
+        var candidate = candidate_value;
+        errdefer candidate.deinit();
+        var retained: std.ArrayListUnmanaged(u32) = .empty;
+        defer retained.deinit(self.global_allocator);
+        var removed: std.ArrayListUnmanaged(u32) = .empty;
+        defer removed.deinit(self.global_allocator);
+
+        var next = candidate.iterator();
+        while (next.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            if (self.annotations.get(annotation.id()) == null) {
+                self.retainInternalStyle(annotation.payload.style_id) catch |err| {
+                    for (retained.items) |style_id| self.releaseInternalStyle(style_id);
+                    return err;
+                };
+                retained.append(self.global_allocator, annotation.payload.style_id) catch {
+                    self.releaseInternalStyle(annotation.payload.style_id);
+                    for (retained.items) |style_id| self.releaseInternalStyle(style_id);
+                    return TextBufferError.OutOfMemory;
+                };
+            }
+        }
+        errdefer for (retained.items) |style_id| self.releaseInternalStyle(style_id);
+
+        var current = self.annotations.iterator();
+        while (current.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            if (candidate.get(annotation.id()) == null) try removed.append(self.global_allocator, annotation.payload.style_id);
+        }
+
+        var old = self.annotations;
+        self.annotations = candidate;
+        old.deinit();
+        for (removed.items) |style_id| self.releaseInternalStyle(style_id);
+        self.markPaintDirty();
+    }
+
     fn markAllViewsDirty(self: *Self) void {
         // Increment epoch first so views see the new value when checking caches.
         // Use wrapping add for safety, though u64 won't overflow in practice.
@@ -447,7 +526,6 @@ pub const UnifiedTextBuffer = struct {
     fn markPaintDirty(self: *Self) void {
         self.annotation_epoch +%= 1;
         self.projection_epoch +%= 1;
-        for (self.view_dirty_flags.items) |*flag| flag.* = true;
     }
 
     pub fn markViewsDirty(self: *Self) void {
@@ -465,7 +543,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn normalizedBytesForMetrics(metrics: UnifiedRope.Metrics) u32 {
-        return metrics.custom.total_bytes +| metrics.custom.newline_count;
+        return metrics.custom.total_bytes + metrics.custom.newline_count;
     }
 
     fn normalizedByteRowInNode(self: *const Self, node: *const UnifiedRope.Node, byte_offset: u32, row_before: u32) TextBufferError!u32 {
@@ -536,58 +614,30 @@ pub const UnifiedTextBuffer = struct {
         affinity: BoundaryAffinity,
     ) TextBufferError!DisplayBoundary {
         const location = try self.normalizedByteOffsetToLocation(byte_offset);
-        const Context = struct {
-            buffer: *const Self,
-            target: NormalizedByteLocation,
-            affinity: BoundaryAffinity,
-            row: u32 = 0,
-            bytes_in_line: u32 = 0,
-            columns: u32 = 0,
-            result: ?DisplayBoundary = null,
-
-            fn walker(ctx_ptr: *anyopaque, segment: *const Segment, _: u32) UnifiedRope.Node.WalkerResult {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                if (segment.isBreak()) {
-                    if (ctx.row == ctx.target.row and ctx.target.byte_in_line == ctx.bytes_in_line) {
-                        ctx.result = .{ .point = .{ .row = ctx.row, .col = ctx.columns }, .exact = true };
-                        return .{ .keep_walking = false };
-                    }
-                    ctx.row +|= 1;
-                    ctx.bytes_in_line = 0;
-                    ctx.columns = 0;
-                    return .{};
-                }
-                if (ctx.row != ctx.target.row) return .{};
-                const chunk = segment.asText() orelse return .{};
-                const chunk_bytes = chunk.getBytes(&ctx.buffer.mem_registry);
-                const chunk_end = ctx.bytes_in_line +| @as(u32, @intCast(chunk_bytes.len));
-                if (ctx.target.byte_in_line <= chunk_end) {
-                    const local_byte = ctx.target.byte_in_line - ctx.bytes_in_line;
-                    const mapped = utf8.byteOffsetToDisplayColumn(
-                        chunk_bytes,
-                        local_byte,
-                        ctx.buffer.tab_width,
-                        ctx.buffer.width_method,
-                        ctx.affinity,
-                    ) orelse return .{ .err = TextBufferError.InvalidByteOffset };
-                    ctx.result = .{
-                        .point = .{ .row = ctx.row, .col = ctx.columns +| mapped.column },
-                        .exact = mapped.exact,
-                    };
-                    return .{ .keep_walking = false };
-                }
-                ctx.bytes_in_line = chunk_end;
-                ctx.columns +|= chunk.width;
-                return .{};
+        const marker = self._rope.findMarker(.linestart, location.row) orelse return TextBufferError.InvalidByteOffset;
+        var segment_index = marker.leaf_index + 1;
+        var bytes_in_line: u32 = 0;
+        var columns: u32 = 0;
+        while (segment_index < self._rope.count()) : (segment_index += 1) {
+            const segment = self._rope.get(segment_index) orelse break;
+            if (segment.isBreak() or segment.isLineStart()) break;
+            const chunk = segment.asText() orelse continue;
+            const chunk_bytes = chunk.getBytes(&self.mem_registry);
+            const chunk_end = bytes_in_line +| @as(u32, @intCast(chunk_bytes.len));
+            if (location.byte_in_line <= chunk_end) {
+                const mapped = utf8.byteOffsetToDisplayColumn(
+                    chunk_bytes,
+                    location.byte_in_line - bytes_in_line,
+                    self.tab_width,
+                    self.width_method,
+                    affinity,
+                ) orelse return TextBufferError.InvalidByteOffset;
+                return .{ .point = .{ .row = location.row, .col = columns +| mapped.column }, .exact = mapped.exact };
             }
-        };
-
-        var ctx: Context = .{ .buffer = self, .target = location, .affinity = affinity };
-        self._rope.walk(&ctx, Context.walker) catch return TextBufferError.InvalidByteOffset;
-        if (ctx.result) |result| return result;
-        if (ctx.row == location.row and ctx.bytes_in_line == location.byte_in_line) {
-            return .{ .point = .{ .row = location.row, .col = ctx.columns }, .exact = true };
+            bytes_in_line = chunk_end;
+            columns +|= chunk.width;
         }
+        if (bytes_in_line == location.byte_in_line) return .{ .point = .{ .row = location.row, .col = columns }, .exact = true };
         return TextBufferError.InvalidByteOffset;
     }
 
@@ -602,7 +652,7 @@ pub const UnifiedTextBuffer = struct {
         _ = weight;
 
         const line_start = try self.normalizedLineStart(point.row);
-        const marker = @constCast(&self._rope).getMarker(.linestart, point.row) orelse return TextBufferError.InvalidDisplayColumn;
+        const marker = self._rope.findMarker(.linestart, point.row) orelse return TextBufferError.InvalidDisplayColumn;
         var segment_index = marker.leaf_index + 1;
         var bytes_before: u32 = 0;
         var columns_before: u32 = 0;
@@ -811,10 +861,24 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null);
+    }
+
+    /// Consumes an annotation candidate already transformed for this splice.
+    /// On failure the candidate is destroyed; on success it becomes live.
+    fn replaceNormalizedBytesWithAnnotations(
+        self: *Self,
+        start: NormalizedByteOffset,
+        end: NormalizedByteOffset,
+        replacement: []const u8,
+        supplied_annotations: ?*TextAnnotations,
+    ) TextBufferError!SpliceResult {
         if (start > end or end > self.getByteSize()) return TextBufferError.InvalidByteOffset;
         if (!std.unicode.utf8ValidateSlice(replacement)) return TextBufferError.InvalidUtf8;
         const inserted_len = try normalizedReplacementLength(replacement);
         const new_end = std.math.add(u32, start, inserted_len) catch return TextBufferError.InvalidDimensions;
+        const retained_len = self.getByteSize() - (end - start);
+        _ = std.math.add(u32, retained_len, inserted_len) catch return TextBufferError.InvalidDimensions;
 
         const old_start_display = try self.normalizedByteOffsetToDisplayPoint(start, .before);
         const old_end_display = try self.normalizedByteOffsetToDisplayPoint(end, .after);
@@ -865,23 +929,54 @@ pub const UnifiedTextBuffer = struct {
             candidate_owned = reserved.?.kind != .existing;
             const prepared = try self.textToSegments(self.global_allocator, combined, reserved.?.mem_id, reserved.?.start, false);
             segments = prepared.segments;
+            if (region_start != 0) try segments.insert(self.global_allocator, 0, .{ .linestart = {} });
+        } else if (region_start != 0) {
+            try segments.append(self.global_allocator, .{ .linestart = {} });
         }
 
-        const prepared_root = self._rope.prepareReplaceRangeByMetric(region_start, region_end, segments.items, &self.byte_splitter) catch |err| switch (err) {
+        var generated_annotations: ?TextAnnotations = null;
+        if (supplied_annotations == null) {
+            generated_annotations = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
+                error.OutOfMemory => return TextBufferError.OutOfMemory,
+                else => return TextBufferError.InvalidDimensions,
+            };
+        }
+        var annotation_candidate_owned = generated_annotations != null;
+        defer if (annotation_candidate_owned) generated_annotations.?.deinit();
+        const candidate_annotations = supplied_annotations orelse &generated_annotations.?;
+        if (supplied_annotations == null) {
+            candidate_annotations.splice(start, end - start, inserted_len) catch |err| switch (err) {
+                error.OutOfMemory => return TextBufferError.OutOfMemory,
+                else => return TextBufferError.InvalidDimensions,
+            };
+        }
+
+        var deleted_style_ids: std.ArrayListUnmanaged(u32) = .empty;
+        defer deleted_style_ids.deinit(self.global_allocator);
+        var old_annotations = self.annotations.iterator();
+        while (old_annotations.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            if (candidate_annotations.get(annotation.id()) == null) {
+                try deleted_style_ids.append(self.global_allocator, annotation.payload.style_id);
+            }
+        }
+
+        if (reserved != null and reserved.?.kind == .initial) self.mem_registry.prepareRegister() catch return TextBufferError.OutOfMemory;
+
+        // Persistent Rope preparation is deliberately last and isolated in its
+        // own arena. A failed preparation can therefore release every node it
+        // allocated instead of leaking high-water storage into the document.
+        try self.rope_transaction_arenas.ensureUnusedCapacity(self.global_allocator, 1);
+        const transaction_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        var transaction_arena_owned = true;
+        defer if (transaction_arena_owned) self.global_allocator.destroy(transaction_arena);
+        transaction_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
+        defer if (transaction_arena_owned) transaction_arena.deinit();
+        var candidate_rope = self._rope;
+        candidate_rope.allocator = transaction_arena.allocator();
+        const prepared_root = candidate_rope.prepareReplaceRangeByMetric(region_start, region_end, segments.items, &self.byte_splitter) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
             error.OutOfBounds => return TextBufferError.InvalidByteOffset,
         };
-
-        var prepared_annotations = self.annotations.prepareSplice(start, end - start, inserted_len) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => return TextBufferError.InvalidDimensions,
-        };
-        defer prepared_annotations.deinit();
-        const deleted_style_ids = self.global_allocator.alloc(u32, prepared_annotations.delete_ids.len) catch return TextBufferError.OutOfMemory;
-        defer self.global_allocator.free(deleted_style_ids);
-        for (prepared_annotations.delete_ids, 0..) |id, index| {
-            deleted_style_ids[index] = self.annotations.get(id).?.payload.style_id;
-        }
 
         if (reserved) |reservation| {
             switch (reservation.kind) {
@@ -903,8 +998,14 @@ pub const UnifiedTextBuffer = struct {
         }
 
         self._rope.commitPreparedRoot(prepared_root);
-        self.annotations.commitPreparedSplice(&prepared_annotations);
-        for (deleted_style_ids) |style_id| self.releaseInternalStyle(style_id);
+        self.rope_transaction_arenas.appendAssumeCapacity(transaction_arena);
+        transaction_arena_owned = false;
+        var previous_annotations = self.annotations;
+        self.annotations = candidate_annotations.*;
+        annotation_candidate_owned = false;
+        previous_annotations.deinit();
+        for (deleted_style_ids.items) |style_id| self.releaseInternalStyle(style_id);
+        self.annotation_epoch +%= 1;
         self.markAllViewsDirty();
 
         const new_display: DisplayRange = .{
@@ -981,6 +1082,8 @@ pub const UnifiedTextBuffer = struct {
         self.splice_buffer = null;
         self.splice_len = 0;
 
+        self.releaseRopeTransactionArenas();
+
         // Now reset the arena (frees all the internal memory)
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
@@ -1015,6 +1118,11 @@ pub const UnifiedTextBuffer = struct {
     fn onSyntaxStyleDestroyed(ctx_ptr: *anyopaque) void {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
         self.syntax_style = null;
+        for (self.internal_style_slots.items) |*slot| {
+            slot.resolved_syntax_style = null;
+            slot.resolved_style_id = 0;
+        }
+        self.markPaintDirty();
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
@@ -1024,6 +1132,13 @@ pub const UnifiedTextBuffer = struct {
             (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch return;
         }
         if (self.syntax_style) |prev| {
+            for (self.internal_style_slots.items) |*slot| {
+                if (slot.resolved_syntax_style == prev and slot.resolved_style_id != 0) {
+                    (@constCast(prev)).unregisterAnonymousStyleDefinition(slot.resolved_style_id);
+                    slot.resolved_syntax_style = null;
+                    slot.resolved_style_id = 0;
+                }
+            }
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
@@ -1049,15 +1164,14 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn clearInternalStyleRefs(self: *Self) void {
-        for (self.internal_style_slots.items) |*slot| {
-            if (slot.refs != 0 and slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
-            slot.refs = 0;
-        }
+        for (self.internal_style_slots.items, 0..) |*slot, index| if (slot.refs != 0) {
+            slot.refs = 1;
+            self.releaseInternalStyle(internal_style_base | @as(u32, @intCast(index)));
+        };
     }
 
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
-        _ = try self.mem_registry.register(text, false);
         _ = try self.replaceNormalizedBytes(0, self.getByteSize(), text);
     }
 
@@ -1082,7 +1196,7 @@ pub const UnifiedTextBuffer = struct {
         defer prepared_annotations.deinit();
         const mem_id = try self.mem_registry.register(text, false);
         try self.appendInternal(mem_id, text);
-        self.annotations.commitPreparedSplice(&prepared_annotations);
+        self.annotations.commitPreparedSplice(&prepared_annotations) catch return TextBufferError.InvalidDimensions;
     }
 
     /// Append text from a pre-registered memory ID
@@ -1097,7 +1211,7 @@ pub const UnifiedTextBuffer = struct {
         };
         defer prepared_annotations.deinit();
         try self.appendInternal(mem_id, text);
-        self.annotations.commitPreparedSplice(&prepared_annotations);
+        self.annotations.commitPreparedSplice(&prepared_annotations) catch return TextBufferError.InvalidDimensions;
     }
 
     /// Internal append that doesn't register memory
@@ -1207,7 +1321,7 @@ pub const UnifiedTextBuffer = struct {
                     text[local_start..local_end],
                 );
                 try segments.append(allocator, .{ .text = chunk });
-                total_width +|= chunk.width;
+                total_width = std.math.add(u32, total_width, chunk.width) catch return TextBufferError.InvalidDimensions;
             }
 
             try segments.append(allocator, .{ .brk = {} });
@@ -1224,7 +1338,7 @@ pub const UnifiedTextBuffer = struct {
                 text[local_start..],
             );
             try segments.append(allocator, .{ .text = chunk });
-            total_width +|= chunk.width;
+            total_width = std.math.add(u32, total_width, chunk.width) catch return TextBufferError.InvalidDimensions;
         }
 
         return .{ .segments = segments, .total_width = total_width, .allocator = allocator };
@@ -1269,6 +1383,7 @@ pub const UnifiedTextBuffer = struct {
         self.splice_mem_id = null;
         self.splice_buffer = null;
         self.splice_len = 0;
+        self.releaseRopeTransactionArenas();
         self.markAllViewsDirty();
     }
 
@@ -1310,7 +1425,17 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getArenaAllocatedBytes(self: *const Self) usize {
-        return self.arena.queryCapacity();
+        var total = self.arena.queryCapacity();
+        for (self.rope_transaction_arenas.items) |arena| total += arena.queryCapacity();
+        return total;
+    }
+
+    fn releaseRopeTransactionArenas(self: *Self) void {
+        for (self.rope_transaction_arenas.items) |arena| {
+            arena.deinit();
+            self.global_allocator.destroy(arena);
+        }
+        self.rope_transaction_arenas.clearRetainingCapacity();
     }
 
     /// Extract all text as UTF-8 bytes into provided output buffer
@@ -1443,7 +1568,7 @@ pub const UnifiedTextBuffer = struct {
             self.internal_highlight_count += 1;
         }
 
-        self.projection_epoch +%= 1;
+        self.markPaintDirty();
 
         if (self.highlight_batch_depth == 0) {
             try self.projectLine(line_idx);
@@ -1586,7 +1711,7 @@ pub const UnifiedTextBuffer = struct {
             while (it.next()) |hl_idx| {
                 const hl = highlights[hl_idx.*];
                 if (hl.priority > current_priority or
-                    (hl.priority == current_priority and hl_idx.* < current_highlight_index))
+                    (hl.priority == current_priority and hl_idx.* > current_highlight_index))
                 {
                     current_priority = @intCast(hl.priority);
                     current_style = hl.style_id;
@@ -1773,8 +1898,8 @@ pub const UnifiedTextBuffer = struct {
                 i += 1;
             }
             if (changed) {
+                self.markPaintDirty();
                 if (self.highlight_batch_depth == 0) {
-                    self.projection_epoch +%= 1;
                     self.projectLine(line_idx) catch {};
                 } else {
                     self.markLineSpansDirty(line_idx);
@@ -1785,31 +1910,60 @@ pub const UnifiedTextBuffer = struct {
 
     /// Clear all highlights from a specific line
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
-        if (line_idx < self.external_line_highlights.items.len) {
-            for (self.external_line_highlights.items[line_idx].items) |hl| {
-                if (hl.internal and self.internal_highlight_count > 0) {
-                    self.internal_highlight_count -= 1;
+        if (line_idx < self.getLineCount()) {
+            var candidate = self.annotations.clone(self.global_allocator) catch return;
+            const line_start = self.normalizedLineStart(@intCast(line_idx)) catch {
+                candidate.deinit();
+                return;
+            };
+            const line_end = if (line_idx + 1 < self.getLineCount())
+                self.normalizedLineStart(@intCast(line_idx + 1)) catch {
+                    candidate.deinit();
+                    return;
                 }
+            else
+                self.getByteSize();
+            candidate.clipRange(line_start, line_end) catch {
+                candidate.deinit();
+                return;
+            };
+            self.publishAnnotationCandidate(candidate) catch return;
+        }
+        var external_changed = false;
+        if (line_idx < self.external_line_highlights.items.len) {
+            external_changed = self.external_line_highlights.items[line_idx].items.len != 0;
+            for (self.external_line_highlights.items[line_idx].items) |hl| {
+                if (hl.internal and self.internal_highlight_count > 0) self.internal_highlight_count -= 1;
             }
             self.external_line_highlights.items[line_idx].clearRetainingCapacity();
         }
-        if (line_idx < self.line_spans.items.len) {
-            self.line_spans.items[line_idx].clearRetainingCapacity();
-        }
-        self.projection_epoch +%= 1;
+        if (line_idx >= self.getLineCount() and external_changed) self.markPaintDirty();
+        if (self.highlight_batch_depth != 0) self.markLineSpansDirty(line_idx);
     }
 
     /// Clear all highlights
     pub fn clearAllHighlights(self: *Self) void {
-        for (self.external_line_highlights.items) |*hl_list| {
-            hl_list.clearRetainingCapacity();
+        var candidate = self.annotations.clone(self.global_allocator) catch return;
+        var ids: std.ArrayListUnmanaged(u64) = .empty;
+        defer ids.deinit(self.global_allocator);
+        var it = candidate.iterator();
+        while (it.next() catch {
+            candidate.deinit();
+            return;
+        }) |annotation| {
+            if (annotation.payload.kind_flags & style_range_kind != 0) ids.append(self.global_allocator, annotation.id()) catch {
+                candidate.deinit();
+                return;
+            };
         }
+        for (ids.items) |id| _ = candidate.remove(id) catch {
+            candidate.deinit();
+            return;
+        };
+        self.publishAnnotationCandidate(candidate) catch return;
+        for (self.external_line_highlights.items) |*hl_list| hl_list.clearRetainingCapacity();
         self.internal_highlight_count = 0;
-        for (self.line_spans.items) |*span_list| {
-            span_list.clearRetainingCapacity();
-        }
-        self.clearInternalHighlights();
-        self.projection_epoch +%= 1;
+        for (self.line_spans.items) |*span_list| span_list.clearRetainingCapacity();
     }
 
     /// Get highlights for a specific line
@@ -1819,18 +1973,14 @@ pub const UnifiedTextBuffer = struct {
 
     /// Get total number of highlights across all lines
     pub fn getHighlightCount(self: *Self) u32 {
-        var count: u32 = 0;
-        for (self.external_line_highlights.items) |highlights| count += @intCast(highlights.items.len);
-        var line_idx: usize = 0;
-        while (line_idx < self.getLineCount()) : (line_idx += 1) {
-            const projected = self.getLineHighlights(line_idx);
-            const external_count = if (line_idx < self.external_line_highlights.items.len)
-                self.external_line_highlights.items[line_idx].items.len
-            else
-                0;
-            if (projected.len >= external_count) count += @intCast(projected.len - external_count);
+        var count: u64 = 0;
+        for (self.external_line_highlights.items) |highlights| count += highlights.items.len;
+        var it = self.annotations.iterator();
+        while (it.next() catch return std.math.maxInt(u32)) |annotation| {
+            count += @intFromBool(annotation.payload.kind_flags & style_range_kind != 0);
+            if (count > std.math.maxInt(u32)) return std.math.maxInt(u32);
         }
-        return count;
+        return @intCast(count);
     }
 
     pub fn createStyleRange(
@@ -1901,7 +2051,11 @@ pub const UnifiedTextBuffer = struct {
         const style_id = try self.acquireInternalStyle(style_value);
         errdefer self.releaseInternalStyle(style_id);
         const changed = try self.updateStyleRangeStyle(id, style_id);
-        if (changed) self.releaseInternalStyle(old.payload.style_id);
+        if (changed) {
+            self.releaseInternalStyle(old.payload.style_id);
+        } else {
+            self.releaseInternalStyle(style_id);
+        }
         return changed;
     }
 
@@ -1936,36 +2090,49 @@ pub const UnifiedTextBuffer = struct {
     fn acquireInternalStyle(self: *Self, chunk: StyledChunk) TextBufferError!u32 {
         const fg = if (chunk.fg_ptr) |ptr| utils.ptrToRGBA(ptr) else null;
         const bg = if (chunk.bg_ptr) |ptr| utils.ptrToRGBA(ptr) else null;
-        var attributes = chunk.attributes;
-        var link_id: u32 = 0;
-        if (chunk.link_ptr) |ptr| {
-            if (chunk.link_len != 0) {
-                link_id = self.link_pool.alloc(ptr[0..chunk.link_len]) catch return TextBufferError.OutOfMemory;
-                attributes = ansi.TextAttributes.setLinkId(attributes, link_id);
-            }
-        }
-        const definition: ss.StyleDefinition = .{ .fg = fg, .bg = bg, .attributes = attributes };
+        const link_url = if (chunk.link_len == 0)
+            null
+        else if (chunk.link_ptr) |ptr|
+            ptr[0..chunk.link_len]
+        else
+            return TextBufferError.InvalidDimensions;
+        const definition: ss.StyleDefinition = .{ .fg = fg, .bg = bg, .attributes = chunk.attributes };
         for (self.internal_style_slots.items, 0..) |*slot, index| {
-            if (slot.refs != 0 and std.meta.eql(slot.definition, definition)) {
+            const links_equal = if (slot.link_url) |existing|
+                link_url != null and std.mem.eql(u8, existing, link_url.?)
+            else
+                link_url == null;
+            if (slot.refs != 0 and std.meta.eql(slot.definition, definition) and links_equal) {
+                if (slot.refs == std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
                 slot.refs += 1;
                 return internal_style_base | @as(u32, @intCast(index));
             }
         }
 
+        const owned_link = if (link_url) |url| self.global_allocator.dupe(u8, url) catch return TextBufferError.OutOfMemory else null;
+        errdefer if (owned_link) |url| self.global_allocator.free(url);
+        for (self.internal_style_slots.items, 0..) |*slot, index| {
+            if (slot.refs != 0) continue;
+            slot.* = .{
+                .definition = definition,
+                .resolved_syntax_style = null,
+                .resolved_style_id = 0,
+                .link_url = owned_link,
+                .link_id = 0,
+                .refs = 1,
+            };
+            return internal_style_base | @as(u32, @intCast(index));
+        }
+
         if (self.internal_style_slots.items.len >= internal_style_base) return TextBufferError.InvalidDimensions;
         try self.internal_style_slots.ensureUnusedCapacity(self.global_allocator, 1);
-        if (link_id != 0) self.link_pool.incref(link_id) catch return TextBufferError.OutOfMemory;
-        errdefer if (link_id != 0) self.link_pool.decref(link_id) catch {};
-        const resolved_style_id = if (self.syntax_style) |style|
-            (@constCast(style)).registerAnonymousStyleDefinition(definition) catch return TextBufferError.OutOfMemory
-        else
-            0;
         const slot_id = internal_style_base | @as(u32, @intCast(self.internal_style_slots.items.len));
         self.internal_style_slots.appendAssumeCapacity(.{
             .definition = definition,
-            .resolved_syntax_style = self.syntax_style,
-            .resolved_style_id = resolved_style_id,
-            .link_id = link_id,
+            .resolved_syntax_style = null,
+            .resolved_style_id = 0,
+            .link_url = owned_link,
+            .link_id = 0,
             .refs = 1,
         });
         return slot_id;
@@ -1978,7 +2145,25 @@ pub const UnifiedTextBuffer = struct {
         const slot = &self.internal_style_slots.items[index];
         if (slot.refs == 0) return;
         slot.refs -= 1;
-        if (slot.refs == 0 and slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
+        if (slot.refs != 0) return;
+        if (slot.resolved_syntax_style) |style| {
+            if (slot.resolved_style_id != 0) (@constCast(style)).unregisterAnonymousStyleDefinition(slot.resolved_style_id);
+        }
+        if (slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
+        if (slot.link_url) |url| self.global_allocator.free(url);
+        slot.resolved_syntax_style = null;
+        slot.resolved_style_id = 0;
+        slot.link_url = null;
+        slot.link_id = 0;
+    }
+
+    fn retainInternalStyle(self: *Self, slot_id: u32) TextBufferError!void {
+        if (slot_id & internal_style_base == 0) return;
+        const index: usize = slot_id & ~internal_style_base;
+        if (index >= self.internal_style_slots.items.len) return TextBufferError.InvalidDimensions;
+        const slot = &self.internal_style_slots.items[index];
+        if (slot.refs == 0 or slot.refs == std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+        slot.refs += 1;
     }
 
     fn resolveAnnotationStyle(self: *Self, slot_id: u32) TextBufferError!u32 {
@@ -1988,7 +2173,17 @@ pub const UnifiedTextBuffer = struct {
         const style = self.syntax_style orelse return 0;
         const slot = &self.internal_style_slots.items[index];
         if (slot.resolved_syntax_style == style) return slot.resolved_style_id;
-        slot.resolved_style_id = (@constCast(style)).registerAnonymousStyleDefinition(slot.definition) catch return TextBufferError.OutOfMemory;
+        var definition = slot.definition;
+        if (slot.link_url) |url| {
+            const link_id = self.link_pool.acquire(url) catch return TextBufferError.OutOfMemory;
+            slot.link_id = link_id;
+            definition.attributes = ansi.TextAttributes.setLinkId(definition.attributes, link_id);
+        }
+        errdefer if (slot.link_id != 0) {
+            self.link_pool.decref(slot.link_id) catch {};
+            slot.link_id = 0;
+        };
+        slot.resolved_style_id = (@constCast(style)).registerAnonymousStyleDefinition(definition) catch return TextBufferError.OutOfMemory;
         slot.resolved_syntax_style = style;
         return slot.resolved_style_id;
     }
@@ -2013,56 +2208,80 @@ pub const UnifiedTextBuffer = struct {
             offset += chunk.text_len;
         }
 
-        var ranges: std.ArrayListUnmanaged(TextAnnotations.RangeInput) = .empty;
-        defer ranges.deinit(self.global_allocator);
-        var payloads: std.ArrayListUnmanaged(TextAnnotations.PayloadInput) = .empty;
-        defer payloads.deinit(self.global_allocator);
         var acquired_styles: std.ArrayListUnmanaged(u32) = .empty;
         defer acquired_styles.deinit(self.global_allocator);
         var styles_committed = false;
         defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
+        try acquired_styles.ensureTotalCapacity(self.global_allocator, chunks.len + 1);
 
-        if (self.syntax_style != null) {
-            try ranges.ensureTotalCapacity(self.global_allocator, chunks.len);
-            try payloads.ensureTotalCapacity(self.global_allocator, chunks.len);
-            try acquired_styles.ensureTotalCapacity(self.global_allocator, chunks.len);
-            var raw_offset: usize = 0;
-            for (chunks) |chunk| {
-                const raw_start = raw_offset;
-                raw_offset += chunk.text_len;
-                if (chunk.text_len == 0) continue;
-                const local_start = try normalizedReplacementLength(replacement[0..raw_start]);
-                const local_end = try normalizedReplacementLength(replacement[0..raw_offset]);
-                if (local_start >= local_end) continue;
-                const style_id = try self.acquireInternalStyle(chunk);
-                acquired_styles.appendAssumeCapacity(style_id);
-                ranges.appendAssumeCapacity(.{
-                    .start_byte = std.math.add(u32, start_byte, local_start) catch return TextBufferError.InvalidDimensions,
-                    .end_byte = std.math.add(u32, start_byte, local_end) catch return TextBufferError.InvalidDimensions,
-                });
-                payloads.appendAssumeCapacity(.{
-                    .namespace = owner,
-                    .style_id = style_id,
-                    .priority = 1,
-                    .internal = true,
-                    .kind_flags = style_range_kind,
-                    .splice_policy = .delete_when_covered,
-                });
+        // Calculate every chunk boundary in one streaming normalization pass.
+        // A CRLF split between adjacent chunks still occupies one document byte.
+        const normalized_boundaries = self.global_allocator.alloc(u32, chunks.len + 1) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(normalized_boundaries);
+        normalized_boundaries[0] = 0;
+        var normalized_offset: u32 = 0;
+        var raw_offset: usize = 0;
+        var previous_was_cr = false;
+        for (chunks, 0..) |chunk, chunk_index| {
+            const chunk_end = raw_offset + chunk.text_len;
+            while (raw_offset < chunk_end) : (raw_offset += 1) {
+                const byte = replacement[raw_offset];
+                if (!(byte == '\n' and previous_was_cr)) normalized_offset = std.math.add(u32, normalized_offset, 1) catch return TextBufferError.InvalidDimensions;
+                previous_was_cr = byte == '\r';
             }
+            normalized_boundaries[chunk_index + 1] = normalized_offset;
         }
 
-        var prepared_ranges = self.annotations.prepareAddRanges(ranges.items, payloads.items) catch |err| switch (err) {
+        var candidate = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
             else => return TextBufferError.InvalidDimensions,
         };
-        defer prepared_ranges.deinit();
-        const result = try self.replaceNormalizedBytes(start_byte, end_byte, replacement);
-        self.annotations.commitPreparedRanges(&prepared_ranges);
-        styles_committed = true;
-        if (ranges.items.len != 0) {
-            self.annotation_epoch +%= 1;
-            self.projection_epoch +%= 1;
+        var candidate_owned = true;
+        defer if (candidate_owned) candidate.deinit();
+        candidate.clipOwnerRange(owner, start_byte, end_byte) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            else => return TextBufferError.InvalidDimensions,
+        };
+        candidate.splice(start_byte, end_byte - start_byte, normalized_offset) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            else => return TextBufferError.InvalidDimensions,
+        };
+
+        // A clipped range crossing both replacement edges was split and needs
+        // one additional ownership reference for its new right-hand annotation.
+        var candidate_iterator = candidate.iterator();
+        while (candidate_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            if (self.annotations.get(annotation.id()) == null) {
+                try self.retainInternalStyle(annotation.payload.style_id);
+                try acquired_styles.append(self.global_allocator, annotation.payload.style_id);
+            }
         }
+
+        for (chunks, 0..) |chunk, chunk_index| {
+            const local_start = normalized_boundaries[chunk_index];
+            const local_end = normalized_boundaries[chunk_index + 1];
+            if (local_start >= local_end) continue;
+            const style_id = try self.acquireInternalStyle(chunk);
+            try acquired_styles.append(self.global_allocator, style_id);
+            _ = candidate.addRange(.{
+                .start_byte = std.math.add(u32, start_byte, local_start) catch return TextBufferError.InvalidDimensions,
+                .end_byte = std.math.add(u32, start_byte, local_end) catch return TextBufferError.InvalidDimensions,
+            }, .{
+                .namespace = owner,
+                .style_id = style_id,
+                .priority = 1,
+                .internal = true,
+                .kind_flags = style_range_kind,
+                .splice_policy = .delete_when_covered,
+            }) catch |err| switch (err) {
+                error.OutOfMemory => return TextBufferError.OutOfMemory,
+                else => return TextBufferError.InvalidDimensions,
+            };
+        }
+
+        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement, &candidate);
+        candidate_owned = false;
+        styles_committed = true;
         return result;
     }
 
@@ -2081,123 +2300,29 @@ pub const UnifiedTextBuffer = struct {
         self: *Self,
         chunks: []const StyledChunk,
     ) TextBufferError!void {
-        var total_len: usize = 0;
-        for (chunks) |chunk| {
-            total_len = std.math.add(usize, total_len, chunk.text_len) catch return TextBufferError.InvalidDimensions;
-        }
-        if (total_len > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
-        const full_text = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
-        defer self.global_allocator.free(full_text);
-
-        var offset: usize = 0;
-        for (chunks) |chunk| {
-            if (chunk.text_len > 0) {
-                const chunk_text = chunk.text_ptr[0..chunk.text_len];
-                @memcpy(full_text[offset .. offset + chunk.text_len], chunk_text);
-                offset += chunk.text_len;
-            }
-        }
-
-        const candidate_text = self.global_allocator.dupe(u8, full_text) catch return TextBufferError.OutOfMemory;
-        var candidate_text_owned = true;
-        defer if (candidate_text_owned) self.global_allocator.free(candidate_text);
-
-        var candidate_registration: ?u8 = null;
-        defer if (candidate_registration) |id| self.mem_registry.commitPreparedUnregister(id);
-        const candidate_mem_id = if (self.styled_text_mem_id) |id| id else blk: {
-            try self.mem_registry.prepareFreeSlot();
-            const id = try self.mem_registry.register(candidate_text, false);
-            candidate_registration = id;
-            break :blk id;
-        };
-
-        const candidate_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
-        var candidate_arena_owned = true;
-        defer if (candidate_arena_owned) self.global_allocator.destroy(candidate_arena);
-        candidate_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
-        defer if (candidate_arena_owned) candidate_arena.deinit();
-        const candidate_allocator = candidate_arena.allocator();
-        var candidate_rope = UnifiedRope.init(candidate_allocator) catch return TextBufferError.OutOfMemory;
-        var candidate_segments = try self.textToSegments(self.global_allocator, candidate_text, candidate_mem_id, 0, true);
-        defer candidate_segments.segments.deinit(candidate_segments.allocator);
-        try candidate_rope.setSegments(candidate_segments.segments.items);
-
-        var ranges: std.ArrayListUnmanaged(TextAnnotations.RangeInput) = .empty;
-        defer ranges.deinit(self.global_allocator);
-        var payloads: std.ArrayListUnmanaged(TextAnnotations.PayloadInput) = .empty;
-        defer payloads.deinit(self.global_allocator);
-        var acquired_styles: std.ArrayListUnmanaged(u32) = .empty;
-        defer acquired_styles.deinit(self.global_allocator);
-        var styles_committed = false;
-        defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
-
-        if (self.syntax_style != null) {
-            try ranges.ensureTotalCapacity(self.global_allocator, chunks.len);
-            try payloads.ensureTotalCapacity(self.global_allocator, chunks.len);
-            try acquired_styles.ensureTotalCapacity(self.global_allocator, chunks.len);
-            var raw_offset: usize = 0;
-            for (chunks) |chunk| {
-                const raw_start = raw_offset;
-                raw_offset += chunk.text_len;
-                if (chunk.text_len == 0) continue;
-                const start_byte = try normalizedReplacementLength(full_text[0..raw_start]);
-                const end_byte = try normalizedReplacementLength(full_text[0..raw_offset]);
-                if (start_byte >= end_byte) continue;
-                const style_id = try self.acquireInternalStyle(chunk);
-                acquired_styles.appendAssumeCapacity(style_id);
-                ranges.appendAssumeCapacity(.{ .start_byte = start_byte, .end_byte = end_byte });
-                payloads.appendAssumeCapacity(.{
-                    .namespace = styled_text_owner,
-                    .style_id = style_id,
-                    .priority = 1,
-                    .internal = true,
-                    .kind_flags = style_range_kind,
-                    .splice_policy = .delete_when_covered,
-                });
-            }
-        }
-
-        var prepared_ranges = self.annotations.prepareAddRanges(ranges.items, payloads.items) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => return TextBufferError.InvalidDimensions,
-        };
-        defer prepared_ranges.deinit();
-        try self.mem_registry.prepareFreeSlot();
-        _ = try self.replaceNormalizedBytes(0, self.getByteSize(), full_text);
-        self.annotations.commitPreparedRanges(&prepared_ranges);
-        styles_committed = true;
-        self.annotation_epoch +%= 1;
-        self.projection_epoch +%= 1;
-
-        const old_arena = self.arena;
-        const old_styled_buffer = self.styled_buffer;
-        if (old_styled_buffer != null and old_styled_buffer.?.ptr != candidate_text.ptr) {
-            try self.mem_registry.replace(candidate_mem_id, candidate_text, false);
-            self.global_allocator.free(old_styled_buffer.?);
-        }
-        self.styled_text_mem_id = candidate_mem_id;
-        self.styled_buffer = candidate_text;
-        self.styled_capacity = candidate_text.len;
-        candidate_registration = null;
-        candidate_text_owned = false;
-        self.arena = candidate_arena;
-        self.allocator = candidate_allocator;
-        self._rope = candidate_rope;
-        candidate_arena_owned = false;
-        old_arena.deinit();
-        self.global_allocator.destroy(old_arena);
-        if (self.splice_mem_id) |id| {
-            self.mem_registry.commitPreparedUnregister(id);
-            self.splice_mem_id = null;
-            self.splice_buffer = null;
-            self.splice_len = 0;
-        }
-
-        // Compatibility: setStyledText remains a full document replacement and
-        // clears public line highlights, but its own styles live in annotations.
+        _ = try self.replaceStyledRangeBytes(0, self.getByteSize(), chunks, styled_text_owner);
+        // Compatibility: full replacement clears public line highlights.
         for (self.external_line_highlights.items) |*highlights| highlights.clearRetainingCapacity();
         self.internal_highlight_count = 0;
         self._rope.clear_history();
+
+        // Full replacements do not retain history, so compact persistent Rope
+        // nodes instead of growing the document arena on every frame.
+        const segments = self._rope.to_array(self.global_allocator) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(segments);
+        const candidate_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        errdefer self.global_allocator.destroy(candidate_arena);
+        candidate_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
+        errdefer candidate_arena.deinit();
+        var candidate_rope = UnifiedRope.init(candidate_arena.allocator()) catch return TextBufferError.OutOfMemory;
+        candidate_rope.setSegments(segments) catch return TextBufferError.OutOfMemory;
+        const old_arena = self.arena;
+        self.arena = candidate_arena;
+        self.allocator = candidate_arena.allocator();
+        self._rope = candidate_rope;
+        self.releaseRopeTransactionArenas();
+        old_arena.deinit();
+        self.global_allocator.destroy(old_arena);
     }
 
     /// Load text from a file path (relative to cwd)

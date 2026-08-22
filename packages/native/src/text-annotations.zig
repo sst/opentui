@@ -2,6 +2,7 @@ const std = @import("std");
 const MarkTree = @import("mark-tree.zig").MarkTree;
 
 const Allocator = std.mem.Allocator;
+var next_annotation_nonce = std.atomic.Value(u32).init(1);
 
 /// Owns edit-following annotation positions and their non-owning style metadata.
 /// Payloads are POD values: dropping, replacing, or clearing one requires no
@@ -66,6 +67,7 @@ pub const TextAnnotations = struct {
         covered_storage: []u64,
         delete_storage: []u64,
         delete_ids: []u64,
+        source_generation: u64,
         committed: bool = false,
 
         pub fn deinit(self: *PreparedSplice) void {
@@ -80,6 +82,7 @@ pub const TextAnnotations = struct {
         owner: *Self,
         tree_ranges: MarkTree.PreparedRanges,
         payloads: []Payload,
+        source_generation: u64,
         committed: bool = false,
 
         pub fn idAt(self: *const PreparedRanges, index: usize) u64 {
@@ -105,9 +108,11 @@ pub const TextAnnotations = struct {
     active_visits: usize = 0,
 
     pub fn init(allocator: Allocator) Self {
+        const nonce = next_annotation_nonce.fetchAdd(1, .monotonic);
+        if (nonce == std.math.maxInt(u32)) @panic("TextAnnotations ID generations exhausted");
         return .{
             .allocator = allocator,
-            .tree = MarkTree.init(allocator),
+            .tree = MarkTree.initWithSeedAndNonce(allocator, @as(u64, nonce) *% 0x9e3779b97f4a7c15, nonce),
             .payloads = std.AutoHashMap(u64, Payload).init(allocator),
         };
     }
@@ -117,6 +122,23 @@ pub const TextAnnotations = struct {
             .allocator = allocator,
             .tree = MarkTree.initWithSeed(allocator, seed),
             .payloads = std.AutoHashMap(u64, Payload).init(allocator),
+        };
+    }
+
+    pub fn clone(self: *Self, allocator: Allocator) !Self {
+        var tree = try self.tree.clone(allocator);
+        errdefer tree.deinit();
+        var payloads = std.AutoHashMap(u64, Payload).init(allocator);
+        errdefer payloads.deinit();
+        try payloads.ensureTotalCapacity(@intCast(self.payloads.count()));
+        var payload_iterator = self.payloads.iterator();
+        while (payload_iterator.next()) |entry| payloads.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
+        return .{
+            .allocator = allocator,
+            .tree = tree,
+            .payloads = payloads,
+            .next_sequence = self.next_sequence,
+            .generation = self.generation,
         };
     }
 
@@ -164,12 +186,13 @@ pub const TextAnnotations = struct {
         for (payload_inputs, 0..) |payload, index| {
             payloads[index] = payloadFromInput(payload, self.next_sequence + @as(u64, @intCast(index)));
         }
-        return .{ .owner = self, .tree_ranges = tree_ranges, .payloads = payloads };
+        return .{ .owner = self, .tree_ranges = tree_ranges, .payloads = payloads, .source_generation = self.generation };
     }
 
-    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) void {
+    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) !void {
         std.debug.assert(prepared.owner == self and !prepared.committed);
-        self.tree.commitPreparedRanges(&prepared.tree_ranges);
+        if (prepared.source_generation != self.generation) return error.StalePreparation;
+        try self.tree.commitPreparedRanges(&prepared.tree_ranges);
         for (prepared.payloads, 0..) |payload, index| {
             self.payloads.putAssumeCapacity(prepared.idAt(index), payload);
         }
@@ -271,10 +294,69 @@ pub const TextAnnotations = struct {
         return self.clearNamespace(owner);
     }
 
+    /// Removes the owner's visual coverage in [start_byte, end_byte). Ranges
+    /// crossing one edge are clipped; ranges crossing both edges are split.
+    /// The left fragment retains the old ID and the right fragment gets a new
+    /// ID. Call this on a transaction candidate to publish the result atomically.
+    pub fn clipOwnerRange(self: *Self, owner: u32, start_byte: u32, end_byte: u32) !void {
+        return self.clipRangeInternal(owner, start_byte, end_byte);
+    }
+
+    pub fn clipRange(self: *Self, start_byte: u32, end_byte: u32) !void {
+        return self.clipRangeInternal(null, start_byte, end_byte);
+    }
+
+    fn clipRangeInternal(self: *Self, owner: ?u32, start_byte: u32, end_byte: u32) !void {
+        if (start_byte >= end_byte) return;
+        var matches: std.ArrayList(Annotation) = .empty;
+        defer matches.deinit(self.allocator);
+        var it = self.iterator();
+        while (try it.next()) |annotation| {
+            if ((owner != null and annotation.payload.namespace != owner.?) or annotation.mark != .range) continue;
+            const range = annotation.mark.range;
+            if (range.start_byte >= range.end_byte or range.start_byte >= end_byte or range.end_byte <= start_byte) continue;
+            try matches.append(self.allocator, annotation);
+        }
+
+        for (matches.items) |annotation| {
+            const range = annotation.mark.range;
+            if (range.start_byte < start_byte and range.end_byte > end_byte) {
+                _ = try self.updateRange(annotation.id(), .{
+                    .start_byte = range.start_byte,
+                    .end_byte = start_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                });
+                _ = try self.addRange(.{
+                    .start_byte = end_byte,
+                    .end_byte = range.end_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                }, inputFromPayload(annotation.payload));
+            } else if (range.start_byte < start_byte) {
+                _ = try self.updateRange(annotation.id(), .{
+                    .start_byte = range.start_byte,
+                    .end_byte = start_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                });
+            } else if (range.end_byte > end_byte) {
+                _ = try self.updateRange(annotation.id(), .{
+                    .start_byte = end_byte,
+                    .end_byte = range.end_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                });
+            } else {
+                _ = try self.remove(annotation.id());
+            }
+        }
+    }
+
     pub fn splice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !void {
         var prepared = try self.prepareSplice(start_byte, old_len, new_len);
         defer prepared.deinit();
-        self.commitPreparedSplice(&prepared);
+        try self.commitPreparedSplice(&prepared);
     }
 
     pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
@@ -322,13 +404,15 @@ pub const TextAnnotations = struct {
             .covered_storage = covered,
             .delete_storage = delete_ids,
             .delete_ids = delete_ids[0..delete_count],
+            .source_generation = self.generation,
         };
     }
 
-    pub fn commitPreparedSplice(self: *Self, prepared: *PreparedSplice) void {
+    pub fn commitPreparedSplice(self: *Self, prepared: *PreparedSplice) !void {
         std.debug.assert(prepared.owner == self and !prepared.committed);
+        if (prepared.source_generation != self.generation) return error.StalePreparation;
         const before = self.tree.generation;
-        self.tree.commitPreparedSplice(prepared.start_byte, prepared.old_len, prepared.new_len, prepared.tree_splice);
+        try self.tree.commitPreparedSplice(prepared.start_byte, prepared.old_len, prepared.new_len, prepared.tree_splice);
         for (prepared.delete_ids) |id| {
             const removed = self.tree.remove(id) catch unreachable;
             std.debug.assert(removed);
@@ -484,11 +568,22 @@ pub const TextAnnotations = struct {
         };
     }
 
+    fn inputFromPayload(payload: Payload) PayloadInput {
+        return .{
+            .namespace = payload.namespace,
+            .style_id = payload.style_id,
+            .priority = payload.priority,
+            .internal = payload.internal,
+            .kind_flags = payload.kind_flags,
+            .splice_policy = payload.splice_policy,
+        };
+    }
+
     fn sortByPrecedence(annotations: []Annotation) void {
         std.mem.sort(Annotation, annotations, {}, struct {
             fn lessThan(_: void, a: Annotation, b: Annotation) bool {
                 if (a.payload.priority != b.payload.priority) return a.payload.priority > b.payload.priority;
-                return a.payload.sequence < b.payload.sequence;
+                return a.payload.sequence > b.payload.sequence;
             }
         }.lessThan);
     }

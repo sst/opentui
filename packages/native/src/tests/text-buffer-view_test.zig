@@ -33,6 +33,27 @@ test "TextBufferView wrapping - no wrap returns same line count" {
     try std.testing.expectEqual(@as(u32, 1), still_no_wrap);
 }
 
+test "annotation paint changes do not invalidate virtual line layout" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    try tb.setText("alpha beta gamma");
+    view.setWrapMode(.word);
+    view.setWrapWidth(6);
+    _ = view.getVirtualLines();
+    const virtual_lines_ptr = view.virtual_lines.items.ptr;
+    try std.testing.expect(!tb.isViewDirty(view.view_id));
+    _ = try tb.createStyleRange(1, 0, 5, 9, 1);
+    try std.testing.expect(!tb.isViewDirty(view.view_id));
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(virtual_lines_ptr, view.virtual_lines.items.ptr);
+}
+
 test "TextBufferView wrapping - simple wrap splits line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
