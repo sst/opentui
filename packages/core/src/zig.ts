@@ -44,6 +44,7 @@ import {
   AnnotationStyleStruct,
   DocumentRangeInputStruct,
   DocumentRangeStruct,
+  DocumentOperationStruct,
   TextSpliceResultStruct,
   HighlightStruct,
   LogicalCursorStruct,
@@ -119,6 +120,7 @@ export type TextBufferHandle = NativeHandle<"text_buffer">
 export type TextBufferViewHandle = NativeHandle<"text_buffer_view">
 
 export type DocumentStyle = {
+  styleId?: number
   fg?: RGBA | null
   bg?: RGBA | null
   attributes?: number
@@ -140,6 +142,19 @@ export type DocumentRange = {
   startByte: number
   endByte: number
   styled: boolean
+}
+
+export type DocumentOperation = DocumentStyle & {
+  kind: "replace" | "updateStyle" | "move" | "remove" | "clearOwner"
+  targetId?: bigint
+  anchorId?: bigint
+  targetMode?: "replace" | "before" | "after"
+  startByte?: number
+  endByte?: number
+  owner: number
+  before?: boolean
+  chunks?: DocumentStyledChunk[]
+  ranges?: DocumentRangeInput[]
 }
 
 export type TextSpliceResult = {
@@ -1127,6 +1142,10 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferMoveDocumentRange: {
       args: ["u32", "u64", "u64", "u32"],
+      returns: "u32",
+    },
+    textBufferApplyDocumentOperations: {
+      args: ["u32", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "u32",
     },
     textBufferCreateStyleRange: {
@@ -2909,6 +2928,7 @@ export interface RenderLib extends AudioEngineLib {
     ranges: DocumentRangeInput[],
   ) => { result: TextSpliceResult; ids: bigint[] }
   textBufferMoveDocumentRange: (buffer: TextBufferHandle, sourceId: bigint, anchorId: bigint, before: boolean) => void
+  textBufferApplyDocumentOperations: (buffer: TextBufferHandle, operations: DocumentOperation[]) => bigint[]
   textBufferCreateStyleRange: (
     buffer: TextBufferHandle,
     owner: number,
@@ -5227,6 +5247,62 @@ class FFIRenderLib implements RenderLib {
       this.opentui.symbols.textBufferMoveDocumentRange(buffer, sourceId, anchorId, before ? 1 : 0),
       "moveDocumentRange",
     )
+  }
+
+  public textBufferApplyDocumentOperations(buffer: TextBufferHandle, operations: DocumentOperation[]): bigint[] {
+    if (operations.length === 0) return []
+    const chunks: DocumentStyledChunk[] = []
+    const ranges: DocumentRangeInput[] = []
+    const packedOperations = DocumentOperationStruct.packList(
+      operations.map((operation) => {
+        const chunkStart = chunks.length
+        const rangeStart = ranges.length
+        chunks.push(...(operation.chunks ?? []))
+        ranges.push(...(operation.ranges ?? []))
+        return {
+          ...operation,
+          kind:
+            operation.kind === "replace"
+              ? 0
+              : operation.kind === "updateStyle"
+                ? 1
+                : operation.kind === "move"
+                  ? 2
+                  : operation.kind === "remove"
+                    ? 3
+                    : 4,
+          targetMode: operation.targetMode === "before" ? 1 : operation.targetMode === "after" ? 2 : 0,
+          targetId: operation.targetId ?? 0n,
+          anchorId: operation.anchorId ?? 0n,
+          useTarget: operation.targetId === undefined ? 0 : 1,
+          before: operation.before === false ? 0 : 1,
+          chunkStart,
+          chunkCount: operation.chunks?.length ?? 0,
+          rangeStart,
+          rangeCount: operation.ranges?.length ?? 0,
+        }
+      }),
+    )
+    const packedChunks = chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks)
+    const packedRanges = ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges)
+    const ids = new BigUint64Array(ranges.length)
+    const statuses = new Uint32Array(operations.length)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferApplyDocumentOperations(
+        buffer,
+        packedOperations,
+        operations.length,
+        packedChunks,
+        chunks.length,
+        packedRanges,
+        ranges.length,
+        viewOrNull(ids),
+        ids.length,
+        statuses,
+      ),
+      "applyDocumentOperations",
+    )
+    return Array.from(ids)
   }
 
   public textBufferCreateStyleRange(

@@ -56,6 +56,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
     return {
       __isChunk: true,
       text: existingChunk.text,
+      styleId: undefined,
       fg,
       bg,
       attributes: mergedAttrs,

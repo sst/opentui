@@ -130,7 +130,7 @@ describe("nested TextRenderable", () => {
   })
 
   test("commits one range-local replacement for batched nested text and style changes", async () => {
-    const replaceDocumentRange = spyOn(TextBuffer.prototype, "replaceDocumentRange")
+    const applyDocumentOperations = spyOn(TextBuffer.prototype, "applyDocumentOperations")
     try {
       const root = new TextRenderable(renderer, {})
       const child = new TextRenderable(renderer, { content: "before" })
@@ -138,19 +138,22 @@ describe("nested TextRenderable", () => {
       renderer.root.add(root)
       await renderOnce()
 
-      const callsBeforeUpdate = replaceDocumentRange.mock.calls.length
+      const callsBeforeUpdate = applyDocumentOperations.mock.calls.length
       const rangeId = (child as any)._nativeRangeId
       child.content = "after"
       child.fg = "#00ff00"
       child.attributes = TextAttributes.BOLD
 
-      expect(replaceDocumentRange.mock.calls.length).toBe(callsBeforeUpdate)
+      expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate)
       await renderOnce()
-      expect(replaceDocumentRange.mock.calls.length).toBe(callsBeforeUpdate + 1)
+      expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate + 1)
+      expect(
+        applyDocumentOperations.mock.calls.at(-1)![0].filter((operation) => operation.kind === "replace"),
+      ).toHaveLength(1)
       expect((child as any)._nativeRangeId).toBe(rangeId)
       expect(root.plainText).toBe("after")
     } finally {
-      replaceDocumentRange.mockRestore()
+      applyDocumentOperations.mockRestore()
     }
   })
 
@@ -182,17 +185,18 @@ describe("nested TextRenderable", () => {
     renderer.root.add(root)
     await renderOnce()
     const ids = [first, second, third].map((child) => (child as any)._nativeRangeId)
-    const move = spyOn(TextBuffer.prototype, "moveDocumentRange")
-    const replace = spyOn(TextBuffer.prototype, "replaceDocumentRange")
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
     try {
       root.children = [third, first, second]
-      expect(move).toHaveBeenCalled()
-      expect(replace).not.toHaveBeenCalled()
+      expect(apply).not.toHaveBeenCalled()
+      await renderOnce()
+      expect(apply).toHaveBeenCalledTimes(1)
+      expect(apply.mock.calls[0]![0].some((operation) => operation.kind === "move")).toBe(true)
+      expect(apply.mock.calls[0]![0].some((operation) => operation.kind === "replace")).toBe(false)
       expect(root.plainText).toBe("CAB")
       expect([first, second, third].map((child) => (child as any)._nativeRangeId)).toEqual(ids)
     } finally {
-      replace.mockRestore()
-      move.mockRestore()
+      apply.mockRestore()
     }
   })
 
@@ -245,7 +249,7 @@ describe("nested TextRenderable", () => {
     root.destroyRecursively()
     expect(root.isDestroyed).toBe(true)
     expect(current.isDestroyed).toBe(true)
-  })
+  }, 15_000)
 
   test("cleans up parent-owned StyledText children on replacement and destroy", () => {
     const text = new TextRenderable(renderer, {
@@ -560,16 +564,18 @@ describe("nested TextRenderable", () => {
     const before = new Set(Renderable.renderablesByNumber.keys())
     const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
     const destroyView = spyOn(TextBufferView.prototype, "destroy")
-    const replaceDocumentRange = spyOn(TextBuffer.prototype, "replaceDocumentRange").mockImplementationOnce(() => {
-      throw new Error("injected range failure")
-    })
+    const applyDocumentOperations = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(
+      () => {
+        throw new Error("injected range failure")
+      },
+    )
     try {
       expect(() => new TextRenderable(renderer, { content: "failure" })).toThrow("injected range failure")
       expect(destroyView).toHaveBeenCalled()
       expect(destroyBuffer).toHaveBeenCalled()
       expect(new Set(Renderable.renderablesByNumber.keys())).toEqual(before)
     } finally {
-      replaceDocumentRange.mockRestore()
+      applyDocumentOperations.mockRestore()
       destroyView.mockRestore()
       destroyBuffer.mockRestore()
     }

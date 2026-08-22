@@ -11,6 +11,7 @@ const rgbaUnpackTransform = (ptr?: Pointer) =>
 
 type StyledChunkInput = {
   text: string
+  styleId?: number | null
   fg?: RGBA | null
   bg?: RGBA | null
   attributes?: number | null
@@ -40,6 +41,7 @@ export const StyledChunkStruct = defineStruct(
       },
     ],
     ["attributes", "u32", { default: 0 }],
+    ["styleId", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
@@ -73,6 +75,7 @@ export const DocumentStyledChunkStruct = defineStruct(
     ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
+    ["styleId", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
@@ -91,6 +94,7 @@ export const AnnotationStyleStruct = defineStruct(
     ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
+    ["styleId", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
@@ -113,6 +117,7 @@ export const DocumentRangeInputStruct = defineStruct(
     ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
+    ["styleId", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
     ["styled", "u32", { default: 1 }],
@@ -145,6 +150,38 @@ export const DocumentRangeStruct = defineStruct([
   ["endByte", "u32"],
   ["styled", "u32"],
 ])
+
+export const DocumentOperationStruct = defineStruct(
+  [
+    ["kind", "u32"],
+    ["targetMode", "u32", { default: 0 }],
+    ["targetId", "u64", { default: 0n }],
+    ["anchorId", "u64", { default: 0n }],
+    ["useTarget", "u32", { default: 0 }],
+    ["before", "u32", { default: 1 }],
+    ["startByte", "u32", { default: 0 }],
+    ["endByte", "u32", { default: 0 }],
+    ["owner", "u32"],
+    ["chunkStart", "u32", { default: 0 }],
+    ["chunkCount", "u32", { default: 0 }],
+    ["rangeStart", "u32", { default: 0 }],
+    ["rangeCount", "u32", { default: 0 }],
+    ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["attributes", "u32", { default: 0 }],
+    ["styleId", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u32", { lengthOf: "link" }],
+  ],
+  {
+    mapValue: (operation: any): any => ({
+      ...operation,
+      fg: normalizeColorValue(operation.fg ?? null)?.rgba ?? null,
+      bg: normalizeColorValue(operation.bg ?? null)?.rgba ?? null,
+      link: typeof operation.link === "object" && operation.link ? operation.link.url : operation.link,
+    }),
+  },
+)
 
 export const TextSpliceResultStruct = defineStruct([
   ["oldStart", "u32"],

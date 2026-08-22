@@ -553,7 +553,14 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
     const before_alloc = failing.alloc_index;
     if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
 
-    const transaction = tb.replaceDocumentRange(ids[1], .replace, 0, 0, &replacement, 91, &replacement_ranges, &output_id);
+    const operations = [_]text_buffer.DocumentOperation{.{
+        .kind = .replace,
+        .target_id = ids[1],
+        .owner = 91,
+        .chunks = &replacement,
+        .ranges = &replacement_ranges,
+    }};
+    const transaction = tb.applyDocumentOperations(&operations, &output_id);
     if (fail_offset != null) {
         try std.testing.expectError(error.OutOfMemory, transaction);
         try std.testing.expect(tb.rope().root == before_root);
@@ -567,6 +574,59 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
         _ = try transaction;
     }
     return failing.alloc_index - before_alloc;
+}
+
+test "document operation batch resolves shifted stable IDs and publishes once" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const initial = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "one".ptr, .text_len = 3, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "two".ptr, .text_len = 3, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const initial_ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 2, .style = empty_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 1 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = empty_style, .styled = false, .priority = 1 },
+    };
+    var ids: [3]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 44,
+        .chunks = &initial,
+        .ranges = &initial_ranges,
+    }}, &ids);
+
+    const before_content_epoch = tb.getContentEpoch();
+    const before_annotation_epoch = tb.getAnnotationEpoch();
+    const first = [_]text_buffer.StyledChunk{.{ .text_ptr = "FIRST".ptr, .text_len = 5, .fg_ptr = null, .bg_ptr = null, .attributes = 0 }};
+    const second = [_]text_buffer.StyledChunk{.{ .text_ptr = "SECOND".ptr, .text_len = 6, .fg_ptr = null, .bg_ptr = null, .attributes = 0 }};
+    const operations = [_]text_buffer.DocumentOperation{
+        .{ .kind = .replace, .target_id = ids[1], .owner = 44, .chunks = &first },
+        .{ .kind = .replace, .target_id = ids[2], .owner = 44, .chunks = &second },
+    };
+    var no_ids: [0]u64 = .{};
+    try tb.applyDocumentOperations(&operations, &no_ids);
+
+    try expectText(tb, "FIRSTSECOND");
+    try std.testing.expectEqual(before_content_epoch +% 1, tb.getContentEpoch());
+    try std.testing.expectEqual(before_annotation_epoch +% 1, tb.getAnnotationEpoch());
+    try std.testing.expectEqual(@as(u32, 0), tb.getDocumentRange(ids[1]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[1]).?.end_byte);
+    try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[2]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 11), tb.getDocumentRange(ids[2]).?.end_byte);
 }
 
 test "document range transaction rolls back every allocation failure" {

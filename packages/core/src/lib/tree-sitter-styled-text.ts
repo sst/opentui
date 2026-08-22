@@ -46,6 +46,8 @@ export function treeSitterToTextChunks(
   const defaultStyle = syntaxStyle.getStyle("default")
   const concealEnabled = options?.enabled ?? true
   const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
+  const baseStyleId = options?.baseHighlight ? (syntaxStyle.getStyleId(options.baseHighlight) ?? undefined) : undefined
+  const defaultStyleId = syntaxStyle.getStyleId("default") ?? undefined
 
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
@@ -183,10 +185,15 @@ export function treeSitterToTextChunks(
 
         // Use merged style, falling back to default if nothing was merged
         const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
+        const authoritativeStyleId =
+          !baseStyle && sortedGroups.length === 1
+            ? (syntaxStyle.getStyleId(sortedGroups[0]!.group) ?? undefined)
+            : undefined
 
         chunks.push({
           __isChunk: true,
           text: segmentText,
+          styleId: authoritativeStyleId,
           fg: finalStyle?.fg,
           bg: finalStyle?.bg,
           attributes: finalStyle
@@ -205,6 +212,7 @@ export function treeSitterToTextChunks(
       chunks.push({
         __isChunk: true,
         text,
+        styleId: baseStyleId ?? defaultStyleId,
         fg: style?.fg,
         bg: style?.bg,
         attributes: style
@@ -263,6 +271,7 @@ export function treeSitterToTextChunks(
     chunks.push({
       __isChunk: true,
       text,
+      styleId: baseStyleId ?? defaultStyleId,
       fg: style?.fg,
       bg: style?.bg,
       attributes: style

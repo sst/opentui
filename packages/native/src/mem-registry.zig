@@ -38,6 +38,24 @@ pub const MemRegistry = struct {
         self.* = undefined;
     }
 
+    /// Clone registry bookkeeping while borrowing every active buffer. This is
+    /// used by transactions whose candidate Rope must read staged and live
+    /// chunks without taking ownership before publication.
+    pub fn cloneBorrowed(self: *const MemRegistry, allocator: Allocator) MemRegistryError!MemRegistry {
+        var clone = MemRegistry.init(allocator);
+        errdefer clone.deinit();
+        try clone.buffers.ensureTotalCapacity(allocator, self.buffers.items.len);
+        for (self.buffers.items) |buffer| {
+            clone.buffers.appendAssumeCapacity(.{
+                .data = buffer.data,
+                .owned = false,
+                .active = buffer.active,
+            });
+        }
+        try clone.free_slots.appendSlice(allocator, self.free_slots.items);
+        return clone;
+    }
+
     pub fn register(self: *MemRegistry, data: []const u8, owned: bool) MemRegistryError!u8 {
         // Try to reuse a free slot first
         if (self.free_slots.items.len > 0) {

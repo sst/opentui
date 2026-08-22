@@ -83,6 +83,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._content = options.content ?? this._contentDefaultOptions.content
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
+    this.textBuffer.setSyntaxStyle(this._syntaxStyle)
     this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
@@ -188,6 +189,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
+      this.textBuffer.setSyntaxStyle(value)
       this.invalidateHighlights()
     }
   }

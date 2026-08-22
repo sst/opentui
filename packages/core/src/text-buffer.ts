@@ -5,6 +5,7 @@ import {
   type DocumentStyle,
   type DocumentRange,
   type DocumentRangeInput,
+  type DocumentOperation,
   type DocumentStyledChunk,
   type LineInfo,
   type RenderLib,
@@ -17,6 +18,7 @@ import type { SyntaxStyle } from "./syntax-style.js"
 export interface TextChunk {
   __isChunk: true
   text: string
+  styleId?: number
   fg?: RGBA
   bg?: RGBA
   attributes?: number
@@ -164,6 +166,15 @@ export class TextBuffer {
     this.guard()
     this.lib.textBufferMoveDocumentRange(this.bufferPtr, sourceId, anchorId, before)
     this._lineInfo = undefined
+  }
+
+  public applyDocumentOperations(operations: DocumentOperation[]): bigint[] {
+    this.guard()
+    const ids = this.lib.textBufferApplyDocumentOperations(this.bufferPtr, operations)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    return ids
   }
 
   public createStyleRange(

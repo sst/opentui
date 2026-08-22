@@ -7,7 +7,7 @@ import { parseColor, RGBA } from "../lib/RGBA.js"
 import type { Selection } from "../lib/selection.js"
 import { type RenderContext } from "../types.js"
 import type { LineInfo } from "../zig.js"
-import type { DocumentRangeInput } from "../zig.js"
+import type { DocumentOperation, DocumentRangeInput } from "../zig.js"
 import stringWidth from "string-width"
 import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
@@ -125,6 +125,7 @@ export class TextRenderable extends TextBufferRenderable {
   private readonly _pendingDocumentRoots = new Set<TextRenderable>()
   private readonly _pendingStyleRoots = new Set<TextRenderable>()
   private readonly _pendingRemovedRangeIds = new Set<bigint>()
+  private readonly _pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
@@ -187,7 +188,6 @@ export class TextRenderable extends TextBufferRenderable {
       nextChildren.every(isTextRenderable) &&
       previousChildren.every((child) => nextChildren.includes(child)) &&
       documentOwnerBefore !== null
-    if (isPureNativeReorder) documentOwnerBefore.flushTextDocument()
     const previousRawTextIdentities = [...this._rawTextIdentities]
     const nextRawTextIdentities = nextChildren.map((child, index) => {
       if (typeof child !== "string") return null
@@ -335,7 +335,7 @@ export class TextRenderable extends TextBufferRenderable {
 
     this._manualStyledText = null
     if (isPureNativeReorder)
-      documentOwnerBefore!.moveNativeChildren(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
+      documentOwnerBefore!.queueNativeChildMoves(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
     for (const parent of parentSnapshots.keys()) {
       if (parent !== this) parent.invalidateTextDocument()
     }
@@ -947,23 +947,51 @@ export class TextRenderable extends TextBufferRenderable {
     const roots = pending.filter(
       (candidate) => !pending.some((other) => other !== candidate && candidate.isTextDescendantOf(other)),
     )
-    const contentChanged = roots.length > 0
-    this.textBuffer.beginDocumentBatch()
-    try {
-      roots.forEach((root, index) =>
-        this.reconcileNativeSubtree(root, index === roots.length - 1 ? [...this._pendingRemovedRangeIds] : []),
-      )
-      this._pendingDocumentRoots.clear()
-      if (this._pendingStyleRoots.size > 0) {
-        for (const root of this._pendingStyleRoots) root.updateNativeStyles(this, root.resolvedParentStyle())
-        this._pendingStyleRoots.clear()
+    const operations: DocumentOperation[] = []
+    const assignments: Array<(id: bigint) => void> = []
+    for (let index = 0; index < roots.length; ) {
+      const run = [roots[index]!]
+      const parent = roots[index]!.parent
+      let previousIndex = isTextRenderable(parent) ? parent._children.indexOf(roots[index]!) : -1
+      while (isTextRenderable(parent) && index + run.length < roots.length) {
+        const candidate = roots[index + run.length]!
+        const candidateIndex = parent._children.indexOf(candidate)
+        if (candidate.parent !== parent || candidateIndex !== previousIndex + 1) break
+        run.push(candidate)
+        previousIndex = candidateIndex
       }
-    } finally {
-      this.textBuffer.endDocumentBatch()
+      this.collectNativeSubtreeOperation(run, operations, assignments)
+      index += run.length
     }
-    if (roots.length === 0) {
-      for (const id of this._pendingRemovedRangeIds) this.textBuffer.removeStyleRange(id)
+    for (const move of this._pendingNativeMoves) {
+      if (move.source._nativeRangeId === null || move.anchor._nativeRangeId === null) {
+        const replacementRoot = move.source.parent
+        if (isTextRenderable(replacementRoot) && !roots.includes(replacementRoot)) {
+          this.collectNativeSubtreeOperation([replacementRoot], operations, assignments)
+        }
+        continue
+      }
+      operations.push({
+        kind: "move",
+        targetId: move.source._nativeRangeId,
+        anchorId: move.anchor._nativeRangeId,
+        owner: this._textDocumentOwner,
+        before: move.before,
+      })
     }
+    for (const id of this._pendingRemovedRangeIds) {
+      operations.push({ kind: "remove", targetId: id, owner: this._textDocumentOwner })
+    }
+    if (this._pendingStyleRoots.size > 0) {
+      for (const root of this._pendingStyleRoots)
+        root.collectNativeStyleOperations(this, root.resolvedParentStyle(), operations)
+    }
+    const ids = this.textBuffer.applyDocumentOperations(operations)
+    ids.forEach((id, index) => assignments[index]!(id))
+    const contentChanged = roots.length > 0 || this._pendingNativeMoves.length > 0
+    this._pendingDocumentRoots.clear()
+    this._pendingStyleRoots.clear()
+    this._pendingNativeMoves.splice(0)
     this._pendingRemovedRangeIds.clear()
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
@@ -977,28 +1005,34 @@ export class TextRenderable extends TextBufferRenderable {
     }
   }
 
-  private reconcileNativeSubtree(root: TextRenderable, removeIds: bigint[] = []): void {
+  private collectNativeSubtreeOperation(
+    roots: TextRenderable[],
+    operations: DocumentOperation[],
+    batchAssignments: Array<(id: bigint) => void>,
+  ): void {
     const chunks: Array<{ text: string }> = []
     const ranges: DocumentRangeInput[] = []
     const assignments: Array<(id: bigint) => void> = []
-    const inherited = root.resolvedParentStyle()
-    const visible = root === this ? true : root.ancestorsVisible()
-    this.collectNativeDocument(root, inherited, this.textDepth(root), visible, chunks, ranges, assignments)
-    for (const id of removeIds) {
-      ranges.push({ id, remove: true, startChunk: 0, endChunk: 0, styled: false })
-      assignments.push(() => {})
+    for (const root of roots) {
+      const inherited = root.resolvedParentStyle()
+      const visible = root === this ? true : root.ancestorsVisible()
+      this.collectNativeDocument(root, inherited, this.textDepth(root), visible, chunks, ranges, assignments)
     }
-    const targetId = root._nativeRangeId
-    const result = this.textBuffer.replaceDocumentRange(
-      targetId,
-      "replace",
-      0,
-      targetId === null ? this.textBuffer.byteSize : 0,
+    const first = roots[0]!
+    const last = roots.at(-1)!
+    const targetId = first._nativeRangeId
+    operations.push({
+      kind: "replace",
+      targetId: targetId ?? undefined,
+      anchorId: roots.length > 1 ? (last._nativeRangeId ?? undefined) : undefined,
+      targetMode: "replace",
+      startByte: 0,
+      endByte: targetId === null ? this.textBuffer.byteSize : 0,
+      owner: this._textDocumentOwner,
       chunks,
-      this._textDocumentOwner,
       ranges,
-    )
-    result.ids.forEach((id, index) => assignments[index]!(id))
+    })
+    batchAssignments.push(...assignments)
   }
 
   private collectNativeDocument(
@@ -1059,10 +1093,21 @@ export class TextRenderable extends TextBufferRenderable {
     this.requestRender()
   }
 
-  private updateNativeStyles(owner: TextRenderable, parentStyle: TextStyle): void {
+  private collectNativeStyleOperations(
+    owner: TextRenderable,
+    parentStyle: TextStyle,
+    operations: DocumentOperation[],
+  ): void {
     const style = this.mergeStyles(parentStyle)
-    if (this._nativeRangeId !== null) owner.textBuffer.updateStyleRangeStyle(this._nativeRangeId, style)
-    for (const child of this.getTextChildren()) child.updateNativeStyles(owner, style)
+    if (this._nativeRangeId !== null) {
+      operations.push({
+        kind: "updateStyle",
+        targetId: this._nativeRangeId,
+        owner: owner._textDocumentOwner,
+        ...style,
+      })
+    }
+    for (const child of this.getTextChildren()) child.collectNativeStyleOperations(owner, style, operations)
   }
 
   private resolvedParentStyle(): TextStyle {
@@ -1112,6 +1157,7 @@ export class TextRenderable extends TextBufferRenderable {
     this._textDocumentOwner = 0
     this._pendingDocumentRoots.clear()
     this._pendingStyleRoots.clear()
+    this._pendingNativeMoves.splice(0)
     this._pendingDocumentRoots.add(this)
     this._textDocumentPending = true
   }
@@ -1145,22 +1191,32 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
   }
 
-  private moveNativeChildren(previous: TextRenderable[], next: TextRenderable[]): void {
-    const order = [...previous]
+  private queueNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): void {
+    const forward: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+    const forwardOrder = [...previous]
     for (let index = 0; index < next.length; index++) {
       const desired = next[index]!
-      const currentIndex = order.indexOf(desired)
+      const currentIndex = forwardOrder.indexOf(desired)
       if (currentIndex === index) continue
-      const anchor = order[index]!
-      if (desired._nativeRangeId === null || anchor._nativeRangeId === null) {
-        this._pendingDocumentRoots.add(desired.parent as TextRenderable)
-        this._textDocumentPending = true
-        return
-      }
-      this.textBuffer.moveDocumentRange(desired._nativeRangeId, anchor._nativeRangeId, true)
-      order.splice(currentIndex, 1)
-      order.splice(index, 0, desired)
+      const anchor = forwardOrder[index]!
+      forward.push({ source: desired, anchor, before: true })
+      forwardOrder.splice(currentIndex, 1)
+      forwardOrder.splice(index, 0, desired)
     }
+
+    const reverse: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+    const reverseOrder = [...previous]
+    for (let index = next.length - 1; index >= 0; index--) {
+      const desired = next[index]!
+      const currentIndex = reverseOrder.indexOf(desired)
+      if (currentIndex === index) continue
+      const anchor = reverseOrder[index]!
+      reverse.push({ source: desired, anchor, before: false })
+      reverseOrder.splice(currentIndex, 1)
+      reverseOrder.splice(index, 0, desired)
+    }
+    this._pendingNativeMoves.push(...(forward.length <= reverse.length ? forward : reverse))
+    if (this._pendingNativeMoves.length > 0) this._textDocumentPending = true
   }
 
   protected override emitLineInfoChange(): void {

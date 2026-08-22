@@ -71,6 +71,30 @@ describe("TreeSitter Styled Text", () => {
     expect(styledChunks.length).toBeGreaterThan(0)
   })
 
+  test("preserves registered style IDs only for authoritative chunks", () => {
+    const keywordId = syntaxStyle.getStyleId("keyword")
+    const defaultId = syntaxStyle.getStyleId("default")
+    const chunks = treeSitterToTextChunks("key plain", [[0, 3, "keyword", {}]], syntaxStyle)
+
+    expect(chunks[0]?.styleId).toBe(keywordId)
+    expect(chunks[1]?.styleId).toBe(defaultId)
+
+    const merged = treeSitterToTextChunks(
+      "key",
+      [
+        [0, 3, "keyword", {}],
+        [0, 3, "string", {}],
+      ],
+      syntaxStyle,
+    )
+    expect(merged[0]?.styleId).toBeUndefined()
+
+    const based = treeSitterToTextChunks("key", [[0, 3, "keyword", {}]], syntaxStyle, {
+      baseHighlight: "comment",
+    })
+    expect(based[0]?.styleId).toBeUndefined()
+  })
+
   test("should handle unsupported filetype gracefully", async () => {
     const content = "some random content"
 
