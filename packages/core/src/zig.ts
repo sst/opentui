@@ -360,6 +360,14 @@ function selectionBehaviorByte(behavior?: SelectionBehavior): number {
   return behavior === "word" ? 1 : behavior === "line" ? 2 : 0
 }
 
+function editorLocalSelectionFlags(
+  updateCursor: boolean,
+  followCursor: boolean,
+  behavior?: SelectionBehavior,
+): number {
+  return ffiBool(updateCursor) | (ffiBool(followCursor) << 1) | (selectionBehaviorByte(behavior) << 2)
+}
+
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
   if (!resolvedLibPath) {
@@ -1428,7 +1436,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8", "u8", "u8"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -1436,7 +1444,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8", "u8", "u8"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -5803,9 +5811,7 @@ class FFIRenderLib implements RenderLib {
         focusY,
         bg,
         fg,
-        ffiBool(updateCursor),
-        ffiBool(followCursor),
-        selectionBehaviorByte(behavior),
+        editorLocalSelectionFlags(updateCursor, followCursor, behavior),
       ),
     )
   }
@@ -5839,9 +5845,7 @@ class FFIRenderLib implements RenderLib {
         focusY,
         bg,
         fg,
-        ffiBool(updateCursor),
-        ffiBool(followCursor),
-        selectionBehaviorByte(behavior),
+        editorLocalSelectionFlags(updateCursor, followCursor, behavior),
       ),
     )
   }
