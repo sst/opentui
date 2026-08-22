@@ -1413,6 +1413,88 @@ test("CodeRenderable - onChunks keeps registered provenance only for an exact ef
   expect((span?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
 })
 
+test("CodeRenderable - async onChunks materializes mutations as value styles", async () => {
+  const original = RGBA.fromValues(0.2, 0.4, 0.8, 1)
+  const changed = RGBA.fromValues(0.8, 0.2, 0.3, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({ keyword: { fg: original, bold: true } })
+  const keywordId = syntaxStyle.getStyleId("keyword")!
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [[0, 5, "keyword"]] as SimpleHighlight[] })
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "async-mutated-provenance",
+    content: "const",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: async (chunks) => {
+      await Promise.resolve()
+      chunks[0]!.fg = changed
+      return chunks
+    },
+  })
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(codeRenderable, mockClient)
+
+  expect(codeRenderable.getLineHighlights(0).some((highlight) => highlight.styleId === keywordId)).toBe(false)
+  expect(findSpanContaining(captureSpans(), "const")?.fg.toInts()).toEqual(changed.toInts())
+})
+
+test("CodeRenderable - async onChunks renders snapshotted values when the source is destroyed", async () => {
+  const keyword = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({ keyword: { fg: keyword, italic: true } })
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [[0, 5, "keyword"]] as SimpleHighlight[] })
+  let callbackStarted!: () => void
+  const started = new Promise<void>((resolve) => (callbackStarted = resolve))
+  let resume!: () => void
+  const paused = new Promise<void>((resolve) => (resume = resolve))
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "destroyed-provenance",
+    content: "const",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: async (chunks) => {
+      callbackStarted()
+      await paused
+      return chunks
+    },
+  })
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await started
+  syntaxStyle.destroy()
+  resume()
+  await waitForHighlight(codeRenderable)
+  await renderOnce()
+
+  const span = findSpanContaining(captureSpans(), "const")
+  expect(span?.fg.toInts()).toEqual(keyword.toInts())
+  expect((span?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
+})
+
+test("CodeRenderable - onChunks rejects newly introduced cross-source provenance", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({ keyword: { bold: true } })
+  const otherStyle = SyntaxStyle.fromStyles({ foreign: { italic: true } })
+  const foreignId = otherStyle.getStyleId("foreign")!
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [[0, 5, "keyword"]] as SimpleHighlight[] })
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "foreign-provenance",
+    content: "const",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: (chunks) => [...chunks, { ...chunks[0]!, styleId: foreignId, styleSource: otherStyle }],
+  })
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await expect(codeRenderable.highlightingDone).rejects.toThrow("unknown or cross-source")
+  otherStyle.destroy()
+})
+
 test("CodeRenderable - baseHighlight applies a style when parser highlights are empty", async () => {
   const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
   const syntaxStyle = SyntaxStyle.fromStyles({

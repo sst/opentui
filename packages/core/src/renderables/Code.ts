@@ -7,6 +7,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import type { TextChunk } from "../text-buffer.js"
 import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
+import { RGBA } from "../lib/RGBA.js"
 
 export interface HighlightContext {
   content: string
@@ -27,6 +28,8 @@ export type OnChunksCallback = (
   chunks: TextChunk[],
   context: ChunkRenderContext,
 ) => TextChunk[] | undefined | Promise<TextChunk[] | undefined>
+
+class InvalidChunkProvenanceError extends Error {}
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
@@ -65,6 +68,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
+  private _valueStyleHost?: SyntaxStyle
   private _highlightingPromise: Promise<void> = Promise.resolve()
   // Temporary rendered-line -> source-line map for concealment; native extmarks should replace this.
   private _renderedLineSources?: number[]
@@ -190,6 +194,8 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this.textBuffer.setSyntaxStyle(value)
+      this._valueStyleHost?.destroy()
+      this._valueStyleHost = undefined
       this.invalidateHighlights()
     }
   }
@@ -291,32 +297,67 @@ export class CodeRenderable extends TextBufferRenderable {
   protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
     if (!this._onChunks) return chunks
 
-    const modified = await this._onChunks(chunks, context)
-    return (modified ?? chunks).map((chunk) => {
+    type RegisteredSnapshot = { fg?: RGBA; bg?: RGBA; attributes: number }
+    const cloneColor = (color?: RGBA): RGBA | undefined => (color ? RGBA.clone(color) : undefined)
+    const snapshots = new Map<SyntaxStyle, Map<number, RegisteredSnapshot>>()
+    const callbackChunks = chunks.map((chunk) => {
+      const { styleId, styleSource } = chunk
+      if (styleId === undefined && styleSource === undefined) return { ...chunk }
+      if (styleId === undefined || !styleSource)
+        throw new InvalidChunkProvenanceError("Registered chunk provenance requires styleId and styleSource")
+      const registered = styleSource.getStyleById(styleId)
+      if (!registered) throw new InvalidChunkProvenanceError(`Unknown registered chunk style ID ${styleId}`)
+      const snapshot: RegisteredSnapshot = {
+        fg: registered.fg ? RGBA.clone(registered.fg) : undefined,
+        bg: registered.bg ? RGBA.clone(registered.bg) : undefined,
+        attributes: registered.attributes,
+      }
+      let sourceSnapshots = snapshots.get(styleSource)
+      if (!sourceSnapshots) snapshots.set(styleSource, (sourceSnapshots = new Map()))
+      sourceSnapshots.set(styleId, snapshot)
+      return {
+        ...chunk,
+        fg: cloneColor(chunk.fg ?? snapshot.fg),
+        bg: cloneColor(chunk.bg ?? snapshot.bg),
+        attributes: chunk.attributes ?? snapshot.attributes,
+      }
+    })
+
+    const modified = await this._onChunks(callbackChunks, context)
+    const colorsEqual = (left?: RGBA, right?: RGBA): boolean =>
+      left === right || (left !== undefined && right !== undefined && left.equals(right))
+    let needsValueStyleHost = false
+    const transformed = (modified ?? callbackChunks).map((chunk) => {
       const { styleId, styleSource } = chunk
       if (styleId === undefined && styleSource === undefined) return chunk
+      if (styleId === undefined || !styleSource)
+        throw new InvalidChunkProvenanceError("Registered chunk provenance requires styleId and styleSource")
+      const snapshot = snapshots.get(styleSource)?.get(styleId)
+      if (!snapshot)
+        throw new InvalidChunkProvenanceError(
+          `onChunks introduced unknown or cross-source registered style ID ${styleId}`,
+        )
 
-      let registered
-      try {
-        registered = styleId === undefined || !styleSource ? undefined : styleSource.getStyleById(styleId)
-      } catch {
-        registered = undefined
-      }
-
-      if (!registered) {
-        return { ...chunk, styleId: undefined, styleSource: undefined }
-      }
-
-      const fg = chunk.fg ?? registered.fg
-      const bg = chunk.bg ?? registered.bg
-      const attributes = chunk.attributes ?? registered.attributes
+      const fg = chunk.fg ?? snapshot.fg
+      const bg = chunk.bg ?? snapshot.bg
+      const attributes = chunk.attributes ?? snapshot.attributes
       const exact =
         chunk.link === undefined &&
-        attributes === registered.attributes &&
-        (fg === registered.fg || fg?.equals(registered.fg)) &&
-        (bg === registered.bg || bg?.equals(registered.bg))
+        attributes === snapshot.attributes &&
+        colorsEqual(fg, snapshot.fg) &&
+        colorsEqual(bg, snapshot.bg)
 
-      if (exact) {
+      let provenanceStillValid = false
+      if (!styleSource.isDestroyed) {
+        const current = styleSource.getStyleById(styleId)
+        provenanceStillValid =
+          !!current &&
+          current.attributes === snapshot.attributes &&
+          colorsEqual(current.fg, snapshot.fg) &&
+          colorsEqual(current.bg, snapshot.bg)
+      }
+
+      if (exact && provenanceStillValid) {
         return {
           ...chunk,
           fg: undefined,
@@ -326,6 +367,7 @@ export class CodeRenderable extends TextBufferRenderable {
         }
       }
 
+      if (!provenanceStillValid) needsValueStyleHost = true
       return {
         ...chunk,
         styleId: undefined,
@@ -335,6 +377,15 @@ export class CodeRenderable extends TextBufferRenderable {
         attributes,
       }
     })
+    if (needsValueStyleHost) {
+      this._valueStyleHost ??= SyntaxStyle.create()
+      this.textBuffer.setSyntaxStyle(this._valueStyleHost)
+    } else if (this._valueStyleHost && !this._syntaxStyle.isDestroyed) {
+      this.textBuffer.setSyntaxStyle(this._syntaxStyle)
+      this._valueStyleHost.destroy()
+      this._valueStyleHost = undefined
+    }
+    return transformed
   }
 
   private ensureVisibleTextBeforeHighlight(): void {
@@ -459,6 +510,11 @@ export class CodeRenderable extends TextBufferRenderable {
         return
       }
 
+      if (error instanceof InvalidChunkProvenanceError) {
+        this._isHighlighting = false
+        this._highlightsDirty = false
+        throw error
+      }
       console.warn("Code highlighting failed, falling back to plain text:", error)
       if (this.isDestroyed) return
       this.textBuffer.setText(content)
@@ -656,5 +712,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this.isDestroyed) return
     this.clearPendingHighlight()
     super.destroy()
+    this._valueStyleHost?.destroy()
+    this._valueStyleHost = undefined
   }
 }
