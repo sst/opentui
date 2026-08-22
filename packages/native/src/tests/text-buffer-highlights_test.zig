@@ -4,10 +4,58 @@ const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const ss = @import("../syntax-style.zig");
+const bench_utils = @import("../bench-utils.zig");
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const RGBA = text_buffer.RGBA;
 const Highlight = text_buffer.Highlight;
+const StyleSpan = text_buffer.StyleSpan;
+
+fn referenceSpans(allocator: std.mem.Allocator, highlights: []const Highlight, line_width: u32) !std.ArrayList(StyleSpan) {
+    var boundaries: std.ArrayList(u32) = .empty;
+    defer boundaries.deinit(allocator);
+    for (highlights) |highlight| {
+        try boundaries.append(allocator, highlight.col_start);
+        try boundaries.append(allocator, highlight.col_end);
+    }
+    std.mem.sort(u32, boundaries.items, {}, std.sort.asc(u32));
+    var unique: usize = 0;
+    for (boundaries.items) |boundary| {
+        if (unique != 0 and boundaries.items[unique - 1] == boundary) continue;
+        boundaries.items[unique] = boundary;
+        unique += 1;
+    }
+    boundaries.shrinkRetainingCapacity(unique);
+
+    var output: std.ArrayList(StyleSpan) = .empty;
+    errdefer output.deinit(allocator);
+    var start: u32 = 0;
+    for (boundaries.items) |end| {
+        var winner: ?usize = null;
+        for (highlights, 0..) |highlight, index| {
+            if (highlight.col_start > start or highlight.col_end <= start) continue;
+            if (winner == null or highlight.priority > highlights[winner.?].priority or
+                (highlight.priority == highlights[winner.?].priority and index > winner.?)) winner = index;
+        }
+        const style_id = if (winner) |index| highlights[index].style_id else 0;
+        if (start < end) {
+            if (output.items.len != 0 and output.items[output.items.len - 1].style_id == style_id) {
+                output.items[output.items.len - 1].next_col = end;
+            } else {
+                try output.append(allocator, .{ .col = start, .next_col = end, .style_id = style_id });
+            }
+        }
+        start = end;
+    }
+    if (start < line_width) {
+        if (output.items.len != 0 and output.items[output.items.len - 1].style_id == 0) {
+            output.items[output.items.len - 1].next_col = line_width;
+        } else {
+            try output.append(allocator, .{ .col = start, .next_col = line_width, .style_id = 0 });
+        }
+    }
+    return output;
+}
 
 test "TextBuffer coords - addHighlightByCoords" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -374,6 +422,76 @@ test "TextBuffer highlights - priority handling in spans" {
         }
     }
     try std.testing.expect(found_high_priority);
+}
+
+test "TextBuffer spans match reference for nested coextensive and crossed ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const line = try std.testing.allocator.alloc(u8, 4096);
+    defer std.testing.allocator.free(line);
+    @memset(line, 'x');
+    try tb.setText(line);
+    tb.startHighlightsTransaction();
+    for (0..800) |index| {
+        const inset: u32 = @intCast(index % 300);
+        const start: u32 = if (index % 3 == 0) 100 else inset;
+        const end: u32 = if (index % 5 == 0) 3900 else 4096 - inset;
+        try tb.addHighlight(0, start, end, @intCast(index + 1), @intCast(index % 11), @intCast(index));
+    }
+    // Coextensive equal-priority entries verify that the newer array entry wins.
+    try tb.addHighlight(0, 500, 3500, 9001, 50, 9001);
+    try tb.addHighlight(0, 500, 3500, 9002, 50, 9002);
+    tb.endHighlightsTransaction();
+
+    const highlights = tb.getLineHighlights(0);
+    var expected = try referenceSpans(std.testing.allocator, highlights, tb.lineWidthAt(0));
+    defer expected.deinit(std.testing.allocator);
+    try std.testing.expectEqualSlices(StyleSpan, expected.items, tb.getLineSpans(0));
+    for (tb.getLineSpans(0)) |span| {
+        if (span.col <= 500 and span.next_col > 500) try std.testing.expectEqual(@as(u32, 9002), span.style_id);
+    }
+}
+
+test "TextBuffer dirty projection scales near n log n for flat range counts through 2000" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const counts = [_]usize{ 100, 200, 400, 800, 1600, 2000 };
+    var elapsed: [counts.len]u64 = undefined;
+    const line = try std.testing.allocator.alloc(u8, 5000);
+    defer std.testing.allocator.free(line);
+    @memset(line, 'x');
+
+    for (counts, 0..) |count, count_index| {
+        var samples: [3]u64 = undefined;
+        for (&samples) |*sample| {
+            const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+            defer tb.deinit();
+            try tb.setText(line);
+            for (0..count) |index| {
+                const start: u32 = @intCast(index * 2);
+                _ = try tb.createStyleRange(88, start, start + 1, @intCast(index + 1), @intCast(index % 13));
+            }
+            const timer = bench_utils.BenchTimer.start(std.testing.io);
+            try std.testing.expectEqual(count * 2, tb.getLineSpans(0).len);
+            sample.* = timer.read();
+        }
+        std.mem.sort(u64, &samples, {}, std.sort.asc(u64));
+        elapsed[count_index] = samples[1];
+    }
+
+    // Doubling n log n remains comfortably below 3x. The additive allowance
+    // absorbs timer and allocator noise at the two smallest sizes.
+    for (elapsed[1..], elapsed[0 .. elapsed.len - 1]) |current, previous| {
+        try std.testing.expect(current <= previous * 3 + 2 * std.time.ns_per_ms);
+    }
+    try std.testing.expect(elapsed[elapsed.len - 1] <= 100 * std.time.ns_per_ms);
 }
 
 // ===== Character Range Highlight Tests =====

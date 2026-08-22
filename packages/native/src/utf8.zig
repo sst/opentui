@@ -1561,6 +1561,96 @@ pub const ByteToDisplayResult = struct {
     exact: bool,
 };
 
+pub const DisplayBoundary = struct {
+    byte_offset: u32,
+    affinity: BoundaryAffinity,
+    column: u32 = 0,
+    exact: bool = false,
+};
+
+/// Maps sorted byte boundaries in one pass. byte_base and column_base allow a
+/// caller to retain line-relative offsets while mapping one Rope chunk.
+pub fn byteOffsetsToDisplayColumns(
+    text: []const u8,
+    boundaries: []DisplayBoundary,
+    byte_base: u32,
+    column_base: u32,
+    tab_width: u8,
+    width_method: WidthMethod,
+) bool {
+    if (boundaries.len == 0) return true;
+    const text_end = std.math.add(u32, byte_base, @intCast(text.len)) catch return false;
+    var previous_offset = byte_base;
+    for (boundaries) |boundary| {
+        if (boundary.byte_offset < previous_offset or boundary.byte_offset > text_end) return false;
+        const local_offset = boundary.byte_offset - byte_base;
+        if (local_offset < text.len and text[local_offset] & 0xc0 == 0x80) return false;
+        previous_offset = boundary.byte_offset;
+    }
+
+    if (isAsciiOnly(text)) {
+        for (boundaries) |*boundary| {
+            boundary.column = column_base +| (boundary.byte_offset - byte_base);
+            boundary.exact = true;
+        }
+        return true;
+    }
+
+    var boundary_index: usize = 0;
+    var pos: usize = 0;
+    var column: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+    var width_state: GraphemeWidthState = undefined;
+    var cluster_started = false;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+        if (pos + cp_len > text.len) return false;
+
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+        if (is_break) {
+            if (cluster_started) {
+                const end_column = column +| width_state.width;
+                while (boundary_index < boundaries.len and boundaries[boundary_index].byte_offset - byte_base < pos) {
+                    const boundary = &boundaries[boundary_index];
+                    boundary.column = column_base +| if (boundary.affinity == .before) column else end_column;
+                    boundary.exact = false;
+                    boundary_index += 1;
+                }
+                column = end_column;
+            }
+            while (boundary_index < boundaries.len and boundaries[boundary_index].byte_offset - byte_base == pos) {
+                boundaries[boundary_index].column = column_base +| column;
+                boundaries[boundary_index].exact = true;
+                boundary_index += 1;
+            }
+            width_state = GraphemeWidthState.init(curr_cp, charWidth(b0, curr_cp, tab_width), width_method);
+            cluster_started = true;
+        } else {
+            width_state.addCodepoint(curr_cp, charWidth(b0, curr_cp, tab_width));
+        }
+        prev_cp = curr_cp;
+        pos += cp_len;
+    }
+
+    const end_column = column +| if (cluster_started) width_state.width else 0;
+    while (boundary_index < boundaries.len and boundaries[boundary_index].byte_offset < text_end) {
+        const boundary = &boundaries[boundary_index];
+        boundary.column = column_base +| if (boundary.affinity == .before) column else end_column;
+        boundary.exact = false;
+        boundary_index += 1;
+    }
+    while (boundary_index < boundaries.len and boundaries[boundary_index].byte_offset == text_end) {
+        boundaries[boundary_index].column = column_base +| end_column;
+        boundaries[boundary_index].exact = true;
+        boundary_index += 1;
+    }
+    return boundary_index == boundaries.len;
+}
+
 /// Map a UTF-8 byte boundary to a display column without assigning display
 /// positions to codepoints inside a grapheme. Interior boundaries snap to the
 /// containing grapheme's start or end according to affinity.

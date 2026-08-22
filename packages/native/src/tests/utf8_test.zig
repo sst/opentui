@@ -2,6 +2,60 @@ const std = @import("std");
 const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
+fn displayBoundaryLessThan(_: void, left: utf8.DisplayBoundary, right: utf8.DisplayBoundary) bool {
+    if (left.byte_offset != right.byte_offset) return left.byte_offset < right.byte_offset;
+    return @intFromEnum(left.affinity) < @intFromEnum(right.affinity);
+}
+
+test "batched byte display mapping matches single-offset reference on randomized Unicode" {
+    const tokens = [_][]const u8{
+        "a",
+        "\t",
+        "界",
+        "🙂",
+        "e\u{301}",
+        "👩‍💻",
+        "1\u{fe0f}\u{20e3}",
+        "\u{200b}",
+    };
+    var prng = std.Random.DefaultPrng.init(0x627974656d617070);
+    const random = prng.random();
+
+    for (0..40) |_| {
+        var text: std.ArrayList(u8) = .empty;
+        defer text.deinit(testing.allocator);
+        for (0..80) |_| try text.appendSlice(testing.allocator, tokens[random.uintLessThan(usize, tokens.len)]);
+
+        var codepoint_boundaries: std.ArrayList(u32) = .empty;
+        defer codepoint_boundaries.deinit(testing.allocator);
+        var byte_index: usize = 0;
+        while (byte_index < text.items.len) {
+            try codepoint_boundaries.append(testing.allocator, @intCast(byte_index));
+            byte_index += utf8.decodeUtf8Unchecked(text.items, byte_index).len;
+        }
+        try codepoint_boundaries.append(testing.allocator, @intCast(text.items.len));
+
+        inline for ([_]utf8.WidthMethod{ .unicode, .wcwidth, .no_zwj }) |method| {
+            var boundaries: std.ArrayList(utf8.DisplayBoundary) = .empty;
+            defer boundaries.deinit(testing.allocator);
+            for (0..160) |_| {
+                const offset = codepoint_boundaries.items[random.uintLessThan(usize, codepoint_boundaries.items.len)];
+                try boundaries.append(testing.allocator, .{
+                    .byte_offset = offset,
+                    .affinity = if (random.boolean()) .before else .after,
+                });
+            }
+            std.mem.sort(utf8.DisplayBoundary, boundaries.items, {}, displayBoundaryLessThan);
+            try testing.expect(utf8.byteOffsetsToDisplayColumns(text.items, boundaries.items, 0, 0, 4, method));
+            for (boundaries.items) |boundary| {
+                const expected = utf8.byteOffsetToDisplayColumn(text.items, boundary.byte_offset, 4, method, boundary.affinity).?;
+                try testing.expectEqual(expected.column, boundary.column);
+                try testing.expectEqual(expected.exact, boundary.exact);
+            }
+        }
+    }
+}
+
 // ============================================================================
 // ASCII-ONLY DETECTION TESTS
 // ============================================================================

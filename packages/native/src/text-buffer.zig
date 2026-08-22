@@ -184,6 +184,8 @@ pub const UnifiedTextBuffer = struct {
     rope_transaction_arenas: std.ArrayListUnmanaged(*std.heap.ArenaAllocator),
 
     _rope: UnifiedRope,
+    empty_rope_root: *const UnifiedRope.Node,
+    empty_rope_leaf: *const UnifiedRope.Node,
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
@@ -345,6 +347,8 @@ pub const UnifiedTextBuffer = struct {
             .arena = internal_arena,
             .rope_transaction_arenas = .empty,
             ._rope = init_rope,
+            .empty_rope_root = init_rope.root,
+            .empty_rope_leaf = init_rope.empty_leaf,
             .syntax_style = null,
             .pool = pool,
             .link_pool = link_pool,
@@ -1039,7 +1043,8 @@ pub const UnifiedTextBuffer = struct {
     pub fn clear(self: *Self) void {
         self.clearLinkRefs();
         self.clearInternalStyleRefs();
-        self._rope.clear();
+        self._rope.clearToPreallocatedRoot(self.empty_rope_root, self.empty_rope_leaf);
+        self.sweepUnreachableBacking();
         self.annotations.deinit();
         self.annotations = TextAnnotations.init(self.global_allocator);
         self.annotation_epoch +%= 1;
@@ -1095,6 +1100,8 @@ pub const UnifiedTextBuffer = struct {
         // The retained arena already held a Rope root and its required leading
         // marker, so rebuilding the empty root cannot require backing growth.
         self._rope = UnifiedRope.init(self.allocator) catch unreachable;
+        self.empty_rope_root = self._rope.root;
+        self.empty_rope_leaf = self._rope.empty_leaf;
 
         self.markAllViewsDirty();
     }
@@ -1377,7 +1384,7 @@ pub const UnifiedTextBuffer = struct {
         // No current or historical root may outlive the storage it references.
         self.clearLinkRefs();
         self.clearInternalStyleRefs();
-        self._rope.clear();
+        self._rope.clearToPreallocatedRoot(self.empty_rope_root, self.empty_rope_leaf);
         self._rope.clear_history();
         self.clearAllHighlights();
         self.annotations.deinit();
@@ -1892,13 +1899,72 @@ pub const UnifiedTextBuffer = struct {
         return &[_]StyleSpan{};
     }
 
+    const ProjectedAnnotation = struct {
+        annotation: TextAnnotations.Annotation,
+        start: u32,
+        end: u32,
+    };
+
+    fn projectionBoundaryLessThan(_: void, left: utf8.DisplayBoundary, right: utf8.DisplayBoundary) bool {
+        if (left.byte_offset != right.byte_offset) return left.byte_offset < right.byte_offset;
+        return @intFromEnum(left.affinity) < @intFromEnum(right.affinity);
+    }
+
+    fn projectionBoundaryColumn(boundaries: []const utf8.DisplayBoundary, offset: u32, affinity: BoundaryAffinity) ?u32 {
+        var low: usize = 0;
+        var high = boundaries.len;
+        while (low < high) {
+            const middle = low + (high - low) / 2;
+            const boundary = boundaries[middle];
+            if (boundary.byte_offset < offset or
+                (boundary.byte_offset == offset and @intFromEnum(boundary.affinity) < @intFromEnum(affinity)))
+            {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        if (low == boundaries.len or boundaries[low].byte_offset != offset or boundaries[low].affinity != affinity) return null;
+        return boundaries[low].column;
+    }
+
+    fn mapLineProjectionBoundaries(self: *Self, line_idx: usize, boundaries: []utf8.DisplayBoundary) TextBufferError!void {
+        if (boundaries.len == 0) return;
+        const marker = self._rope.findMarker(.linestart, @intCast(line_idx)) orelse return TextBufferError.InvalidByteOffset;
+        var segment_index = marker.leaf_index + 1;
+        var boundary_index: usize = 0;
+        var bytes_in_line: u32 = 0;
+        var columns: u32 = 0;
+        while (segment_index < self._rope.count()) : (segment_index += 1) {
+            const segment = self._rope.get(segment_index) orelse break;
+            if (segment.isBreak() or segment.isLineStart()) break;
+            const chunk = segment.asText() orelse continue;
+            const chunk_bytes = chunk.getBytes(&self.mem_registry);
+            const chunk_end = bytes_in_line +| @as(u32, @intCast(chunk_bytes.len));
+            var boundary_end = boundary_index;
+            while (boundary_end < boundaries.len and boundaries[boundary_end].byte_offset <= chunk_end) : (boundary_end += 1) {}
+            if (!utf8.byteOffsetsToDisplayColumns(
+                chunk_bytes,
+                boundaries[boundary_index..boundary_end],
+                bytes_in_line,
+                columns,
+                self.tab_width,
+                self.width_method,
+            )) return TextBufferError.InvalidByteOffset;
+            boundary_index = boundary_end;
+            bytes_in_line = chunk_end;
+            columns +|= chunk.width;
+        }
+        if (boundary_index != boundaries.len) return TextBufferError.InvalidByteOffset;
+    }
+
     fn projectLine(self: *Self, line_idx: usize) TextBufferError!void {
         if (line_idx >= self.getLineCount()) return TextBufferError.InvalidIndex;
         try self.ensureLineHighlightStorage(line_idx);
         if (self.line_projection_epochs.items[line_idx] == self.projection_epoch) return;
 
-        const projected = &self.line_highlights.items[line_idx];
-        projected.clearRetainingCapacity();
+        var projected: std.ArrayListUnmanaged(Highlight) = .empty;
+        defer projected.deinit(self.global_allocator);
         try projected.appendSlice(self.global_allocator, self.external_line_highlights.items[line_idx].items);
 
         const line_start = try self.normalizedLineStart(@intCast(line_idx));
@@ -1909,9 +1975,9 @@ pub const UnifiedTextBuffer = struct {
 
         if (line_start < line_end) {
             const Context = struct {
-                buffer: *Self,
-                output: *std.ArrayListUnmanaged(Highlight),
-                line_idx: u32,
+                allocator: Allocator,
+                annotations: *std.ArrayListUnmanaged(ProjectedAnnotation),
+                boundaries: *std.ArrayListUnmanaged(utf8.DisplayBoundary),
                 line_start: u32,
                 line_end: u32,
 
@@ -1924,55 +1990,72 @@ pub const UnifiedTextBuffer = struct {
                     const start = @max(range.start_byte, ctx.line_start);
                     const end = @min(range.end_byte, ctx.line_end);
                     if (start >= end) return;
-                    const start_display = try ctx.buffer.normalizedByteOffsetToDisplayPoint(start, .before);
-                    const end_display = try ctx.buffer.normalizedByteOffsetToDisplayPoint(end, .after);
-                    if (start_display.point.row != ctx.line_idx or end_display.point.row != ctx.line_idx) return;
-                    const style_id = try ctx.buffer.resolveAnnotationStyle(annotation.payload.style_id);
-                    try ctx.output.append(ctx.buffer.global_allocator, .{
-                        .col_start = start_display.point.col,
-                        .col_end = end_display.point.col,
-                        .style_id = style_id,
-                        .priority = annotation.payload.priority,
-                        .hl_ref = 0,
-                        .internal = true,
-                    });
+                    try ctx.annotations.append(ctx.allocator, .{ .annotation = annotation, .start = start, .end = end });
+                    try ctx.boundaries.append(ctx.allocator, .{ .byte_offset = start - ctx.line_start, .affinity = .before });
+                    try ctx.boundaries.append(ctx.allocator, .{ .byte_offset = end - ctx.line_start, .affinity = .after });
                 }
             };
-            var annotation_highlights: std.ArrayListUnmanaged(Highlight) = .empty;
-            defer annotation_highlights.deinit(self.global_allocator);
+            var projected_annotations: std.ArrayListUnmanaged(ProjectedAnnotation) = .empty;
+            defer projected_annotations.deinit(self.global_allocator);
+            var boundaries: std.ArrayListUnmanaged(utf8.DisplayBoundary) = .empty;
+            defer boundaries.deinit(self.global_allocator);
             var context: Context = .{
-                .buffer = self,
-                .output = &annotation_highlights,
-                .line_idx = @intCast(line_idx),
+                .allocator = self.global_allocator,
+                .annotations = &projected_annotations,
+                .boundaries = &boundaries,
                 .line_start = line_start,
                 .line_end = line_end,
             };
             self.annotations.visitOverlapping(line_start, line_end, &context, Context.visit) catch return TextBufferError.OutOfMemory;
+            std.mem.sort(utf8.DisplayBoundary, boundaries.items, {}, projectionBoundaryLessThan);
+            var boundary_count: usize = 0;
+            for (boundaries.items) |boundary| {
+                if (boundary_count != 0 and
+                    boundaries.items[boundary_count - 1].byte_offset == boundary.byte_offset and
+                    boundaries.items[boundary_count - 1].affinity == boundary.affinity) continue;
+                boundaries.items[boundary_count] = boundary;
+                boundary_count += 1;
+            }
+            boundaries.shrinkRetainingCapacity(boundary_count);
+            try self.mapLineProjectionBoundaries(line_idx, boundaries.items);
             // Visitors return winner-first, while span ties intentionally use
             // later array entries so public highlight insertion order is stable.
-            var index = annotation_highlights.items.len;
+            var index = projected_annotations.items.len;
             while (index != 0) {
                 index -= 1;
-                try projected.append(self.global_allocator, annotation_highlights.items[index]);
+                const annotation = projected_annotations.items[index];
+                const start_col = projectionBoundaryColumn(boundaries.items, annotation.start - line_start, .before) orelse return TextBufferError.InvalidByteOffset;
+                const end_col = projectionBoundaryColumn(boundaries.items, annotation.end - line_start, .after) orelse return TextBufferError.InvalidByteOffset;
+                try projected.append(self.global_allocator, .{
+                    .col_start = start_col,
+                    .col_end = end_col,
+                    .style_id = try self.resolveAnnotationStyle(annotation.annotation.payload.style_id),
+                    .priority = annotation.annotation.payload.priority,
+                    .hl_ref = 0,
+                    .internal = true,
+                });
             }
         }
 
-        try self.rebuildLineSpans(line_idx);
+        var spans: std.ArrayListUnmanaged(StyleSpan) = .empty;
+        defer spans.deinit(self.global_allocator);
+        try self.rebuildLineSpans(line_idx, projected.items, &spans);
+        std.mem.swap(std.ArrayListUnmanaged(Highlight), &projected, &self.line_highlights.items[line_idx]);
+        std.mem.swap(std.ArrayListUnmanaged(StyleSpan), &spans, &self.line_spans.items[line_idx]);
         self.line_projection_epochs.items[line_idx] = self.projection_epoch;
     }
 
-    fn rebuildLineSpans(self: *Self, line_idx: usize) TextBufferError!void {
+    fn rebuildLineSpans(
+        self: *Self,
+        line_idx: usize,
+        highlights: []const Highlight,
+        spans: *std.ArrayListUnmanaged(StyleSpan),
+    ) TextBufferError!void {
         if (line_idx >= self.line_spans.items.len) {
             return TextBufferError.InvalidIndex;
         }
 
-        self.line_spans.items[line_idx].clearRetainingCapacity();
-
-        if (line_idx >= self.line_highlights.items.len or self.line_highlights.items[line_idx].items.len == 0) {
-            return; // No highlights
-        }
-
-        const highlights = self.line_highlights.items[line_idx].items;
+        if (highlights.len == 0) return;
 
         // Collect all boundary columns
         const Event = struct {
@@ -2000,58 +2083,86 @@ pub const UnifiedTextBuffer = struct {
         }.lessThan;
         std.mem.sort(Event, events.items, {}, sortFn);
 
-        // Build spans by tracking active highlights
-        var active = std.AutoHashMap(usize, void).init(self.global_allocator);
-        defer active.deinit();
+        const active = self.global_allocator.alloc(bool, highlights.len) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(active);
+        @memset(active, false);
+        var heap: std.ArrayListUnmanaged(usize) = .empty;
+        defer heap.deinit(self.global_allocator);
 
-        var current_col: u32 = 0;
+        const Heap = struct {
+            fn better(values: []const Highlight, left: usize, right: usize) bool {
+                return values[left].priority > values[right].priority or
+                    (values[left].priority == values[right].priority and left > right);
+            }
 
-        for (events.items) |event| {
-            // Find current highest priority style before processing event
-            var current_priority: i16 = -1;
-            var current_style: u32 = 0;
-            var current_highlight_index: usize = 0;
-            var it = active.keyIterator();
-            while (it.next()) |hl_idx| {
-                const hl = highlights[hl_idx.*];
-                if (hl.priority > current_priority or
-                    (hl.priority == current_priority and hl_idx.* > current_highlight_index))
-                {
-                    current_priority = @intCast(hl.priority);
-                    current_style = hl.style_id;
-                    current_highlight_index = hl_idx.*;
+            fn push(values: []const Highlight, storage: *std.ArrayListUnmanaged(usize), allocator: Allocator, value: usize) !void {
+                try storage.append(allocator, value);
+                var child = storage.items.len - 1;
+                while (child != 0) {
+                    const parent = (child - 1) / 2;
+                    if (!better(values, storage.items[child], storage.items[parent])) break;
+                    std.mem.swap(usize, &storage.items[child], &storage.items[parent]);
+                    child = parent;
                 }
             }
 
-            // Emit span for the segment leading up to this event
-            if (event.col > current_col) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, .{
-                    .col = current_col,
-                    .style_id = current_style,
-                    .next_col = event.col,
-                });
-                current_col = event.col;
+            fn removeTop(values: []const Highlight, storage: *std.ArrayListUnmanaged(usize)) void {
+                const last = storage.pop().?;
+                if (storage.items.len == 0) return;
+                storage.items[0] = last;
+                var parent: usize = 0;
+                while (true) {
+                    const left = parent * 2 + 1;
+                    if (left >= storage.items.len) break;
+                    const right = left + 1;
+                    const child = if (right < storage.items.len and better(values, storage.items[right], storage.items[left])) right else left;
+                    if (!better(values, storage.items[child], storage.items[parent])) break;
+                    std.mem.swap(usize, &storage.items[parent], &storage.items[child]);
+                    parent = child;
+                }
             }
 
-            // Process event
-            if (event.is_start) {
-                try active.put(event.hl_idx, {});
-            } else {
-                _ = active.remove(event.hl_idx);
+            fn winner(values: []const Highlight, storage: *std.ArrayListUnmanaged(usize), live: []const bool) ?usize {
+                while (storage.items.len != 0 and !live[storage.items[0]]) removeTop(values, storage);
+                return if (storage.items.len == 0) null else storage.items[0];
+            }
+
+            fn appendSpan(output: *std.ArrayListUnmanaged(StyleSpan), allocator: Allocator, start: u32, end: u32, style_id: u32) !void {
+                if (start >= end) return;
+                if (output.items.len != 0) {
+                    const previous = &output.items[output.items.len - 1];
+                    if (previous.next_col == start and previous.style_id == style_id) {
+                        previous.next_col = end;
+                        return;
+                    }
+                }
+                try output.append(allocator, .{ .col = start, .style_id = style_id, .next_col = end });
+            }
+        };
+
+        var current_col: u32 = 0;
+        var event_index: usize = 0;
+        while (event_index < events.items.len) {
+            const event_col = events.items[event_index].col;
+            const winner = Heap.winner(highlights, &heap, active);
+            try Heap.appendSpan(spans, self.global_allocator, current_col, event_col, if (winner) |index| highlights[index].style_id else 0);
+            current_col = event_col;
+            while (event_index < events.items.len and events.items[event_index].col == event_col) : (event_index += 1) {
+                const event = events.items[event_index];
+                if (event.is_start) {
+                    active[event.hl_idx] = true;
+                    try Heap.push(highlights, &heap, self.global_allocator, event.hl_idx);
+                } else {
+                    active[event.hl_idx] = false;
+                }
             }
         }
 
         // Emit final span after last event if there were any highlights
         // This ensures the line returns to default styling after the last highlight ends
-        if (events.items.len > 0 and active.count() == 0) {
+        if (events.items.len > 0 and Heap.winner(highlights, &heap, active) == null) {
             const line_width = self.lineWidthAt(@intCast(line_idx));
-            if (current_col < line_width) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, .{
-                    .col = current_col,
-                    .style_id = 0, // No style (default)
-                    .next_col = line_width,
-                });
-            }
+            try Heap.appendSpan(spans, self.global_allocator, current_col, line_width, 0);
         }
     }
 

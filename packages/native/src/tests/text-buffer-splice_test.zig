@@ -357,6 +357,100 @@ test "annotation-only edits preserve layout epoch and project requested Unicode 
     try std.testing.expectEqual(@as(u32, 11), moved.end_byte);
 }
 
+test "line projection matches single-offset mapping for randomized Unicode annotations" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const tokens = [_][]const u8{ "a", "\t", "界", "🙂", "e\u{301}", "👩‍💻", "1\u{fe0f}\u{20e3}", "\u{200b}" };
+    var codepoint_boundaries: std.ArrayList(u32) = .empty;
+    defer codepoint_boundaries.deinit(std.testing.allocator);
+    try codepoint_boundaries.append(std.testing.allocator, 0);
+    var byte_size: u32 = 0;
+    for (0..120) |index| {
+        const token = tokens[index % tokens.len];
+        try tb.append(token);
+        var local: usize = 0;
+        while (local < token.len) {
+            local += @import("../utf8.zig").decodeUtf8Unchecked(token, local).len;
+            try codepoint_boundaries.append(std.testing.allocator, byte_size + @as(u32, @intCast(local)));
+        }
+        byte_size += @intCast(token.len);
+    }
+
+    const Expected = struct { style_id: u32, start_col: u32, end_col: u32 };
+    var expected: std.ArrayList(Expected) = .empty;
+    defer expected.deinit(std.testing.allocator);
+    var prng = std.Random.DefaultPrng.init(0x70726f6a656374);
+    const random = prng.random();
+    for (0..500) |index| {
+        var start = codepoint_boundaries.items[random.uintLessThan(usize, codepoint_boundaries.items.len)];
+        var end = codepoint_boundaries.items[random.uintLessThan(usize, codepoint_boundaries.items.len)];
+        if (start > end) std.mem.swap(u32, &start, &end);
+        const style_id: u32 = @intCast(1000 + index);
+        _ = try tb.createStyleRange(71, start, end, style_id, @intCast(index % 7));
+        if (start == end) continue;
+        try expected.append(std.testing.allocator, .{
+            .style_id = style_id,
+            .start_col = (try tb.normalizedByteOffsetToDisplayPoint(start, .before)).point.col,
+            .end_col = (try tb.normalizedByteOffsetToDisplayPoint(end, .after)).point.col,
+        });
+    }
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(expected.items.len, highlights.len);
+    for (expected.items) |value| {
+        const actual = for (highlights) |highlight| {
+            if (highlight.style_id == value.style_id) break highlight;
+        } else return error.TestExpectedEqual;
+        try std.testing.expectEqual(value.start_col, actual.col_start);
+        try std.testing.expectEqual(value.end_col, actual.col_end);
+    }
+}
+
+test "direct clear sweeps unreachable backing without changing retained history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const direct = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer direct.deinit();
+    const large = try std.testing.allocator.alloc(u8, 1024 * 1024);
+    defer std.testing.allocator.free(large);
+    @memset(large, 'x');
+    try direct.setText(large);
+    const view_id = try direct.registerView();
+    defer direct.unregisterView(view_id);
+    direct.clearViewDirty(view_id);
+    const content_epoch = direct.getContentEpoch();
+    const annotation_epoch = direct.getAnnotationEpoch();
+    direct.clear();
+    const cleared = try direct.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 0), cleared.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.history_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.committed_unreachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_blocks);
+    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_bytes);
+    try std.testing.expectEqual(content_epoch +% 1, direct.getContentEpoch());
+    try std.testing.expectEqual(annotation_epoch +% 1, direct.getAnnotationEpoch());
+    try std.testing.expect(direct.isViewDirty(view_id));
+
+    const eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("old");
+    try eb.replaceText("new content");
+    eb.tb.clear();
+    const retained = try eb.tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, 0), retained.current_reachable_bytes);
+    try std.testing.expect(retained.history_reachable_bytes != 0);
+    try std.testing.expectEqual(@as(usize, 0), retained.committed_unreachable_bytes);
+    try std.testing.expectEqual(retained.history_reachable_bytes, retained.live_backing_bytes);
+}
+
 test "splice no-op is stable and EditBuffer cursor remains caller-owned" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

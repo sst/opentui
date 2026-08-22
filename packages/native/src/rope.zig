@@ -1561,6 +1561,12 @@ pub fn Rope(comptime T: type) type {
             self.applyEndsInvariant() catch {};
         }
 
+        pub fn clearToPreallocatedRoot(self: *Self, empty_root: *const Node, empty_leaf: *const Node) void {
+            self.root = empty_root;
+            self.empty_leaf = empty_leaf;
+            self.version += 1;
+        }
+
         /// Replace the rope content with new items, using same structure as from_slice
         /// This is useful for repeated setText operations without creating a new rope instance
         pub fn setSegments(self: *Self, items: []const T) !void {
