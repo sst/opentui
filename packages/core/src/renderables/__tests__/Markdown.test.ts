@@ -1424,6 +1424,28 @@ test("selection across top-level ordered list copies marker and text on same lin
   expect(renderer.getSelection()?.getSelectedText()).toBe(" 9. Nine\n10. Ten")
 })
 
+test("selection across markdown paragraphs preserves the blank line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-paragraph-selection-blank-line",
+    content: `First paragraph.
+
+Second paragraph.`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates).toHaveLength(1)
+  const block = md._blockStates[0]?.renderable
+  expect(block).toBeDefined()
+
+  await mockMouse.drag(block!.x, block!.y, block!.x + 20, block!.y + 2)
+  await renderer.idle()
+
+  expect(renderer.getSelection()?.getSelectedText()).toBe("First paragraph.\n\nSecond paragraph.")
+})
+
 test("top-level structured lists align nested fenced code under nested content", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-structured-list-code",

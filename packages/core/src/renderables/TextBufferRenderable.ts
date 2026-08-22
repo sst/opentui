@@ -445,6 +445,55 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBufferView.getSelectedText()
   }
 
+  getSelectedVisualLineSpan(): { first: number; last: number } | null {
+    const selection = this.textBufferView.getSelection()
+    if (!selection) return null
+
+    const starts = this.textBufferView.lineInfo.lineStartCols
+    if (starts.length === 0) return null
+
+    let first = -1
+    let last = -1
+    for (let index = 0; index < starts.length; index++) {
+      const lineStart = starts[index]
+      const lineEnd = index + 1 < starts.length ? starts[index + 1] : Number.POSITIVE_INFINITY
+      if (lineStart < selection.end && lineEnd > selection.start) {
+        if (first < 0) first = index
+        last = index
+      }
+    }
+    if (first < 0) return null
+    return { first, last }
+  }
+
+  getSelectedTextSegments(): Array<{ row: number; text: string }> {
+    const text = this.getSelectedText()
+    if (!text) return []
+    const lines = text.split("\n")
+    const span = this.getSelectedVisualLineSpan()
+    const sources = this.textBufferView.lineInfo.lineSources
+    if (!span || sources.length === 0) {
+      return lines.map((line, index) => ({ row: index, text: line }))
+    }
+
+    const segments: Array<{ row: number; text: string }> = []
+    const seen = new Set<number>()
+    let logical = 0
+    for (let index = span.first; index <= span.last; index++) {
+      const source = sources[index]
+      if (seen.has(source)) continue
+      seen.add(source)
+      const piece = lines[logical++]
+      if (piece === undefined) break
+      segments.push({ row: index, text: piece })
+    }
+    let row = span.last + 1
+    while (logical < lines.length) {
+      segments.push({ row: row++, text: lines[logical++] })
+    }
+    return segments
+  }
+
   hasSelection(): boolean {
     return this.textBufferView.hasSelection()
   }
