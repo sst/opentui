@@ -12,6 +12,7 @@ const rgbaUnpackTransform = (ptr?: Pointer) =>
 type StyledChunkInput = {
   text: string
   styleId?: number | null
+  syntaxStyle?: Pointer | null
   fg?: RGBA | null
   bg?: RGBA | null
   attributes?: number | null
@@ -42,6 +43,8 @@ export const StyledChunkStruct = defineStruct(
     ],
     ["attributes", "u32", { default: 0 }],
     ["styleId", "u32", { default: 0 }],
+    ["styleKind", "u32", { default: 0 }],
+    ["syntaxStyle", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
@@ -53,6 +56,7 @@ export const StyledChunkStruct = defineStruct(
       if (!chunk.link || typeof chunk.link === "string") {
         return {
           ...chunk,
+          styleKind: typeof chunk.styleId === "number" ? 1 : 0,
           fg: normalizedFg?.rgba ?? null,
           bg: normalizedBg?.rgba ?? null,
         }
@@ -60,6 +64,7 @@ export const StyledChunkStruct = defineStruct(
 
       return {
         ...chunk,
+        styleKind: typeof chunk.styleId === "number" ? 1 : 0,
         fg: normalizedFg?.rgba ?? null,
         bg: normalizedBg?.rgba ?? null,
         link: chunk.link.url,
@@ -76,12 +81,15 @@ export const DocumentStyledChunkStruct = defineStruct(
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
     ["styleId", "u32", { default: 0 }],
+    ["styleKind", "u32", { default: 0 }],
+    ["syntaxStyle", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => ({
       ...chunk,
+      styleKind: typeof chunk.styleId === "number" ? 1 : 0,
       fg: normalizeColorValue(chunk.fg ?? null)?.rgba ?? null,
       bg: normalizeColorValue(chunk.bg ?? null)?.rgba ?? null,
       link: typeof chunk.link === "object" && chunk.link ? chunk.link.url : chunk.link,
@@ -95,12 +103,15 @@ export const AnnotationStyleStruct = defineStruct(
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
     ["styleId", "u32", { default: 0 }],
+    ["styleKind", "u32", { default: 0 }],
+    ["syntaxStyle", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
   {
     mapValue: (style: Omit<StyledChunkInput, "text">): Omit<StyledChunkInput, "text"> => ({
       ...style,
+      styleKind: typeof style.styleId === "number" ? 1 : 0,
       fg: normalizeColorValue(style.fg ?? null)?.rgba ?? null,
       bg: normalizeColorValue(style.bg ?? null)?.rgba ?? null,
       link: typeof style.link === "object" && style.link ? style.link.url : style.link,
@@ -118,6 +129,8 @@ export const DocumentRangeInputStruct = defineStruct(
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
     ["styleId", "u32", { default: 0 }],
+    ["styleKind", "u32", { default: 0 }],
+    ["syntaxStyle", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
     ["styled", "u32", { default: 1 }],
@@ -135,6 +148,7 @@ export const DocumentRangeInputStruct = defineStruct(
       },
     ): any => ({
       ...range,
+      styleKind: typeof range.styleId === "number" ? 1 : 0,
       remove: range.remove ? 1 : 0,
       styled: range.styled === false ? 0 : 1,
       fg: normalizeColorValue(range.fg ?? null)?.rgba ?? null,
@@ -170,12 +184,15 @@ export const DocumentOperationStruct = defineStruct(
     ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
     ["attributes", "u32", { default: 0 }],
     ["styleId", "u32", { default: 0 }],
+    ["styleKind", "u32", { default: 0 }],
+    ["syntaxStyle", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u32", { lengthOf: "link" }],
   ],
   {
     mapValue: (operation: any): any => ({
       ...operation,
+      styleKind: typeof operation.styleId === "number" ? 1 : 0,
       fg: normalizeColorValue(operation.fg ?? null)?.rgba ?? null,
       bg: normalizeColorValue(operation.bg ?? null)?.rgba ?? null,
       link: typeof operation.link === "object" && operation.link ? operation.link.url : operation.link,

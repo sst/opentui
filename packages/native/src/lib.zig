@@ -2215,7 +2215,7 @@ export fn textBufferSetStyledText(
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
         if (!validExternalStyledChunk(chunk)) return;
-        chunks[index] = externalStyledChunk(chunk);
+        chunks[index] = externalStyledChunk(chunk).?;
     }
     object_ptr.setStyledText(chunks) catch {};
 }
@@ -3073,7 +3073,7 @@ export fn editorViewSetPlaceholderStyledText(
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
         if (!validExternalStyledChunk(chunk)) return;
-        chunks[index] = externalStyledChunk(chunk);
+        chunks[index] = externalStyledChunk(chunk).?;
     }
     object_ptr.setPlaceholderStyledText(chunks) catch {};
 }
@@ -3125,6 +3125,8 @@ pub const ExternalStyledChunk32 = extern struct {
     bg_ptr: ?[*]const u16,
     attributes: u32,
     style_id: u32 = 0,
+    style_kind: u32 = 0,
+    syntax_style_handle: NativeHandle = INVALID_HANDLE,
     link_ptr: ?[*]const u8,
     link_len: u32,
 };
@@ -3134,6 +3136,8 @@ pub const ExternalAnnotationStyle = extern struct {
     bg_ptr: ?[*]const u16,
     attributes: u32,
     style_id: u32 = 0,
+    style_kind: u32 = 0,
+    syntax_style_handle: NativeHandle = INVALID_HANDLE,
     link_ptr: ?[*]const u8,
     link_len: u32,
 };
@@ -3147,6 +3151,8 @@ pub const ExternalDocumentRangeInput = extern struct {
     bg_ptr: ?[*]const u16,
     attributes: u32,
     style_id: u32 = 0,
+    style_kind: u32 = 0,
+    syntax_style_handle: NativeHandle = INVALID_HANDLE,
     link_ptr: ?[*]const u8,
     link_len: u32,
     styled: u32,
@@ -3178,6 +3184,8 @@ pub const ExternalDocumentOperation = extern struct {
     bg_ptr: ?[*]const u16,
     attributes: u32,
     style_id: u32,
+    style_kind: u32,
+    syntax_style_handle: NativeHandle,
     link_ptr: ?[*]const u8,
     link_len: u32,
 };
@@ -3205,6 +3213,23 @@ pub const ExternalTextSpliceResult = extern struct {
     new_extent_columns: u32,
 };
 
+comptime {
+    std.debug.assert(@sizeOf(ExternalStyledChunk32) == 64);
+    std.debug.assert(@offsetOf(ExternalStyledChunk32, "style_kind") == 40);
+    std.debug.assert(@offsetOf(ExternalStyledChunk32, "syntax_style_handle") == 44);
+    std.debug.assert(@offsetOf(ExternalStyledChunk32, "link_ptr") == 48);
+    std.debug.assert(@sizeOf(ExternalAnnotationStyle) == 48);
+    std.debug.assert(@offsetOf(ExternalAnnotationStyle, "style_kind") == 24);
+    std.debug.assert(@offsetOf(ExternalAnnotationStyle, "syntax_style_handle") == 28);
+    std.debug.assert(@sizeOf(ExternalDocumentRangeInput) == 80);
+    std.debug.assert(@offsetOf(ExternalDocumentRangeInput, "style_kind") == 48);
+    std.debug.assert(@offsetOf(ExternalDocumentRangeInput, "syntax_style_handle") == 52);
+    std.debug.assert(@sizeOf(ExternalDocumentOperation) == 112);
+    std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
+    std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
+    std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
+}
+
 const TextDocumentStatus = enum(u32) {
     ok = 0,
     invalid_handle = 1,
@@ -3221,7 +3246,27 @@ fn textDocumentErrorStatus(err: anyerror) u32 {
     });
 }
 
-fn externalStyledChunk(chunk: ExternalStyledChunk32) text_buffer.StyledChunk {
+fn externalStyleSource(style_kind: u32, style_id: u32, style_handle: NativeHandle, link_ptr: ?[*]const u8, link_len: u32) ?struct {
+    kind: text_buffer.StyleKind,
+    source: ?*const syntax_style.SyntaxStyle,
+} {
+    if (style_kind > @intFromEnum(text_buffer.StyleKind.registered)) return null;
+    const kind: text_buffer.StyleKind = @enumFromInt(style_kind);
+    return switch (kind) {
+        .value => if (style_id == 0 and style_handle == INVALID_HANDLE)
+            .{ .kind = kind, .source = null }
+        else
+            null,
+        .registered => if (style_id != 0 and style_id < text_buffer.UnifiedTextBuffer.internal_style_base and
+            style_handle != INVALID_HANDLE and link_len == 0 and link_ptr == null)
+            .{ .kind = kind, .source = acquireSyntaxStyle(style_handle) orelse return null }
+        else
+            null,
+    };
+}
+
+fn externalStyledChunk(chunk: ExternalStyledChunk32) ?text_buffer.StyledChunk {
+    const style = externalStyleSource(chunk.style_kind, chunk.style_id, chunk.syntax_style_handle, chunk.link_ptr, chunk.link_len) orelse return null;
     return .{
         .text_ptr = chunk.text_ptr orelse "".ptr,
         .text_len = chunk.text_len,
@@ -3229,6 +3274,8 @@ fn externalStyledChunk(chunk: ExternalStyledChunk32) text_buffer.StyledChunk {
         .bg_ptr = chunk.bg_ptr,
         .attributes = chunk.attributes,
         .style_id = chunk.style_id,
+        .style_kind = style.kind,
+        .syntax_style = style.source,
         .link_ptr = chunk.link_ptr,
         .link_len = chunk.link_len,
     };
@@ -3236,14 +3283,17 @@ fn externalStyledChunk(chunk: ExternalStyledChunk32) text_buffer.StyledChunk {
 
 fn validExternalStyledChunk(chunk: ExternalStyledChunk32) bool {
     return (chunk.text_len == 0 or chunk.text_ptr != null) and
-        (chunk.link_len == 0 or chunk.link_ptr != null);
+        (chunk.link_len == 0 or chunk.link_ptr != null) and
+        externalStyleSource(chunk.style_kind, chunk.style_id, chunk.syntax_style_handle, chunk.link_ptr, chunk.link_len) != null;
 }
 
 fn validAnnotationStyle(style: ExternalAnnotationStyle) bool {
-    return style.link_len == 0 or style.link_ptr != null;
+    return (style.link_len == 0 or style.link_ptr != null) and
+        externalStyleSource(style.style_kind, style.style_id, style.syntax_style_handle, style.link_ptr, style.link_len) != null;
 }
 
 fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk {
+    const source = externalStyleSource(style.style_kind, style.style_id, style.syntax_style_handle, style.link_ptr, style.link_len).?;
     return .{
         .text_ptr = "".ptr,
         .text_len = 0,
@@ -3251,6 +3301,8 @@ fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk 
         .bg_ptr = style.bg_ptr,
         .attributes = style.attributes,
         .style_id = style.style_id,
+        .style_kind = source.kind,
+        .syntax_style = source.source,
         .link_ptr = style.link_ptr,
         .link_len = style.link_len,
     };
@@ -3298,7 +3350,7 @@ export fn textBufferReplaceStyledRangeBytes(
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
         if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-        chunks[index] = externalStyledChunk(chunk);
+        chunks[index] = externalStyledChunk(chunk).?;
     }
     const result = object_ptr.replaceStyledRangeBytes(start_byte, end_byte, chunks, owner) catch |err| return textDocumentErrorStatus(err);
     writeExternalSplice(output, result);
@@ -3364,13 +3416,16 @@ export fn textBufferReplaceDocumentRange(
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
         if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-        chunks[index] = externalStyledChunk(chunk);
+        chunks[index] = externalStyledChunk(chunk).?;
     }
     const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
     const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
     defer globalAllocator.free(ranges);
     for (external_ranges, 0..) |range, index| {
-        if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or (range.link_len != 0 and range.link_ptr == null)) {
+        const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len);
+        if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or
+            (range.link_len != 0 and range.link_ptr == null) or style == null)
+        {
             return @intFromEnum(TextDocumentStatus.invalid_argument);
         }
         ranges[index] = .{
@@ -3385,6 +3440,8 @@ export fn textBufferReplaceDocumentRange(
                 .bg_ptr = range.bg_ptr,
                 .attributes = range.attributes,
                 .style_id = range.style_id,
+                .style_kind = style.?.kind,
+                .syntax_style = style.?.source,
                 .link_ptr = range.link_ptr,
                 .link_len = range.link_len,
             },
@@ -3445,14 +3502,15 @@ export fn textBufferApplyDocumentOperations(
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
         if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-        chunks[index] = externalStyledChunk(chunk);
+        chunks[index] = externalStyledChunk(chunk).?;
     }
     const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
     const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
     defer globalAllocator.free(ranges);
     for (external_ranges, 0..) |range, index| {
+        const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len);
         if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or
-            (range.link_len != 0 and range.link_ptr == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+            (range.link_len != 0 and range.link_ptr == null) or style == null) return @intFromEnum(TextDocumentStatus.invalid_argument);
         ranges[index] = .{
             .id = range.id,
             .remove = range.remove != 0,
@@ -3465,6 +3523,8 @@ export fn textBufferApplyDocumentOperations(
                 .bg_ptr = range.bg_ptr,
                 .attributes = range.attributes,
                 .style_id = range.style_id,
+                .style_kind = style.?.kind,
+                .syntax_style = style.?.source,
                 .link_ptr = range.link_ptr,
                 .link_len = range.link_len,
             },
@@ -3476,8 +3536,9 @@ export fn textBufferApplyDocumentOperations(
     defer globalAllocator.free(operations);
     var expected_ids: usize = 0;
     for (external_operations, 0..) |operation, index| {
+        const style = externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len);
         if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.target_mode > 2 or
-            operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null))
+            operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null) or style == null)
             return @intFromEnum(TextDocumentStatus.invalid_argument);
         const chunk_end = std.math.add(u32, operation.chunk_start, operation.chunk_count) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
         const range_end = std.math.add(u32, operation.range_start, operation.range_count) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
@@ -3502,6 +3563,8 @@ export fn textBufferApplyDocumentOperations(
                 .bg_ptr = operation.bg_ptr,
                 .attributes = operation.attributes,
                 .style_id = operation.style_id,
+                .style_kind = style.?.kind,
+                .syntax_style = style.?.source,
                 .link_ptr = operation.link_ptr,
                 .link_len = operation.link_len,
             },
@@ -3771,6 +3834,115 @@ test "text document FFI rejects null pointer length and output combinations" {
         &invalid_style,
         1,
         &id,
+    ));
+}
+
+test "text document FFI rejects invalid registered style discriminants and ownership" {
+    const buffer_handle = createTextBuffer(1);
+    try std.testing.expect(buffer_handle != INVALID_HANDLE);
+    defer destroyTextBuffer(buffer_handle);
+    const first_style = createSyntaxStyle();
+    try std.testing.expect(first_style != INVALID_HANDLE);
+    defer destroySyntaxStyle(first_style);
+    var second_style = createSyntaxStyle();
+    try std.testing.expect(second_style != INVALID_HANDLE);
+    defer if (second_style != INVALID_HANDLE) destroySyntaxStyle(second_style);
+    try std.testing.expect(textBufferSetSyntaxStyle(buffer_handle, first_style));
+    const name = "registered";
+    const registered_id = syntaxStyleRegister(first_style, name.ptr, name.len, null, null, 1);
+    const other_id = syntaxStyleRegister(second_style, name.ptr, name.len, null, null, 2);
+    try std.testing.expect(registered_id != 0 and other_id != 0);
+
+    var output: ExternalTextSpliceResult = undefined;
+    const base: ExternalStyledChunk32 = .{
+        .text_ptr = "x".ptr,
+        .text_len = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .link_ptr = null,
+        .link_len = 0,
+    };
+    const invalid = [_]ExternalStyledChunk32{
+        blk: {
+            var chunk = base;
+            chunk.style_kind = 2;
+            break :blk chunk;
+        },
+        blk: {
+            var chunk = base;
+            chunk.style_id = registered_id;
+            break :blk chunk;
+        },
+        blk: {
+            var chunk = base;
+            chunk.style_kind = 1;
+            chunk.style_id = registered_id;
+            break :blk chunk;
+        },
+        blk: {
+            var chunk = base;
+            chunk.style_kind = 1;
+            chunk.style_id = text_buffer.UnifiedTextBuffer.internal_style_base;
+            chunk.syntax_style_handle = first_style;
+            break :blk chunk;
+        },
+        blk: {
+            var chunk = base;
+            chunk.style_kind = 1;
+            chunk.style_id = other_id;
+            chunk.syntax_style_handle = second_style;
+            break :blk chunk;
+        },
+    };
+    for (invalid) |chunk| {
+        var chunks = [_]ExternalStyledChunk32{chunk};
+        try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
+            buffer_handle,
+            0,
+            0,
+            &chunks,
+            1,
+            1,
+            &output,
+        ));
+    }
+
+    var valid = [_]ExternalStyledChunk32{blk: {
+        var chunk = base;
+        chunk.style_kind = 1;
+        chunk.style_id = registered_id;
+        chunk.syntax_style_handle = first_style;
+        break :blk chunk;
+    }};
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferReplaceStyledRangeBytes(
+        buffer_handle,
+        0,
+        0,
+        &valid,
+        1,
+        1,
+        &output,
+    ));
+
+    destroySyntaxStyle(second_style);
+    const stale_handle = second_style;
+    second_style = INVALID_HANDLE;
+    var stale = [_]ExternalStyledChunk32{blk: {
+        var chunk = base;
+        chunk.style_kind = 1;
+        chunk.style_id = other_id;
+        chunk.syntax_style_handle = stale_handle;
+        break :blk chunk;
+    }};
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
+        buffer_handle,
+        0,
+        1,
+        &stale,
+        1,
+        1,
+        &output,
     ));
 }
 

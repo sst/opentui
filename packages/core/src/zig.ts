@@ -121,6 +121,7 @@ export type TextBufferViewHandle = NativeHandle<"text_buffer_view">
 
 export type DocumentStyle = {
   styleId?: number
+  syntaxStyle?: SyntaxStyleHandle
   fg?: RGBA | null
   bg?: RGBA | null
   attributes?: number

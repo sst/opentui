@@ -19,6 +19,7 @@ export interface TextChunk {
   __isChunk: true
   text: string
   styleId?: number
+  styleSource?: SyntaxStyle
   fg?: RGBA
   bg?: RGBA
   attributes?: number
@@ -36,6 +37,17 @@ export class TextBuffer {
   private _textBytes?: Uint8Array
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
+
+  private withStyleSource<T extends DocumentStyle>(style: T): T {
+    if (style.styleId === undefined) return style
+    const syntaxStyle = this._syntaxStyle
+    if (!syntaxStyle) throw new Error("A registered style requires an attached SyntaxStyle")
+    const declaredSource = (style as T & { styleSource?: SyntaxStyle }).styleSource
+    if (declaredSource && declaredSource !== syntaxStyle) {
+      throw new Error("Registered style belongs to a different SyntaxStyle")
+    }
+    return { ...style, syntaxStyle: syntaxStyle.ptr }
+  }
 
   constructor(lib: RenderLib, ptr: TextBufferHandle) {
     this.lib = lib
@@ -97,7 +109,10 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    this.lib.textBufferSetStyledText(this.bufferPtr, text.chunks)
+    this.lib.textBufferSetStyledText(
+      this.bufferPtr,
+      text.chunks.map((chunk) => this.withStyleSource(chunk)),
+    )
 
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
@@ -111,7 +126,13 @@ export class TextBuffer {
     owner: number,
   ): TextSpliceResult {
     this.guard()
-    const result = this.lib.textBufferReplaceStyledRangeBytes(this.bufferPtr, startByte, endByte, chunks, owner)
+    const result = this.lib.textBufferReplaceStyledRangeBytes(
+      this.bufferPtr,
+      startByte,
+      endByte,
+      chunks.map((chunk) => this.withStyleSource(chunk)),
+      owner,
+    )
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
@@ -152,9 +173,9 @@ export class TextBuffer {
       targetMode,
       startByte,
       endByte,
-      chunks,
+      chunks.map((chunk) => this.withStyleSource(chunk)),
       owner,
-      ranges,
+      ranges.map((range) => this.withStyleSource(range)),
     )
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
@@ -170,7 +191,14 @@ export class TextBuffer {
 
   public applyDocumentOperations(operations: DocumentOperation[]): bigint[] {
     this.guard()
-    const ids = this.lib.textBufferApplyDocumentOperations(this.bufferPtr, operations)
+    const ids = this.lib.textBufferApplyDocumentOperations(
+      this.bufferPtr,
+      operations.map((operation) => ({
+        ...this.withStyleSource(operation),
+        chunks: operation.chunks?.map((chunk) => this.withStyleSource(chunk)),
+        ranges: operation.ranges?.map((range) => this.withStyleSource(range)),
+      })),
+    )
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
@@ -185,7 +213,14 @@ export class TextBuffer {
     priority: number = 1,
   ): bigint {
     this.guard()
-    return this.lib.textBufferCreateStyleRange(this.bufferPtr, owner, startByte, endByte, style, priority)
+    return this.lib.textBufferCreateStyleRange(
+      this.bufferPtr,
+      owner,
+      startByte,
+      endByte,
+      this.withStyleSource(style),
+      priority,
+    )
   }
 
   public updateStyleRange(id: bigint, startByte: number, endByte: number): void {
@@ -200,7 +235,7 @@ export class TextBuffer {
 
   public updateStyleRangeStyle(id: bigint, style: DocumentStyle): void {
     this.guard()
-    this.lib.textBufferUpdateStyleRangeStyle(this.bufferPtr, id, style)
+    this.lib.textBufferUpdateStyleRangeStyle(this.bufferPtr, id, this.withStyleSource(style))
   }
 
   public removeStyleRange(id: bigint): boolean {

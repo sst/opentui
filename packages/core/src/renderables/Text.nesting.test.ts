@@ -8,6 +8,8 @@ import { TextAttributes, type CapturedFrame, type CapturedSpan } from "../types.
 import { Renderable } from "../Renderable.js"
 import { resolveRenderLib } from "../zig.js"
 import { TextRenderable } from "./Text.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
 
 function findSpan(spans: CapturedSpan[], text: string): CapturedSpan | undefined {
   return spans.find((span) => span.text.includes(text))
@@ -502,6 +504,26 @@ describe("nested TextRenderable", () => {
     expect(text.children).toHaveLength(2)
     expect(text.children.every((child) => child instanceof TextRenderable)).toBe(true)
     expect(text.chunks.map((chunk) => chunk.text)).toEqual(["red", " bold"])
+  })
+
+  test("preserves authoritative registered style IDs through canonical text ranges", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: "#ffffff" },
+      keyword: { fg: "#ff0000", bold: true },
+    })
+    try {
+      const keywordId = syntaxStyle.getStyleId("keyword")!
+      const chunks = treeSitterToTextChunks("key plain", [[0, 3, "keyword", {}]], syntaxStyle)
+      const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
+      renderer.root.add(text)
+      await renderOnce()
+
+      const highlights = (text as any).textBuffer.getLineHighlights(0)
+      expect(highlights.some((highlight) => highlight.styleId === keywordId && highlight.start === 0)).toBe(true)
+      expect(text.getTextChildren()[0]!.chunks[0]!.styleId).toBe(keywordId)
+    } finally {
+      syntaxStyle.destroy()
+    }
   })
 
   test("moves a nested node between outer documents without retaining transient state", async () => {

@@ -194,6 +194,7 @@ export function treeSitterToTextChunks(
           __isChunk: true,
           text: segmentText,
           styleId: authoritativeStyleId,
+          styleSource: authoritativeStyleId === undefined ? undefined : syntaxStyle,
           fg: finalStyle?.fg,
           bg: finalStyle?.bg,
           attributes: finalStyle
@@ -213,6 +214,7 @@ export function treeSitterToTextChunks(
         __isChunk: true,
         text,
         styleId: baseStyleId ?? defaultStyleId,
+        styleSource: baseStyleId !== undefined || defaultStyleId !== undefined ? syntaxStyle : undefined,
         fg: style?.fg,
         bg: style?.bg,
         attributes: style
@@ -272,6 +274,7 @@ export function treeSitterToTextChunks(
       __isChunk: true,
       text,
       styleId: baseStyleId ?? defaultStyleId,
+      styleSource: baseStyleId !== undefined || defaultStyleId !== undefined ? syntaxStyle : undefined,
       fg: style?.fg,
       bg: style?.bg,
       attributes: style

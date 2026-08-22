@@ -135,6 +135,10 @@ pub const SyntaxStyle = struct {
         return self.id_to_style.get(id);
     }
 
+    pub fn isRegisteredStyleId(self: *const SyntaxStyle, id: u32) bool {
+        return id != 0 and self.id_to_style.contains(id) and !self.anonymous_ids.contains(id);
+    }
+
     pub fn resolveByName(self: *const SyntaxStyle, name: []const u8) ?u32 {
         return self.name_to_id.get(name);
     }

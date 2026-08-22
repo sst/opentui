@@ -11,10 +11,13 @@ import type { DocumentOperation, DocumentRangeInput } from "../zig.js"
 import stringWidth from "string-width"
 import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
+import type { SyntaxStyle } from "../syntax-style.js"
 
 export interface TextOptions extends TextBufferOptions {
   content?: StyledText | string
   link?: { url: string }
+  styleId?: number
+  styleSource?: SyntaxStyle
 }
 
 export type TextStyle = {
@@ -22,6 +25,8 @@ export type TextStyle = {
   bg?: RGBA
   attributes: number
   link?: { url: string }
+  styleId?: number
+  styleSource?: SyntaxStyle
 }
 
 const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRenderable")
@@ -119,6 +124,8 @@ export class TextRenderable extends TextBufferRenderable {
   private _localBg?: RGBA
   private _localAttributes: number = 0
   private _link?: { url: string }
+  private _localStyleId?: number
+  private _localSyntaxStyle?: SyntaxStyle
   private _textDocumentPending: boolean = true
   private _nativeRangeId: bigint | null = null
   private _textDocumentOwner = 0
@@ -153,6 +160,11 @@ export class TextRenderable extends TextBufferRenderable {
       this._localBg = options.bg ? parseColor(options.bg) : undefined
       this._localAttributes = options.attributes ?? 0
       this._link = options.link
+      this._localStyleId = options.styleId
+      this._localSyntaxStyle = options.styleSource
+      if ((this._localStyleId === undefined) !== (this._localSyntaxStyle === undefined)) {
+        throw new Error("Registered text styles require both styleId and syntaxStyle")
+      }
 
       if (options.content !== undefined) this.replaceContent(options.content, false)
       if (this.hasTextDocumentState) this.flushTextDocument()
@@ -661,11 +673,19 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public mergeStyles(parentStyle: TextStyle): TextStyle {
+    const parentContributesStyle =
+      parentStyle.fg !== undefined ||
+      parentStyle.bg !== undefined ||
+      parentStyle.attributes !== 0 ||
+      parentStyle.link !== undefined ||
+      parentStyle.styleId !== undefined
     return {
       fg: this._localFg ?? parentStyle.fg,
       bg: this._localBg ?? parentStyle.bg,
       attributes: this._localAttributes | parentStyle.attributes,
       link: this._link ?? parentStyle.link,
+      styleId: !parentContributesStyle ? this._localStyleId : undefined,
+      styleSource: !parentContributesStyle ? this._localSyntaxStyle : undefined,
     }
   }
 
@@ -861,6 +881,8 @@ export class TextRenderable extends TextBufferRenderable {
             bg: chunk.bg,
             attributes: chunk.attributes,
             link: chunk.link,
+            styleId: chunk.styleId,
+            styleSource: chunk.styleSource,
           },
           false,
         )
@@ -998,6 +1020,11 @@ export class TextRenderable extends TextBufferRenderable {
       for (const root of this._pendingStyleRoots)
         root.collectNativeStyleOperations(this, root.resolvedParentStyle(), operations)
     }
+    const syntaxStyles = new Set<SyntaxStyle>()
+    this.collectRegisteredSyntaxStyles(syntaxStyles)
+    if (syntaxStyles.size > 1)
+      throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
+    this.textBuffer.setSyntaxStyle(syntaxStyles.values().next().value ?? this._textBufferSyntaxStyle)
     const ids = this.textBuffer.applyDocumentOperations(operations)
     ids.forEach((id, index) => assignments[index]!(id))
     const contentChanged = roots.length > 0 || this._pendingNativeMoves.length > 0
@@ -1120,6 +1147,13 @@ export class TextRenderable extends TextBufferRenderable {
       })
     }
     for (const child of this.getTextChildren()) child.collectNativeStyleOperations(owner, style, operations)
+  }
+
+  private collectRegisteredSyntaxStyles(styles: Set<SyntaxStyle>): void {
+    if (this._localStyleId !== undefined && this._localSyntaxStyle && this.ancestorsVisible()) {
+      styles.add(this._localSyntaxStyle)
+    }
+    for (const child of this.getTextChildren()) child.collectRegisteredSyntaxStyles(styles)
   }
 
   private resolvedParentStyle(): TextStyle {

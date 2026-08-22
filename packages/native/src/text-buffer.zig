@@ -110,8 +110,15 @@ pub const StyledChunk = extern struct {
     bg_ptr: ?[*]const u16,
     attributes: u32,
     style_id: u32 = 0,
+    style_kind: StyleKind = .value,
+    syntax_style: ?*const SyntaxStyle = null,
     link_ptr: ?[*]const u8 = null,
     link_len: usize = 0,
+};
+
+pub const StyleKind = enum(u32) {
+    value = 0,
+    registered = 1,
 };
 
 pub const DocumentRangeInput = struct {
@@ -169,7 +176,7 @@ pub const UnifiedTextBuffer = struct {
     const styled_text_owner: u32 = std.math.maxInt(u32);
     const style_range_kind: u32 = 1;
     const document_range_kind: u32 = 2;
-    const internal_style_base: u32 = 0x8000_0000;
+    pub const internal_style_base: u32 = 0x8000_0000;
 
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
@@ -2175,9 +2182,15 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn acquireInternalStyle(self: *Self, chunk: StyledChunk) TextBufferError!u32 {
-        if (chunk.style_id != 0) {
-            if (chunk.link_len != 0 or chunk.link_ptr != null) return TextBufferError.InvalidDimensions;
-            return chunk.style_id;
+        switch (chunk.style_kind) {
+            .registered => {
+                if (chunk.style_id == 0 or chunk.style_id >= internal_style_base or chunk.link_len != 0 or chunk.link_ptr != null) return TextBufferError.InvalidDimensions;
+                const source = chunk.syntax_style orelse return TextBufferError.InvalidDimensions;
+                const attached = self.syntax_style orelse return TextBufferError.InvalidDimensions;
+                if (source != attached or !attached.isRegisteredStyleId(chunk.style_id)) return TextBufferError.InvalidDimensions;
+                return chunk.style_id;
+            },
+            .value => if (chunk.style_id != 0 or chunk.syntax_style != null) return TextBufferError.InvalidDimensions,
         }
         const fg = if (chunk.fg_ptr) |ptr| utils.ptrToRGBA(ptr) else null;
         const bg = if (chunk.bg_ptr) |ptr| utils.ptrToRGBA(ptr) else null;
