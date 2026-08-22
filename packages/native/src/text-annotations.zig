@@ -82,6 +82,7 @@ pub const TextAnnotations = struct {
         owner: *Self,
         tree_ranges: MarkTree.PreparedRanges,
         payloads: []Payload,
+        next_sequence: u64,
         source_generation: u64,
         committed: bool = false,
 
@@ -173,10 +174,54 @@ pub const TextAnnotations = struct {
     }
 
     pub fn prepareAddRanges(self: *Self, inputs: []const RangeInput, payload_inputs: []const PayloadInput) !PreparedRanges {
+        return self.prepareAddRangesInternal(inputs, payload_inputs, null);
+    }
+
+    /// Prepares retained fragments with their original logical insertion
+    /// sequences. Each sequence/payload pair must still belong to this owner;
+    /// fresh insertion sequences remain globally unique and monotonic.
+    pub fn prepareAddRangesWithSequences(
+        self: *Self,
+        inputs: []const RangeInput,
+        payload_inputs: []const PayloadInput,
+        sequences: []const u64,
+    ) !PreparedRanges {
+        return self.prepareAddRangesInternal(inputs, payload_inputs, sequences);
+    }
+
+    fn prepareAddRangesInternal(
+        self: *Self,
+        inputs: []const RangeInput,
+        payload_inputs: []const PayloadInput,
+        preserved_sequences: ?[]const u64,
+    ) !PreparedRanges {
         if (inputs.len != payload_inputs.len) return error.CountMismatch;
         try self.checkCanMutate(inputs.len);
-        const count_u64 = std.math.cast(u64, inputs.len) orelse return error.SequenceExhausted;
-        if (self.next_sequence == 0 or count_u64 > std.math.maxInt(u64) - self.next_sequence) return error.SequenceExhausted;
+        if (preserved_sequences) |sequences| {
+            if (inputs.len != sequences.len) return error.CountMismatch;
+            var available = std.AutoHashMap(Payload, usize).init(self.allocator);
+            defer available.deinit();
+            try available.ensureTotalCapacity(@intCast(self.payloads.count()));
+            var payload_iterator = self.payloads.valueIterator();
+            while (payload_iterator.next()) |payload| {
+                const entry = available.getOrPutAssumeCapacity(payload.*);
+                if (entry.found_existing) {
+                    entry.value_ptr.* += 1;
+                } else {
+                    entry.value_ptr.* = 1;
+                }
+            }
+            for (sequences, payload_inputs) |sequence, payload| {
+                const available_count = available.getPtr(payloadFromInput(payload, sequence)) orelse return error.InvalidSequence;
+                if (available_count.* == 0) return error.InvalidSequence;
+                available_count.* -= 1;
+            }
+        }
+        const next_sequence = if (preserved_sequences == null) blk: {
+            const count_u64 = std.math.cast(u64, inputs.len) orelse return error.SequenceExhausted;
+            if (self.next_sequence == 0 or count_u64 > std.math.maxInt(u64) - self.next_sequence) return error.SequenceExhausted;
+            break :blk self.next_sequence + count_u64;
+        } else self.next_sequence;
         const additional_count = std.math.cast(u32, inputs.len) orelse return error.SequenceExhausted;
         try self.payloads.ensureUnusedCapacity(additional_count);
         var tree_ranges = try self.tree.prepareAddRanges(inputs);
@@ -184,9 +229,19 @@ pub const TextAnnotations = struct {
         const payloads = try self.allocator.alloc(Payload, inputs.len);
         errdefer self.allocator.free(payloads);
         for (payload_inputs, 0..) |payload, index| {
-            payloads[index] = payloadFromInput(payload, self.next_sequence + @as(u64, @intCast(index)));
+            const sequence = if (preserved_sequences) |sequences|
+                sequences[index]
+            else
+                self.next_sequence + @as(u64, @intCast(index));
+            payloads[index] = payloadFromInput(payload, sequence);
         }
-        return .{ .owner = self, .tree_ranges = tree_ranges, .payloads = payloads, .source_generation = self.generation };
+        return .{
+            .owner = self,
+            .tree_ranges = tree_ranges,
+            .payloads = payloads,
+            .next_sequence = next_sequence,
+            .source_generation = self.generation,
+        };
     }
 
     pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) !void {
@@ -196,7 +251,7 @@ pub const TextAnnotations = struct {
         for (prepared.payloads, 0..) |payload, index| {
             self.payloads.putAssumeCapacity(prepared.idAt(index), payload);
         }
-        self.next_sequence += @intCast(prepared.payloads.len);
+        self.next_sequence = prepared.next_sequence;
         if (prepared.payloads.len != 0) self.finishMutation();
         prepared.committed = true;
     }
@@ -324,6 +379,8 @@ pub const TextAnnotations = struct {
         defer self.allocator.free(split_inputs);
         var split_payloads = try self.allocator.alloc(PayloadInput, split_count);
         defer self.allocator.free(split_payloads);
+        var split_sequences = try self.allocator.alloc(u64, split_count);
+        defer self.allocator.free(split_sequences);
         var split_index: usize = 0;
         for (matches.items) |annotation| {
             const range = annotation.mark.range;
@@ -335,11 +392,12 @@ pub const TextAnnotations = struct {
                     .end_gravity = range.end_gravity,
                 };
                 split_payloads[split_index] = inputFromPayload(annotation.payload);
+                split_sequences[split_index] = annotation.payload.sequence;
                 split_index += 1;
             }
         }
         if (split_count != 0) {
-            var prepared = try self.prepareAddRanges(split_inputs, split_payloads);
+            var prepared = try self.prepareAddRangesWithSequences(split_inputs, split_payloads, split_sequences);
             defer prepared.deinit();
             try self.commitPreparedRanges(&prepared);
         }
@@ -603,7 +661,8 @@ pub const TextAnnotations = struct {
         std.mem.sort(Annotation, annotations, {}, struct {
             fn lessThan(_: void, a: Annotation, b: Annotation) bool {
                 if (a.payload.priority != b.payload.priority) return a.payload.priority > b.payload.priority;
-                return a.payload.sequence > b.payload.sequence;
+                if (a.payload.sequence != b.payload.sequence) return a.payload.sequence > b.payload.sequence;
+                return a.id() > b.id();
             }
         }.lessThan);
     }

@@ -14,6 +14,54 @@ const RGBA = text_buffer.RGBA;
 const WrapMode = text_buffer.WrapMode;
 const StyledChunk = text_buffer.StyledChunk;
 
+test "styled replacement retains newer equal-priority public style outside replacement" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setViewport(.{ .x = 0, .y = 0, .width = 6, .height = 1 });
+
+    const red = ansi.rgbaFromFloats(1, 0, 0, 1);
+    const blue = ansi.rgbaFromFloats(0, 0, 1, 1);
+    const green = ansi.rgbaFromFloats(0, 1, 0, 1);
+    const initial = "abcdef";
+    const red_chunks = [_]StyledChunk{.{
+        .text_ptr = initial.ptr,
+        .text_len = initial.len,
+        .fg_ptr = @ptrCast(&red),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    _ = try tb.replaceStyledRangeBytes(0, 0, &red_chunks, 41);
+    const blue_id = try syntax.registerStyle("public-blue", blue, null, 0);
+    _ = try tb.createStyleRange(52, 0, 6, blue_id, 1);
+
+    const replacement = "cd";
+    const green_chunks = [_]StyledChunk{.{
+        .text_ptr = replacement.ptr,
+        .text_len = replacement.len,
+        .fg_ptr = @ptrCast(&green),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    _ = try tb.replaceStyledRangeBytes(2, 4, &green_chunks, 41);
+
+    var rendered = try OptimizedBuffer.init(std.testing.allocator, 6, 1, .{ .pool = pool, .width_method = .unicode });
+    defer rendered.deinit();
+    rendered.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    rendered.drawTextBuffer(view, 0, 0);
+    for (0..2) |x| try std.testing.expect(ansi.blueF(rendered.get(@intCast(x), 0).?.fg) > 0.99);
+    for (2..4) |x| try std.testing.expect(ansi.greenF(rendered.get(@intCast(x), 0).?.fg) > 0.99);
+    for (4..6) |x| try std.testing.expect(ansi.blueF(rendered.get(@intCast(x), 0).?.fg) > 0.99);
+}
+
 test "equal-priority styled insertions and public ranges render newer styles" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

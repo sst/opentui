@@ -265,6 +265,91 @@ test "TextAnnotations visitors return deterministic priority and stable sequence
     });
 }
 
+test "TextAnnotations retained splits preserve sequence without consuming caller order" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    const retained = try owner.addRange(.{ .start_byte = 0, .end_byte = 12 }, payload(1, 1, 7));
+    const newer = try owner.addRange(.{ .start_byte = 0, .end_byte = 12 }, payload(2, 2, 7));
+    const retained_sequence = owner.get(retained).?.payload.sequence;
+
+    try owner.clipOwnerRange(1, 4, 8);
+    try owner.clipOwnerRange(1, 9, 10);
+
+    var retained_count: usize = 0;
+    var iterator = owner.iterator();
+    while (try iterator.next()) |annotation| {
+        if (annotation.payload.namespace != 1) continue;
+        retained_count += 1;
+        try std.testing.expectEqual(retained_sequence, annotation.payload.sequence);
+    }
+    try std.testing.expectEqual(@as(usize, 3), retained_count);
+
+    const fresh_inputs = [_]TextAnnotations.RangeInput{
+        .{ .start_byte = 0, .end_byte = 12 },
+        .{ .start_byte = 0, .end_byte = 12 },
+    };
+    const fresh_payloads = [_]PayloadInput{ payload(3, 3, 7), payload(4, 4, 7) };
+    var fresh_ranges = try owner.prepareAddRanges(&fresh_inputs, &fresh_payloads);
+    defer fresh_ranges.deinit();
+    const fresh = fresh_ranges.idAt(0);
+    const freshest = fresh_ranges.idAt(1);
+    try owner.commitPreparedRanges(&fresh_ranges);
+    try std.testing.expectEqual(@as(u64, 3), owner.get(fresh).?.payload.sequence);
+    try std.testing.expectEqual(@as(u64, 4), owner.get(freshest).?.payload.sequence);
+    const following = try owner.addPoint(.{ .byte = 11 }, payload(5, 5, 7));
+    try std.testing.expectEqual(@as(u64, 5), owner.get(following).?.payload.sequence);
+
+    var values: std.ArrayList(Annotation) = .empty;
+    defer values.deinit(std.testing.allocator);
+    var collector = Collector{ .allocator = std.testing.allocator, .values = &values };
+    try owner.visitOverlapping(10, 11, &collector, Collector.visit);
+    try std.testing.expectEqualSlices(u64, &.{ freshest, fresh, newer }, &.{
+        values.items[0].id(),
+        values.items[1].id(),
+        values.items[2].id(),
+    });
+    try std.testing.expectEqual(retained_sequence, values.items[3].payload.sequence);
+    try owner.validateIntegrity();
+}
+
+test "TextAnnotations preserved sequence preparation validates ownership and staleness" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    const source = try owner.addRange(.{ .start_byte = 0, .end_byte = 2 }, payload(1, 1, 1));
+    const source_sequence = owner.get(source).?.payload.sequence;
+    const inputs = [_]TextAnnotations.RangeInput{.{ .start_byte = 3, .end_byte = 4 }};
+    const payloads = [_]PayloadInput{payload(1, 1, 1)};
+
+    try std.testing.expectError(
+        error.InvalidSequence,
+        owner.prepareAddRangesWithSequences(&inputs, &payloads, &.{source_sequence + 1}),
+    );
+    const mismatched_payloads = [_]PayloadInput{payload(1, 2, 1)};
+    try std.testing.expectError(
+        error.InvalidSequence,
+        owner.prepareAddRangesWithSequences(&inputs, &mismatched_payloads, &.{source_sequence}),
+    );
+    const duplicate_inputs = [_]TextAnnotations.RangeInput{
+        .{ .start_byte = 3, .end_byte = 4 },
+        .{ .start_byte = 4, .end_byte = 5 },
+    };
+    const duplicate_payloads = [_]PayloadInput{ payload(1, 1, 1), payload(1, 1, 1) };
+    try std.testing.expectError(
+        error.InvalidSequence,
+        owner.prepareAddRangesWithSequences(
+            &duplicate_inputs,
+            &duplicate_payloads,
+            &.{ source_sequence, source_sequence },
+        ),
+    );
+    var prepared = try owner.prepareAddRangesWithSequences(&inputs, &payloads, &.{source_sequence});
+    defer prepared.deinit();
+    _ = try owner.addPoint(.{ .byte = 5 }, payload(2, 2, 1));
+    try std.testing.expectError(error.StalePreparation, owner.commitPreparedRanges(&prepared));
+    try std.testing.expectEqual(@as(usize, 2), owner.count());
+    try owner.validateIntegrity();
+}
+
 const MutationVisitor = struct {
     owner: *TextAnnotations,
     id: u64,
