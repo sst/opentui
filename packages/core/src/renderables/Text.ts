@@ -917,7 +917,14 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private adoptTextContext(ctx: RenderContext): void {
-    if (this._ctx !== ctx) this.adoptTextDocumentContext(ctx)
+    if (this._ctx !== ctx) {
+      const hadDocumentState = this.hasTextDocumentState
+      this.adoptTextDocumentContext(ctx)
+      if (hadDocumentState && this.hasTextDocumentState) {
+        this.resetNativeRanges()
+        this.flushTextDocument()
+      }
+    }
     for (const child of this.getTextChildren()) child.adoptTextContext(ctx)
   }
 

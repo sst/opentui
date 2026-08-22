@@ -2466,7 +2466,6 @@ pub const UnifiedTextBuffer = struct {
                 const existing = candidate.get(range.id) orelse return TextBufferError.InvalidIndex;
                 if (existing.payload.namespace != owner or existing.payload.kind_flags & document_range_kind == 0) return TextBufferError.InvalidIndex;
                 if (!(candidate.remove(range.id) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
-                replaced_styles.appendAssumeCapacity(existing.payload.style_id);
                 created_ids[index] = range.id;
                 continue;
             }
