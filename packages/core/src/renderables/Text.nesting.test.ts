@@ -287,6 +287,267 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("keeps reordered children when StyledText is added before flush", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      root.add(children[0]!, root.getChildrenCount())
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
+
+      root.add(new StyledText([{ __isChunk: true, text: "D" }]))
+      const generated = root.getTextChildren()[3]!
+      expect(root.getTextChildren()).toEqual([children[1], children[2], children[0], generated])
+      expect(root.getChildrenCount()).toBe(4)
+      expect(children.map((child) => child.parent)).toEqual([root, root, root])
+      expect(generated.parent).toBe(root)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(apply).not.toHaveBeenCalled()
+
+      await renderOnce()
+      expect(apply).toHaveBeenCalledTimes(1)
+      expect(apply.mock.calls[0]![0].map((operation) => operation.kind)).toEqual(["replace"])
+      expect(root.plainText).toBe("BCAD")
+      expect(root.getTextChildren()).toEqual([children[1], children[2], children[0], generated])
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("adds every text child kind at every position after a pending reorder", async () => {
+    const cases = [
+      { kind: "string", index: 0 },
+      { kind: "string", index: 1 },
+      { kind: "string", index: 3 },
+      { kind: "styled", index: 0 },
+      { kind: "styled", index: 1 },
+      { kind: "styled", index: 3 },
+      { kind: "renderable", index: 0 },
+      { kind: "renderable", index: 1 },
+      { kind: "renderable", index: 3 },
+    ] as const
+
+    for (const scenario of cases) {
+      const root = new TextRenderable(renderer, {})
+      const original = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+      root.children = original
+      renderer.root.add(root)
+      await renderOnce()
+      const ids = original.map((child) => (child as any)._nativeRangeId)
+
+      root.add(original[0]!, root.getChildrenCount())
+      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(0)
+      const value =
+        scenario.kind === "string"
+          ? "D"
+          : scenario.kind === "styled"
+            ? new StyledText([{ __isChunk: true, text: "D", attributes: TextAttributes.BOLD }])
+            : new TextRenderable(renderer, { content: "D" })
+      root.add(value, scenario.index)
+
+      const inserted =
+        scenario.kind === "styled" ? root.getTextChildren().find((child) => child.chunks[0]?.text === "D")! : value
+      const expected: Array<string | TextRenderable> = [original[1]!, original[2]!, original[0]!]
+      expected.splice(scenario.index, 0, inserted as string | TextRenderable)
+      expect(root.children).toEqual(expected)
+      expect(root.getChildrenCount()).toBe(4)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(3)
+      expect((root as any)._rawTextIdentities.map((identity: any) => identity?.value ?? null)).toEqual(
+        expected.map((child) => (typeof child === "string" ? child : null)),
+      )
+      expect(original.every((child) => child.parent === root)).toBe(true)
+      if (inserted instanceof TextRenderable) expect(inserted.parent).toBe(root)
+
+      await renderOnce()
+      expect(root.plainText).toBe(
+        expected.map((child) => (typeof child === "string" ? child : child.plainText)).join(""),
+      )
+      expect(original.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+    }
+  })
+
+  test("applies structural, content, style, and visibility changes after a pending reorder", async () => {
+    const structuralCases = [
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.remove(children[2]!)
+        },
+        expected: "BA",
+      },
+      {
+        mutate(root: TextRenderable) {
+          root.replace(new TextRenderable(renderer, { content: "D" }), 1)
+        },
+        expected: "BDA",
+      },
+      {
+        mutate(root: TextRenderable) {
+          root.clear()
+        },
+        expected: "",
+      },
+      {
+        mutate(root: TextRenderable) {
+          root.content = "D"
+        },
+        expected: "D",
+      },
+    ]
+
+    for (const scenario of structuralCases) {
+      const root = new TextRenderable(renderer, {})
+      const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+      root.children = children
+      renderer.root.add(root)
+      await renderOnce()
+      root.add(children[0]!, root.getChildrenCount())
+      scenario.mutate(root, children)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingChildOrder).toBeNull()
+      await renderOnce()
+      expect(root.plainText).toBe(scenario.expected)
+    }
+
+    const styledRoot = new TextRenderable(renderer, {})
+    const styledChildren = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    styledRoot.children = styledChildren
+    renderer.root.add(styledRoot)
+    await renderOnce()
+    const ids = styledChildren.map((child) => (child as any)._nativeRangeId)
+    styledRoot.add(styledChildren[0]!, styledRoot.getChildrenCount())
+    styledRoot.fg = "#00ff00"
+    styledChildren[1]!.attributes = TextAttributes.BOLD
+    styledChildren[2]!.visible = false
+    expect((styledRoot as any)._pendingNativeMoves).toHaveLength(1)
+    expect((styledRoot as any)._pendingChildOrder).not.toBeNull()
+    await renderOnce()
+    expect(styledRoot.plainText).toBe("BA")
+    expect(styledRoot.getTextChildren()).toEqual([styledChildren[1], styledChildren[2], styledChildren[0]])
+    expect(styledChildren.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+    expect((styledRoot as any)._pendingNativeMoves).toHaveLength(0)
+  })
+
+  test("materializes once per interleaved structural mutation target", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    const inserted = new TextRenderable(renderer, { content: "D" })
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+
+    root.add(children[0]!, 3)
+    root.add(children[1]!, 3)
+    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 3, orderMoves: 2, materializedChildren: 0 })
+    root.add(inserted, 1)
+    expect(root.plainText).toBe("CDAB")
+    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 3, orderMoves: 2, materializedChildren: 3 })
+
+    root.add(children[2]!, root.getChildrenCount())
+    root.remove(children[0]!)
+    expect(root.children).toEqual([inserted, children[1], children[2]])
+    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 7, orderMoves: 3, materializedChildren: 7 })
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    await renderOnce()
+    expect(root.plainText).toBe("DBC")
+    expect(inserted.parent).toBe(root)
+    expect(children[0]!.parent).toBeNull()
+  })
+
+  test("coalesces nested moves during same- and cross-document adoption", async () => {
+    const left = new TextRenderable(renderer, {})
+    const right = new TextRenderable(renderer, { content: "R" })
+    const container = new TextRenderable(renderer, {})
+    const nested = ["X", "Y"].map((content) => new TextRenderable(renderer, { content }))
+    const sibling = new TextRenderable(renderer, { content: "Z" })
+    container.children = nested
+    left.children = [container, sibling]
+    renderer.root.add(left)
+    renderer.root.add(right)
+    await renderOnce()
+
+    container.add(nested[0]!, container.getChildrenCount())
+    expect((left as any)._pendingNativeMoves).toHaveLength(1)
+    right.add(container)
+    expect((left as any)._pendingNativeMoves).toHaveLength(0)
+    expect(container.parent).toBe(right)
+    expect(container.getTextChildren()).toEqual([nested[1], nested[0]])
+    expect(nested.every((child) => child.parent === container)).toBe(true)
+    expect(left.plainText).toBe("Z")
+    expect(right.plainText).toBe("RYX")
+
+    const moved = new TextRenderable(renderer, { content: "A" })
+    const second = new TextRenderable(renderer, { content: "B" })
+    const third = new TextRenderable(renderer, { content: "C" })
+    left.children = [moved, second, third]
+    await renderOnce()
+    left.add(moved, left.getChildrenCount())
+    right.add(moved)
+    expect((left as any)._pendingNativeMoves).toHaveLength(0)
+    expect(left.plainText).toBe("BC")
+    expect(right.plainText).toBe("RYXA")
+    expect(moved.parent).toBe(right)
+  })
+
+  test("rolls back and retries mixed pending-order scheduling and native failures", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    root.add(children[0]!, root.getChildrenCount())
+
+    const range = spyOn(TextBuffer.prototype, "getDocumentRange").mockImplementationOnce(() => {
+      throw new Error("injected mixed preflight failure")
+    })
+    try {
+      expect(() => root.add(children[1]!, root.getChildrenCount())).toThrow("mixed preflight failure")
+      expect((root as any)._pendingChildOrder).not.toBeNull()
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
+      expect(children.every((child) => child.parent === root)).toBe(true)
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+    } finally {
+      range.mockRestore()
+    }
+
+    const request = spyOn(root, "requestRender").mockImplementationOnce(() => {
+      throw new Error("injected mixed scheduling failure")
+    })
+    try {
+      expect(() => root.add(new StyledText([{ __isChunk: true, text: "D" }]))).toThrow("mixed scheduling failure")
+      expect(root.children).toEqual([children[1], children[2], children[0]])
+      expect(children.every((child) => child.parent === root)).toBe(true)
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
+    } finally {
+      request.mockRestore()
+    }
+
+    root.add(new StyledText([{ __isChunk: true, text: "D" }]))
+    const generated = root.getTextChildren()[3]!
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected mixed native failure")
+    })
+    try {
+      expect(() => root.plainText).toThrow("mixed native failure")
+      expect(root.getTextChildren()).toEqual([children[1], children[2], children[0], generated])
+      expect(children.every((child) => child.parent === root)).toBe(true)
+      expect(generated.parent).toBe(root)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(root.plainText).toBe("BCAD")
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
   test("stages repeated reorder work without child-array reconciliation per move", async () => {
     const root = new TextRenderable(renderer, {})
     const children = Array.from({ length: 200 }, (_, index) => new TextRenderable(renderer, { content: `${index} ` }))
@@ -318,6 +579,32 @@ describe("nested TextRenderable", () => {
       requests.mockRestore()
     }
   })
+
+  test("keeps 4k mixed move materialization counters linear", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = Array.from(
+      { length: 4_000 },
+      (_, index) => new TextRenderable(renderer, { content: String.fromCharCode(65 + (index % 26)) }, false),
+    )
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+
+    for (let index = 0; index < 1_000; index++) root.add(children[index]!, root.getChildrenCount())
+    expect((root as any)._structuralMoveMetrics).toEqual({
+      orderNodes: 4_000,
+      orderMoves: 1_000,
+      materializedChildren: 0,
+    })
+    expect((root as any)._pendingNativeMoves).toHaveLength(1_000)
+
+    root.add("!")
+    expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(4_000)
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    expect(root.getChildrenCount()).toBe(4_001)
+    await renderOnce()
+    expect(root.plainText.length).toBe(4_001)
+  }, 15_000)
 
   test("keeps coalesced structural move scaling within a generous near-linear ratio", async () => {
     const measure = async (childCount: number, moveCount: number): Promise<number> => {

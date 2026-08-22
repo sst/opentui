@@ -1,6 +1,6 @@
 import { SyntaxStyle, TextAttributes, type TextRenderable } from "@opentui/core"
 import { afterEach, describe, expect, test } from "bun:test"
-import { createSignal, For } from "solid-js"
+import { batch, createSignal, For } from "solid-js"
 import { testRender } from "../index.js"
 
 describe("Solid nested text", () => {
@@ -65,6 +65,43 @@ describe("Solid nested text", () => {
     setItems(["dynamic", "stable"])
     await setup.renderOnce()
     expect(setup.captureCharFrame()).toContain("ready stable")
+  })
+
+  test("reconciles keyed reorder, insertion, removal, and text updates in one batch", async () => {
+    const initial = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "x" }]
+    const inserted = { id: "d" }
+    const [items, setItems] = createSignal(initial)
+    const [labels, setLabels] = createSignal<Record<string, string>>({ a: "A", b: "B", c: "C", x: "X", d: "D" })
+    const refs = new Map<string, TextRenderable>()
+    let outer: TextRenderable | undefined
+
+    setup = await testRender(
+      () => (
+        <text ref={(value) => (outer = value)}>
+          <For each={items()}>
+            {(item) => <text ref={(value) => refs.set(item.id, value)}>{labels()[item.id]}</text>}
+          </For>
+        </text>
+      ),
+      { width: 30, height: 3 },
+    )
+    await setup.renderOnce()
+    const stable = [refs.get("a")!, refs.get("b")!, refs.get("c")!]
+    const ids = stable.map((child) => (child as any)._nativeRangeId)
+    const removed = refs.get("x")!
+
+    batch(() => {
+      setLabels((current) => ({ ...current, b: "b" }))
+      setItems([initial[1]!, initial[2]!, initial[0]!, inserted])
+    })
+    expect(outer!.getTextChildren()).toEqual([stable[1], stable[2], stable[0], refs.get("d")])
+    expect((outer as any)._pendingNativeMoves).toHaveLength(0)
+    expect(stable.every((child) => child.parent === outer)).toBe(true)
+    expect(removed.parent).toBeNull()
+
+    await setup.renderOnce()
+    expect(outer!.plainText).toBe("bCAD")
+    expect(stable.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
   })
 
   test("resets reactive inline styles instead of retaining stale attributes", async () => {

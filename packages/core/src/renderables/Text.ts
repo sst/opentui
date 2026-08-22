@@ -45,6 +45,8 @@ type PreparedTextDocumentFlush = {
   contentChanged: boolean
 }
 
+type PendingNativeMove = { source: TextRenderable; anchor: TextRenderable; before: boolean }
+
 export function isTextRenderable(obj: any): obj is TextRenderable {
   return obj?.[BrandedTextRenderable] === true
 }
@@ -278,7 +280,7 @@ export class TextRenderable extends TextBufferRenderable {
   private readonly _pendingDocumentRoots = new Set<TextRenderable>()
   private readonly _pendingStyleRoots = new Set<TextRenderable>()
   private readonly _pendingRemovedRangeIds = new Set<bigint>()
-  private _pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+  private _pendingNativeMoves: PendingNativeMove[] = []
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
@@ -399,7 +401,7 @@ export class TextRenderable extends TextBufferRenderable {
         pendingRemovedRangeIds: Set<bigint>
         pendingDocumentRoots: Set<TextRenderable>
         pendingStyleRoots: Set<TextRenderable>
-        pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }>
+        pendingNativeMoves: PendingNativeMove[]
       }
     >()
     const snapshotParent = (parent: TextRenderable): void => {
@@ -418,6 +420,7 @@ export class TextRenderable extends TextBufferRenderable {
       })
     }
     snapshotParent(this)
+    if (documentOwnerBefore && documentOwnerBefore !== this) snapshotParent(documentOwnerBefore)
 
     const childSnapshots = new Map<
       TextRenderable,
@@ -432,7 +435,11 @@ export class TextRenderable extends TextBufferRenderable {
     const snapshotChild = (child: TextRenderable): void => {
       if (childSnapshots.has(child)) return
       const parent = child.parent
-      if (isTextRenderable(parent)) snapshotParent(parent)
+      if (isTextRenderable(parent)) {
+        snapshotParent(parent)
+        const owner = parent.getDocumentOwner()
+        if (owner) snapshotParent(owner)
+      }
       childSnapshots.set(child, {
         parent,
         context: child.ctx,
@@ -496,10 +503,12 @@ export class TextRenderable extends TextBufferRenderable {
 
     textDocumentMutationDepth += 1
     try {
+      documentOwnerBefore?.coalescePendingNativeMovesFor(this)
       for (const child of seenChildren) {
         const parent = child.parent
         const sourceOwner = child.getDocumentOwner()
         if (isTextRenderable(parent) && parent !== this) {
+          sourceOwner?.coalescePendingNativeMovesFor(parent)
           const index = parent._children.indexOf(child)
           if (index !== -1) {
             parent._children.splice(index, 1)
@@ -911,15 +920,18 @@ export class TextRenderable extends TextBufferRenderable {
 
     if (isStyledText(obj)) {
       const children = this.styledTextToChildren(obj)
-      const insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
+      const currentChildren = this.materializeChildOrder()
+      const insertIndex = Math.max(0, Math.min(index ?? currentChildren.length, currentChildren.length))
       const firstIndex = insertIndex
       try {
-        const nextChildren = [...this._children]
+        const nextChildren = [...currentChildren]
         nextChildren.splice(insertIndex, 0, ...children)
         this.children = nextChildren
         for (const child of children) this._ownedChildren.add(child)
       } catch (error) {
-        const committed = children.every((child, childIndex) => this._children[insertIndex + childIndex] === child)
+        const committed = children.every(
+          (child, childIndex) => this.materializeChildOrder()[insertIndex + childIndex] === child,
+        )
         if (committed) {
           for (const child of children) this._ownedChildren.add(child)
         } else {
@@ -973,6 +985,7 @@ export class TextRenderable extends TextBufferRenderable {
   public remove(child: BaseRenderable): void {
     if (!isTextRenderable(child)) throw new Error("remove expects a TextNodeRenderable child object")
 
+    const hadPendingChildOrder = this._pendingChildOrder !== null
     this.materializeChildOrder()
     const childIndex = this._children.indexOf(child)
     if (childIndex === -1) {
@@ -982,18 +995,31 @@ export class TextRenderable extends TextBufferRenderable {
       return
     }
 
-    this._children.splice(childIndex, 1)
-    this._rawTextIdentities.splice(childIndex, 1)
-    this.detachTextChild(child, this._ownedChildren.has(child))
-    this._manualStyledText = null
-    this.invalidateTextDocument()
+    if (!hadPendingChildOrder) {
+      this.getDocumentOwner()?.coalescePendingNativeMovesFor(child)
+      this._children.splice(childIndex, 1)
+      this._rawTextIdentities.splice(childIndex, 1)
+      this.detachTextChild(child, this._ownedChildren.has(child))
+      this._manualStyledText = null
+      this.invalidateTextDocument()
+      return
+    }
+    const nextChildren = [...this._children]
+    nextChildren.splice(childIndex, 1)
+    this.children = nextChildren
   }
 
   public clear(): void {
+    const hadPendingChildOrder = this._pendingChildOrder !== null
     this.materializeChildOrder()
-    this.clearChildren(false)
-    this._manualStyledText = null
-    this.invalidateTextDocument()
+    if (!hadPendingChildOrder) {
+      this.getDocumentOwner()?.coalescePendingNativeMovesFor(this)
+      this.clearChildren(false)
+      this._manualStyledText = null
+      this.invalidateTextDocument()
+      return
+    }
+    this.children = []
   }
 
   public mergeStyles(parentStyle: TextStyle): TextStyle {
@@ -1133,6 +1159,7 @@ export class TextRenderable extends TextBufferRenderable {
   public destroy(): void {
     if (this.isDestroyed) return
     const children = this.getTextChildren()
+    if (this._ctx !== detachedTextContext) this.getDocumentOwner()?.coalescePendingNativeMovesFor(this)
     this._children.splice(0)
     this._rawTextIdentities.splice(0)
     let destroyError: unknown
@@ -1255,6 +1282,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private insertTextChild(child: string | TextRenderable, index: number): number {
+    this.materializeChildOrder()
     let insertIndex = Math.max(0, Math.min(index, this._children.length))
     if (isTextRenderable(child)) {
       this.assertCanInsertTextChild(child)
@@ -1488,8 +1516,9 @@ export class TextRenderable extends TextBufferRenderable {
     })
     assignments.push((id) => (node._nativeRangeId = id))
 
-    for (let index = 0; index < node._children.length; index++) {
-      const child = node._children[index]!
+    const children = node.materializeChildOrder()
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index]!
       if (typeof child === "string") {
         let identity = node._rawTextIdentities[index]
         if (!identity) {
@@ -1629,11 +1658,8 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
   }
 
-  private planNativeChildMoves(
-    previous: TextRenderable[],
-    next: TextRenderable[],
-  ): Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> {
-    const forward: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+  private planNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): PendingNativeMove[] {
+    const forward: PendingNativeMove[] = []
     const forwardOrder = new PendingChildOrder(previous)
     for (let index = 0; index < next.length; index++) {
       const desired = next[index]!
@@ -1644,7 +1670,7 @@ export class TextRenderable extends TextBufferRenderable {
       forwardOrder.move(desired, index)
     }
 
-    const reverse: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+    const reverse: PendingNativeMove[] = []
     const reverseOrder = new PendingChildOrder(previous)
     for (let index = next.length - 1; index >= 0; index--) {
       const desired = next[index]!
@@ -1662,6 +1688,16 @@ export class TextRenderable extends TextBufferRenderable {
     const sourceRange = this.textBuffer.getDocumentRange(source._nativeRangeId)
     const anchorRange = this.textBuffer.getDocumentRange(anchor._nativeRangeId)
     return !!sourceRange && sourceRange.startByte !== sourceRange.endByte && !!anchorRange
+  }
+
+  private coalescePendingNativeMovesFor(root: TextRenderable): void {
+    this._pendingNativeMoves = this._pendingNativeMoves.filter(
+      (move) =>
+        move.source !== root &&
+        !move.source.isTextDescendantOf(root) &&
+        move.anchor !== root &&
+        !move.anchor.isTextDescendantOf(root),
+    )
   }
 
   protected override emitLineInfoChange(): void {
@@ -1738,6 +1774,7 @@ export class TextRenderable extends TextBufferRenderable {
       return
     }
     parent.materializeChildOrder()
+    parent.getDocumentOwner()?.coalescePendingNativeMovesFor(parent)
     const index = parent._children.indexOf(child)
     if (index !== -1) {
       parent._children.splice(index, 1)

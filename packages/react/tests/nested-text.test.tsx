@@ -64,6 +64,49 @@ describe("React nested text", () => {
     expect(setup.captureCharFrame()).toContain("ready stable")
   })
 
+  test("reconciles keyed reorder, insertion, removal, and text updates in one commit", async () => {
+    const initial = [
+      { id: "a", text: "A" },
+      { id: "b", text: "B" },
+      { id: "c", text: "C" },
+      { id: "x", text: "X" },
+    ]
+    const inserted = { id: "d", text: "D" }
+    const refs = new Map<string, TextRenderable>()
+    let outer: TextRenderable | null = null
+    let update!: () => void
+
+    function App() {
+      const [items, setItems] = useState(initial)
+      update = () => setItems([{ ...initial[1]!, text: "b" }, initial[2]!, initial[0]!, inserted])
+      return (
+        <text ref={(value) => (outer = value)}>
+          {items.map((item) => (
+            <text key={item.id} ref={(value) => value && refs.set(item.id, value)}>
+              {item.text}
+            </text>
+          ))}
+        </text>
+      )
+    }
+
+    setup = await testRender(<App />, { width: 30, height: 3 })
+    await setup.renderOnce()
+    const stable = [refs.get("a")!, refs.get("b")!, refs.get("c")!]
+    const ids = stable.map((child) => (child as any)._nativeRangeId)
+    const removed = refs.get("x")!
+
+    act(() => update())
+    expect(outer!.getTextChildren()).toEqual([stable[1], stable[2], stable[0], refs.get("d")])
+    expect((outer as any)._pendingNativeMoves).toHaveLength(0)
+    expect(stable.every((child) => child.parent === outer)).toBe(true)
+    expect(removed.parent).toBeNull()
+
+    await setup.renderOnce()
+    expect(outer!.plainText).toBe("bCAD")
+    expect(stable.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+  })
+
   test("keeps nested refs functional without giving them a second document backend", async () => {
     let outer: TextRenderable | null = null
     let nested: TextRenderable | null = null
