@@ -529,7 +529,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
-        selection.behavior,
+        localSelection.behavior,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -541,7 +541,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
-        selection.behavior,
+        localSelection.behavior,
       )
     }
 

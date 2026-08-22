@@ -423,7 +423,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
-        selection.behavior,
+        localSelection.behavior,
       )
     } else {
       changed = this.textBufferView.updateLocalSelection(
@@ -433,7 +433,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
-        selection.behavior,
+        localSelection.behavior,
       )
     }
 
