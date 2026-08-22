@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { ManualClock } from "../../testing/manual-clock.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { RGBA } from "../../lib/RGBA.js"
 import { OptimizedBuffer } from "../../buffer.js"
@@ -21,6 +22,7 @@ describe("Textarea - Selection Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      clock: new ManualClock(),
     }))
   })
 
