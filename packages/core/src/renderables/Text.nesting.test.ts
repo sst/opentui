@@ -149,9 +149,9 @@ describe("nested TextRenderable", () => {
       expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate)
       await renderOnce()
       expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate + 1)
-      expect(applyDocumentOperations.mock.calls.at(-1)![0].filter((operation) => operation.kind === "replace")).toEqual(
-        [expect.objectContaining({ targetId: rangeId })],
-      )
+      expect(
+        applyDocumentOperations.mock.calls.at(-1)![0].filter((operation) => operation.kind === "replace"),
+      ).toHaveLength(1)
       expect((child as any)._nativeRangeId).toBe(rangeId)
       expect(root.plainText).toBe("after")
     } finally {

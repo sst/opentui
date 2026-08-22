@@ -3431,7 +3431,7 @@ fn validExternalDocumentOperation(operation: ExternalDocumentOperation) bool {
     );
     const kind: text_buffer.DocumentOperationKind = @enumFromInt(operation.kind);
     return switch (kind) {
-        .replace => operation.target_mode <= 2 and default_style and
+        .replace => operation.target_mode <= 2 and operation.before == 0 and default_style and
             (operation.use_target != 0 or (operation.target_id == 0 and operation.anchor_id == 0 and operation.target_mode == 0)) and
             (operation.anchor_id == 0 or (operation.use_target != 0 and operation.target_mode == 0)) and
             (operation.use_target == 0 or (operation.start_byte == 0 and operation.end_byte == 0)),
@@ -4447,10 +4447,7 @@ test "document descriptor tags reject every forbidden field" {
     replace.start_byte = 1;
     replace.end_byte = 2;
     try std.testing.expect(validExternalDocumentOperation(replace));
-    var preserving_replace = replace;
-    preserving_replace.before = 1;
-    try std.testing.expect(validExternalDocumentOperation(preserving_replace));
-    inline for (.{ "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+    inline for (.{ "before", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
         var invalid = replace;
         @field(invalid, field) = 1;
         try std.testing.expect(!validExternalDocumentOperation(invalid));
