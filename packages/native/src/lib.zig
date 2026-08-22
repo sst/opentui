@@ -3467,6 +3467,43 @@ test "text document FFI rejects null pointer length and output combinations" {
     try std.testing.expect(textBufferGetLineHighlightsPtr(handle, 0, null) == null);
     textBufferFreeLineHighlights(null, 1);
     textBufferSetStyledText(handle, null, 1);
+
+    var output: ExternalTextSpliceResult = undefined;
+    const invalid_chunks = [_]ExternalStyledChunk32{
+        .{ .text_ptr = null, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0, .link_ptr = null, .link_len = 0 },
+        .{ .text_ptr = "x".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0, .link_ptr = null, .link_len = 1 },
+    };
+    for (invalid_chunks) |chunk| {
+        var chunks = [_]ExternalStyledChunk32{chunk};
+        try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
+            handle,
+            0,
+            0,
+            &chunks,
+            1,
+            1,
+            &output,
+        ));
+        textBufferSetStyledText(handle, &chunks, 1);
+    }
+
+    const invalid_style: ExternalAnnotationStyle = .{
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .link_ptr = null,
+        .link_len = 1,
+    };
+    var id: u64 = 0;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferCreateStyleRange(
+        handle,
+        1,
+        0,
+        0,
+        &invalid_style,
+        1,
+        &id,
+    ));
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
