@@ -2182,11 +2182,15 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn acquireInternalStyle(self: *Self, chunk: StyledChunk) TextBufferError!u32 {
+        return self.acquireInternalStyleFor(chunk, self.syntax_style);
+    }
+
+    fn acquireInternalStyleFor(self: *Self, chunk: StyledChunk, syntax_style: ?*const SyntaxStyle) TextBufferError!u32 {
         switch (chunk.style_kind) {
             .registered => {
                 if (chunk.style_id == 0 or chunk.style_id >= internal_style_base or chunk.link_len != 0 or chunk.link_ptr != null) return TextBufferError.InvalidDimensions;
                 const source = chunk.syntax_style orelse return TextBufferError.InvalidDimensions;
-                const attached = self.syntax_style orelse return TextBufferError.InvalidDimensions;
+                const attached = syntax_style orelse return TextBufferError.InvalidDimensions;
                 if (source != attached or !attached.isRegisteredStyleId(chunk.style_id)) return TextBufferError.InvalidDimensions;
                 return chunk.style_id;
             },
@@ -2419,6 +2423,10 @@ pub const UnifiedTextBuffer = struct {
         content_changed: bool,
         annotations_changed: bool,
         initial_style_slot_len: usize,
+        previous_syntax_style: ?*const SyntaxStyle,
+        next_syntax_style: ?*const SyntaxStyle,
+        syntax_listener_prepared: bool,
+        prepared_link_releases: usize,
         committed: bool = false,
 
         pub fn ids(self: *const PreparedDocumentOperations) []const u64 {
@@ -2428,6 +2436,13 @@ pub const UnifiedTextBuffer = struct {
         pub fn commit(self: *PreparedDocumentOperations, out_ids: []u64) void {
             std.debug.assert(!self.committed and out_ids.len == self.created_ids.len);
             const owner = self.owner;
+            if (self.previous_syntax_style != self.next_syntax_style) {
+                if (self.previous_syntax_style) |previous| {
+                    owner.invalidateResolvedStyles(previous);
+                    (@constCast(previous)).offDestroy(@ptrCast(owner), onSyntaxStyleDestroyed);
+                }
+                owner.syntax_style = self.next_syntax_style;
+            }
             if (self.content_changed) {
                 if (self.staged_storage) |storage| {
                     if (owner.splice_mem_id) |id| {
@@ -2464,6 +2479,9 @@ pub const UnifiedTextBuffer = struct {
         pub fn deinit(self: *PreparedDocumentOperations) void {
             const owner = self.owner;
             if (!self.committed) {
+                if (self.syntax_listener_prepared) {
+                    (@constCast(self.next_syntax_style.?)).offDestroy(@ptrCast(owner), onSyntaxStyleDestroyed);
+                }
                 for (self.acquired_styles.items) |style_id| owner.releaseInternalStyle(style_id);
                 owner.internal_style_slots.shrinkRetainingCapacity(self.initial_style_slot_len);
                 self.annotations.deinit();
@@ -2488,6 +2506,22 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!PreparedDocumentOperations {
         const initial_style_slot_len = self.internal_style_slots.items.len;
         errdefer self.internal_style_slots.shrinkRetainingCapacity(initial_style_slot_len);
+        var next_syntax_style = self.syntax_style;
+        for (operations) |operation| {
+            const styles = [_]StyledChunk{operation.style};
+            for (styles) |style_value| if (style_value.style_kind == .registered) {
+                if (next_syntax_style != self.syntax_style and next_syntax_style != style_value.syntax_style) return TextBufferError.InvalidDimensions;
+                next_syntax_style = style_value.syntax_style;
+            };
+            for (operation.chunks) |chunk| if (chunk.style_kind == .registered) {
+                if (next_syntax_style != self.syntax_style and next_syntax_style != chunk.syntax_style) return TextBufferError.InvalidDimensions;
+                next_syntax_style = chunk.syntax_style;
+            };
+            for (operation.ranges) |range| if (range.style.style_kind == .registered) {
+                if (next_syntax_style != self.syntax_style and next_syntax_style != range.style.syntax_style) return TextBufferError.InvalidDimensions;
+                next_syntax_style = range.style.syntax_style;
+            };
+        }
         var output_count: usize = 0;
         var replacement_bytes: usize = 0;
         var content_operation_count: usize = 0;
@@ -2703,7 +2737,7 @@ pub const UnifiedTextBuffer = struct {
                             continue;
                         }
                         if (range.start_chunk > range.end_chunk or range.end_chunk > operation.chunks.len) return TextBufferError.InvalidDimensions;
-                        const style_id = if (range.styled) try self.acquireInternalStyle(range.style) else 0;
+                        const style_id = if (range.styled) try self.acquireInternalStyleFor(range.style, next_syntax_style) else 0;
                         acquired_styles.appendAssumeCapacity(style_id);
                         const input: TextAnnotations.RangeInput = .{
                             .start_byte = std.math.add(u32, start, boundaries[range.start_chunk]) catch return TextBufferError.InvalidDimensions,
@@ -2754,7 +2788,7 @@ pub const UnifiedTextBuffer = struct {
                 .update_style => {
                     const existing = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
                     if (existing.payload.namespace != operation.owner or existing.payload.kind_flags & document_range_kind == 0) return TextBufferError.InvalidIndex;
-                    const style_id = try self.acquireInternalStyle(operation.style);
+                    const style_id = try self.acquireInternalStyleFor(operation.style, next_syntax_style);
                     acquired_styles.appendAssumeCapacity(style_id);
                     if (!(candidate_annotations.updateStyle(operation.target_id, style_id) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
                     if (existing.payload.style_id == style_id) {
@@ -2859,7 +2893,25 @@ pub const UnifiedTextBuffer = struct {
         for (acquired_styles.items[0..acquisition_used.len], acquisition_used) |style_id, used| {
             if (!used) try released_styles.append(self.global_allocator, style_id);
         }
-        self.link_pool.prepareReleases(released_styles.items.len) catch return TextBufferError.OutOfMemory;
+        var style_switch_releases: usize = 0;
+        if (next_syntax_style != self.syntax_style) {
+            var final_annotations = candidate_annotations.iterator();
+            while (final_annotations.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+                if (annotation.payload.style_id == 0 or annotation.payload.style_id >= internal_style_base) continue;
+                if (self.annotations.get(annotation.id())) |current| {
+                    if (current.payload.style_id == annotation.payload.style_id) return TextBufferError.InvalidDimensions;
+                }
+            }
+            for (self.internal_style_slots.items) |slot| style_switch_releases += @intFromBool(slot.resolved_syntax_style != null and slot.link_id != 0);
+        }
+        const prepared_link_releases = std.math.add(usize, released_styles.items.len, style_switch_releases) catch return TextBufferError.InvalidDimensions;
+        self.link_pool.prepareReleases(prepared_link_releases) catch return TextBufferError.OutOfMemory;
+        var syntax_listener_prepared = false;
+        errdefer if (syntax_listener_prepared) (@constCast(next_syntax_style.?)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
+        if (next_syntax_style != self.syntax_style and next_syntax_style != null) {
+            (@constCast(next_syntax_style.?)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch return TextBufferError.OutOfMemory;
+            syntax_listener_prepared = true;
+        }
 
         // Transfer every prepared resource to the returned candidate. Commit is
         // now infallible; deinit releases the same ownership on failure.
@@ -2882,6 +2934,10 @@ pub const UnifiedTextBuffer = struct {
             .content_changed = content_changed,
             .annotations_changed = annotations_changed,
             .initial_style_slot_len = initial_style_slot_len,
+            .previous_syntax_style = self.syntax_style,
+            .next_syntax_style = next_syntax_style,
+            .syntax_listener_prepared = syntax_listener_prepared,
+            .prepared_link_releases = prepared_link_releases,
         };
         acquired_styles = .empty;
         released_styles = .empty;
@@ -3265,8 +3321,8 @@ pub fn applyTwoDocumentOperations(
     if (first.link_pool == second.link_pool) {
         const release_count = std.math.add(
             usize,
-            first_prepared.released_styles.items.len,
-            second_prepared.released_styles.items.len,
+            first_prepared.prepared_link_releases,
+            second_prepared.prepared_link_releases,
         ) catch return TextBufferError.InvalidDimensions;
         first.link_pool.prepareReleases(release_count) catch return TextBufferError.OutOfMemory;
     }

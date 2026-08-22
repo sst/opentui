@@ -1104,7 +1104,6 @@ export class TextRenderable extends TextBufferRenderable {
     this.collectRegisteredSyntaxStyles(syntaxStyles)
     if (syntaxStyles.size > 1)
       throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
-    this.textBuffer.setSyntaxStyle(syntaxStyles.values().next().value ?? this._textBufferSyntaxStyle)
     return {
       operations,
       assignments,

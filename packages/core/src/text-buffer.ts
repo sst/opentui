@@ -40,13 +40,27 @@ export class TextBuffer {
 
   private withStyleSource<T extends DocumentStyle>(style: T): T {
     if (style.styleId === undefined) return style
-    const syntaxStyle = this._syntaxStyle
-    if (!syntaxStyle) throw new Error("A registered style requires an attached SyntaxStyle")
     const declaredSource = (style as T & { styleSource?: SyntaxStyle }).styleSource
-    if (declaredSource && declaredSource !== syntaxStyle) {
-      throw new Error("Registered style belongs to a different SyntaxStyle")
-    }
+    const syntaxStyle = declaredSource ?? this._syntaxStyle
+    if (!syntaxStyle) throw new Error("A registered style requires an attached SyntaxStyle")
     return { ...style, syntaxStyle: syntaxStyle.ptr }
+  }
+
+  private documentStyleSource(operations: DocumentOperation[]): SyntaxStyle | undefined {
+    let source: SyntaxStyle | undefined
+    const add = (style: DocumentStyle): void => {
+      if (style.styleId === undefined) return
+      const candidate = (style as DocumentStyle & { styleSource?: SyntaxStyle }).styleSource ?? this._syntaxStyle
+      if (!candidate) throw new Error("A registered style requires a live SyntaxStyle")
+      if (source && source !== candidate) throw new Error("A document transaction cannot mix SyntaxStyle instances")
+      source = candidate
+    }
+    for (const operation of operations) {
+      add(operation)
+      for (const chunk of operation.chunks ?? []) add(chunk)
+      for (const range of operation.ranges ?? []) add(range)
+    }
+    return source
   }
 
   constructor(lib: RenderLib, ptr: TextBufferHandle) {
@@ -191,6 +205,7 @@ export class TextBuffer {
 
   public applyDocumentOperations(operations: DocumentOperation[]): bigint[] {
     this.guard()
+    const styleSource = this.documentStyleSource(operations)
     const ids = this.lib.textBufferApplyDocumentOperations(
       this.bufferPtr,
       operations.map((operation) => ({
@@ -202,6 +217,7 @@ export class TextBuffer {
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
+    if (styleSource) this._syntaxStyle = styleSource
     return ids
   }
 
@@ -213,6 +229,8 @@ export class TextBuffer {
     this.guard()
     other.guard()
     if (other === this) throw new Error("Two-document operations require distinct TextBuffers")
+    const styleSource = this.documentStyleSource(operations)
+    const otherStyleSource = other.documentStyleSource(otherOperations)
     const withSources = (buffer: TextBuffer, values: DocumentOperation[]) =>
       values.map((operation) => ({
         ...buffer.withStyleSource(operation),
@@ -231,6 +249,8 @@ export class TextBuffer {
     other._length = this.lib.textBufferGetLength(other.bufferPtr)
     other._byteSize = this.lib.textBufferGetByteSize(other.bufferPtr)
     other._lineInfo = undefined
+    if (styleSource) this._syntaxStyle = styleSource
+    if (otherStyleSource) other._syntaxStyle = otherStyleSource
     return { ids: result.firstIds, otherIds: result.secondIds }
   }
 
