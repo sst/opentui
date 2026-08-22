@@ -341,6 +341,7 @@ export class TextRenderable extends TextBufferRenderable {
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
+  private _manualRangesUnchanged = false
   private _manualStyledSyntaxStyle: SyntaxStyle | null = null
   private _lastCommittedLineInfoFrame: number = -1
   private _layoutPromotionPending: boolean = false
@@ -1338,6 +1339,21 @@ export class TextRenderable extends TextBufferRenderable {
       this.replaceManualStyledText(content, requestRender)
       return
     }
+    if (
+      content !== "" &&
+      this._manualStyledText === null &&
+      this._pendingChildOrder === null &&
+      this._children.length === 1 &&
+      typeof this._children[0] === "string"
+    ) {
+      this._children[0] = content
+      this._textDocumentPending = true
+      if (requestRender) {
+        this.invalidateTextDocument()
+        if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
+      }
+      return
+    }
     const nextChildren: (string | TextRenderable)[] = content === "" ? [] : [content]
     try {
       this.children = nextChildren
@@ -1363,6 +1379,10 @@ export class TextRenderable extends TextBufferRenderable {
     const styles = new Map<string | number, TextStyle>()
     const previousLeaves = this._manualStyledText === null ? null : this._leaves
     const nextLeaves = new Array<TextLeaf>(content.chunks.length)
+    let rangesUnchanged =
+      previousLeaves !== null &&
+      previousLeaves.length === content.chunks.length &&
+      previousLeaves.every((leaf) => leaf?.rangeId !== null)
     let syntaxStyle: SyntaxStyle | null = null
     for (const chunk of content.chunks) {
       if ((chunk.styleId === undefined) !== (chunk.styleSource === undefined)) {
@@ -1386,6 +1406,12 @@ export class TextRenderable extends TextBufferRenderable {
       const style = this.internStyledLeafStyle(chunk, styles)
       const leaf = previousLeaves?.[index]
       if (leaf) {
+        const sameTextExtent =
+          leaf.text === chunk.text ||
+          (leaf.text.length === chunk.text.length &&
+            /^[\x20-\x7e]*$/.test(leaf.text) &&
+            /^[\x20-\x7e]*$/.test(chunk.text))
+        rangesUnchanged &&= sameTextExtent && leaf.style === style && !hasTextStyle(style)
         leaf.text = chunk.text
         leaf.style = style
         nextLeaves[index] = leaf
@@ -1408,6 +1434,7 @@ export class TextRenderable extends TextBufferRenderable {
       if (hadPublicContent) this.children = []
       this._leaves = nextLeaves
       this._manualStyledText = content
+      this._manualRangesUnchanged = rangesUnchanged
       this._manualStyledSyntaxStyle = syntaxStyle
       this._textDocumentPending = true
       if (requestRender) {
@@ -1531,8 +1558,9 @@ export class TextRenderable extends TextBufferRenderable {
   private flushTextDocument(): void {
     if (!this.hasTextDocumentState || isTextRenderable(this.parent)) return
     const prepared = this.prepareTextDocumentFlush()
+    const previousLineWidths = prepared.contentChanged ? this.captureTextLineWidths() : null
     const ids = this.textBuffer.applyDocumentOperations(prepared.operations)
-    this.commitPreparedTextDocumentFlush(prepared, ids)
+    this.commitPreparedTextDocumentFlush(prepared, ids, this.textLayoutChanged(previousLineWidths))
   }
 
   private prepareTextDocumentFlush(): PreparedTextDocumentFlush {
@@ -1642,7 +1670,24 @@ export class TextRenderable extends TextBufferRenderable {
     }
   }
 
-  private commitPreparedTextDocumentFlush(prepared: PreparedTextDocumentFlush, ids: bigint[]): void {
+  private textLayoutChanged(previousLineWidths: number[] | null): boolean {
+    if (previousLineWidths === null) return false
+    const nextLineWidths = super.lineInfo.lineWidthCols
+    return (
+      previousLineWidths.length !== nextLineWidths.length ||
+      previousLineWidths.some((width, index) => width !== nextLineWidths[index])
+    )
+  }
+
+  private captureTextLineWidths(): number[] {
+    return [...super.lineInfo.lineWidthCols]
+  }
+
+  private commitPreparedTextDocumentFlush(
+    prepared: PreparedTextDocumentFlush,
+    ids: bigint[],
+    layoutChanged: boolean,
+  ): void {
     const { assignments, contentChanged } = prepared
     ids.forEach((id, index) => assignments[index]!(id))
     this._pendingDocumentRoots.clear()
@@ -1655,8 +1700,10 @@ export class TextRenderable extends TextBufferRenderable {
     this._textDocumentPending = false
     if (contentChanged) {
       this.refreshLocalSelection()
-      this.yogaNode.markDirty()
-      textRenderableDebugMetrics.yogaDirties += 1
+      if (layoutChanged) {
+        this.yogaNode.markDirty()
+        textRenderableDebugMetrics.yogaDirties += 1
+      }
       this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
       this.emit("line-info-change")
     }
@@ -1669,13 +1716,15 @@ export class TextRenderable extends TextBufferRenderable {
     }
     const firstPrepared = first.prepareTextDocumentFlush()
     const secondPrepared = second.prepareTextDocumentFlush()
+    const firstLineWidths = firstPrepared.contentChanged ? first.captureTextLineWidths() : null
+    const secondLineWidths = secondPrepared.contentChanged ? second.captureTextLineWidths() : null
     const result = first.textBuffer.applyTwoDocumentOperations(
       second.textBuffer,
       firstPrepared.operations,
       secondPrepared.operations,
     )
-    first.commitPreparedTextDocumentFlush(firstPrepared, result.ids)
-    second.commitPreparedTextDocumentFlush(secondPrepared, result.otherIds)
+    first.commitPreparedTextDocumentFlush(firstPrepared, result.ids, first.textLayoutChanged(firstLineWidths))
+    second.commitPreparedTextDocumentFlush(secondPrepared, result.otherIds, second.textLayoutChanged(secondLineWidths))
     deferredDocumentOwners.delete(first)
     deferredDocumentOwners.delete(second)
   }
@@ -1685,6 +1734,60 @@ export class TextRenderable extends TextBufferRenderable {
     operations: DocumentOperation[],
     batchAssignments: Array<(id: bigint) => void>,
   ): void {
+    const stablePlainLeaves =
+      this._pendingNativeMoves.length === 0 &&
+      roots.every((root) => {
+        if (
+          root._nativeRangeId === null ||
+          root._manualStyledText !== null ||
+          this._pendingStyleRoots.has(root) ||
+          root._pendingChildOrder !== null ||
+          root._children.length !== 1 ||
+          typeof root._children[0] !== "string" ||
+          !root.ancestorsVisible() ||
+          !/^[\x20-\x7e]+$/.test(root._children[0])
+        ) {
+          return false
+        }
+        const range = this.textBuffer.getDocumentRange(root._nativeRangeId)
+        return range !== null && range.endByte - range.startByte === root._children[0].length
+      })
+    if (stablePlainLeaves) {
+      operations.push({
+        kind: "replace",
+        targetId: roots[0]!._nativeRangeId!,
+        anchorId: roots.length > 1 ? roots.at(-1)!._nativeRangeId! : undefined,
+        targetMode: "replace",
+        startByte: 0,
+        endByte: 0,
+        owner: this._textDocumentOwner,
+        // The equal-extent proof above lets native retain every existing range.
+        before: true,
+        chunks: roots.map((root) => ({ text: root._children[0] as string })),
+        ranges: [],
+      })
+      return
+    }
+    if (
+      roots.length === 1 &&
+      roots[0]!._manualStyledText !== null &&
+      roots[0]!._manualRangesUnchanged &&
+      roots[0]!._nativeRangeId !== null
+    ) {
+      operations.push({
+        kind: "replace",
+        targetId: roots[0]!._nativeRangeId!,
+        targetMode: "replace",
+        startByte: 0,
+        endByte: 0,
+        owner: this._textDocumentOwner,
+        // Private leaf IDs and payloads are already canonical and unchanged.
+        before: true,
+        chunks: roots[0]!._leaves.map((leaf) => ({ text: leaf!.text })),
+        ranges: [],
+      })
+      return
+    }
     const chunks: Array<{ text: string }> = []
     const ranges: DocumentRangeInput[] = []
     const assignments: Array<(id: bigint) => void> = []
