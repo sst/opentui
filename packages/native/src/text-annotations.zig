@@ -71,9 +71,9 @@ pub const TextAnnotations = struct {
         committed: bool = false,
 
         pub fn deinit(self: *PreparedSplice) void {
-            self.owner.allocator.free(self.affected_storage);
-            self.owner.allocator.free(self.covered_storage);
-            self.owner.allocator.free(self.delete_storage);
+            if (self.affected_storage.len != 0) self.owner.allocator.free(self.affected_storage);
+            if (self.covered_storage.len != 0) self.owner.allocator.free(self.covered_storage);
+            if (self.delete_storage.len != 0) self.owner.allocator.free(self.delete_storage);
             self.* = undefined;
         }
     };
@@ -104,6 +104,7 @@ pub const TextAnnotations = struct {
     // buffer above both 256 IDs and four times the remaining count is released.
     affected_scratch: std.ArrayList(u64) = .empty,
     covered_scratch: std.ArrayList(u64) = .empty,
+    non_retaining_policy_count: usize = 0,
     next_sequence: u64 = 1,
     generation: u64 = 0,
     active_visits: usize = 0,
@@ -138,6 +139,7 @@ pub const TextAnnotations = struct {
             .allocator = allocator,
             .tree = tree,
             .payloads = payloads,
+            .non_retaining_policy_count = self.non_retaining_policy_count,
             .next_sequence = self.next_sequence,
             .generation = self.generation,
         };
@@ -169,6 +171,7 @@ pub const TextAnnotations = struct {
         try self.prepareAdd();
         const id = try self.tree.addRange(input);
         self.payloads.putAssumeCapacity(id, payloadFromInput(payload, self.next_sequence));
+        self.non_retaining_policy_count += @intFromBool(payload.splice_policy != .retain);
         self.finishAdd();
         return id;
     }
@@ -250,6 +253,7 @@ pub const TextAnnotations = struct {
         try self.tree.commitPreparedRanges(&prepared.tree_ranges);
         for (prepared.payloads, 0..) |payload, index| {
             self.payloads.putAssumeCapacity(prepared.idAt(index), payload);
+            self.non_retaining_policy_count += @intFromBool(payload.splice_policy != .retain);
         }
         self.next_sequence = prepared.next_sequence;
         if (prepared.payloads.len != 0) self.finishMutation();
@@ -260,6 +264,7 @@ pub const TextAnnotations = struct {
         try self.prepareAdd();
         const id = try self.tree.addPoint(input);
         self.payloads.putAssumeCapacity(id, payloadFromInput(payload, self.next_sequence));
+        self.non_retaining_policy_count += @intFromBool(payload.splice_policy != .retain);
         self.finishAdd();
         return id;
     }
@@ -294,6 +299,8 @@ pub const TextAnnotations = struct {
         try self.checkCanMutate(0);
         const replacement = payloadFromInput(input, payload.sequence);
         if (std.meta.eql(payload.*, replacement)) return true;
+        self.non_retaining_policy_count -= @intFromBool(payload.splice_policy != .retain);
+        self.non_retaining_policy_count += @intFromBool(replacement.splice_policy != .retain);
         payload.* = replacement;
         self.finishMutation();
         return true;
@@ -309,9 +316,10 @@ pub const TextAnnotations = struct {
     }
 
     pub fn remove(self: *Self, id: u64) !bool {
-        if (!self.payloads.contains(id)) return false;
+        const payload = self.payloads.get(id) orelse return false;
         try self.checkCanMutate(1);
         if (!try self.tree.remove(id)) return false;
+        self.non_retaining_policy_count -= @intFromBool(payload.splice_policy != .retain);
         _ = self.payloads.remove(id);
         self.finishMutation();
         return true;
@@ -336,8 +344,10 @@ pub const TextAnnotations = struct {
         }
 
         for (self.affected_scratch.items) |id| {
+            const payload = self.payloads.get(id).?;
             const removed = try self.tree.remove(id);
             std.debug.assert(removed);
+            self.non_retaining_policy_count -= @intFromBool(payload.splice_policy != .retain);
             _ = self.payloads.remove(id);
         }
         self.finishMutation();
@@ -439,6 +449,21 @@ pub const TextAnnotations = struct {
 
     pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
         try self.checkCanMutate(0);
+        if (self.non_retaining_policy_count == 0) {
+            const tree_splice = try self.tree.prepareSplice(start_byte, old_len, new_len);
+            return .{
+                .owner = self,
+                .start_byte = start_byte,
+                .old_len = old_len,
+                .new_len = new_len,
+                .tree_splice = tree_splice,
+                .affected_storage = &.{},
+                .covered_storage = &.{},
+                .delete_storage = &.{},
+                .delete_ids = &.{},
+                .source_generation = self.generation,
+            };
+        }
         const scratch_len = if (old_len == 0) 0 else self.count();
         const affected = try self.allocator.alloc(u64, scratch_len);
         errdefer self.allocator.free(affected);
@@ -492,8 +517,10 @@ pub const TextAnnotations = struct {
         const before = self.tree.generation;
         try self.tree.commitPreparedSplice(prepared.start_byte, prepared.old_len, prepared.new_len, prepared.tree_splice);
         for (prepared.delete_ids) |id| {
+            const payload = self.payloads.get(id).?;
             const removed = self.tree.remove(id) catch unreachable;
             std.debug.assert(removed);
+            self.non_retaining_policy_count -= @intFromBool(payload.splice_policy != .retain);
             _ = self.payloads.remove(id);
         }
         if (self.tree.generation != before) self.finishMutation();
@@ -505,6 +532,40 @@ pub const TextAnnotations = struct {
         const before = self.tree.generation;
         try self.tree.moveRegion(start_byte, len, destination_byte);
         if (self.tree.generation != before) self.finishMutation();
+    }
+
+    /// Applies one move to a detached annotation snapshot. Document ranges that
+    /// enclose the complete affected window retain their explicit parent extent.
+    pub fn transformMoveSnapshot(
+        annotations: []Annotation,
+        target_id: u64,
+        start_byte: u32,
+        len: u32,
+        destination_byte: u32,
+        affected_start: u32,
+        affected_end: u32,
+        preserve_kind_flags: u32,
+    ) !void {
+        const end_byte = std.math.add(u32, start_byte, len) catch return error.PositionOverflow;
+        for (annotations) |*annotation| {
+            if (annotation.id() != target_id and annotation.payload.kind_flags & preserve_kind_flags != 0 and annotation.mark == .range) {
+                const range = annotation.mark.range;
+                if (range.start_byte <= affected_start and range.end_byte >= affected_end) continue;
+            }
+            annotation.mark = try MarkTree.movedMark(annotation.mark, start_byte, end_byte, len, destination_byte);
+        }
+    }
+
+    /// Publishes positions from a complete detached snapshot in one MarkTree
+    /// rebuild. Payloads and membership remain unchanged.
+    pub fn replaceSnapshotMarks(self: *Self, annotations: []const Annotation) !void {
+        try self.checkCanMutate(1);
+        if (annotations.len != self.count()) return error.CountMismatch;
+        const marks = try self.allocator.alloc(Mark, annotations.len);
+        defer self.allocator.free(marks);
+        for (annotations, marks) |annotation, *mark| mark.* = annotation.mark;
+        try self.tree.replaceMarks(marks);
+        self.finishMutation();
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.

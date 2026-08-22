@@ -308,6 +308,20 @@ pub const MarkTree = struct {
         self.finishMutation();
     }
 
+    /// Preflights a splice without collecting lifecycle reports. Callers whose
+    /// payload policy retains every mark can avoid count-sized report buffers.
+    pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
+        try self.checkCanMutate();
+        const ends = try self.preflightSplice(start_byte, old_len, new_len);
+        return .{
+            .source_generation = self.generation,
+            .old_end = ends.old_end,
+            .new_end = ends.new_end,
+            .affected_ids = &.{},
+            .covered_range_ids = &.{},
+        };
+    }
+
     /// Applies a splice and reports deletion lifecycle candidates without
     /// allocating or applying owner policy. `affected_ids` includes ranges
     /// intersecting deleted text and marks with endpoints on either boundary.
@@ -394,19 +408,47 @@ pub const MarkTree = struct {
         _ = std.math.add(u32, destination_byte, len) catch return error.PositionOverflow;
         if (len == 0 or destination_byte == start_byte) return;
 
+        // Preflight every transformed endpoint and reserve rebuild storage before
+        // changing any mark. The sorted Cartesian rebuild below is infallible.
         var id_iterator = self.ids.iterator();
         while (id_iterator.next()) |entry| {
             const node = entry.value_ptr.*;
             materialize(node);
             _ = try movedMark(node.mark, start_byte, end_byte, len, destination_byte);
         }
+        const nodes = try self.allocator.alloc(*Node, self.len);
+        defer self.allocator.free(nodes);
 
-        if (len != 0) {
-            var rebuilt: ?*Node = null;
-            rebuildMove(self.root, start_byte, end_byte, len, destination_byte, &rebuilt);
-            self.root = rebuilt;
-            if (self.root) |root| root.parent = null;
+        id_iterator = self.ids.iterator();
+        var node_index: usize = 0;
+        while (id_iterator.next()) |entry| : (node_index += 1) {
+            const node = entry.value_ptr.*;
+            node.mark = movedMark(node.mark, start_byte, end_byte, len, destination_byte) catch unreachable;
+            resetDetached(node);
+            nodes[node_index] = node;
         }
+        std.debug.assert(node_index == nodes.len);
+        std.mem.sort(*Node, nodes, {}, movedNodeLessThan);
+        self.root = rebuildSortedNodes(nodes);
+        self.finishMutation();
+    }
+
+    /// Replaces every mark value while retaining IDs, priorities, and nodes.
+    /// Storage and membership are prepared before the infallible sorted rebuild.
+    pub fn replaceMarks(self: *Self, marks: []const Mark) !void {
+        try self.checkCanMutate();
+        if (marks.len != self.len) return error.CountMismatch;
+        const nodes = try self.allocator.alloc(*Node, marks.len);
+        defer self.allocator.free(nodes);
+        for (marks, 0..) |mark, index| {
+            nodes[index] = self.ids.get(mark.id()) orelse return error.InvalidId;
+        }
+        for (marks, nodes) |mark, node| {
+            node.mark = mark;
+            resetDetached(node);
+        }
+        std.mem.sort(*Node, nodes, {}, movedNodeLessThan);
+        self.root = rebuildSortedNodes(nodes);
         self.finishMutation();
     }
 
@@ -936,7 +978,7 @@ pub const MarkTree = struct {
         return transformPositionChecked(after_remove, gravity, destination_byte, destination_byte, destination_end);
     }
 
-    fn movedMark(mark: Mark, start_byte: u32, end_byte: u32, len: u32, destination_byte: u32) !Mark {
+    pub fn movedMark(mark: Mark, start_byte: u32, end_byte: u32, len: u32, destination_byte: u32) !Mark {
         var result = mark;
         switch (result) {
             .range => |*range| {
@@ -971,26 +1013,35 @@ pub const MarkTree = struct {
         return result;
     }
 
-    fn rebuildMove(
-        maybe_node: ?*Node,
-        start_byte: u32,
-        end_byte: u32,
-        len: u32,
-        destination_byte: u32,
-        rebuilt: *?*Node,
-    ) void {
-        const node = maybe_node orelse return;
-        push(node);
-        const left = node.left;
-        const right = node.right;
-        node.left = null;
-        node.right = null;
-        node.parent = null;
-        rebuildMove(left, start_byte, end_byte, len, destination_byte, rebuilt);
-        rebuildMove(right, start_byte, end_byte, len, destination_byte, rebuilt);
-        node.mark = movedMark(node.mark, start_byte, end_byte, len, destination_byte) catch unreachable;
-        resetDetached(node);
-        rebuilt.* = insert(rebuilt.*, node);
+    fn movedNodeLessThan(_: void, left: *Node, right: *Node) bool {
+        return keyLess(lowerByte(left.mark), left.mark.id(), lowerByte(right.mark), right.mark.id());
+    }
+
+    /// Build the unique treap for sorted keys and existing priorities in linear
+    /// time. Parent pointers temporarily form the Cartesian stack.
+    fn rebuildSortedNodes(nodes: []*Node) ?*Node {
+        var top: ?*Node = null;
+        for (nodes) |node| {
+            var last: ?*Node = null;
+            while (top) |current| {
+                if (!priorityBefore(node, current)) break;
+                top = current.parent;
+                pull(current);
+                last = current;
+            }
+            setLeft(node, last);
+            if (top) |current| setRight(current, node) else node.parent = null;
+            top = node;
+        }
+
+        var root: ?*Node = null;
+        while (top) |current| {
+            top = current.parent;
+            pull(current);
+            root = current;
+        }
+        if (root) |value| value.parent = null;
+        return root;
     }
 
     fn deletionClassification(mark: Mark, start_byte: u32, old_end: u32, old_len: u32) struct { affected: bool, covered: bool } {

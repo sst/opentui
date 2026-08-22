@@ -411,6 +411,113 @@ test "line projection matches single-offset mapping for randomized Unicode annot
     }
 }
 
+fn exerciseProjectionPublicationFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var link_pool = link.LinkPool.init(allocator);
+    defer link_pool.deinit();
+    const tb = try TextBuffer.init(allocator, pool, &link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+    try tb.setText("Ae\u{301}\t界🙂xyz");
+    try tb.addHighlight(0, 0, 1, 700, 1, 19);
+
+    const existing_url = "https://projection-existing.test";
+    const existing_value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = existing_url.ptr,
+        .link_len = existing_url.len,
+    };
+    _ = try tb.createStyleValueRange(100, 0, 4, existing_value, 2);
+    _ = tb.getLineHighlights(0);
+    const existing_link_id = tb.internal_style_slots.items[0].link_id;
+    try std.testing.expect(existing_link_id != 0);
+
+    const registered_id = try syntax.registerStyle("projection-registered", null, null, 8);
+    const registered_value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .style_id = registered_id,
+        .style_kind = .registered,
+        .syntax_style = syntax,
+    };
+    const linked_existing: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 2,
+        .link_ptr = existing_url.ptr,
+        .link_len = existing_url.len,
+    };
+    const new_url = "https://projection-new.test";
+    const linked_new: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 4,
+        .link_ptr = new_url.ptr,
+        .link_len = new_url.len,
+    };
+    const value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 16,
+    };
+    _ = try tb.createStyleValueRange(101, 1, 12, linked_existing, 3);
+    _ = try tb.createStyleValueRange(102, 2, 13, linked_new, 4);
+    _ = try tb.createStyleValueRange(103, 4, 14, value, 5);
+    _ = try tb.createStyleValueRange(104, 0, 15, registered_value, 6);
+
+    const old_highlights = tb.line_highlights.items[0].items;
+    const old_spans = tb.line_spans.items[0].items;
+    const old_cache_epoch = tb.line_projection_epochs.items[0];
+    try std.testing.expect(old_cache_epoch != tb.projection_epoch);
+    const old_anonymous = syntax.getAnonymousStyleCount();
+    const old_live_links = link_pool.getLiveSlotCount();
+    const old_existing_refs = try link_pool.getRefcount(existing_link_id);
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const highlights = tb.getLineHighlights(0);
+    if (fail_offset != null) {
+        try std.testing.expectEqual(old_cache_epoch, tb.line_projection_epochs.items[0]);
+        try std.testing.expectEqual(@intFromPtr(old_highlights.ptr), @intFromPtr(tb.line_highlights.items[0].items.ptr));
+        try std.testing.expectEqual(old_highlights.len, tb.line_highlights.items[0].items.len);
+        try std.testing.expectEqual(@intFromPtr(old_spans.ptr), @intFromPtr(tb.line_spans.items[0].items.ptr));
+        try std.testing.expectEqual(old_spans.len, tb.line_spans.items[0].items.len);
+        try std.testing.expectEqual(old_anonymous, syntax.getAnonymousStyleCount());
+        try std.testing.expectEqual(old_live_links, link_pool.getLiveSlotCount());
+        try std.testing.expectEqual(old_existing_refs, try link_pool.getRefcount(existing_link_id));
+        failing.fail_index = std.math.maxInt(usize);
+        const retried = tb.getLineHighlights(0);
+        try std.testing.expectEqual(@as(usize, 6), retried.len);
+        try std.testing.expectEqual(tb.projection_epoch, tb.line_projection_epochs.items[0]);
+    } else {
+        try std.testing.expectEqual(@as(usize, 6), highlights.len);
+    }
+    return failing.alloc_index - before_alloc;
+}
+
+test "line projection publication is atomic at every allocation" {
+    const allocations = try exerciseProjectionPublicationFailure(null);
+    for (0..allocations) |offset| _ = try exerciseProjectionPublicationFailure(offset);
+}
+
 test "direct clear sweeps unreachable backing without changing retained history" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -835,6 +942,110 @@ test "coalesced long-line edits publish only exact final backing" {
     try std.testing.expectEqual(@as(usize, 1), metrics.live_backing_blocks);
 }
 
+test "document batch stages inserted and final bytes instead of document times operations" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const leaf_count = 100;
+    const leaf_bytes = 50;
+    var text = [_]u8{'a'} ** (leaf_count * leaf_bytes);
+    var chunks: [leaf_count]text_buffer.StyledChunk = undefined;
+    var ranges: [leaf_count]text_buffer.DocumentRangeInput = undefined;
+    const empty_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    for (&chunks, &ranges, 0..) |*chunk, *range, index| {
+        chunk.* = .{
+            .text_ptr = text[index * leaf_bytes ..][0..leaf_bytes].ptr,
+            .text_len = leaf_bytes,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = 0,
+        };
+        range.* = .{ .start_chunk = @intCast(index), .end_chunk = @intCast(index + 1), .style = empty_style, .styled = false, .priority = 0 };
+    }
+    var ids: [leaf_count]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 93,
+        .chunks = &chunks,
+        .ranges = &ranges,
+    }}, &ids);
+
+    const replacement: text_buffer.StyledChunk = .{ .text_ptr = "b".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    var operations: [leaf_count]text_buffer.DocumentOperation = undefined;
+    for (&operations, ids) |*operation, id| operation.* = .{
+        .kind = .replace,
+        .target_id = id,
+        .owner = 93,
+        .chunks = &.{replacement},
+    };
+    var prepared = try tb.prepareDocumentOperations(&operations, 0);
+    defer prepared.deinit();
+    try std.testing.expectEqual(@as(usize, leaf_count * 2), prepared.transientContentBytes());
+    prepared.commit(&.{});
+    try std.testing.expectEqual(@as(u32, leaf_count), tb.getByteSize());
+    const metrics = try tb.getDebugMetrics();
+    try std.testing.expectEqual(@as(usize, leaf_count), metrics.current_reachable_bytes);
+    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
+}
+
+test "document batch finalizes provisional trailing lines and cross-edit graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const empty_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+
+    const line_values = [_][]const u8{ "base", "\n", "styled", "\n", "bold" };
+    var line_chunks: [line_values.len]text_buffer.StyledChunk = undefined;
+    var line_ranges: [line_values.len]text_buffer.DocumentRangeInput = undefined;
+    for (line_values, &line_chunks, &line_ranges, 0..) |value, *chunk, *range, index| {
+        chunk.* = .{ .text_ptr = value.ptr, .text_len = value.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+        range.* = .{ .start_chunk = @intCast(index), .end_chunk = @intCast(index + 1), .style = empty_style, .styled = false, .priority = 0 };
+    }
+    var line_ids: [line_values.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 94, .chunks = &line_chunks, .ranges = &line_ranges }}, &line_ids);
+    try tb.applyDocumentOperations(&.{
+        .{ .kind = .replace, .target_id = line_ids[2], .owner = 94 },
+        .{ .kind = .replace, .target_id = line_ids[4], .owner = 94 },
+    }, &.{});
+    try expectText(tb, "base\n\n");
+    try expectMarkerInvariants(tb);
+
+    const grapheme_values = [_][]const u8{ "e", "x", "👩", "X", "💻" };
+    var grapheme_chunks: [grapheme_values.len]text_buffer.StyledChunk = undefined;
+    var grapheme_ranges: [grapheme_values.len]text_buffer.DocumentRangeInput = undefined;
+    for (grapheme_values, &grapheme_chunks, &grapheme_ranges, 0..) |value, *chunk, *range, index| {
+        chunk.* = .{ .text_ptr = value.ptr, .text_len = value.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+        range.* = .{ .start_chunk = @intCast(index), .end_chunk = @intCast(index + 1), .style = empty_style, .styled = false, .priority = 0 };
+    }
+    var grapheme_ids: [grapheme_values.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .start_byte = 0,
+        .end_byte = tb.getByteSize(),
+        .owner = 95,
+        .chunks = &grapheme_chunks,
+        .ranges = &grapheme_ranges,
+    }}, &grapheme_ids);
+    const combining: text_buffer.StyledChunk = .{ .text_ptr = "\u{301}".ptr, .text_len = "\u{301}".len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const joiner: text_buffer.StyledChunk = .{ .text_ptr = "\u{200d}".ptr, .text_len = "\u{200d}".len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    try tb.applyDocumentOperations(&.{
+        .{ .kind = .replace, .target_id = grapheme_ids[1], .owner = 95, .chunks = &.{combining} },
+        .{ .kind = .replace, .target_id = grapheme_ids[3], .owner = 95, .chunks = &.{joiner} },
+    }, &.{});
+    try expectText(tb, "e\u{301}👩‍💻");
+    try std.testing.expectEqual(@as(u32, 3), tb.lineWidthAt(0));
+    try std.testing.expectEqual(@as(u32, 1), (try tb.normalizedByteOffsetToDisplayPointStrict("e\u{301}".len)).col);
+}
+
 test "document transactions compact Rope generations while preserving stable ranges" {
     var tracked = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -1072,6 +1283,61 @@ test "zero-length document moves are exact no-ops among co-located ranges" {
     try std.testing.expectEqual(content_epoch, tb.getContentEpoch());
     try std.testing.expectEqual(annotation_epoch, tb.getAnnotationEpoch());
     for (ids[1..], 0..) |id, index| try std.testing.expectEqualDeep(before[index], tb.textAnnotations().get(id).?);
+}
+
+fn exerciseGroupedDocumentMoveFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const empty_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "A".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "B".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "C".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 3, .style = empty_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 2 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = empty_style, .styled = false, .priority = 2 },
+        .{ .start_chunk = 2, .end_chunk = 3, .style = empty_style, .styled = false, .priority = 2 },
+    };
+    var ids: [ranges.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 96, .chunks = &chunks, .ranges = &ranges }}, &ids);
+    const before_epoch = tb.getContentEpoch();
+    const before_annotation_epoch = tb.getAnnotationEpoch();
+    var before_ranges: [ranges.len]text_buffer.DocumentRange = undefined;
+    for (ids, &before_ranges) |id, *range| range.* = tb.getDocumentRange(id).?;
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const operations = [_]text_buffer.DocumentOperation{
+        .{ .kind = .move, .target_id = ids[2], .anchor_id = ids[3], .owner = 96, .before = false },
+        .{ .kind = .move, .target_id = ids[1], .anchor_id = ids[3], .owner = 96, .before = false },
+    };
+    const result = tb.applyDocumentOperations(&operations, &.{});
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, result);
+        try expectText(tb, "ABC");
+        try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
+        try std.testing.expectEqual(before_annotation_epoch, tb.getAnnotationEpoch());
+        for (ids, before_ranges) |id, range| try std.testing.expectEqualDeep(range, tb.getDocumentRange(id).?);
+        failing.fail_index = std.math.maxInt(usize);
+        try tb.applyDocumentOperations(&operations, &.{});
+    } else {
+        try result;
+    }
+    try expectText(tb, "CAB");
+    return failing.alloc_index - before_alloc;
+}
+
+test "grouped document moves roll back and retry at every allocation" {
+    const allocations = try exerciseGroupedDocumentMoveFailure(null);
+    for (0..allocations) |offset| _ = try exerciseGroupedDocumentMoveFailure(offset);
 }
 
 test "document operation candidate releases every intermediate style and link" {
