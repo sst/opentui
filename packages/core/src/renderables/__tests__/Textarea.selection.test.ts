@@ -2040,6 +2040,51 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("beta ")
     })
 
+    it("shift+right after a word click extends by cell in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("beta")
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta ")
+    })
+
+    it("shift+right after a line click keeps an off-screen line start", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 5,
+        height: 1,
+        wrapMode: "char",
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = editor.plainText.length
+      await renderOnce()
+
+      await currentMouse.click(editor.x, editor.y)
+      await currentMouse.click(editor.x, editor.y)
+      await currentMouse.click(editor.x, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("hello world")
+
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("hello world")
+    })
+
     it("keeps cell visual End on a grapheme boundary", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "ab你cd",

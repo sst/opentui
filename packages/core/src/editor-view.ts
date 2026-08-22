@@ -166,6 +166,11 @@ export class EditorView {
     this.lib.editorViewResetLocalSelection(this.viewPtr)
   }
 
+  public convertSelectionToCell(): boolean {
+    this.guard()
+    return this.lib.editorViewConvertSelectionToCell(this.viewPtr)
+  }
+
   public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
     this.guard()
     this.lib.editorViewSetSelectionOccupancy(this.viewPtr, occupancy)

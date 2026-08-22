@@ -32,7 +32,7 @@ export class Selection {
   private _isActive: boolean = true
   private _isDragging: boolean = true
   private _isStart: boolean = false
-  readonly behavior: SelectionBehavior
+  behavior: SelectionBehavior
 
   constructor(
     anchorRenderable: Renderable,

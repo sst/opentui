@@ -1151,19 +1151,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getTextRangeByCoords(startRow, startCol, endRow, endCol)
   }
 
-  private convertGestureSelectionToCell(): void {
-    const range = this.getSelection()
-    if (!range) return
-
-    this.editorView.setCursorByOffset(range.start)
-    const start = this.editorView.getVisualCursor()
-    this.editorView.setCursorByOffset(range.end > range.start ? range.end - 1 : range.start)
-    const end = this.editorView.getVisualCursor()
-
-    this._ctx.startSelection(this, this.x + start.visualCol, this.y + start.visualRow)
-    this._ctx.updateSelection(this, this.x + end.visualCol, this.y + end.visualRow, { finishDragging: true })
-  }
-
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!shiftPressed) {
       this._keyboardSelectionActive = false
@@ -1183,7 +1170,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       if (!this._ctx.hasSelection || !this.hasSelection()) {
         this._ctx.startSelection(this, cursorX, cursorY)
       } else if (this._ctx.getSelection()?.behavior !== "cell") {
-        this.convertGestureSelectionToCell()
+        if (this.editorView.convertSelectionToCell()) {
+          const selection = this._ctx.getSelection()
+          if (selection) selection.behavior = "cell"
+        }
       }
       return
     }

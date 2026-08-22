@@ -3681,3 +3681,31 @@ test "EditorView - cell press still syncs cursor without selecting" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 }
+
+test "EditorView - convert word selection to cell keeps the range and moves focus to the last cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("alpha beta");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    _ = ev.setLocalSelectionBehavior(6, 0, 6, 0, null, null, true, .word);
+    try std.testing.expect(ev.convertSelectionToCell());
+
+    var converted: [32]u8 = undefined;
+    const converted_len = ev.getSelectedTextIntoBuffer(&converted);
+    try std.testing.expectEqualStrings("beta", converted[0..converted_len]);
+
+    const converted_cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), converted_cursor.row);
+    try std.testing.expectEqual(@as(u32, 9), converted_cursor.col);
+}

@@ -239,3 +239,43 @@ test "behavior - set and update agree for word and line" {
     try std.testing.expectEqualStrings(set_out[0..line_set_len], update_out[0..line_update_len]);
     try std.testing.expectEqualStrings("alpha beta gamma\nnext", set_out[0..line_set_len]);
 }
+
+test "behavior - convert word range to cell keeps text and later drag is cell-granular" {
+    const pair = try initView("alpha beta gamma");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 6, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta");
+    try std.testing.expect(pair.view.convertSelectionToCell());
+    try expectViewSelected(pair.view, "beta");
+
+    _ = pair.view.updateLocalSelectionBehavior(6, 0, 10, 0, null, null, .cell);
+    try expectViewSelected(pair.view, "beta ");
+}
+
+test "behavior - convert word range keeps exclusive end under boundary occupancy" {
+    const pair = try initView("alpha beta gamma");
+    defer deinitView(pair);
+    pair.view.setSelectionOccupancy(.boundary);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 6, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta");
+    try std.testing.expect(pair.view.convertSelectionToCell());
+    try expectViewSelected(pair.view, "beta");
+
+    _ = pair.view.updateLocalSelectionBehavior(6, 0, 11, 0, null, null, .cell);
+    try expectViewSelected(pair.view, "beta ");
+}
+
+test "behavior - convert line range keeps text when the start is above the viewport" {
+    const pair = try initView("hello world");
+    defer deinitView(pair);
+    pair.view.setWrapMode(.char);
+    pair.view.setWrapWidth(5);
+    pair.view.setViewport(.{ .x = 0, .y = 1, .width = 5, .height = 1 });
+
+    _ = pair.view.setLocalSelectionBehavior(1, 0, 1, 0, null, null, .line);
+    try expectViewSelected(pair.view, "hello world");
+    try std.testing.expect(pair.view.convertSelectionToCell());
+    try expectViewSelected(pair.view, "hello world");
+}

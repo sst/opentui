@@ -2924,6 +2924,11 @@ export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
     object_ptr.resetLocalSelection();
 }
 
+export fn editorViewConvertSelectionToCell(view_handle: NativeHandle) bool {
+    const object_ptr = acquireEditorView(view_handle) orelse return false;
+    return object_ptr.convertSelectionToCell();
+}
+
 export fn editorViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     object_ptr.setSelectionOccupancy(selectionOccupancy(occupancy));

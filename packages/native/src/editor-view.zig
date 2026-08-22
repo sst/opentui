@@ -371,6 +371,13 @@ pub const EditorView = struct {
         return changed;
     }
 
+    pub fn convertSelectionToCell(self: *EditorView) bool {
+        if (!self.text_buffer_view.convertSelectionToCell()) return false;
+        self.selection_updates_cursor = true;
+        self.syncCursorToSelectionFocus();
+        return true;
+    }
+
     pub fn resetLocalSelection(self: *EditorView) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.resetLocalSelection();

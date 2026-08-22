@@ -814,6 +814,26 @@ pub const UnifiedTextBufferView = struct {
         return true;
     }
 
+    /// Keep the exclusive highlight and store cell endpoints so a later
+    /// cell drag or shift-extend does not re-expand by word or line.
+    /// Cell occupancy pins focus on the last occupied grapheme; boundary
+    /// occupancy pins it on the exclusive end.
+    pub fn convertSelectionToCell(self: *Self) bool {
+        const selection = self.selection orelse return false;
+        if (selection.start == selection.end) return false;
+
+        const focus = if (self.selection_occupancy == .boundary)
+            selection.end
+        else if (self.text_buffer.graphemeBoundsAtOffset(selection.end - 1)) |bounds|
+            bounds.start
+        else
+            selection.end - 1;
+
+        self.selection_endpoints = .{ .anchor = selection.start, .focus = focus };
+        self.selection_behavior = .cell;
+        return true;
+    }
+
     fn expandSelectionRange(
         self: *Self,
         anchor_offset: u32,

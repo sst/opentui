@@ -1443,6 +1443,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    editorViewConvertSelectionToCell: {
+      args: ["u32"],
+      returns: "bool",
+    },
     editorViewSetSelectionOccupancy: {
       args: ["u32", "u8"],
       returns: "void",
@@ -2988,6 +2992,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => boolean
 
   editorViewResetLocalSelection: (view: EditorViewHandle) => void
+  editorViewConvertSelectionToCell: (view: EditorViewHandle) => boolean
   editorViewSetSelectionOccupancy: (view: EditorViewHandle, occupancy: SelectionOccupancy) => void
   editorViewSetSelectionInclusive: (
     view: EditorViewHandle,
@@ -5843,6 +5848,10 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewResetLocalSelection(view: Pointer): void {
     this.opentui.symbols.editorViewResetLocalSelection(view)
+  }
+
+  public editorViewConvertSelectionToCell(view: Pointer): boolean {
+    return Boolean(this.opentui.symbols.editorViewConvertSelectionToCell(view))
   }
 
   public editorViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {
