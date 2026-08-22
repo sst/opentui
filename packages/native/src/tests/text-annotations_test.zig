@@ -187,6 +187,29 @@ test "TextAnnotations splice policy merge handles scrambled IDs and deletion bou
     try owner.validateIntegrity();
 }
 
+test "TextAnnotations covered policy preserves empty ranges at deletion boundaries" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    const at_start = try owner.addRange(.{ .start_byte = 10, .end_byte = 10 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const inside = try owner.addRange(.{ .start_byte = 15, .end_byte = 15 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+    const at_end = try owner.addRange(.{ .start_byte = 20, .end_byte = 20 }, .{
+        .namespace = 1,
+        .splice_policy = .delete_when_covered,
+    });
+
+    try owner.splice(10, 10, 0);
+    try expectRange(&owner, at_start, 10, 10, 0);
+    try std.testing.expect(owner.get(inside) == null);
+    try expectRange(&owner, at_end, 10, 10, 0);
+    try owner.validateIntegrity();
+}
+
 test "TextAnnotations insertion splice and move preserve payload association" {
     var owner = testAnnotations();
     defer owner.deinit();
@@ -527,7 +550,10 @@ fn classifyDeletion(mark: Mark, start: u32, old_len: u32) DeletionClassification
             const overlaps = range.start_byte < range.end_byte and range.start_byte < old_end and range.end_byte > start;
             break :blk .{
                 .affected = endpoint_affected or overlaps,
-                .covered = lower >= start and upper <= old_end,
+                .covered = if (lower == upper)
+                    lower > start and upper < old_end
+                else
+                    lower >= start and upper <= old_end,
             };
         },
     };

@@ -13,7 +13,7 @@ interface Harness {
 
 const harnesses: Harness[] = []
 
-async function mount(initialValue: string): Promise<Harness> {
+async function mount(initialValue: string, beforeExtmarks?: (textarea: TextareaRenderable) => void): Promise<Harness> {
   const { renderer, renderOnce } = await createTestRenderer({ width: 80, height: 24 })
   const textarea = new TextareaRenderable(renderer, {
     left: 0,
@@ -26,6 +26,7 @@ async function mount(initialValue: string): Promise<Harness> {
   renderer.root.add(textarea)
   await renderOnce()
 
+  beforeExtmarks?.(textarea)
   const harness = { renderer, textarea, extmarks: textarea.extmarks }
   harnesses.push(harness)
   return harness
@@ -182,6 +183,8 @@ describe("ExtmarksController observable migration contract", () => {
       const { textarea, extmarks } = await mount("abcdef")
       const typeId = extmarks.registerType(testCase.name)
       const id = extmarks.create({ start: 1, end: 5, typeId, metadata: testCase.name })
+      const atStart = extmarks.create({ start: 0, end: 0, typeId })
+      const atEnd = extmarks.create({ start: 6, end: 6, typeId })
 
       testCase.apply(textarea)
 
@@ -190,10 +193,11 @@ describe("ExtmarksController observable migration contract", () => {
         text: testCase.expectedText,
         mark: null,
       })
+      expect([atStart, atEnd].map((markId) => extmarks.get(markId))).toEqual([null, null])
       expect(extmarks.getMetadataFor(id)).toBeUndefined()
       expect(marksFor(extmarks, typeId)).toEqual([])
       expect(extmarks.getTypeId(testCase.name)).toBe(typeId)
-      expect(extmarks.create({ start: 0, end: 0, typeId })).toBe(2)
+      expect(extmarks.create({ start: 0, end: 0, typeId })).toBe(4)
     }
   })
 
@@ -247,7 +251,7 @@ describe("ExtmarksController observable migration contract", () => {
     expect(extmarks.create({ start: 0, end: 0, typeId })).toBe(2)
   })
 
-  it("documents metadata and type-index loss when undo restores a deleted mark", async () => {
+  it("restores metadata and type indexing when undo restores a deleted mark", async () => {
     const { textarea, extmarks } = await mount("abcdef")
     const typeId = extmarks.registerType("atomic")
     const data = { value: "cd" }
@@ -274,8 +278,8 @@ describe("ExtmarksController observable migration contract", () => {
       data,
       typeId,
     })
-    expect(extmarks.getMetadataFor(id)).toBeUndefined()
-    expect(marksFor(extmarks, typeId)).toEqual([])
+    expect(extmarks.getMetadataFor(id)).toBe(metadata)
+    expect(marksFor(extmarks, typeId)).toEqual([id])
 
     textarea.redo()
     expect({ text: textarea.plainText, mark: extmarks.get(id), typed: marksFor(extmarks, typeId) }).toEqual({
@@ -285,15 +289,22 @@ describe("ExtmarksController observable migration contract", () => {
     })
   })
 
-  it("documents whole-buffer undo behavior and setText's non-undoable reset", async () => {
+  it("restores replaceText sidecars but never restores marks after a non-undoable clear", async () => {
     for (const testCase of [
       {
         name: "replaceText",
         text: "XY",
         undoText: "abcdef",
+        restoresMark: true,
         apply: (textarea: TextareaRenderable) => textarea.replaceText("XY"),
       },
-      { name: "clear", text: "", undoText: "", apply: (textarea: TextareaRenderable) => textarea.clear() },
+      {
+        name: "clear",
+        text: "",
+        undoText: "",
+        restoresMark: false,
+        apply: (textarea: TextareaRenderable) => textarea.clear(),
+      },
     ]) {
       const { textarea, extmarks } = await mount("abcdef")
       const typeId = extmarks.registerType(testCase.name)
@@ -305,9 +316,15 @@ describe("ExtmarksController observable migration contract", () => {
 
       textarea.undo()
       expect(textarea.plainText).toBe(testCase.undoText)
-      expect(extmarks.get(id)).toMatchObject({ id, start: 1, end: 5, typeId, data })
-      expect(extmarks.getMetadataFor(id)).toBeUndefined()
-      expect(marksFor(extmarks, typeId)).toEqual([])
+      if (testCase.restoresMark) {
+        expect(extmarks.get(id)).toMatchObject({ id, start: 1, end: 5, typeId, data })
+        expect(extmarks.getMetadataFor(id)).toBe(data)
+        expect(marksFor(extmarks, typeId)).toEqual([id])
+      } else {
+        expect(extmarks.get(id)).toBeNull()
+        expect(extmarks.getMetadataFor(id)).toBeUndefined()
+        expect(marksFor(extmarks, typeId)).toEqual([])
+      }
 
       textarea.redo()
       expect({ text: textarea.plainText, mark: extmarks.get(id) }).toEqual({ text: testCase.text, mark: null })
@@ -318,6 +335,31 @@ describe("ExtmarksController observable migration contract", () => {
     textarea.setText("XY")
     textarea.undo()
     expect({ text: textarea.plainText, mark: extmarks.get(id) }).toEqual({ text: "XY", mark: null })
+  })
+
+  it("does not resurrect explicitly removed marks or their styles through text undo", async () => {
+    for (const operation of ["delete", "clear"] as const) {
+      const { textarea, extmarks } = await mount("abcdef")
+      const id = extmarks.create({ start: 2, end: 4, styleId: 7, metadata: operation })
+
+      textarea.cursorOffset = 0
+      textarea.insertText("X")
+      if (operation === "delete") extmarks.delete(id)
+      else extmarks.clear()
+
+      textarea.undo()
+      expect({
+        operation,
+        text: textarea.plainText,
+        mark: extmarks.get(id),
+        highlights: lineHighlights(textarea),
+      }).toEqual({
+        operation,
+        text: "abcdef",
+        mark: null,
+        highlights: [[]],
+      })
+    }
   })
 
   it("treats virtual marks atomically for horizontal and vertical cursor movement", async () => {
@@ -331,9 +373,8 @@ describe("ExtmarksController observable migration contract", () => {
       textarea.moveCursorLeft()
       expect(textarea.cursorOffset).toBe(2)
 
-      // The Textarea property writes through EditorView and bypasses the wrapped EditBuffer method.
       textarea.cursorOffset = 4
-      expect(textarea.cursorOffset).toBe(4)
+      expect(textarea.cursorOffset).toBe(6)
       textarea.editBuffer.setCursorByOffset(2)
       textarea.editBuffer.setCursorByOffset(4)
       expect(textarea.cursorOffset).toBe(6)
@@ -367,12 +408,18 @@ describe("ExtmarksController observable migration contract", () => {
       { name: "delete at start", cursor: 3, action: "delete", text: "abcdef", mark: null },
       { name: "backspace at start", cursor: 3, action: "backspace", text: "ab[LINK]def", mark: [2, 8] },
       { name: "delete at end", cursor: 9, action: "delete", text: "abc[LINK]ef", mark: [3, 9] },
-    ] as const
+    ] satisfies Array<{
+      name: string
+      cursor: number
+      action: "backspace" | "delete"
+      text: string
+      mark: [number, number] | null
+    }>
 
     for (const testCase of cases) {
       const { textarea, extmarks } = await mount("abc[LINK]def")
-      const id = extmarks.create({ start: 3, end: 9, virtual: true })
       textarea.cursorOffset = testCase.cursor
+      const id = extmarks.create({ start: 3, end: 9, virtual: true })
       if (testCase.action === "backspace") textarea.deleteCharBackward()
       else textarea.deleteChar()
       expect({ name: testCase.name, text: textarea.plainText, mark: range(extmarks, id) }).toEqual({
@@ -402,10 +449,12 @@ describe("ExtmarksController observable migration contract", () => {
 
   it("preserves exact highlight style, priority, cells, and removes stale extmark ranges", async () => {
     const { textarea, extmarks } = await mount("abcdef")
+    textarea.addHighlight(0, { start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 })
     const outer = extmarks.create({ start: 1, end: 5, styleId: 10, priority: 2 })
     const inner = extmarks.create({ start: 3, end: 4, styleId: 11, priority: 9 })
 
     expect(textarea.getLineHighlights(0)).toEqual([
+      { start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 },
       { start: 1, end: 5, styleId: 10, priority: 2, hlRef: outer },
       { start: 3, end: 4, styleId: 11, priority: 9, hlRef: inner },
     ])
@@ -413,14 +462,37 @@ describe("ExtmarksController observable migration contract", () => {
     textarea.cursorOffset = 0
     textarea.insertText("X")
     expect(textarea.getLineHighlights(0)).toEqual([
+      { start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 },
       { start: 2, end: 6, styleId: 10, priority: 2, hlRef: outer },
       { start: 4, end: 5, styleId: 11, priority: 9, hlRef: inner },
     ])
 
     extmarks.delete(outer)
-    expect(textarea.getLineHighlights(0)).toEqual([{ start: 4, end: 5, styleId: 11, priority: 9, hlRef: inner }])
+    expect(textarea.getLineHighlights(0)).toEqual([
+      { start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 },
+      { start: 4, end: 5, styleId: 11, priority: 9, hlRef: inner },
+    ])
     extmarks.clear()
-    expect(textarea.getLineHighlights(0)).toEqual([])
+    expect(textarea.getLineHighlights(0)).toEqual([{ start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 }])
+  })
+
+  it("restores pre-existing method identities on destroy", async () => {
+    let moveCursorRight: TextareaRenderable["editBuffer"]["moveCursorRight"]
+    let setCursorByOffset: TextareaRenderable["editorView"]["setCursorByOffset"]
+    let undo: TextareaRenderable["editBuffer"]["undo"]
+    const { textarea, extmarks } = await mount("abcdef", (value) => {
+      moveCursorRight = () => {}
+      setCursorByOffset = () => {}
+      undo = () => null
+      value.editBuffer.moveCursorRight = moveCursorRight
+      value.editorView.setCursorByOffset = setCursorByOffset
+      value.editBuffer.undo = undo
+    })
+
+    extmarks.destroy()
+    expect(textarea.editBuffer.moveCursorRight).toBe(moveCursorRight!)
+    expect(textarea.editorView.setCursorByOffset).toBe(setCursorByOffset!)
+    expect(textarea.editBuffer.undo).toBe(undo!)
   })
 
   it("uses display-cell offsets for tabs, wide and composed graphemes, and normalized line endings", async () => {

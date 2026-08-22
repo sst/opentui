@@ -568,6 +568,44 @@ pub const UnifiedTextBuffer = struct {
             .update_payload, .remove, .clear_namespace => {},
         };
 
+        if (operations.len == 1) switch (operations[0].kind) {
+            .add_range => {
+                const operation = operations[0];
+                try self.retainInternalStyle(operation.payload.style_id);
+                errdefer self.releaseInternalStyle(operation.payload.style_id);
+                created_ids[0] = self.annotations.addRange(.{
+                    .start_byte = operation.start_byte,
+                    .end_byte = operation.end_byte,
+                    .start_gravity = operation.start_gravity,
+                    .end_gravity = operation.end_gravity,
+                }, operation.payload) catch |err| return annotationMutationError(err);
+                self.markPaintDirty();
+                return .{ .created_count = 1, .deleted_count = 0 };
+            },
+            .add_point => {
+                const operation = operations[0];
+                try self.retainInternalStyle(operation.payload.style_id);
+                errdefer self.releaseInternalStyle(operation.payload.style_id);
+                created_ids[0] = self.annotations.addPoint(.{
+                    .byte = operation.start_byte,
+                    .gravity = operation.start_gravity,
+                }, operation.payload) catch |err| return annotationMutationError(err);
+                self.markPaintDirty();
+                return .{ .created_count = 1, .deleted_count = 0 };
+            },
+            .remove => {
+                const operation = operations[0];
+                if (deleted_ids.len < 1) return TextBufferError.InvalidDimensions;
+                const existing = self.annotations.get(operation.id) orelse return TextBufferError.InvalidIndex;
+                if (!(self.annotations.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
+                self.releaseInternalStyle(existing.payload.style_id);
+                deleted_ids[0] = operation.id;
+                self.markPaintDirty();
+                return .{ .created_count = 0, .deleted_count = 1 };
+            },
+            .update_range, .update_point, .update_payload, .clear_namespace => {},
+        };
+
         var candidate = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         var candidate_owned = true;
         defer if (candidate_owned) candidate.deinit();
@@ -660,6 +698,16 @@ pub const UnifiedTextBuffer = struct {
         var it = checkpoint.iterator();
         while (it.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
         checkpoint.deinit();
+    }
+
+    /// Clear live annotations without releasing references owned by detached
+    /// EditBuffer history checkpoints.
+    pub fn clearAnnotations(self: *Self) void {
+        var annotations = self.annotations.iterator();
+        while (annotations.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        self.annotations.deinit();
+        self.annotations = TextAnnotations.init(self.global_allocator);
+        self.markPaintDirty();
     }
 
     /// Transfers checkpoint-owned style references to the live annotation set.
@@ -1369,12 +1417,14 @@ pub const UnifiedTextBuffer = struct {
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
         _ = try self.replaceNormalizedBytes(0, self.getByteSize(), text);
+        self.clearAnnotations();
     }
 
     /// Set text from a pre-registered memory ID
     pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         _ = try self.replaceNormalizedBytes(0, self.getByteSize(), text);
+        self.clearAnnotations();
     }
 
     /// Append text to the end of the buffer without clearing
@@ -2157,7 +2207,7 @@ pub const UnifiedTextBuffer = struct {
                 .col_end = end_col,
                 .style_id = annotation.annotation.payload.style_id,
                 .priority = annotation.annotation.payload.priority,
-                .hl_ref = 0,
+                .hl_ref = std.math.cast(u16, annotation.annotation.payload.client_token) orelse 0,
                 .internal = true,
             });
         }

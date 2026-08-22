@@ -5,6 +5,7 @@ import {
   BoxRenderable,
   TextRenderable,
   KeyEvent,
+  stringWidth,
   type ExtmarksController,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
@@ -23,10 +24,12 @@ Try moving your cursor through the [VIRTUAL] markers below:
 
 Example text with [LINK:https://example.com] embedded links.
 You can also have [TAG:important] tags that act like atoms.
+Unicode ranges follow native edits too: 前端 👩‍💻 [TAG:宽字符].
 
 Regular text here can be edited normally.
 
 Press Ctrl+L to add a new [MARKER] at cursor position.
+Press Ctrl+Z to undo text and extmark movement together.
 Press ESC to return to main menu.`
 
 let renderer: CliRenderer | null = null
@@ -47,6 +50,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   virtualStyleId = syntaxStyle.registerStyle("virtual", {
     fg: RGBA.fromValues(0.3, 0.7, 1.0, 1.0),
     bg: RGBA.fromValues(0.1, 0.2, 0.3, 1.0),
+  })
+  const headingStyleId = syntaxStyle.registerStyle("heading", {
+    fg: RGBA.fromValues(1.0, 0.65, 0.2, 1.0),
   })
 
   parentContainer = new BoxRenderable(renderer, {
@@ -87,11 +93,18 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     throw new Error("Failed to create extmarks controller")
   }
 
+  editor.addHighlight(0, {
+    start: 0,
+    end: stringWidth("Welcome to the Extmarks Demo!"),
+    styleId: headingStyleId,
+    priority: 1,
+    hlRef: 65000,
+  })
   findAndMarkVirtualRanges()
 
   helpText = new TextRenderable(renderer, {
     id: "help",
-    content: "Move cursor with arrows. Try backspacing at end of [VIRTUAL] markers!",
+    content: "Edit before the Unicode tag, undo with Ctrl+Z, or backspace at an atomic marker.",
     fg: "#FFA657",
     height: 1,
   })
@@ -159,8 +172,8 @@ function findAndMarkVirtualRanges(): void {
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(text)) !== null) {
-    const start = match.index
-    const end = match.index + match[0].length
+    const start = utf16IndexToDisplayOffset(text, match.index)
+    const end = utf16IndexToDisplayOffset(text, match.index + match[0].length)
 
     extmarksController.create({
       start,
@@ -170,6 +183,12 @@ function findAndMarkVirtualRanges(): void {
       data: { type: "auto-detected", content: match[0] },
     })
   }
+}
+
+function utf16IndexToDisplayOffset(text: string, index: number): number {
+  const prefix = text.slice(0, index)
+  const lines = prefix.split("\n")
+  return lines.reduce((offset, line) => offset + stringWidth(line), 0) + lines.length - 1
 }
 
 export function destroy(rendererInstance: CliRenderer): void {

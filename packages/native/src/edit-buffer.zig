@@ -442,6 +442,7 @@ pub const EditBuffer = struct {
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
         try self.preparePrimaryCursor();
         _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        self.tb.clearAnnotations();
         self.clearHistory();
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
@@ -464,6 +465,7 @@ pub const EditBuffer = struct {
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
         _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        self.tb.clearAnnotations();
         self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");

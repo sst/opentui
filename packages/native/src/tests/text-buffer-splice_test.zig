@@ -2256,6 +2256,26 @@ test "EditBuffer undo and redo restore exact annotation identity payload and lif
     try std.testing.expectEqual(@as(u32, 3), eb.tb.textAnnotations().get(id).?.mark.range.start_byte);
 }
 
+test "EditBuffer whole replacement clears boundary annotations and undo restores them" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("abcdef");
+    const at_start = try eb.tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = 0 }, .{ .namespace = 1 });
+    const at_end = try eb.tb.textAnnotations().addRange(.{ .start_byte = 6, .end_byte = 6 }, .{ .namespace = 1 });
+
+    try eb.replaceText("XY");
+    try std.testing.expectEqual(@as(usize, 0), eb.tb.textAnnotations().count());
+    _ = try eb.undo();
+    try std.testing.expect(eb.tb.textAnnotations().get(at_start) != null);
+    try std.testing.expect(eb.tb.textAnnotations().get(at_end) != null);
+    _ = try eb.redo();
+    try std.testing.expectEqual(@as(usize, 0), eb.tb.textAnnotations().count());
+}
+
 test "styled owner replacement clips and splits old coverage atomically" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

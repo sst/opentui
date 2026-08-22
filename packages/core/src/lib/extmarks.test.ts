@@ -150,7 +150,7 @@ describe("ExtmarksController", () => {
 
       extmarks.create({ start: 0, end: 5, virtual: false })
       extmarks.create({ start: 6, end: 11, virtual: true })
-      extmarks.create({ start: 12, end: 15, virtual: true })
+      extmarks.create({ start: 8, end: 10, virtual: true })
 
       const virtual = extmarks.getVirtual()
       expect(virtual.length).toBe(2)
@@ -162,7 +162,7 @@ describe("ExtmarksController", () => {
 
       extmarks.create({ start: 0, end: 5 })
       extmarks.create({ start: 3, end: 8 })
-      extmarks.create({ start: 10, end: 15 })
+      extmarks.create({ start: 9, end: 11 })
 
       const atOffset4 = extmarks.getAtOffset(4)
       expect(atOffset4.length).toBe(2)
@@ -2210,7 +2210,7 @@ Press ESC to return to main menu.`
 
       const id1 = extmarks.create({ start: 0, end: 5, typeId: 1 })
       const id2 = extmarks.create({ start: 6, end: 11, typeId: 1 })
-      const id3 = extmarks.create({ start: 12, end: 15, typeId: 2 })
+      const id3 = extmarks.create({ start: 8, end: 10, typeId: 2 })
 
       const type1Marks = extmarks.getAllForTypeId(1)
       expect(type1Marks.length).toBe(2)
@@ -2262,7 +2262,7 @@ Press ESC to return to main menu.`
 
       extmarks.create({ start: 0, end: 5, typeId: 1 })
       extmarks.create({ start: 6, end: 11, typeId: 2 })
-      extmarks.create({ start: 12, end: 15, typeId: 3 })
+      extmarks.create({ start: 8, end: 10, typeId: 3 })
 
       extmarks.clear()
 
@@ -2298,7 +2298,7 @@ Press ESC to return to main menu.`
 
       const id1 = extmarks.create({ start: 0, end: 5, typeId: 10, virtual: false })
       const id2 = extmarks.create({ start: 6, end: 11, typeId: 10, virtual: true })
-      const id3 = extmarks.create({ start: 12, end: 15, typeId: 10, virtual: false })
+      const id3 = extmarks.create({ start: 8, end: 10, typeId: 10, virtual: false })
 
       const type10Marks = extmarks.getAllForTypeId(10)
       expect(type10Marks.length).toBe(3)
@@ -2315,7 +2315,7 @@ Press ESC to return to main menu.`
 
       const id1 = extmarks.create({ start: 0, end: 5 })
       const id2 = extmarks.create({ start: 6, end: 11, typeId: 0 })
-      const id3 = extmarks.create({ start: 12, end: 15 })
+      const id3 = extmarks.create({ start: 8, end: 10 })
 
       const type0Marks = extmarks.getAllForTypeId(0)
       expect(type0Marks.length).toBe(3)
@@ -2872,7 +2872,7 @@ Press ESC to return to main menu.`
 
       const linkId1 = extmarks.create({ start: 0, end: 5, typeId: linkTypeId })
       const linkId2 = extmarks.create({ start: 6, end: 11, typeId: linkTypeId })
-      const tagId = extmarks.create({ start: 12, end: 15, typeId: tagTypeId })
+      const tagId = extmarks.create({ start: 8, end: 10, typeId: tagTypeId })
 
       const linkExtmarks = extmarks.getAllForTypeId(linkTypeId)
       expect(linkExtmarks.length).toBe(2)
@@ -3101,7 +3101,7 @@ Press ESC to return to main menu.`
     })
 
     it("should handle different metadata types", async () => {
-      await setup()
+      await setup("abcdefghijklmnopqrstuvwxyz")
 
       const id1 = extmarks.create({
         start: 0,
@@ -3262,7 +3262,7 @@ Press ESC to return to main menu.`
     })
 
     it("should store independent metadata for multiple extmarks", async () => {
-      await setup()
+      await setup("abcdefghijklmnop")
 
       const id1 = extmarks.create({
         start: 0,
@@ -3320,7 +3320,7 @@ Press ESC to return to main menu.`
     })
 
     it("should handle metadata with special values", async () => {
-      await setup()
+      await setup("abcdefghijklmnopqrstu")
 
       const id1 = extmarks.create({
         start: 0,

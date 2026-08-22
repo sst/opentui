@@ -18,6 +18,7 @@
     "src/lib/clipboard-service.test.ts",
     "src/lib/host-clipboard.test.ts",
     "src/lib/extmarks.test.ts",
+    "src/lib/extmarks.contract.test.ts",
     "src/lib/detect-links.test.ts",
     "src/lib/extmarks-multiwidth.test.ts",
     "src/lib/KeyHandler.test.ts",
@@ -141,6 +142,7 @@
     "src/tests/yoga-setters.test.ts",
     "src/tests/wrap-resize-perf.test.ts",
     "src/text-buffer.test.ts",
+    "src/text-buffer-annotations.test.ts",
     "src/text-buffer-view.test.ts",
     "src/lib/tree-sitter/parser.worker.ts",
     "src/testing/bun-test-node.ts"

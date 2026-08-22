@@ -165,6 +165,9 @@ export type DocumentOperation = DocumentStyle & {
 
 export const TEXT_ANNOTATION_KIND_STYLE = 1 << 0
 export const TEXT_ANNOTATION_KIND_VIRTUAL = 1 << 2
+export const TEXT_ANNOTATION_KIND_EXTMARK = 1 << 3
+export const TEXT_ANNOTATION_KIND_EXTMARK_PRIORITY = 1 << 4
+export const TEXT_ANNOTATION_KIND_EXTMARK_EMPTY = 1 << 5
 
 export type TextAnnotationGravity = "left" | "right"
 export type TextAnnotationSplicePolicy = "retain" | "invalidate" | "deleteWhenCovered"
@@ -5451,7 +5454,9 @@ class FFIRenderLib implements RenderLib {
       (count, operation) => count + (operation.kind === "addRange" || operation.kind === "addPoint" ? 1 : 0),
       0,
     )
-    const deletedCapacity = this.textBufferAnnotationCount(buffer) + createdCount
+    const hasNamespaceClear = operations.some((operation) => operation.kind === "clearNamespace")
+    const removeCount = operations.reduce((count, operation) => count + (operation.kind === "remove" ? 1 : 0), 0)
+    const deletedCapacity = hasNamespaceClear ? this.textBufferAnnotationCount(buffer) + createdCount : removeCount
     toSafeFFIU32Length(deletedCapacity, "Annotation deletion output")
     const packed = operations.length === 0 ? null : packAnnotationOperations(operations)
     const created = new BigUint64Array(createdCount)

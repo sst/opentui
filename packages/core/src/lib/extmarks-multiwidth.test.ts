@@ -7,6 +7,11 @@ import { SyntaxStyle } from "../syntax-style.js"
 import { stringWidth } from "../platform/runtime.js"
 import { RGBA } from "./RGBA.js"
 
+function utf16IndexToDisplayOffset(text: string, index: number): number {
+  const lines = text.slice(0, index).split("\n")
+  return lines.reduce((offset, line) => offset + stringWidth(line), 0) + lines.length - 1
+}
+
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
@@ -57,18 +62,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const text = textarea.plainText
 
-      // Calculate CORRECT display-width offsets
-      // "前" = 2 cols, "后" = 2 cols, "端" = 2 cols, "分" = 2 cols, "离" = 2 cols, " " = 1 col
-      // Total before "@": 10 + 1 = 11 display-width columns
-      let displayOffset = 0
-      const atJsIndex = text.indexOf("@")
-      for (let i = 0; i < atJsIndex; i++) {
-        if (text[i] === "\n") {
-          displayOffset += 1
-        } else {
-          displayOffset += stringWidth(text[i])
-        }
-      }
+      const displayOffset = utf16IndexToDisplayOffset(text, text.indexOf("@"))
 
       const mentionText = "@git-committer"
       const mentionDisplayWidth = stringWidth(mentionText)
@@ -121,10 +115,10 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       textarea.syntaxStyle = style
 
-      // "前后 test 端分离"
-      // Offsets: 前=0, 后=1, space=2, t=3, e=4, s=5, t=6, space=7, 端=8, 分=9, 离=10
-      const testStart = 3
-      const testEnd = 7
+      const text = textarea.plainText
+      const testIndex = text.indexOf("test")
+      const testStart = utf16IndexToDisplayOffset(text, testIndex)
+      const testEnd = utf16IndexToDisplayOffset(text, testIndex + "test".length)
 
       extmarks.create({
         start: testStart,
@@ -134,13 +128,8 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const highlights = textarea.getLineHighlights(0)
 
-      if (highlights.length > 0) {
-        const lineText = textarea.plainText.split("\n")[0]
-        const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-        expect(actualHighlightedText).toBe("test")
-      }
-
-      expect(highlights.length).toBe(1)
+      expect(highlights).toHaveLength(1)
+      expect(highlights[0]).toMatchObject({ start: testStart, end: testEnd })
     })
 
     it("should correctly highlight the multi-width characters themselves", async () => {
@@ -153,10 +142,10 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       textarea.syntaxStyle = style
 
-      // "hello 前后端分离 world"
-      // Offsets: h=0,e=1,l=2,l=3,o=4,space=5,前=6,后=7,端=8,分=9,离=10,space=11,w=12...
-      const chineseStart = 6
-      const chineseEnd = 11
+      const text = textarea.plainText
+      const chineseIndex = text.indexOf("前")
+      const chineseStart = utf16IndexToDisplayOffset(text, chineseIndex)
+      const chineseEnd = utf16IndexToDisplayOffset(text, chineseIndex + "前后端分离".length)
 
       extmarks.create({
         start: chineseStart,
@@ -166,13 +155,8 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const highlights = textarea.getLineHighlights(0)
 
-      if (highlights.length > 0) {
-        const lineText = textarea.plainText.split("\n")[0]
-        const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-        expect(actualHighlightedText).toBe("前后端分离")
-      }
-
-      expect(highlights.length).toBe(1)
+      expect(highlights).toHaveLength(1)
+      expect(highlights[0]).toMatchObject({ start: chineseStart, end: chineseEnd })
     })
   })
 
@@ -189,11 +173,13 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       // Highlight "test" at the end
       const text = textarea.plainText
-      const testPos = text.indexOf("test")
+      const testIndex = text.indexOf("test")
+      const testStart = utf16IndexToDisplayOffset(text, testIndex)
+      const testEnd = utf16IndexToDisplayOffset(text, testIndex + "test".length)
 
       extmarks.create({
-        start: testPos,
-        end: testPos + 4,
+        start: testStart,
+        end: testEnd,
         styleId,
       })
 
@@ -201,9 +187,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       expect(highlights.length).toBe(1)
 
-      const lineText = textarea.plainText.split("\n")[0]
-      const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-      expect(actualHighlightedText).toBe("test")
+      expect(highlights[0]).toMatchObject({ start: testStart, end: testEnd })
     })
 
     it("should handle multiple highlights with multi-width characters", async () => {
@@ -218,10 +202,12 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const text = textarea.plainText
 
-      const user1Start = text.indexOf("@user1")
-      const user1End = user1Start + 6
-      const user2Start = text.indexOf("@user2")
-      const user2End = user2Start + 6
+      const user1Index = text.indexOf("@user1")
+      const user2Index = text.indexOf("@user2")
+      const user1Start = utf16IndexToDisplayOffset(text, user1Index)
+      const user1End = utf16IndexToDisplayOffset(text, user1Index + 6)
+      const user2Start = utf16IndexToDisplayOffset(text, user2Index)
+      const user2End = utf16IndexToDisplayOffset(text, user2Index + 6)
 
       extmarks.create({
         start: user1Start,
@@ -236,11 +222,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-
-      highlights.forEach((h, i) => {
-        const lineText = textarea.plainText.split("\n")[0]
-        const highlightedText = lineText.substring(h.start, h.end)
-      })
 
       expect(highlights.length).toBe(2)
     })
@@ -271,9 +252,8 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
     })
   })
 
-  describe("Visual vs Byte Offset Issues", () => {
-    it("should demonstrate the offset to char offset conversion issue", async () => {
-      // This is the CRITICAL test - offsetToCharOffset doesn't account for display width
+  describe("UTF-16 Caller Conversion", () => {
+    it("should convert regex UTF-16 indexes before creating an extmark", async () => {
       await setup("前后端分离 @git-committer")
 
       const style = SyntaxStyle.create()
@@ -286,12 +266,9 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const text = textarea.plainText
 
-      // The @ symbol is at cursor offset 6
-      const atPos = text.indexOf("@")
-
-      // We want to highlight from @ to the end of "committer"
-      const start = atPos
-      const end = atPos + 14 // "@git-committer" is 14 chars
+      const atIndex = text.indexOf("@")
+      const start = utf16IndexToDisplayOffset(text, atIndex)
+      const end = utf16IndexToDisplayOffset(text, atIndex + 14)
 
       const extmarkId = extmarks.create({
         start: start,
@@ -299,26 +276,9 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
         styleId,
       })
 
-      const extmark = extmarks.get(extmarkId)
-
       const highlights = textarea.getLineHighlights(0)
-
-      if (highlights.length > 0) {
-        const h = highlights[0]
-
-        // This is where the bug manifests:
-        // The offsetToCharOffset in extmarks.ts doesn't account for multi-width display
-        // So the highlight char offset will be wrong
-
-        const lineText = text.split("\n")[0]
-
-        // Try to extract what's actually highlighted using the char offsets
-        const actualText = lineText.substring(h.start, Math.min(h.end, lineText.length))
-
-        // This will likely FAIL because the char offsets don't account for display width
-      }
-
-      expect(highlights.length).toBe(1)
+      expect(extmarks.get(extmarkId)).toMatchObject({ start: 11, end: 25 })
+      expect(highlights).toEqual([{ start: 11, end: 25, styleId, priority: 0, hlRef: extmarkId }])
     })
   })
 })

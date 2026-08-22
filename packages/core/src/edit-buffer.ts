@@ -3,7 +3,13 @@ import {
   type EditBufferHandle,
   type LogicalCursor,
   type RenderLib,
+  type TextAnnotation,
+  type TextAnnotationBatchResult,
+  type TextAnnotationOperation,
+  type TextAnnotationQuery,
+  type TextBoundaryAffinity,
   type TextBufferHandle,
+  type TextDisplayPoint,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import { RGBA } from "./lib/RGBA.js"
@@ -93,6 +99,7 @@ export class EditBuffer extends EventEmitter {
     }
     this._singleTextBytes = textBytes
     this.lib.editBufferSetTextFromMem(this.bufferPtr, this._singleTextMemId)
+    this.emitAnnotationsReset()
   }
 
   /**
@@ -103,6 +110,7 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.lib.editBufferSetText(this.bufferPtr, textBytes)
+    this.emitAnnotationsReset()
   }
 
   /**
@@ -128,6 +136,30 @@ export class EditBuffer extends EventEmitter {
   public getLineCount(): number {
     this.guard()
     return this.lib.textBufferGetLineCount(this.textBufferPtr)
+  }
+
+  public applyAnnotationOperations(operations: TextAnnotationOperation[]): TextAnnotationBatchResult {
+    this.guard()
+    return this.lib.textBufferApplyAnnotationOperations(this.textBufferPtr, operations)
+  }
+
+  public queryAnnotations(query: TextAnnotationQuery = { kind: "all" }): TextAnnotation[] {
+    this.guard()
+    return this.lib.textBufferQueryAnnotations(this.textBufferPtr, query)
+  }
+
+  public displayPointToNormalizedByte(row: number, col: number, affinity: TextBoundaryAffinity): number {
+    this.guard()
+    return this.lib.textBufferDisplayPointToNormalizedByte(this.textBufferPtr, row, col, affinity)
+  }
+
+  public normalizedByteToDisplayPoint(byte: number, affinity: TextBoundaryAffinity): TextDisplayPoint {
+    this.guard()
+    return this.lib.textBufferNormalizedByteToDisplayPoint(this.textBufferPtr, byte, affinity)
+  }
+
+  private emitAnnotationsReset(): void {
+    this.emit("annotations-reset")
   }
 
   public getText(): string {
@@ -414,6 +446,7 @@ export class EditBuffer extends EventEmitter {
   public clear(): void {
     this.guard()
     this.lib.editBufferClear(this.bufferPtr)
+    this.emit("annotations-reset")
   }
 
   public destroy(): void {

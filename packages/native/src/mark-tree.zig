@@ -1055,7 +1055,10 @@ pub const MarkTree = struct {
                     range.start_byte < old_end and range.end_byte > start_byte;
                 break :blk .{
                     .affected = endpoint_affected or overlaps,
-                    .covered = lower >= start_byte and upper <= old_end,
+                    .covered = if (lower == upper)
+                        lower > start_byte and upper < old_end
+                    else
+                        lower >= start_byte and upper <= old_end,
                 };
             },
         };

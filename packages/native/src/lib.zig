@@ -3531,23 +3531,43 @@ export fn textBufferQueryAnnotations(
         .by_id, .all, .namespace, .kind_mask => {},
     }
 
-    var count: u32 = 0;
-    var iterator = object_ptr.textAnnotations().iterator();
-    while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
-        if (annotationMatches(annotation, query)) count += 1;
+    const Collector = struct {
+        query: ExternalAnnotationQuery,
+        records: ?[]ExternalAnnotationRecord,
+        count: u32 = 0,
+
+        fn visit(self: *@This(), annotation: anytype) !void {
+            if (!annotationMatches(annotation, self.query)) return;
+            if (self.records) |records| {
+                if (self.count >= records.len) return error.BufferTooSmall;
+                records[self.count] = externalAnnotationRecord(annotation);
+            }
+            self.count += 1;
+        }
+    };
+    var collector: Collector = .{
+        .query = query,
+        .records = if (out_records) |records| records[0..record_capacity] else null,
+    };
+    const annotations = object_ptr.textAnnotations();
+    switch (@as(AnnotationQueryMode, @enumFromInt(query.mode))) {
+        .by_id => if (annotations.get(query.id)) |annotation| collector.visit(annotation) catch return @intFromEnum(TextDocumentStatus.buffer_too_small),
+        .overlap => annotations.visitOverlapping(query.start_byte, query.end_byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .containing_byte => if (query.byte != std.math.maxInt(u32)) {
+            annotations.visitOverlapping(query.byte, query.byte + 1, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+        },
+        .starts_at => annotations.visitStartingAt(query.byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .points_at => annotations.visitPointsAt(query.byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .all, .namespace, .kind_mask => {
+            var iterator = annotations.iterator();
+            while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
+                collector.visit(annotation) catch return @intFromEnum(TextDocumentStatus.buffer_too_small);
+            }
+        },
     }
-    count_output.* = count;
-    if (record_capacity == 0 and out_records == null) return @intFromEnum(TextDocumentStatus.ok);
-    if (record_capacity < count) return @intFromEnum(TextDocumentStatus.buffer_too_small);
-    if (count == 0) return @intFromEnum(TextDocumentStatus.ok);
-    const records = out_records.?[0..record_capacity];
-    iterator = object_ptr.textAnnotations().iterator();
-    var index: usize = 0;
-    while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
-        if (!annotationMatches(annotation, query)) continue;
-        records[index] = externalAnnotationRecord(annotation);
-        index += 1;
-    }
+    count_output.* = collector.count;
+    if (out_records == null) return @intFromEnum(TextDocumentStatus.ok);
+    if (record_capacity < collector.count) return @intFromEnum(TextDocumentStatus.buffer_too_small);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
