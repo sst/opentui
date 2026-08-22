@@ -1762,9 +1762,7 @@ pub const CliRenderer = struct {
             .sixel => Terminal.ImageProtocol.sixel,
             .blocks => Terminal.ImageProtocol.blocks,
         };
-        if (configured == .sixel and self.terminal.term_info.from_xtversion and
-            std.ascii.eqlIgnoreCase(self.terminal.getTerminalName(), "kitty") and !self.terminal.getCapabilities().sixel)
-        {
+        if (configured == .sixel and self.terminal.refusesForcedSixel()) {
             return .fallback;
         }
         switch (configured) {

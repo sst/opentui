@@ -1192,6 +1192,19 @@ pub fn findPosByWidth(
     }
 }
 
+/// Find a display position without splitting Unicode grapheme clusters.
+/// The width method still controls each cluster's display width.
+pub fn findGraphemePosByWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    include_start_before: bool,
+    width_method: WidthMethod,
+) PosByWidthResult {
+    return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method);
+}
+
 /// Find position by column width using Unicode grapheme cluster segmentation
 fn findPosByWidthUnicode(
     text: []const u8,
@@ -1310,6 +1323,9 @@ fn findPosByWidthUnicode(
         if (state.columns_used >= max_columns) {
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
+        if (!include_start_before and state.columns_used + state.cluster_width > max_columns) {
+            return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
+        }
         state.columns_used += state.cluster_width;
         if (include_start_before) {
             state.grapheme_count += 1;
@@ -1388,6 +1404,10 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_met
         .unicode, .no_zwj => return getWidthAtUnicode(text, byte_offset, tab_width, width_method),
         .wcwidth => return getWidthAtWCWidth(text, byte_offset, tab_width),
     }
+}
+
+pub fn getGraphemeWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
+    return getWidthAtUnicode(text, byte_offset, tab_width, width_method);
 }
 
 /// Get width at byte offset using Unicode grapheme cluster segmentation

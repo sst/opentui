@@ -7,6 +7,7 @@ import {
   type TextBufferViewHandle,
 } from "./zig.js"
 import type { TextBuffer } from "./text-buffer.js"
+import type { SelectionOccupancy } from "./types.js"
 
 export class TextBufferView {
   private lib: RenderLib
@@ -104,6 +105,16 @@ export class TextBufferView {
   public resetLocalSelection(): void {
     this.guard()
     this.lib.textBufferViewResetLocalSelection(this.viewPtr)
+  }
+
+  public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
+    this.guard()
+    this.lib.textBufferViewSetSelectionOccupancy(this.viewPtr, occupancy)
+  }
+
+  public getSelectionOccupancy(): SelectionOccupancy {
+    this.guard()
+    return this.lib.textBufferViewGetSelectionOccupancy(this.viewPtr)
   }
 
   public setWrapWidth(width: number | null): void {

@@ -33,6 +33,12 @@ export type ThemeMode = "dark" | "light"
 
 export type CursorStyle = "block" | "line" | "underline" | "default"
 
+/** How a selection occupies cells between stored anchor and focus offsets.
+ * Independent of `cursorStyle` (CSI `q` is paint). Default `cell` includes
+ * the grapheme under the max endpoint. `boundary` is the half-open insert
+ * range `[min, max)`. */
+export type SelectionOccupancy = "cell" | "boundary"
+
 export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 
 export interface CursorStyleOptions {

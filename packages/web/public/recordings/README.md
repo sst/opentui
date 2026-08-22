@@ -159,9 +159,9 @@ Use this minimum ratio for a full-width composition:
 cols / rows >= (boxWidth / boxHeight) * (lineToEm / chToEm)
 ```
 
-For Berkeley Mono, `chToEm` is approximately `0.6` and `lineToEm` is approximately `1.21`.
+For OpenTUI Mono, `chToEm` is approximately `0.6` and `lineToEm` is approximately `1.1`.
 
-A media-area ratio from `1.2` to `1.3` usually needs a recording ratio from approximately `2.4` to `2.6`.
+A media-area ratio from `1.2` to `1.3` usually needs a recording ratio from approximately `2.2` to `2.4`.
 
 Record a wider grid or crop rows if the recording does not meet the minimum ratio.
 

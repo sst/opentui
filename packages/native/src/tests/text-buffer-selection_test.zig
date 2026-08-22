@@ -22,6 +22,7 @@ test "Selection - basic selection without wrap" {
 
     try tb.setText("Hello World");
 
+    // Inclusive selection: the cell under the focus (7) is selected too.
     _ = view.setLocalSelection(2, 0, 7, 0, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -30,7 +31,7 @@ test "Selection - basic selection without wrap" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
-    try std.testing.expectEqual(@as(u32, 7), end);
+    try std.testing.expectEqual(@as(u32, 8), end);
 }
 
 test "Selection - with wrapped lines" {
@@ -52,6 +53,7 @@ test "Selection - with wrapped lines" {
 
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
+    // Inclusive selection: focus cell (5,1) = offset 15 is selected too.
     _ = view.setLocalSelection(5, 0, 5, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -60,7 +62,7 @@ test "Selection - with wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 5), start);
-    try std.testing.expectEqual(@as(u32, 15), end);
+    try std.testing.expectEqual(@as(u32, 16), end);
 }
 
 test "Selection - no selection returns all bits set" {
@@ -299,6 +301,10 @@ test "Selection - zero-width selection" {
 
     const packed_info = view.packSelectionInfo();
     try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
+
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(5, 0, 5, 0, null, null);
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), view.packSelectionInfo());
 }
 
 test "Selection - beyond text bounds" {
@@ -366,6 +372,7 @@ test "Selection - at wrap boundary" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
+    // Inclusive selection: focus cell (1,1) = offset 11 is selected too.
     _ = view.setLocalSelection(9, 0, 1, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -374,7 +381,7 @@ test "Selection - at wrap boundary" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 9), start);
-    try std.testing.expectEqual(@as(u32, 11), end);
+    try std.testing.expectEqual(@as(u32, 12), end);
 }
 
 test "Selection - spanning multiple wrapped lines" {
@@ -395,6 +402,7 @@ test "Selection - spanning multiple wrapped lines" {
     view.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
 
+    // Inclusive selection: focus cell (8,2) = offset 28 is selected too.
     _ = view.setLocalSelection(2, 0, 8, 2, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -403,7 +411,7 @@ test "Selection - spanning multiple wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
-    try std.testing.expectEqual(@as(u32, 28), end);
+    try std.testing.expectEqual(@as(u32, 29), end);
 }
 
 test "Selection - changes when wrap width changes" {
@@ -428,7 +436,7 @@ test "Selection - changes when wrap width changes" {
     var start = @as(u32, @intCast(packed_info >> 32));
     var end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 5), start);
-    try std.testing.expectEqual(@as(u32, 15), end);
+    try std.testing.expectEqual(@as(u32, 16), end);
 
     view.setWrapWidth(5);
     _ = view.setLocalSelection(5, 0, 5, 1, null, null);
@@ -813,14 +821,15 @@ test "Selection - updateLocalSelection extends focus position" {
 
     try tb.setText("Hello World");
 
-    // Set initial local selection from (0,0) to (5,0)
+    // Set initial local selection from (0,0) to (5,0); the focus cell at
+    // offset 5 is included, so the end is 6.
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
     var packed_info = view.packSelectionInfo();
     var start = @as(u32, @intCast(packed_info >> 32));
     var end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 5), end);
+    try std.testing.expectEqual(@as(u32, 6), end);
 
     // Update focus to (11,0) - should keep anchor at (0,0)
     const changed = view.updateLocalSelection(0, 0, 11, 0, null, null);
@@ -860,7 +869,7 @@ test "Selection - updateLocalSelection with no existing selection falls back to 
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 5), end);
+    try std.testing.expectEqual(@as(u32, 6), end);
 }
 
 test "Selection - updateLocalSelection can shrink selection" {
@@ -879,7 +888,7 @@ test "Selection - updateLocalSelection can shrink selection" {
 
     _ = view.setLocalSelection(0, 0, 11, 0, null, null);
 
-    // Shrink focus to 5
+    // Shrink focus to 5; the focus cell (the space) stays included.
     const changed = view.updateLocalSelection(0, 0, 5, 0, null, null);
     try std.testing.expect(changed);
 
@@ -887,12 +896,12 @@ test "Selection - updateLocalSelection can shrink selection" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 5), end);
+    try std.testing.expectEqual(@as(u32, 6), end);
 
     var out_buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
-    try std.testing.expectEqualStrings("Hello", text);
+    try std.testing.expectEqualStrings("Hello ", text);
 }
 
 test "Selection - updateLocalSelection across multiple lines" {
@@ -943,7 +952,7 @@ test "Selection - updateLocalSelection backward selection" {
     _ = view.setLocalSelection(11, 0, 11, 0, null, null);
 
     // Move focus backward to (6, 0) - start of "World"
-    // Backward selection adds +1 to make it inclusive, so [6, 12) = "World!"
+    // Inclusive selection keeps the anchor cell selected, so [6, 12) = "World!"
     const changed = view.updateLocalSelection(11, 0, 6, 0, null, null);
     try std.testing.expect(changed);
 
@@ -981,7 +990,7 @@ test "Selection - updateLocalSelection with wrapped lines" {
     // Start at (0, 0)
     _ = view.setLocalSelection(0, 0, 0, 0, null, null);
 
-    // Extend to second wrapped line (5, 1)
+    // Extend to second wrapped line (5, 1); the focus cell 'P' is included.
     const changed = view.updateLocalSelection(0, 0, 5, 1, null, null);
     try std.testing.expect(changed);
 
@@ -989,12 +998,12 @@ test "Selection - updateLocalSelection with wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 15), end);
+    try std.testing.expectEqual(@as(u32, 16), end);
 
     var out_buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
-    try std.testing.expectEqualStrings("ABCDEFGHIJKLMNO", text);
+    try std.testing.expectEqualStrings("ABCDEFGHIJKLMNOP", text);
 }
 
 test "Selection - updateLocalSelection with same focus position maintains selection" {
@@ -1020,7 +1029,7 @@ test "Selection - updateLocalSelection with same focus position maintains select
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 5), end);
+    try std.testing.expectEqual(@as(u32, 6), end);
 }
 
 test "Selection - updateLocalSelection preserves anchor correctly" {
@@ -1053,4 +1062,402 @@ test "Selection - updateLocalSelection preserves anchor correctly" {
     // Should include "e 2\nLine 3" since anchor is at col 3 of line 1 and focus at end of line 2
     try std.testing.expect(std.mem.find(u8, text, "e 2") != null);
     try std.testing.expect(std.mem.find(u8, text, "\nLine 3") != null);
+}
+
+test "Selection - inclusive forward selection spans wide grapheme at focus" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Offsets: a=0 b=1 you=2..3 (width 2) c=4 d=5
+    try tb.setText("ab\u{4F60}cd");
+
+    // Forward drag from cell 0 to cell 2 (start of the wide grapheme): the
+    // whole grapheme is selected, not one of its columns: [0, 4).
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 4), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("ab\u{4F60}", out_buffer[0..len]);
+}
+
+test "Selection - inclusive forward selection snaps focus on wide grapheme continuation cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ab\u{4F60}cd");
+
+    // Focus on the continuation column (cell 3) of the wide grapheme: the
+    // extension is the remaining grapheme width, so the end still lands on
+    // the grapheme boundary: [0, 4).
+    _ = view.setLocalSelection(0, 0, 3, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 4), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("ab\u{4F60}", out_buffer[0..len]);
+}
+
+test "Selection - inclusive backward selection spans wide grapheme at anchor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ab\u{4F60}cd");
+
+    // Anchor on the wide grapheme (cell 2), drag left to cell 0: the anchor
+    // grapheme stays fully selected: [0, 4), never a half grapheme [0, 3).
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+    const changed = view.updateLocalSelection(2, 0, 0, 0, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 4), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("ab\u{4F60}", out_buffer[0..len]);
+}
+
+test "Selection - setLocalSelection and updateLocalSelection agree for backward drags" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // Drag path: press at cell 8, extend left to cell 6.
+    _ = view.setLocalSelection(8, 0, 8, 0, null, null);
+    _ = view.updateLocalSelection(8, 0, 6, 0, null, null);
+    const drag_packed = view.packSelectionInfo();
+
+    // Refresh path: renderables replay the same anchor/focus through
+    // setLocalSelection (style change, resize, content update). The result
+    // must be identical or the selection shifts under the user.
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(8, 0, 6, 0, null, null);
+    const replay_packed = view.packSelectionInfo();
+
+    try std.testing.expectEqual(drag_packed, replay_packed);
+
+    const start = @as(u32, @intCast(replay_packed >> 32));
+    const end = @as(u32, @intCast(replay_packed & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 6), start);
+    try std.testing.expectEqual(@as(u32, 9), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Wor", out_buffer[0..len]);
+}
+
+test "Selection - wrap padding does not include the next visual line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Word wrap at 18 leaves unused cells on the first visual line:
+    // vline 0 is "hello my good " (14 cols), vline 1 is "friend".
+    try tb.setText("hello my good friend");
+    view.setWrapMode(.word);
+    view.setWrapWidth(18);
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    // Drag through the empty padding after col 14. Inclusive selection must
+    // stop at the wrap, not consume the 'f' that starts the next visual line.
+    _ = view.setLocalSelection(0, 0, 17, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 14), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("hello my good ", out_buffer[0..len]);
+}
+
+fn occupancySelected(view: *TextBufferView, out: *[100]u8) []const u8 {
+    const len = view.getSelectedTextIntoBuffer(out);
+    return out[0..len];
+}
+
+fn occupancyPacked(view: *const TextBufferView) struct { start: u32, end: u32 } {
+    const packed_info = view.packSelectionInfo();
+    return .{
+        .start = @intCast(packed_info >> 32),
+        .end = @intCast(packed_info & 0xFFFFFFFF),
+    };
+}
+
+test "occupancy - cell and boundary derive endpoint ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+
+    var range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 2), range.end);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 1), range.end);
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+
+    try tb.setText("abcd");
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.cell);
+    _ = view.setLocalSelection(2, 0, 1, 0, null, null);
+    try std.testing.expectEqualStrings("bc", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(2, 0, 1, 0, null, null);
+    try std.testing.expectEqualStrings("b", occupancySelected(view, &out));
+}
+
+test "occupancy - wide glyph is never half a cell or boundary range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Offsets: a=0 b=1 you=2..3 (width 2) c=4 d=5
+    try tb.setText("ab\u{4F60}cd");
+
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("ab\u{4F60}", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 3, 0, null, null);
+    var range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 4), range.end);
+    try std.testing.expectEqualStrings("ab\u{4F60}", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(3, 0, 5, 0, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 5), range.end);
+    try std.testing.expectEqualStrings("\u{4F60}c", occupancySelected(view, &out));
+
+    try tb.setText("ab\u{4F60}");
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(0, 0, 3, 0, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 4), range.end);
+    try std.testing.expectEqualStrings("ab\u{4F60}", occupancySelected(view, &out));
+
+    try tb.setText("\u{1F44B}\u{1F3FF}X");
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+    try std.testing.expectEqualStrings("\u{1F44B}\u{1F3FF}", occupancySelected(view, &out));
+}
+
+test "occupancy - replay clamps tiny truncated views" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("abcdefghij");
+    _ = view.setLocalSelection(0, 0, 8, 0, null, null);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 2, .height = 1 });
+    view.setTruncate(true);
+    try tb.setText("abcde");
+
+    view.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), view.packSelectionInfo());
+
+    view.setSelection(0, 5, null, null);
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("abcde", occupancySelected(view, &out));
+}
+
+test "occupancy - EOL focus does not grab a bare newline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello\nWorld");
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("Hello", occupancySelected(view, &out));
+
+    view.resetLocalSelection();
+    view.setSelectionOccupancy(.boundary);
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+    try std.testing.expectEqualStrings("Hello", occupancySelected(view, &out));
+}
+
+test "occupancy - set and update agree then occupancy replay shrinks the range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(0, 0, 0, 0, null, null);
+    _ = view.updateLocalSelection(0, 0, 1, 0, null, null);
+    const drag_packed = view.packSelectionInfo();
+
+    view.resetLocalSelection();
+    _ = view.setLocalSelection(0, 0, 1, 0, null, null);
+    try std.testing.expectEqual(drag_packed, view.packSelectionInfo());
+
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+
+    view.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+    const after = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), after.start);
+    try std.testing.expectEqual(@as(u32, 1), after.end);
+
+    view.setSelectionOccupancy(.cell);
+    try std.testing.expectEqualStrings("He", occupancySelected(view, &out));
+}
+
+test "occupancy - offset selection clears stored endpoints" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello");
+    _ = view.setLocalSelection(0, 0, 2, 0, null, null);
+    view.setSelection(0, 1, null, null);
+    var out: [100]u8 = undefined;
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+
+    view.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqualStrings("H", occupancySelected(view, &out));
+}
+
+test "Selection - vertical bounds take precedence over negative x" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    _ = view.setLocalSelection(2, 0, -3, 5, null, null);
+    var range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(-3, 5, 2, 0, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+    _ = view.updateLocalSelection(2, 0, -3, 5, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 2), range.start);
+    try std.testing.expectEqual(@as(u32, 20), range.end);
+
+    _ = view.setLocalSelection(5, 1, -2, 1, null, null);
+    range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 13), range.end);
 }

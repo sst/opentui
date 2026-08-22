@@ -137,6 +137,7 @@ test "TextBufferView selection - basic selection without wrap" {
 
     try tb.setText("Hello World");
 
+    // Inclusive selection: the cell under the focus (7) is selected too.
     _ = view.setLocalSelection(2, 0, 7, 0, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -145,7 +146,7 @@ test "TextBufferView selection - basic selection without wrap" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
-    try std.testing.expectEqual(@as(u32, 7), end);
+    try std.testing.expectEqual(@as(u32, 8), end);
 }
 
 test "TextBufferView selection - with wrapped lines" {
@@ -167,6 +168,7 @@ test "TextBufferView selection - with wrapped lines" {
 
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
+    // Inclusive selection: focus cell (5,1) = offset 15 is selected too.
     _ = view.setLocalSelection(5, 0, 5, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -175,7 +177,7 @@ test "TextBufferView selection - with wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 5), start);
-    try std.testing.expectEqual(@as(u32, 15), end);
+    try std.testing.expectEqual(@as(u32, 16), end);
 }
 
 test "TextBufferView selection - no selection returns all bits set" {
@@ -1107,6 +1109,7 @@ test "TextBufferView selection - selection at wrap boundary" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
+    // Inclusive selection: focus cell (1,1) = offset 11 is selected too.
     _ = view.setLocalSelection(9, 0, 1, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1115,7 +1118,7 @@ test "TextBufferView selection - selection at wrap boundary" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 9), start);
-    try std.testing.expectEqual(@as(u32, 11), end);
+    try std.testing.expectEqual(@as(u32, 12), end);
 }
 
 test "TextBufferView selection - spanning multiple wrapped lines" {
@@ -1136,6 +1139,7 @@ test "TextBufferView selection - spanning multiple wrapped lines" {
     view.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
 
+    // Inclusive selection: focus cell (8,2) = offset 28 is selected too.
     _ = view.setLocalSelection(2, 0, 8, 2, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1144,7 +1148,7 @@ test "TextBufferView selection - spanning multiple wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
-    try std.testing.expectEqual(@as(u32, 28), end);
+    try std.testing.expectEqual(@as(u32, 29), end);
 }
 
 test "TextBufferView selection - changes when wrap width changes" {
@@ -1169,7 +1173,7 @@ test "TextBufferView selection - changes when wrap width changes" {
     var start = @as(u32, @intCast(packed_info >> 32));
     var end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 5), start);
-    try std.testing.expectEqual(@as(u32, 15), end);
+    try std.testing.expectEqual(@as(u32, 16), end);
 
     view.setWrapMode(.char);
     view.setWrapWidth(5);

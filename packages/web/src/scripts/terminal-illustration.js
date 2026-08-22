@@ -684,10 +684,10 @@
   }
 
   function loadAndMount(illustration, config) {
-    // `fitScreenToBox` sizes the screen from a measured glyph width. Measuring
-    // against the fallback monospace font while Berkeley Mono is still
-    // loading leaves the rendered screen narrower or wider than the box, so
-    // wait for fonts before mounting.
+    // `fitScreenToBox` sizes the screen from a measured glyph width. If you
+    // measure before OpenTUI Mono loads, the fallback monospace font sets
+    // the width. Then the screen is narrower or wider than the box. Wait
+    // for fonts before you mount.
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()
     Promise.all(
       config.stories

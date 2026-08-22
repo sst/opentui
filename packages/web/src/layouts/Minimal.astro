@@ -26,7 +26,7 @@ const { title, description, wide = false, robots } = Astro.props
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preload" href="/BerkeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/OpenTUIMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
       const theme = localStorage.getItem("theme")
       if (theme === "light" || theme === "blue" || theme === "dark") {
@@ -46,32 +46,32 @@ const { title, description, wide = false, robots } = Astro.props
 
 <style is:global>
   @font-face {
-    font-family: "Berkeley Mono";
-    src: url("/BerkeleyMono-Regular.woff2") format("woff2");
+    font-family: "OpenTUI Mono";
+    src: url("/fonts/OpenTUIMono-Regular.woff2") format("woff2");
     font-weight: 400;
     font-style: normal;
     font-display: swap;
   }
 
   @font-face {
-    font-family: "Berkeley Mono";
-    src: url("/BerkeleyMono-Bold.woff2") format("woff2");
+    font-family: "OpenTUI Mono";
+    src: url("/fonts/OpenTUIMono-Bold.woff2") format("woff2");
     font-weight: 700;
     font-style: normal;
     font-display: swap;
   }
 
   @font-face {
-    font-family: "Berkeley Mono";
-    src: url("/BerkeleyMono-Oblique.woff2") format("woff2");
+    font-family: "OpenTUI Mono";
+    src: url("/fonts/OpenTUIMono-Italic.woff2") format("woff2");
     font-weight: 400;
     font-style: italic;
     font-display: swap;
   }
 
   @font-face {
-    font-family: "Berkeley Mono";
-    src: url("/BerkeleyMono-Bold-Oblique.woff2") format("woff2");
+    font-family: "OpenTUI Mono";
+    src: url("/fonts/OpenTUIMono-BoldItalic.woff2") format("woff2");
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -121,7 +121,7 @@ const { title, description, wide = false, robots } = Astro.props
     padding: 4rem var(--page-gutter);
     background: var(--page-background);
     color: var(--page-color);
-    font-family: "Berkeley Mono", monospace;
+    font-family: "OpenTUI Mono", monospace;
     font-size: var(--text-body);
     line-height: 1.5;
   }
