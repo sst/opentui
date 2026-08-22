@@ -396,7 +396,8 @@ export class TextRenderable extends TextBufferRenderable {
         children: (string | TextRenderable)[]
         ownedChildren: Set<TextRenderable>
         manualStyledText: StyledText | null
-        dirty: boolean
+        documentDirty: boolean
+        renderDirty: boolean
         rawTextIdentities: (RawTextIdentity | null)[]
         pendingRemovedRangeIds: Set<bigint>
         pendingDocumentRoots: Set<TextRenderable>
@@ -411,7 +412,8 @@ export class TextRenderable extends TextBufferRenderable {
         children: [...parent._children],
         ownedChildren: new Set(parent._ownedChildren),
         manualStyledText: parent._manualStyledText,
-        dirty: parent._textDocumentPending,
+        documentDirty: parent._textDocumentPending,
+        renderDirty: parent._dirty,
         rawTextIdentities: [...parent._rawTextIdentities],
         pendingRemovedRangeIds: new Set(parent._pendingRemovedRangeIds),
         pendingDocumentRoots: new Set(parent._pendingDocumentRoots),
@@ -469,7 +471,8 @@ export class TextRenderable extends TextBufferRenderable {
         parent._ownedChildren.clear()
         for (const child of snapshot.ownedChildren) parent._ownedChildren.add(child)
         parent._manualStyledText = snapshot.manualStyledText
-        parent._textDocumentPending = snapshot.dirty
+        parent._textDocumentPending = snapshot.documentDirty
+        parent._dirty = snapshot.renderDirty
         parent._rawTextIdentities = [...snapshot.rawTextIdentities]
         parent._pendingRemovedRangeIds.clear()
         for (const id of snapshot.pendingRemovedRangeIds) parent._pendingRemovedRangeIds.add(id)
@@ -947,17 +950,12 @@ export class TextRenderable extends TextBufferRenderable {
     throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
   }
 
-  public replace(obj: TextRenderable | string, index: number): void {
-    this.materializeChildOrder()
-    if (isTextRenderable(obj)) this.assertCanInsertTextChild(obj)
-    const existing = this._children[index]
-    if (existing === undefined) {
-      this.insertTextChild(obj, index)
-      this.invalidateTextDocument()
-      return
-    }
-
-    const nextChildren = [...this._children]
+  public replace(obj: TextRenderable | StyledText | string, index: number): void {
+    const styledChildren = isStyledText(obj) ? this.styledTextToChildren(obj) : []
+    const replacements: (string | TextRenderable)[] = isStyledText(obj) ? styledChildren : [obj]
+    const currentChildren = this.materializeChildOrder()
+    const replacesExisting = currentChildren[index] !== undefined
+    const nextChildren = [...currentChildren]
     let targetIndex = index
     if (isTextRenderable(obj) && obj.parent === this) {
       const currentIndex = nextChildren.indexOf(obj)
@@ -966,8 +964,33 @@ export class TextRenderable extends TextBufferRenderable {
         if (currentIndex < targetIndex) targetIndex -= 1
       }
     }
-    nextChildren[targetIndex] = obj
-    this.children = nextChildren
+    if (replacesExisting) {
+      nextChildren.splice(targetIndex, 1, ...replacements)
+    } else {
+      const insertIndex = Math.max(0, Math.min(targetIndex, nextChildren.length))
+      nextChildren.splice(insertIndex, 0, ...replacements)
+    }
+
+    try {
+      this.children = nextChildren
+      for (const child of styledChildren) this._ownedChildren.add(child)
+    } catch (error) {
+      const committed =
+        this._children.length === nextChildren.length &&
+        this._children.every((child, childIndex) => child === nextChildren[childIndex])
+      if (committed) {
+        for (const child of styledChildren) this._ownedChildren.add(child)
+      } else {
+        for (const child of styledChildren.reverse()) {
+          if (!child.isDestroyed) {
+            try {
+              child.destroyRecursively()
+            } catch {}
+          }
+        }
+      }
+      throw error
+    }
   }
 
   public insertBefore(
@@ -985,7 +1008,8 @@ export class TextRenderable extends TextBufferRenderable {
   public remove(child: BaseRenderable): void {
     if (!isTextRenderable(child)) throw new Error("remove expects a TextNodeRenderable child object")
 
-    const hadPendingChildOrder = this._pendingChildOrder !== null
+    const hasPendingOrder = this._pendingChildOrder !== null
+    const owner = this.getDocumentOwner()
     this.materializeChildOrder()
     const childIndex = this._children.indexOf(child)
     if (childIndex === -1) {
@@ -995,8 +1019,7 @@ export class TextRenderable extends TextBufferRenderable {
       return
     }
 
-    if (!hadPendingChildOrder) {
-      this.getDocumentOwner()?.coalescePendingNativeMovesFor(child)
+    if (!hasPendingOrder && (!owner || owner._pendingNativeMoves.length === 0)) {
       this._children.splice(childIndex, 1)
       this._rawTextIdentities.splice(childIndex, 1)
       this.detachTextChild(child, this._ownedChildren.has(child))
@@ -1010,11 +1033,18 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public clear(): void {
-    const hadPendingChildOrder = this._pendingChildOrder !== null
+    const hasPendingOrder = this._pendingChildOrder !== null
+    const owner = this.getDocumentOwner()
     this.materializeChildOrder()
-    if (!hadPendingChildOrder) {
-      this.getDocumentOwner()?.coalescePendingNativeMovesFor(this)
-      this.clearChildren(false)
+    if (!hasPendingOrder && (!owner || owner._pendingNativeMoves.length === 0)) {
+      const previousChildren = [...this._children]
+      this._children.splice(0)
+      this._rawTextIdentities.splice(0)
+      for (const child of previousChildren.reverse()) {
+        if (isTextRenderable(child) && child.parent === this) {
+          this.detachTextChild(child, this._ownedChildren.has(child))
+        }
+      }
       this._manualStyledText = null
       this.invalidateTextDocument()
       return
@@ -1279,32 +1309,6 @@ export class TextRenderable extends TextBufferRenderable {
       for (const child of children.reverse()) child.destroyRecursively()
       throw error
     }
-  }
-
-  private insertTextChild(child: string | TextRenderable, index: number): number {
-    this.materializeChildOrder()
-    let insertIndex = Math.max(0, Math.min(index, this._children.length))
-    if (isTextRenderable(child)) {
-      this.assertCanInsertTextChild(child)
-      if (child.parent === this) {
-        const currentIndex = this._children.indexOf(child)
-        if (currentIndex !== -1) {
-          this._children.splice(currentIndex, 1)
-          this._rawTextIdentities.splice(currentIndex, 1)
-          if (currentIndex < insertIndex) insertIndex -= 1
-        }
-      } else if (child.parent) {
-        this.detachFromCurrentTextParent(child)
-      }
-
-      child.detachTextDocumentState()
-      child.adoptTextContext(this._ctx)
-      child.parent = this
-    }
-
-    this._children.splice(insertIndex, 0, child)
-    this._rawTextIdentities.splice(insertIndex, 0, typeof child === "string" ? { value: child, rangeId: null } : null)
-    return insertIndex
   }
 
   private detachTextChild(
@@ -1693,10 +1697,10 @@ export class TextRenderable extends TextBufferRenderable {
   private coalescePendingNativeMovesFor(root: TextRenderable): void {
     this._pendingNativeMoves = this._pendingNativeMoves.filter(
       (move) =>
-        move.source !== root &&
-        !move.source.isTextDescendantOf(root) &&
-        move.anchor !== root &&
-        !move.anchor.isTextDescendantOf(root),
+        !(
+          (move.source === root || move.source.isTextDescendantOf(root)) &&
+          (move.anchor === root || move.anchor.isTextDescendantOf(root))
+        ),
     )
   }
 
@@ -1765,36 +1769,6 @@ export class TextRenderable extends TextBufferRenderable {
       visited.add(current)
       current = isTextRenderable(current.parent) ? current.parent : null
     }
-  }
-
-  private detachFromCurrentTextParent(child: TextRenderable): void {
-    const parent = child.parent
-    if (!isTextRenderable(parent)) {
-      parent?.remove(child)
-      return
-    }
-    parent.materializeChildOrder()
-    parent.getDocumentOwner()?.coalescePendingNativeMovesFor(parent)
-    const index = parent._children.indexOf(child)
-    if (index !== -1) {
-      parent._children.splice(index, 1)
-      parent._rawTextIdentities.splice(index, 1)
-    }
-    parent.detachTextChild(child, false, false)
-    parent.invalidateTextDocument()
-  }
-
-  private clearChildren(requestRender: boolean): void {
-    this.materializeChildOrder()
-    const previousChildren = [...this._children]
-    this._children.splice(0)
-    this._rawTextIdentities.splice(0)
-    for (const child of previousChildren.reverse()) {
-      if (isTextRenderable(child) && child.parent === this) {
-        this.detachTextChild(child, this._ownedChildren.has(child))
-      }
-    }
-    if (requestRender) this.invalidateTextDocument()
   }
 
   private gatherOwnContent(): TextChunk[] {

@@ -320,6 +320,367 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("replaces a missing index after repeated pending moves in logical order", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+
+    try {
+      root.add(children[0]!, 3)
+      root.add(children[2]!, root.getChildrenCount())
+      expect(root.children).toEqual([children[1], children[0], children[3], children[2]])
+      expect((root as any)._pendingNativeMoves).toHaveLength(2)
+
+      root.replace("E", 999)
+      expect(root.children).toEqual([children[1], children[0], children[3], children[2], "E"])
+      expect(children.every((child) => child.parent === root)).toBe(true)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      await renderOnce()
+      expect(root.plainText).toBe("BADCE")
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect(apply.mock.calls.flatMap(([operations]) => operations.map((operation) => operation.kind))).toEqual([
+        "replace",
+      ])
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("replaces valid and missing indices with every supported value ownership", async () => {
+    const valueKinds = ["string", "styled", "detached", "same-document", "cross-document"] as const
+    const indexCases = [
+      { index: 1, expected: "BEDC", childCount: 4 },
+      { index: 999, expected: "BADCE", childCount: 5 },
+      { index: -999, expected: "EBADC", childCount: 5 },
+    ] as const
+
+    for (const valueKind of valueKinds) {
+      for (const indexCase of indexCases) {
+        const target = new TextRenderable(renderer, {})
+        const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+        target.children = children
+        let mount = target
+        let sourceDocument: TextRenderable | null = null
+        let replacement: TextRenderable | null = null
+        let value: string | StyledText | TextRenderable
+
+        if (valueKind === "string") {
+          value = "E"
+        } else if (valueKind === "styled") {
+          value = new StyledText([{ __isChunk: true, text: "E", attributes: TextAttributes.BOLD }])
+        } else if (valueKind === "detached") {
+          replacement = new TextRenderable({ content: "E" })
+          value = replacement
+        } else if (valueKind === "same-document") {
+          replacement = new TextRenderable(renderer, { content: "E" })
+          const source = new TextRenderable(renderer, { visible: false })
+          source.add(replacement)
+          mount = new TextRenderable(renderer, {})
+          mount.children = [target, source]
+          value = replacement
+        } else {
+          replacement = new TextRenderable(renderer, { content: "E" })
+          sourceDocument = new TextRenderable(renderer, {})
+          sourceDocument.add(replacement)
+          value = replacement
+        }
+
+        renderer.root.add(mount)
+        if (sourceDocument) renderer.root.add(sourceDocument)
+        await renderOnce()
+        const originalIds = children.map((child) => (child as any)._nativeRangeId)
+        const replacementId = replacement ? (replacement as any)._nativeRangeId : null
+
+        target.add(children[0]!, 3)
+        target.add(children[2]!, target.getChildrenCount())
+        expect((mount as any)._pendingNativeMoves).toHaveLength(2)
+        target.replace(value, indexCase.index)
+        expect((mount as any)._pendingNativeMoves).toHaveLength(0)
+        expect(target.getChildrenCount()).toBe(indexCase.childCount)
+        await renderOnce()
+        expect(target.plainText).toBe(indexCase.expected)
+
+        const retained = indexCase.index === 1 ? [children[1], children[2], children[3]] : children
+        const retainedIds = indexCase.index === 1 ? [originalIds[1], originalIds[2], originalIds[3]] : originalIds
+        expect(retained.map((child) => (child as any)._nativeRangeId)).toEqual(retainedIds)
+        if (valueKind === "string") {
+          const rawIndex = target.children.indexOf("E")
+          expect((target as any)._rawTextIdentities[rawIndex].rangeId).not.toBeNull()
+        } else if (valueKind === "styled") {
+          const generated = target.getTextChildren().find((child) => child.chunks[0]?.text === "E")!
+          expect(generated.parent).toBe(target)
+          expect((generated as any)._nativeRangeId).not.toBeNull()
+          expect((target as any)._ownedChildren.has(generated)).toBe(true)
+        } else if (replacement) {
+          expect(replacement.parent).toBe(target)
+          expect((replacement as any)._nativeRangeId).not.toBeNull()
+          if (valueKind === "same-document") expect((replacement as any)._nativeRangeId).toBe(replacementId)
+          if (valueKind === "cross-document") expect((replacement as any)._nativeRangeId).not.toBe(replacementId)
+        }
+      }
+    }
+  }, 15_000)
+
+  test("preserves owner moves outside a rebuilt subtree", async () => {
+    const owner = new TextRenderable(renderer, {})
+    const before = new TextRenderable(renderer, { content: "X" })
+    const target = new TextRenderable(renderer, {})
+    const after = new TextRenderable(renderer, { content: "Y" })
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    target.children = children
+    owner.children = [before, target, after]
+    renderer.root.add(owner)
+    await renderOnce()
+
+    owner.add(before, owner.getChildrenCount())
+    target.add(children[0]!, 3)
+    target.add(children[2]!, target.getChildrenCount())
+    expect((owner as any)._pendingNativeMoves).toHaveLength(3)
+
+    target.replace("E", 999)
+    expect((owner as any)._pendingNativeMoves).toHaveLength(1)
+    expect(owner.children).toEqual([target, after, before])
+    await renderOnce()
+    expect(owner.plainText).toBe("BADCEYX")
+    expect((owner as any)._pendingNativeMoves).toHaveLength(0)
+  })
+
+  test("coalesces forward, backward, and repeated moves before a missing replacement", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+
+    root.add(children[0]!, root.getChildrenCount())
+    root.add(children[3]!, 0)
+    root.add(children[0]!, 1)
+    root.add(children[0]!, root.getChildrenCount())
+    root.add(children[2]!, 0)
+    expect(root.children).toEqual([children[2], children[3], children[1], children[0]])
+    expect((root as any)._pendingNativeMoves).toHaveLength(5)
+
+    root.replace("E", 999)
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    await renderOnce()
+    expect(root.plainText).toBe("CDBAE")
+  })
+
+  test("rolls back replacement preflight and scheduling failures and retries native apply", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    const replacement = new TextRenderable({ content: "E" })
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    let events = 0
+    root.on("line-info-change", () => events++)
+
+    root.add(children[0]!, 3)
+    root.add(children[2]!, root.getChildrenCount())
+    ;(root as any)._dirty = false
+
+    const preflight = spyOn(root as any, "assertCanInsertTextChild").mockImplementationOnce(() => {
+      throw new Error("injected replacement preflight failure")
+    })
+    try {
+      expect(() => root.replace(replacement, 999)).toThrow("replacement preflight failure")
+      expect(root.children).toEqual([children[1], children[0], children[3], children[2]])
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect(replacement.parent).toBeNull()
+      expect((replacement as any)._nativeRangeId).toBeNull()
+      expect((root as any)._pendingNativeMoves).toHaveLength(2)
+      expect(root.isDirty).toBe(false)
+      expect(events).toBe(0)
+    } finally {
+      preflight.mockRestore()
+    }
+
+    const schedule = spyOn(root, "requestRender").mockImplementationOnce(() => {
+      ;(root as any)._dirty = true
+      throw new Error("injected replacement scheduling failure")
+    })
+    try {
+      expect(() => root.replace(replacement, 999)).toThrow("replacement scheduling failure")
+      expect(root.children).toEqual([children[1], children[0], children[3], children[2]])
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect(replacement.parent).toBeNull()
+      expect((replacement as any)._nativeRangeId).toBeNull()
+      expect((root as any)._pendingNativeMoves).toHaveLength(2)
+      expect(root.isDirty).toBe(false)
+      expect(events).toBe(0)
+    } finally {
+      schedule.mockRestore()
+    }
+
+    root.replace(replacement, 999)
+    expect(root.children).toEqual([children[1], children[0], children[3], children[2], replacement])
+    expect(replacement.parent).toBe(root)
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected replacement native apply failure")
+    })
+    try {
+      expect(() => root.plainText).toThrow("replacement native apply failure")
+      expect((root as any).textBuffer.getPlainText()).toBe("ABCD")
+      expect(root.children).toEqual([children[1], children[0], children[3], children[2], replacement])
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect((replacement as any)._nativeRangeId).toBeNull()
+      expect(replacement.parent).toBe(root)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(root.isDirty).toBe(true)
+      expect(events).toBe(0)
+
+      expect(root.plainText).toBe("BADCE")
+      expect((root as any).textBuffer.getPlainText()).toBe("BADCE")
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect((replacement as any)._nativeRangeId).not.toBeNull()
+      expect(events).toBe(1)
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("restores a foreign range and both documents when replacement transfer fails", async () => {
+    const target = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    const source = new TextRenderable(renderer, {})
+    const replacement = new TextRenderable(renderer, { content: "E" })
+    target.children = children
+    source.add(replacement)
+    renderer.root.add(target)
+    renderer.root.add(source)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    const foreignId = (replacement as any)._nativeRangeId
+    let targetEvents = 0
+    let sourceEvents = 0
+    target.on("line-info-change", () => targetEvents++)
+    source.on("line-info-change", () => sourceEvents++)
+
+    target.add(children[0]!, 3)
+    target.add(children[2]!, target.getChildrenCount())
+    const dirty = target.isDirty
+    const transfer = spyOn(TextBuffer.prototype, "applyTwoDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected replacement transfer failure")
+    })
+    try {
+      expect(() => target.replace(replacement, 999)).toThrow("replacement transfer failure")
+      expect(target.children).toEqual([children[1], children[0], children[3], children[2]])
+      expect((target as any).textBuffer.getPlainText()).toBe("ABCD")
+      expect((source as any).textBuffer.getPlainText()).toBe("E")
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect(replacement.parent).toBe(source)
+      expect((replacement as any)._nativeRangeId).toBe(foreignId)
+      expect((target as any)._pendingNativeMoves).toHaveLength(2)
+      expect(target.isDirty).toBe(dirty)
+      expect(targetEvents).toBe(0)
+      expect(sourceEvents).toBe(0)
+
+      target.replace(replacement, 999)
+      expect(target.children).toEqual([children[1], children[0], children[3], children[2], replacement])
+      expect(target.plainText).toBe("BADCE")
+      expect(source.plainText).toBe("")
+      expect((target as any).textBuffer.getPlainText()).toBe("BADCE")
+      expect((source as any).textBuffer.getPlainText()).toBe("")
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect(replacement.parent).toBe(target)
+      expect((replacement as any)._nativeRangeId).not.toBe(foreignId)
+      expect((target as any)._pendingNativeMoves).toHaveLength(0)
+      expect(targetEvents).toBe(1)
+      expect(sourceEvents).toBe(1)
+    } finally {
+      transfer.mockRestore()
+    }
+  })
+
+  test("coalesces setter-planned moves across every structural publication path", async () => {
+    const cases = [
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.add("E")
+        },
+        expected: "BCDAE",
+      },
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.replace("E", 999)
+        },
+        expected: "BCDAE",
+      },
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.remove(children[2]!)
+        },
+        expected: "BDA",
+      },
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.clear()
+        },
+        expected: "",
+      },
+      {
+        mutate(root: TextRenderable, children: TextRenderable[]) {
+          root.content = "E"
+        },
+        expected: "E",
+      },
+    ]
+
+    for (const scenario of cases) {
+      const root = new TextRenderable(renderer, {})
+      const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+      root.children = children
+      renderer.root.add(root)
+      await renderOnce()
+
+      root.children = [children[1]!, children[2]!, children[3]!, children[0]!]
+      expect((root as any)._pendingChildOrder).toBeNull()
+      expect((root as any)._pendingNativeMoves.length).toBeGreaterThan(0)
+      scenario.mutate(root, children)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      await renderOnce()
+      expect(root.plainText).toBe(scenario.expected)
+    }
+  })
+
+  test("retains pending moves through structural no-ops after materialization", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    const missing = new TextRenderable({ content: "missing" })
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+
+    root.add(children[0]!, 3)
+    root.add(children[2]!, root.getChildrenCount())
+    expect((root as any)._pendingNativeMoves).toHaveLength(2)
+    root.add(children[1]!, 0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(2)
+    root.replace(children[1]!, 0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(2)
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      root.remove(missing)
+    } finally {
+      warn.mockRestore()
+    }
+    expect((root as any)._pendingChildOrder).toBeNull()
+    expect((root as any)._pendingNativeMoves).toHaveLength(2)
+    expect(missing.parent).toBeNull()
+    await renderOnce()
+    expect(root.plainText).toBe("BADC")
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    missing.destroy()
+  })
+
   test("adds every text child kind at every position after a pending reorder", async () => {
     const cases = [
       { kind: "string", index: 0 },
