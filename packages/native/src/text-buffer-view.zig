@@ -858,12 +858,14 @@ pub const UnifiedTextBufferView = struct {
         while (self.prevSelectionGrapheme(start)) |prev| {
             if (prev.is_break) break;
             if (isWordBoundary(prev.first_cp) != expect_boundary) break;
+            if (prev.start >= start) break;
             start = prev.start;
         }
 
         while (self.selectionGraphemeAt(end)) |next| {
             if (next.is_break) break;
             if (isWordBoundary(next.first_cp) != expect_boundary) break;
+            if (next.end <= end) break;
             end = next.end;
         }
 
@@ -880,6 +882,7 @@ pub const UnifiedTextBufferView = struct {
             while (offset <= limit) {
                 if (self.selectWord(offset)) |range| return range;
                 const next = self.selectionGraphemeAt(offset) orelse return null;
+                if (next.end <= offset) return null;
                 offset = next.end;
             }
             return null;
@@ -889,6 +892,7 @@ pub const UnifiedTextBufferView = struct {
             if (self.selectWord(offset)) |range| return range;
             if (offset <= limit) return null;
             const prev = self.prevSelectionGrapheme(offset) orelse return null;
+            if (prev.start >= offset) return null;
             offset = prev.start;
         }
     }
@@ -922,6 +926,7 @@ pub const UnifiedTextBufferView = struct {
                 end = grapheme.end;
                 saw_content = true;
             }
+            if (grapheme.end <= offset) break;
             offset = grapheme.end;
         }
 
@@ -978,7 +983,20 @@ pub const UnifiedTextBufferView = struct {
                     width_method,
                 );
                 if (pos.byte_offset >= bytes.len) return null;
-                const width = utf8.getGraphemeWidthAt(bytes, pos.byte_offset, tab_width, width_method);
+                var width = utf8.getGraphemeWidthAt(bytes, pos.byte_offset, tab_width, width_method);
+                if (width == 0) {
+                    const next = utf8.findGraphemePosByWidth(
+                        bytes,
+                        pos.columns_used + 1,
+                        tab_width,
+                        is_ascii,
+                        false,
+                        width_method,
+                    );
+                    if (next.byte_offset < bytes.len) {
+                        width = utf8.getGraphemeWidthAt(bytes, next.byte_offset, tab_width, width_method);
+                    }
+                }
                 const first_cp = utf8.decodeUtf8Unchecked(bytes, pos.byte_offset).cp;
                 const start = line_start + cols_before + pos.columns_used;
                 return .{

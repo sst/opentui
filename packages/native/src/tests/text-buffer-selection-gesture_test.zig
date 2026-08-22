@@ -86,6 +86,14 @@ test "selectWord - wide glyph 日本語abc is one word" {
     try expectSelected(pair.view, pair.view.selectWord(3), "日本語abc");
 }
 
+test "selectWord - zero-width prefix does not hang" {
+    const pair = try initView("\u{200B}hello");
+    defer deinitView(pair);
+
+    try expectSelected(pair.view, pair.view.selectWord(0), "\u{200B}hello");
+    try expectSelected(pair.view, pair.view.selectLine(0), "\u{200B}hello");
+}
+
 test "selectWord - slash is not a boundary unlike wrap breaks" {
     const pair = try initView("foo/bar");
     defer deinitView(pair);
