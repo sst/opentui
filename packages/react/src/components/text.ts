@@ -67,7 +67,7 @@ export class LinkRenderable extends SpanRenderable {
   constructor(ctx: RenderContext, options: LinkOptions) {
     const linkOptions: TextNodeOptions = {
       ...options,
-      link: { url: options.href },
+      link: options.href ? { url: options.href } : undefined,
     }
     super(ctx, linkOptions)
   }

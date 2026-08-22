@@ -90,7 +90,8 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
       setStyle(instance, propValue, oldPropValue)
       break
     case "href":
-      if (instance instanceof TextRenderable) instance.link = propValue == null ? undefined : { url: propValue }
+      if (instance instanceof TextRenderable)
+        instance.link = typeof propValue === "string" && propValue.length > 0 ? { url: propValue } : undefined
       break
     case "styleId":
     case "styleSource":
