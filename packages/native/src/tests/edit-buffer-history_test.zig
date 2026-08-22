@@ -2,8 +2,139 @@ const std = @import("std");
 const edit_buffer = @import("../edit-buffer.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
+const TextAnnotations = @import("../text-annotations.zig").TextAnnotations;
 
 const EditBuffer = edit_buffer.EditBuffer;
+
+fn expectText(eb: *EditBuffer, expected: []const u8) !void {
+    const output = try std.testing.allocator.alloc(u8, eb.getTextBuffer().getByteSize());
+    defer std.testing.allocator.free(output);
+    const written = eb.getText(output);
+    try std.testing.expectEqualStrings(expected, output[0..written]);
+}
+
+fn prepareRedoBranch(eb: *EditBuffer) !u64 {
+    try eb.setText("abc");
+    const id = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 1, .end_byte = 2 }, .{
+        .namespace = 91,
+        .style_id = 77,
+        .priority = 4,
+        .kind_flags = 0x81,
+    });
+    try eb.setCursor(0, 1);
+    try eb.insertText("X");
+    _ = try eb.undo();
+    try std.testing.expect(!eb.canUndo());
+    try std.testing.expect(eb.canRedo());
+    return id;
+}
+
+const FailedEdit = enum { insert, delete, replace, set };
+
+fn runEdit(eb: *EditBuffer, operation: FailedEdit) !void {
+    switch (operation) {
+        .insert => try eb.insertText("Y"),
+        .delete => try eb.deleteRange(.{ .row = 0, .col = 0 }, .{ .row = 0, .col = 1 }),
+        .replace => try eb.replaceText("replacement"),
+        .set => try eb.setText("replacement"),
+    }
+}
+
+fn exerciseFailedHistoryEdit(operation: FailedEdit, fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(failing.allocator(), pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    const id = try prepareRedoBranch(eb);
+    const before_annotation: TextAnnotations.Annotation = eb.getTextBuffer().textAnnotations().get(id).?;
+    const before_cursor = eb.getPrimaryCursor();
+    const before_root = eb.getTextBuffer().rope().root;
+    const before_version = eb.getTextBuffer().rope().version;
+    const before_content_epoch = eb.getTextBuffer().getContentEpoch();
+    const before_annotation_epoch = eb.getTextBuffer().getAnnotationEpoch();
+    const before_position_generation = eb.getTextBuffer().textAnnotations().positionGeneration();
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const edit = runEdit(eb, operation);
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, edit);
+        try expectText(eb, "abc");
+        try std.testing.expectEqual(before_cursor, eb.getPrimaryCursor());
+        try std.testing.expect(eb.getTextBuffer().rope().root == before_root);
+        try std.testing.expectEqual(before_version, eb.getTextBuffer().rope().version);
+        try std.testing.expectEqual(before_content_epoch, eb.getTextBuffer().getContentEpoch());
+        try std.testing.expectEqual(before_annotation_epoch, eb.getTextBuffer().getAnnotationEpoch());
+        try std.testing.expectEqual(before_position_generation, eb.getTextBuffer().textAnnotations().positionGeneration());
+        try std.testing.expectEqualDeep(before_annotation, eb.getTextBuffer().textAnnotations().get(id).?);
+        try std.testing.expect(!eb.canUndo());
+        try std.testing.expect(eb.canRedo());
+
+        failing.fail_index = std.math.maxInt(usize);
+        _ = try eb.redo();
+        try expectText(eb, "aXbc");
+        _ = try eb.undo();
+        try expectText(eb, "abc");
+        try std.testing.expectEqualDeep(before_annotation, eb.getTextBuffer().textAnnotations().get(id).?);
+        try runEdit(eb, operation);
+        if (operation == .set) {
+            try std.testing.expect(!eb.canUndo());
+            try std.testing.expect(!eb.canRedo());
+        } else {
+            try std.testing.expect(eb.canUndo());
+            try std.testing.expect(!eb.canRedo());
+            _ = try eb.undo();
+            try expectText(eb, "abc");
+            try std.testing.expectEqualDeep(before_annotation, eb.getTextBuffer().textAnnotations().get(id).?);
+        }
+    } else {
+        try edit;
+    }
+    return failing.alloc_index - before_alloc;
+}
+
+test "failed edits preserve exact cursor annotations history and redo branch" {
+    for (std.enums.values(FailedEdit)) |operation| {
+        const allocations = try exerciseFailedHistoryEdit(operation, null);
+        for (0..allocations) |offset| _ = try exerciseFailedHistoryEdit(operation, offset);
+    }
+}
+
+test "invalid edit coordinates and text preserve history and redo branch" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    const id = try prepareRedoBranch(eb);
+    const annotation = eb.getTextBuffer().textAnnotations().get(id).?;
+    const root = eb.getTextBuffer().rope().root;
+    const version = eb.getTextBuffer().rope().version;
+
+    eb.cursors.items[0] = .{ .row = 99, .col = 99, .desired_col = 99, .offset = 99 };
+    const invalid_cursor = eb.getPrimaryCursor();
+    try std.testing.expectError(error.InvalidCursor, eb.insertText("Y"));
+    try std.testing.expectEqual(invalid_cursor, eb.getPrimaryCursor());
+    try eb.setCursor(0, 1);
+    const valid_cursor = eb.getPrimaryCursor();
+    try std.testing.expectError(error.InvalidCursor, eb.deleteRange(.{ .row = 0, .col = 0 }, .{ .row = 9, .col = 0 }));
+    try std.testing.expectError(error.InvalidUtf8, eb.replaceText("\xff"));
+    try std.testing.expectError(error.InvalidUtf8, eb.setText("\xff"));
+
+    try expectText(eb, "abc");
+    try std.testing.expectEqual(valid_cursor, eb.getPrimaryCursor());
+    try std.testing.expect(eb.getTextBuffer().rope().root == root);
+    try std.testing.expectEqual(version, eb.getTextBuffer().rope().version);
+    try std.testing.expectEqualDeep(annotation, eb.getTextBuffer().textAnnotations().get(id).?);
+    try std.testing.expect(!eb.canUndo());
+    try std.testing.expect(eb.canRedo());
+    _ = try eb.redo();
+    try expectText(eb, "aXbc");
+}
 
 test "EditBuffer - basic undo/redo with insertText" {
     const pool = gp.initGlobalPool(std.testing.allocator);

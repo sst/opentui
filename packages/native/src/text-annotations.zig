@@ -310,12 +310,38 @@ pub const TextAnnotations = struct {
         if (start_byte >= end_byte) return;
         var matches: std.ArrayList(Annotation) = .empty;
         defer matches.deinit(self.allocator);
+        var split_count: usize = 0;
         var it = self.iterator();
         while (try it.next()) |annotation| {
             if ((owner != null and annotation.payload.namespace != owner.?) or annotation.mark != .range) continue;
             const range = annotation.mark.range;
             if (range.start_byte >= range.end_byte or range.start_byte >= end_byte or range.end_byte <= start_byte) continue;
             try matches.append(self.allocator, annotation);
+            split_count += @intFromBool(range.start_byte < start_byte and range.end_byte > end_byte);
+        }
+
+        var split_inputs = try self.allocator.alloc(RangeInput, split_count);
+        defer self.allocator.free(split_inputs);
+        var split_payloads = try self.allocator.alloc(PayloadInput, split_count);
+        defer self.allocator.free(split_payloads);
+        var split_index: usize = 0;
+        for (matches.items) |annotation| {
+            const range = annotation.mark.range;
+            if (range.start_byte < start_byte and range.end_byte > end_byte) {
+                split_inputs[split_index] = .{
+                    .start_byte = end_byte,
+                    .end_byte = range.end_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                };
+                split_payloads[split_index] = inputFromPayload(annotation.payload);
+                split_index += 1;
+            }
+        }
+        if (split_count != 0) {
+            var prepared = try self.prepareAddRanges(split_inputs, split_payloads);
+            defer prepared.deinit();
+            try self.commitPreparedRanges(&prepared);
         }
 
         for (matches.items) |annotation| {
@@ -327,12 +353,6 @@ pub const TextAnnotations = struct {
                     .start_gravity = range.start_gravity,
                     .end_gravity = range.end_gravity,
                 });
-                _ = try self.addRange(.{
-                    .start_byte = end_byte,
-                    .end_byte = range.end_byte,
-                    .start_gravity = range.start_gravity,
-                    .end_gravity = range.end_gravity,
-                }, inputFromPayload(annotation.payload));
             } else if (range.start_byte < start_byte) {
                 _ = try self.updateRange(annotation.id(), .{
                     .start_byte = range.start_byte,
@@ -429,7 +449,7 @@ pub const TextAnnotations = struct {
         if (self.tree.generation != before) self.finishMutation();
     }
 
-    /// Visits highest priority first; equal priorities retain insertion order.
+    /// Visits highest priority first; newer equal-priority annotations win.
     pub fn visitOverlapping(self: *Self, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);
@@ -441,7 +461,7 @@ pub const TextAnnotations = struct {
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
-    /// Visits highest priority first; equal priorities retain insertion order.
+    /// Visits highest priority first; newer equal-priority annotations win.
     pub fn visitStartingAt(self: *Self, byte: u32, context: anytype, visitor: anytype) !void {
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);
@@ -453,7 +473,7 @@ pub const TextAnnotations = struct {
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
-    /// Visits highest priority first; equal priorities retain insertion order.
+    /// Visits highest priority first; newer equal-priority annotations win.
     pub fn visitPointsAt(self: *Self, byte: u32, context: anytype, visitor: anytype) !void {
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);

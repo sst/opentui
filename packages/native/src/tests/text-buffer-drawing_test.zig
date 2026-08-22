@@ -14,6 +14,84 @@ const RGBA = text_buffer.RGBA;
 const WrapMode = text_buffer.WrapMode;
 const StyledChunk = text_buffer.StyledChunk;
 
+test "equal-priority styled insertions and public ranges render newer styles" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    const red = ansi.rgbaFromFloats(1, 0, 0, 1);
+    const green = ansi.rgbaFromFloats(0, 1, 0, 1);
+    const blue = ansi.rgbaFromFloats(0, 0, 1, 1);
+    const initial = "abcdef";
+    const initial_chunks = [_]StyledChunk{.{
+        .text_ptr = initial.ptr,
+        .text_len = initial.len,
+        .fg_ptr = @ptrCast(&red),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    _ = try tb.replaceStyledRangeBytes(0, 0, &initial_chunks, 41);
+
+    const inserted = "XY";
+    const inserted_chunks = [_]StyledChunk{.{
+        .text_ptr = inserted.ptr,
+        .text_len = inserted.len,
+        .fg_ptr = @ptrCast(&green),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    _ = try tb.replaceStyledRangeBytes(2, 4, &inserted_chunks, 41);
+
+    var rendered = try OptimizedBuffer.init(std.testing.allocator, 10, 1, .{ .pool = pool, .width_method = .unicode });
+    defer rendered.deinit();
+    rendered.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    rendered.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(@as(u32, 'b'), rendered.get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'X'), rendered.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'Y'), rendered.get(3, 0).?.char);
+    try std.testing.expect(ansi.redF(rendered.get(1, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.greenF(rendered.get(2, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.greenF(rendered.get(3, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.redF(rendered.get(4, 0).?.fg) > 0.99);
+
+    const zero_width_insert = "Z";
+    const zero_width_chunks = [_]StyledChunk{.{
+        .text_ptr = zero_width_insert.ptr,
+        .text_len = zero_width_insert.len,
+        .fg_ptr = @ptrCast(&blue),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    _ = try tb.replaceStyledRangeBytes(3, 3, &zero_width_chunks, 41);
+    rendered.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    rendered.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(@as(u32, 'X'), rendered.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'Z'), rendered.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'Y'), rendered.get(4, 0).?.char);
+    try std.testing.expect(ansi.greenF(rendered.get(2, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.blueF(rendered.get(3, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.greenF(rendered.get(4, 0).?.fg) > 0.99);
+
+    const red_id = try syntax.registerStyle("public-red", red, null, 0);
+    const green_id = try syntax.registerStyle("public-green", green, null, 0);
+    _ = try tb.createStyleRange(52, 0, 7, red_id, 7);
+    _ = try tb.createStyleRange(53, 4, 6, green_id, 7);
+    rendered.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    rendered.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(@as(u32, 'Y'), rendered.get(4, 0).?.char);
+    try std.testing.expect(ansi.greenF(rendered.get(4, 0).?.fg) > 0.99);
+    try std.testing.expect(ansi.greenF(rendered.get(5, 0).?.fg) > 0.99);
+}
+
 test "incremental styled document renders through selection wrap and truncate views" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

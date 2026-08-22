@@ -1159,15 +1159,70 @@ pub fn Rope(comptime T: type) type {
         }
 
         /// Undo/Redo operations
-        pub fn store_undo(self: *Self, meta: []const u8) !void {
+        pub const PreparedUndo = struct {
+            owner: *Self,
+            undo_node: *UndoNode,
+            branch: ?*UndoBranch,
+            expected_undo: ?*UndoNode,
+            expected_redo: ?*UndoNode,
+            expected_current: ?*UndoNode,
+            committed: bool = false,
+
+            pub fn deinit(self: *PreparedUndo) void {
+                if (!self.committed) {
+                    if (self.branch) |branch| self.owner.allocator.destroy(branch);
+                    self.owner.allocator.free(@constCast(self.undo_node.meta));
+                    self.owner.allocator.destroy(self.undo_node);
+                }
+                self.* = undefined;
+            }
+        };
+
+        pub fn prepare_store_undo(self: *Self, meta: []const u8) !PreparedUndo {
             const undo_node = try self.create_undo_node(self.root, meta);
-            self.push_undo(undo_node);
+            errdefer {
+                self.allocator.free(@constCast(undo_node.meta));
+                self.allocator.destroy(undo_node);
+            }
+            const branch = if (self.redo_history) |redo_node| blk: {
+                const value = try self.allocator.create(UndoBranch);
+                value.* = .{ .redo = redo_node, .next = null };
+                break :blk value;
+            } else null;
+            return .{
+                .owner = self,
+                .undo_node = undo_node,
+                .branch = branch,
+                .expected_undo = self.undo_history,
+                .expected_redo = self.redo_history,
+                .expected_current = self.curr_history,
+            };
+        }
+
+        pub fn commit_store_undo(self: *Self, prepared: *PreparedUndo) void {
+            std.debug.assert(prepared.owner == self and !prepared.committed);
+            std.debug.assert(self.undo_history == prepared.expected_undo);
+            std.debug.assert(self.redo_history == prepared.expected_redo);
+            std.debug.assert(self.curr_history == prepared.expected_current);
+            self.push_undo(prepared.undo_node);
             self.curr_history = null;
-            try self.push_redo_branch();
+            if (prepared.branch) |branch| {
+                branch.next = prepared.undo_node.branches;
+                prepared.undo_node.branches = branch;
+                self.redo_history = null;
+            }
+            prepared.committed = true;
+        }
+
+        pub fn store_undo(self: *Self, meta: []const u8) !void {
+            var prepared = try self.prepare_store_undo(meta);
+            defer prepared.deinit();
+            self.commit_store_undo(&prepared);
         }
 
         fn create_undo_node(self: *const Self, root: *const Node, meta_: []const u8) !*UndoNode {
             const undo_node = try self.allocator.create(UndoNode);
+            errdefer self.allocator.destroy(undo_node);
             const meta = try self.allocator.dupe(u8, meta_);
             undo_node.* = UndoNode{
                 .root = root,
@@ -1214,19 +1269,6 @@ pub fn Rope(comptime T: type) type {
             const next = self.redo_history;
             self.redo_history = undo_node;
             undo_node.next = next;
-        }
-
-        fn push_redo_branch(self: *Self) !void {
-            const r = self.redo_history orelse return;
-            const u = self.undo_history orelse return;
-            const next = u.branches;
-            const b = try self.allocator.create(UndoBranch);
-            b.* = .{
-                .redo = r,
-                .next = next,
-            };
-            u.branches = b;
-            self.redo_history = null;
         }
 
         pub fn undo(self: *Self, meta: []const u8) ![]const u8 {

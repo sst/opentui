@@ -196,6 +196,10 @@ pub const SyntaxStyle = struct {
         return self.id_to_style.count();
     }
 
+    pub fn getAnonymousStyleCount(self: *const SyntaxStyle) usize {
+        return self.anonymous_ids.count();
+    }
+
     pub fn onDestroy(self: *SyntaxStyle, ctx: *anyopaque, handle: *const fn (*anyopaque) void) SyntaxStyleError!void {
         self.emitter.on(.Destroy, .{ .ctx = ctx, .handle = handle }) catch return SyntaxStyleError.OutOfMemory;
     }

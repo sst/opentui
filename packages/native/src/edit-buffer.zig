@@ -13,6 +13,7 @@ const event_bus = @import("event-bus.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
+const TextRope = seg_mod.UnifiedRope;
 
 var global_edit_buffer_id: u16 = 0;
 
@@ -73,6 +74,18 @@ const CursorMeta = struct {
             .col = col,
             .desired_col = desired_col,
         };
+    }
+};
+
+const PreparedEditHistory = struct {
+    annotations: TextAnnotations,
+    rope: TextRope.PreparedUndo,
+    committed: bool = false,
+
+    fn deinit(self: *PreparedEditHistory, edit_buffer: *EditBuffer) void {
+        if (!self.committed) edit_buffer.tb.releaseAnnotationCheckpoint(&self.annotations);
+        self.rope.deinit();
+        self.* = undefined;
     }
 };
 
@@ -192,6 +205,7 @@ pub const EditBuffer = struct {
     }
 
     fn emitNativeEvent(self: *const EditBuffer, event_name: []const u8) void {
+        if (self.event_sink == null) return;
         var id_bytes: [2]u8 = undefined;
         std.mem.writeInt(u16, &id_bytes, self.id, .little);
 
@@ -243,15 +257,21 @@ pub const EditBuffer = struct {
         try self.add_buffer.ensureCapacity(self.tb, need);
     }
 
+    fn preparePrimaryCursor(self: *EditBuffer) !void {
+        if (self.cursors.items.len == 0) try self.cursors.ensureUnusedCapacity(self.allocator, 1);
+    }
+
     pub fn insertText(self: *EditBuffer, bytes: []const u8) !void {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
 
-        try self.autoStoreUndo();
-
         const cursor = self.cursors.items[0];
         const insert_byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = cursor.row, .col = cursor.col }, .before) catch return EditBufferError.InvalidCursor;
+        if (!std.unicode.utf8ValidateSlice(bytes)) return tb.TextBufferError.InvalidUtf8;
+        var history = try self.prepareAutoStoreUndo();
+        defer history.deinit(self);
         const result = try self.tb.replaceNormalizedBytes(insert_byte, insert_byte, bytes);
+        self.commitAutoStoreUndo(&history);
         const point = result.new_display.end.point;
         const new_offset = iter_mod.coordsToOffset(self.tb.rope(), point.row, point.col) orelse 0;
         self.cursors.items[0] = .{ .row = point.row, .col = point.col, .desired_col = point.col, .offset = new_offset };
@@ -271,8 +291,6 @@ pub const EditBuffer = struct {
 
         if (start.row == end.row and start.col == end.col) return;
 
-        try self.autoStoreUndo();
-
         const start_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = start.row, .col = start.col }, .before) catch return EditBufferError.InvalidCursor;
         var end_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = end.row, .col = end.col }, .after) catch return EditBufferError.InvalidCursor;
         const end_line_width = iter_mod.lineWidthAt(self.tb.rope(), end.row);
@@ -285,7 +303,10 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
+        var history = try self.prepareAutoStoreUndo();
+        defer history.deinit(self);
         _ = try self.tb.replaceNormalizedBytes(start_offset, end_offset, "");
+        self.commitAutoStoreUndo(&history);
 
         if (self.cursors.items.len > 0) {
             const line_count = self.tb.lineCount();
@@ -442,19 +463,20 @@ pub const EditBuffer = struct {
 
     /// Set text and completely reset the buffer state (clears history, resets add_buffer)
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
+        try self.preparePrimaryCursor();
+        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
         self.clearHistory();
         self.add_buffer.len = 0;
-        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
     }
 
     /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        try self.preparePrimaryCursor();
+        try self.tb.setTextFromMemId(mem_id);
         self.clearHistory();
         self.add_buffer.len = 0;
-
-        try self.tb.setTextFromMemId(mem_id);
         try self.setCursor(0, 0);
 
         self.emitNativeEvent("content-changed");
@@ -462,17 +484,24 @@ pub const EditBuffer = struct {
 
     /// Replace text while preserving undo history (creates an undo point)
     pub fn replaceText(self: *EditBuffer, text: []const u8) !void {
-        try self.autoStoreUndo();
+        if (!std.unicode.utf8ValidateSlice(text)) return tb.TextBufferError.InvalidUtf8;
+        try self.preparePrimaryCursor();
+        var history = try self.prepareAutoStoreUndo();
+        defer history.deinit(self);
         _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
     }
 
     /// Replace text from memory ID while preserving undo history (creates an undo point)
     pub fn replaceTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
-        try self.autoStoreUndo();
-
+        if (self.tb.memRegistry().get(mem_id) == null) return tb.TextBufferError.InvalidMemId;
+        try self.preparePrimaryCursor();
+        var history = try self.prepareAutoStoreUndo();
+        defer history.deinit(self);
         try self.tb.setTextFromMemId(mem_id);
+        self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
 
         self.emitNativeEvent("content-changed");
@@ -563,15 +592,22 @@ pub const EditBuffer = struct {
         return true;
     }
 
-    fn autoStoreUndo(self: *EditBuffer) !void {
+    fn prepareAutoStoreUndo(self: *EditBuffer) !PreparedEditHistory {
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
+        try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
         var checkpoint = try self.tb.checkpointAnnotations();
         errdefer self.tb.releaseAnnotationCheckpoint(&checkpoint);
-        try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
-        try self.tb.rope().store_undo(meta);
-        self.annotation_undo.appendAssumeCapacity(checkpoint);
+        var prepared_rope = try self.tb.rope().prepare_store_undo(meta);
+        errdefer prepared_rope.deinit();
+        return .{ .annotations = checkpoint, .rope = prepared_rope };
+    }
+
+    fn commitAutoStoreUndo(self: *EditBuffer, prepared: *PreparedEditHistory) void {
+        self.tb.rope().commit_store_undo(&prepared.rope);
+        self.annotation_undo.appendAssumeCapacity(prepared.annotations);
         self.clearAnnotationHistory(&self.annotation_redo);
+        prepared.committed = true;
     }
 
     pub fn undo(self: *EditBuffer) ![]const u8 {

@@ -1117,12 +1117,25 @@ pub const UnifiedTextBuffer = struct {
 
     fn onSyntaxStyleDestroyed(ctx_ptr: *anyopaque) void {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
+        self.invalidateResolvedStyles(self.syntax_style);
         self.syntax_style = null;
-        for (self.internal_style_slots.items) |*slot| {
-            slot.resolved_syntax_style = null;
-            slot.resolved_style_id = 0;
-        }
         self.markPaintDirty();
+    }
+
+    fn invalidateResolvedStyle(self: *Self, slot: *InternalStyleSlot, expected_style: ?*const SyntaxStyle) void {
+        const resolved_style = slot.resolved_syntax_style orelse return;
+        if (expected_style != null and resolved_style != expected_style.?) return;
+        if (slot.resolved_style_id != 0) {
+            (@constCast(resolved_style)).unregisterAnonymousStyleDefinition(slot.resolved_style_id);
+        }
+        if (slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
+        slot.resolved_syntax_style = null;
+        slot.resolved_style_id = 0;
+        slot.link_id = 0;
+    }
+
+    fn invalidateResolvedStyles(self: *Self, expected_style: ?*const SyntaxStyle) void {
+        for (self.internal_style_slots.items) |*slot| self.invalidateResolvedStyle(slot, expected_style);
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
@@ -1132,13 +1145,7 @@ pub const UnifiedTextBuffer = struct {
             (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch return;
         }
         if (self.syntax_style) |prev| {
-            for (self.internal_style_slots.items) |*slot| {
-                if (slot.resolved_syntax_style == prev and slot.resolved_style_id != 0) {
-                    (@constCast(prev)).unregisterAnonymousStyleDefinition(slot.resolved_style_id);
-                    slot.resolved_syntax_style = null;
-                    slot.resolved_style_id = 0;
-                }
-            }
+            self.invalidateResolvedStyles(prev);
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
@@ -1643,14 +1650,23 @@ pub const UnifiedTextBuffer = struct {
                     });
                 }
             };
+            var annotation_highlights: std.ArrayListUnmanaged(Highlight) = .empty;
+            defer annotation_highlights.deinit(self.global_allocator);
             var context: Context = .{
                 .buffer = self,
-                .output = projected,
+                .output = &annotation_highlights,
                 .line_idx = @intCast(line_idx),
                 .line_start = line_start,
                 .line_end = line_end,
             };
             self.annotations.visitOverlapping(line_start, line_end, &context, Context.visit) catch return TextBufferError.OutOfMemory;
+            // Visitors return winner-first, while span ties intentionally use
+            // later array entries so public highlight insertion order is stable.
+            var index = annotation_highlights.items.len;
+            while (index != 0) {
+                index -= 1;
+                try projected.append(self.global_allocator, annotation_highlights.items[index]);
+            }
         }
 
         try self.rebuildLineSpans(line_idx);
@@ -1706,7 +1722,7 @@ pub const UnifiedTextBuffer = struct {
             // Find current highest priority style before processing event
             var current_priority: i16 = -1;
             var current_style: u32 = 0;
-            var current_highlight_index: usize = std.math.maxInt(usize);
+            var current_highlight_index: usize = 0;
             var it = active.keyIterator();
             while (it.next()) |hl_idx| {
                 const hl = highlights[hl_idx.*];
@@ -2146,15 +2162,9 @@ pub const UnifiedTextBuffer = struct {
         if (slot.refs == 0) return;
         slot.refs -= 1;
         if (slot.refs != 0) return;
-        if (slot.resolved_syntax_style) |style| {
-            if (slot.resolved_style_id != 0) (@constCast(style)).unregisterAnonymousStyleDefinition(slot.resolved_style_id);
-        }
-        if (slot.link_id != 0) self.link_pool.decref(slot.link_id) catch {};
+        self.invalidateResolvedStyle(slot, null);
         if (slot.link_url) |url| self.global_allocator.free(url);
-        slot.resolved_syntax_style = null;
-        slot.resolved_style_id = 0;
         slot.link_url = null;
-        slot.link_id = 0;
     }
 
     fn retainInternalStyle(self: *Self, slot_id: u32) TextBufferError!void {
@@ -2212,7 +2222,6 @@ pub const UnifiedTextBuffer = struct {
         defer acquired_styles.deinit(self.global_allocator);
         var styles_committed = false;
         defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
-        try acquired_styles.ensureTotalCapacity(self.global_allocator, chunks.len + 1);
 
         // Calculate every chunk boundary in one streaming normalization pass.
         // A CRLF split between adjacent chunks still occupies one document byte.
@@ -2249,11 +2258,19 @@ pub const UnifiedTextBuffer = struct {
 
         // A clipped range crossing both replacement edges was split and needs
         // one additional ownership reference for its new right-hand annotation.
+        var generated_count: usize = 0;
         var candidate_iterator = candidate.iterator();
+        while (candidate_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            generated_count += @intFromBool(self.annotations.get(annotation.id()) == null);
+        }
+        const rollback_count = std.math.add(usize, generated_count, chunks.len) catch return TextBufferError.InvalidDimensions;
+        try acquired_styles.ensureTotalCapacity(self.global_allocator, rollback_count);
+
+        candidate_iterator = candidate.iterator();
         while (candidate_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
             if (self.annotations.get(annotation.id()) == null) {
                 try self.retainInternalStyle(annotation.payload.style_id);
-                try acquired_styles.append(self.global_allocator, annotation.payload.style_id);
+                acquired_styles.appendAssumeCapacity(annotation.payload.style_id);
             }
         }
 
@@ -2262,7 +2279,7 @@ pub const UnifiedTextBuffer = struct {
             const local_end = normalized_boundaries[chunk_index + 1];
             if (local_start >= local_end) continue;
             const style_id = try self.acquireInternalStyle(chunk);
-            try acquired_styles.append(self.global_allocator, style_id);
+            acquired_styles.appendAssumeCapacity(style_id);
             _ = candidate.addRange(.{
                 .start_byte = std.math.add(u32, start_byte, local_start) catch return TextBufferError.InvalidDimensions,
                 .end_byte = std.math.add(u32, start_byte, local_end) catch return TextBufferError.InvalidDimensions,

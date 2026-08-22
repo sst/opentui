@@ -5,6 +5,7 @@ const syntax_style = @import("../syntax-style.zig");
 const rope_mod = @import("../rope.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
+const TextAnnotations = @import("../text-annotations.zig").TextAnnotations;
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const DisplayPoint = text_buffer.DisplayPoint;
@@ -569,6 +570,21 @@ fn exerciseStyledTransactionFailure(fail_offset: ?usize) !usize {
     defer style.deinit();
     tb.setSyntaxStyle(style);
     try tb.setText("left middle right");
+    const urls = [_][]const u8{ "https://one.test", "https://two.test", "https://three.test" };
+    var original_ids: [3]u64 = undefined;
+    for (&original_ids, urls, 0..) |*id, url, index| {
+        const value: text_buffer.StyledChunk = .{
+            .text_ptr = "".ptr,
+            .text_len = 0,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = @intCast(index + 2),
+            .link_ptr = url.ptr,
+            .link_len = url.len,
+        };
+        id.* = try tb.createStyleValueRange(9, @intCast(index), @intCast(16 - index), value, @intCast(index + 3));
+    }
+    try std.testing.expectEqual(@as(usize, 3), tb.getLineHighlights(0).len);
     const replacement = "中🙂";
     const chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = replacement.ptr,
@@ -579,7 +595,17 @@ fn exerciseStyledTransactionFailure(fail_offset: ?usize) !usize {
     }};
     const before_root = tb.rope().root;
     const before_epoch = tb.getContentEpoch();
+    const before_annotation_epoch = tb.getAnnotationEpoch();
     const before_annotations = tb.textAnnotations().count();
+    const before_position_generation = tb.textAnnotations().positionGeneration();
+    const before_anonymous = style.getAnonymousStyleCount();
+    const before_links = link_pool.getLiveSlotCount();
+    var before_values: [3]TextAnnotations.Annotation = undefined;
+    var before_refs: [3]u32 = undefined;
+    for (original_ids, 0..) |id, index| {
+        before_values[index] = tb.textAnnotations().get(id).?;
+        before_refs[index] = tb.internal_style_slots.items[index].refs;
+    }
     const before_alloc = failing.alloc_index;
     if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
 
@@ -588,7 +614,15 @@ fn exerciseStyledTransactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectError(error.OutOfMemory, transaction);
         try std.testing.expect(tb.rope().root == before_root);
         try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
+        try std.testing.expectEqual(before_annotation_epoch, tb.getAnnotationEpoch());
         try std.testing.expectEqual(before_annotations, tb.textAnnotations().count());
+        try std.testing.expectEqual(before_position_generation, tb.textAnnotations().positionGeneration());
+        try std.testing.expectEqual(before_anonymous, style.getAnonymousStyleCount());
+        try std.testing.expectEqual(before_links, link_pool.getLiveSlotCount());
+        for (original_ids, 0..) |id, index| {
+            try std.testing.expectEqualDeep(before_values[index], tb.textAnnotations().get(id).?);
+            try std.testing.expectEqual(before_refs[index], tb.internal_style_slots.items[index].refs);
+        }
         try expectText(tb, "left middle right");
 
         failing.fail_index = std.math.maxInt(usize);
@@ -743,4 +777,70 @@ test "anonymous styles and links reclaim under ten thousand range updates" {
     try std.testing.expectEqual(@as(usize, 1), tb.internal_style_slots.items.len);
     try std.testing.expectEqual(@as(usize, 0), syntax.getStyleCount());
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
+}
+
+test "resolved internal styles invalidate on detach replacement destroy and removal" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const first = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer first.deinit();
+    const second = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    const third = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer third.deinit();
+    tb.setSyntaxStyle(first);
+    try tb.setText("styled");
+    const url = "https://lifecycle.test";
+    const value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const id = try tb.createStyleValueRange(61, 0, 6, value, 1);
+    const baseline_first = first.getAnonymousStyleCount();
+    const baseline_third = third.getAnonymousStyleCount();
+    const baseline_links = link_pool.getLiveSlotCount();
+
+    _ = tb.getLineHighlights(0);
+    try std.testing.expectEqual(baseline_first + 1, first.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links + 1, link_pool.getLiveSlotCount());
+    const detach_epoch = tb.getAnnotationEpoch();
+    tb.setSyntaxStyle(null);
+    try std.testing.expect(tb.getAnnotationEpoch() > detach_epoch);
+    try std.testing.expectEqual(baseline_first, first.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links, link_pool.getLiveSlotCount());
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[0].resolved_style_id);
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[0].link_id);
+
+    tb.setSyntaxStyle(first);
+    _ = tb.getLineHighlights(0);
+    try std.testing.expectEqual(baseline_first + 1, first.getAnonymousStyleCount());
+    tb.setSyntaxStyle(second);
+    try std.testing.expectEqual(baseline_first, first.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links, link_pool.getLiveSlotCount());
+    _ = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), second.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links + 1, link_pool.getLiveSlotCount());
+
+    second.deinit();
+    try std.testing.expect(tb.getSyntaxStyle() == null);
+    try std.testing.expectEqual(baseline_links, link_pool.getLiveSlotCount());
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[0].resolved_style_id);
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[0].link_id);
+
+    tb.setSyntaxStyle(third);
+    _ = tb.getLineHighlights(0);
+    try std.testing.expectEqual(baseline_third + 1, third.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links + 1, link_pool.getLiveSlotCount());
+    try std.testing.expect(try tb.removeStyleRange(id));
+    try std.testing.expectEqual(baseline_third, third.getAnonymousStyleCount());
+    try std.testing.expectEqual(baseline_links, link_pool.getLiveSlotCount());
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[0].refs);
 }
