@@ -1751,39 +1751,28 @@ export class TextRenderable extends TextBufferRenderable {
     const start = chunks.length
     const nodeRangeIndex = ranges.length
     const manualLeaves = node._manualStyledLeaves
-    const nodeStyled = manualLeaves === null || hasTextStyle(style)
-    ranges.push(
-      nodeStyled
-        ? {
-            id: node._nativeRangeId ?? undefined,
-            startChunk: start,
-            endChunk: start,
-            ...style,
-            styled: true,
-            priority: Math.min(255, depth + 1),
-          }
-        : {
-            id: node._nativeRangeId ?? undefined,
-            startChunk: start,
-            endChunk: start,
-            styled: false,
-          },
-    )
+    ranges.push({
+      id: node._nativeRangeId ?? undefined,
+      startChunk: start,
+      endChunk: start,
+      styled: false,
+    })
     assignments.push((id) => {
       node._nativeRangeId = id
-      node._nativeRangeStyled = nodeStyled
+      node._nativeRangeStyled = manualLeaves !== null && hasTextStyle(style)
     })
 
     if (manualLeaves !== null) {
       for (const leaf of manualLeaves) {
         const leafStart = chunks.length
         if (visible) chunks.push({ text: leaf.text })
-        if (!hasTextStyle(leaf.style)) continue
+        const leafStyle = this.mergeStyledLeafStyle(leaf.style, style)
+        if (!hasTextStyle(leafStyle)) continue
         ranges.push({
           id: leaf.rangeId ?? undefined,
           startChunk: leafStart,
           endChunk: chunks.length,
-          ...this.mergeStyledLeafStyle(leaf.style, style),
+          ...leafStyle,
           styled: true,
           priority: Math.min(255, depth + 2),
         })
@@ -1808,7 +1797,9 @@ export class TextRenderable extends TextBufferRenderable {
           id: identity.rangeId ?? undefined,
           startChunk: leafStart,
           endChunk: chunks.length,
-          styled: false,
+          ...style,
+          styled: true,
+          priority: Math.min(255, depth + 1),
         })
         assignments.push((id) => (identity!.rangeId = id))
       } else {
@@ -1845,14 +1836,6 @@ export class TextRenderable extends TextBufferRenderable {
   ): void {
     const style = this.mergeStyles(parentStyle)
     if (this._manualStyledLeaves !== null) {
-      if (this._nativeRangeStyled && this._nativeRangeId !== null) {
-        operations.push({
-          kind: "updateStyle",
-          targetId: this._nativeRangeId,
-          owner: owner._textDocumentOwner,
-          ...style,
-        })
-      }
       for (const leaf of this._manualStyledLeaves) {
         if (leaf.rangeId === null) continue
         operations.push({
@@ -1862,13 +1845,19 @@ export class TextRenderable extends TextBufferRenderable {
           ...this.mergeStyledLeafStyle(leaf.style, style),
         })
       }
-    } else if (this._nativeRangeId !== null) {
-      operations.push({
-        kind: "updateStyle",
-        targetId: this._nativeRangeId,
-        owner: owner._textDocumentOwner,
-        ...style,
-      })
+    } else {
+      const children = this.materializeChildOrder()
+      for (let index = 0; index < children.length; index++) {
+        if (typeof children[index] !== "string") continue
+        const identity = this._rawTextIdentities[index]
+        if (!identity?.rangeId) continue
+        operations.push({
+          kind: "updateStyle",
+          targetId: identity.rangeId,
+          owner: owner._textDocumentOwner,
+          ...style,
+        })
+      }
     }
     for (const child of this.getTextChildren()) child.collectNativeStyleOperations(owner, style, operations)
   }
