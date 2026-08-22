@@ -495,6 +495,85 @@ test "document replacement creates stable normalized ranges and structural moves
     try std.testing.expectEqual(ids[2], tb.getDocumentRange(ids[2]).?.id);
 }
 
+fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const initial_text = "left middle right";
+    const initial_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = initial_text.ptr,
+        .text_len = initial_text.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    const initial_ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = true, .priority = 2 },
+    };
+    var ids: [2]u64 = undefined;
+    _ = try tb.replaceDocumentRange(null, .replace, 0, 0, &initial_chunks, 91, &initial_ranges, &ids);
+
+    const replacement_text = "中🙂";
+    const replacement = [_]text_buffer.StyledChunk{.{
+        .text_ptr = replacement_text.ptr,
+        .text_len = replacement_text.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 4,
+    }};
+    const replacement_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .id = ids[1],
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = replacement[0],
+        .styled = true,
+        .priority = 2,
+    }};
+    var output_id: [1]u64 = undefined;
+    const before_root = tb.rope().root;
+    const before_epoch = tb.getContentEpoch();
+    const before_annotation_epoch = tb.getAnnotationEpoch();
+    const before_count = tb.textAnnotations().count();
+    const before_root_range = tb.getDocumentRange(ids[0]).?;
+    const before_child_range = tb.getDocumentRange(ids[1]).?;
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const transaction = tb.replaceDocumentRange(ids[1], .replace, 0, 0, &replacement, 91, &replacement_ranges, &output_id);
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, transaction);
+        try std.testing.expect(tb.rope().root == before_root);
+        try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
+        try std.testing.expectEqual(before_annotation_epoch, tb.getAnnotationEpoch());
+        try std.testing.expectEqual(before_count, tb.textAnnotations().count());
+        try std.testing.expectEqualDeep(before_root_range, tb.getDocumentRange(ids[0]).?);
+        try std.testing.expectEqualDeep(before_child_range, tb.getDocumentRange(ids[1]).?);
+        try expectText(tb, initial_text);
+    } else {
+        _ = try transaction;
+    }
+    return failing.alloc_index - before_alloc;
+}
+
+test "document range transaction rolls back every allocation failure" {
+    const allocations = try exerciseDocumentRangeTransactionFailure(null);
+    for (0..allocations) |offset| _ = try exerciseDocumentRangeTransactionFailure(offset);
+}
+
 test "splice backing survives undo roots and reset releases it" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
