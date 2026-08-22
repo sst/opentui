@@ -526,6 +526,70 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("composes registered descendants with inherited values without losing precedence", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      keyword: { fg: "#ff0000", bold: true },
+      container: { bg: "#0000ff" },
+    })
+    try {
+      const keywordId = syntaxStyle.getStyleId("keyword")!
+      const containerId = syntaxStyle.getStyleId("container")!
+      const root = new TextRenderable(renderer, { fg: "#00ff00" })
+      const child = new TextRenderable(renderer, {
+        content: "key",
+        styleId: keywordId,
+        styleSource: syntaxStyle,
+      })
+      root.add(child)
+      renderer.root.add(root)
+      const effectiveChildChunk = () =>
+        child.toChunks(root.mergeStyles({ fg: undefined, bg: undefined, attributes: 0 }))[0]!
+      await renderOnce()
+
+      expect(effectiveChildChunk().styleId).toBe(keywordId)
+      expect(
+        (root as any).textBuffer.getLineHighlights(0).some((highlight: any) => highlight.styleId === keywordId),
+      ).toBe(true)
+
+      root.bg = "#0000ff"
+      await renderOnce()
+      expect(effectiveChildChunk().styleId).toBeUndefined()
+      expect(effectiveChildChunk().fg?.equals(RGBA.fromHex("#ff0000"))).toBe(true)
+      expect(effectiveChildChunk().bg?.equals(RGBA.fromHex("#0000ff"))).toBe(true)
+      expect(effectiveChildChunk().attributes).toBe(TextAttributes.BOLD)
+      expect(
+        (root as any).textBuffer.getLineHighlights(0).some((highlight: any) => highlight.styleId === keywordId),
+      ).toBe(false)
+
+      root.bg = undefined
+      root.attributes = TextAttributes.BOLD
+      await renderOnce()
+      expect(effectiveChildChunk().styleId).toBe(keywordId)
+
+      root.attributes = TextAttributes.UNDERLINE
+      root.link = { url: "https://ancestor.test" }
+      await renderOnce()
+      expect(effectiveChildChunk().styleId).toBeUndefined()
+      expect(effectiveChildChunk().attributes).toBe(TextAttributes.BOLD | TextAttributes.UNDERLINE)
+      expect(effectiveChildChunk().link).toEqual({ url: "https://ancestor.test" })
+
+      const registeredParent = new TextRenderable({ styleId: containerId, styleSource: syntaxStyle })
+      const registeredChild = new TextRenderable({
+        content: "nested",
+        styleId: keywordId,
+        styleSource: syntaxStyle,
+      })
+      registeredParent.add(registeredChild)
+      const nested = registeredParent.chunks[0]!
+      expect(nested.styleId).toBeUndefined()
+      expect(nested.fg?.equals(RGBA.fromHex("#ff0000"))).toBe(true)
+      expect(nested.bg?.equals(RGBA.fromHex("#0000ff"))).toBe(true)
+      registeredParent.destroy()
+    } finally {
+      syntaxStyle.destroy()
+    }
+  })
+
   test("moves a nested node between outer documents without retaining transient state", async () => {
     const left = new TextRenderable(renderer, { content: "L" })
     const right = new TextRenderable(renderer, { content: "R" })

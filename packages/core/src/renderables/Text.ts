@@ -744,20 +744,48 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public mergeStyles(parentStyle: TextStyle): TextStyle {
-    const parentContributesStyle =
-      parentStyle.fg !== undefined ||
-      parentStyle.bg !== undefined ||
-      parentStyle.attributes !== 0 ||
-      parentStyle.link !== undefined ||
-      parentStyle.styleId !== undefined
-    return {
-      fg: this._localFg ?? parentStyle.fg,
-      bg: this._localBg ?? parentStyle.bg,
-      attributes: this._localAttributes | parentStyle.attributes,
-      link: this._link ?? parentStyle.link,
-      styleId: !parentContributesStyle ? this._localStyleId : undefined,
-      styleSource: !parentContributesStyle ? this._localSyntaxStyle : undefined,
+    const parentRegistered =
+      parentStyle.styleId === undefined ? undefined : parentStyle.styleSource?.getStyleById(parentStyle.styleId)
+    if (parentStyle.styleId !== undefined && !parentRegistered) {
+      throw new Error(`Unknown registered text style ID ${parentStyle.styleId}`)
     }
+    const localRegistered =
+      this._localStyleId === undefined ? undefined : this._localSyntaxStyle?.getStyleById(this._localStyleId)
+    if (this._localStyleId !== undefined && !localRegistered) {
+      throw new Error(`Unknown registered text style ID ${this._localStyleId}`)
+    }
+    const parentFg = parentStyle.fg ?? parentRegistered?.fg
+    const parentBg = parentStyle.bg ?? parentRegistered?.bg
+    const parentAttributes = parentStyle.attributes | (parentRegistered?.attributes ?? 0)
+    const effective: TextStyle = {
+      fg: this._localFg ?? localRegistered?.fg ?? parentFg,
+      bg: this._localBg ?? localRegistered?.bg ?? parentBg,
+      attributes: this._localAttributes | (localRegistered?.attributes ?? 0) | parentAttributes,
+      link: this._link ?? parentStyle.link,
+    }
+    const registered = localRegistered ?? (this._localStyleId === undefined ? parentRegistered : undefined)
+    const styleId = localRegistered
+      ? this._localStyleId
+      : this._localStyleId === undefined
+        ? parentStyle.styleId
+        : undefined
+    const styleSource = localRegistered
+      ? this._localSyntaxStyle
+      : this._localStyleId === undefined
+        ? parentStyle.styleSource
+        : undefined
+    if (
+      registered &&
+      styleId !== undefined &&
+      styleSource &&
+      effective.link === undefined &&
+      effective.attributes === registered.attributes &&
+      (effective.fg === registered.fg || effective.fg?.equals(registered.fg)) &&
+      (effective.bg === registered.bg || effective.bg?.equals(registered.bg))
+    ) {
+      return { fg: undefined, bg: undefined, attributes: 0, styleId, styleSource }
+    }
+    return effective
   }
 
   public gatherWithInheritedStyle(

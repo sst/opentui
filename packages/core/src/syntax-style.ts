@@ -79,6 +79,7 @@ export class SyntaxStyle {
   private _destroyed: boolean = false
   private nameCache: Map<string, number> = new Map()
   private styleDefs: Map<string, StyleDefinition> = new Map()
+  private styleDefsById: Map<number, MergedStyle> = new Map()
   private mergedCache: Map<string, MergedStyle> = new Map()
 
   constructor(lib: RenderLib, ptr: SyntaxStyleHandle) {
@@ -133,6 +134,7 @@ export class SyntaxStyle {
 
     this.nameCache.set(name, id)
     this.styleDefs.set(name, { ...style, fg: fg ?? undefined, bg: bg ?? undefined })
+    this.styleDefsById.set(id, { fg: fg ?? undefined, bg: bg ?? undefined, attributes })
 
     return id
   }
@@ -189,22 +191,21 @@ export class SyntaxStyle {
   public getStyle(name: string): StyleDefinition | undefined {
     this.guard()
 
-    if (Object.prototype.hasOwnProperty.call(this.styleDefs, name)) {
-      return undefined
-    }
-
     const style = this.styleDefs.get(name)
     if (style) return style
 
     if (name.includes(".")) {
       const baseName = name.split(".")[0]
-      if (Object.prototype.hasOwnProperty.call(this.styleDefs, baseName)) {
-        return undefined
-      }
       return this.styleDefs.get(baseName)
     }
 
     return undefined
+  }
+
+  public getStyleById(id: number): MergedStyle | undefined {
+    this.guard()
+    const style = this.styleDefsById.get(id)
+    return style ? { ...style } : undefined
   }
 
   public mergeStyles(...styleNames: string[]): MergedStyle {
@@ -272,6 +273,7 @@ export class SyntaxStyle {
     this._destroyed = true
     this.nameCache.clear()
     this.styleDefs.clear()
+    this.styleDefsById.clear()
     this.mergedCache.clear()
     this.lib.destroySyntaxStyle(this.stylePtr)
   }
