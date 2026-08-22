@@ -102,6 +102,38 @@ describe("TextBuffer", () => {
       buffer.setSyntaxStyle(null)
       syntaxStyle.destroy()
     })
+
+    it("creates, reads, edits, and moves stable document ranges", () => {
+      const created = buffer.replaceDocumentRange(
+        null,
+        "replace",
+        0,
+        0,
+        [{ text: "A" }, { text: "界\r\n" }, { text: "🙂" }],
+        41,
+        [
+          { startChunk: 0, endChunk: 3, styled: true },
+          { startChunk: 0, endChunk: 1, styled: true, priority: 2 },
+          { startChunk: 1, endChunk: 2, styled: true, priority: 2 },
+          { startChunk: 2, endChunk: 3, styled: true, priority: 2 },
+        ],
+      )
+      const [rootId, firstId, middleId, lastId] = created.ids
+      expect(buffer.getDocumentRangeText(rootId!)).toBe("A界\n🙂")
+      expect(buffer.getDocumentRange(middleId!)).toMatchObject({ owner: 41, startByte: 1, endByte: 5 })
+
+      const epoch = buffer.contentEpoch
+      buffer.replaceDocumentRange(middleId!, "replace", 0, 0, [{ text: "中" }], 41, [
+        { id: middleId, startChunk: 0, endChunk: 1, styled: true, priority: 2 },
+      ])
+      expect(buffer.getPlainText()).toBe("A中🙂")
+      expect(buffer.getDocumentRange(middleId!)?.startByte).toBe(1)
+      expect(buffer.contentEpoch).toBeGreaterThan(epoch)
+
+      buffer.moveDocumentRange(lastId!, firstId!, true)
+      expect(buffer.getPlainText()).toBe("🙂A中")
+      expect(buffer.getDocumentRange(lastId!)?.startByte).toBe(0)
+    })
   })
 
   describe("getPlainText", () => {

@@ -42,6 +42,8 @@ import {
   StyledChunkStruct,
   DocumentStyledChunkStruct,
   AnnotationStyleStruct,
+  DocumentRangeInputStruct,
+  DocumentRangeStruct,
   TextSpliceResultStruct,
   HighlightStruct,
   LogicalCursorStruct,
@@ -124,6 +126,21 @@ export type DocumentStyle = {
 }
 
 export type DocumentStyledChunk = DocumentStyle & { text: string }
+export type DocumentRangeInput = DocumentStyle & {
+  id?: bigint
+  remove?: boolean
+  startChunk: number
+  endChunk: number
+  styled?: boolean
+  priority?: number
+}
+
+export type DocumentRange = {
+  owner: number
+  startByte: number
+  endByte: number
+  styled: boolean
+}
 
 export type TextSpliceResult = {
   oldRange: { start: number; end: number }
@@ -147,6 +164,25 @@ function checkTextDocumentStatus(status: number, operation: string, allowNotFoun
   const reason =
     status === 1 ? "invalid handle" : status === 2 ? "invalid argument" : status === 3 ? "out of memory" : "not found"
   throw new Error(`${operation} failed: ${reason}`)
+}
+
+function unpackTextSpliceResult(out: Uint32Array): TextSpliceResult {
+  const result = TextSpliceResultStruct.unpack(out.buffer) as Record<string, number>
+  return {
+    oldRange: { start: result.oldStart, end: result.oldEnd },
+    insertedLength: result.insertedLen,
+    newEnd: result.newEnd,
+    oldDisplay: {
+      start: { row: result.oldStartRow, col: result.oldStartCol, exact: result.oldStartExact !== 0 },
+      end: { row: result.oldEndRow, col: result.oldEndCol, exact: result.oldEndExact !== 0 },
+    },
+    newDisplay: {
+      start: { row: result.newStartRow, col: result.newStartCol, exact: result.newStartExact !== 0 },
+      end: { row: result.newEndRow, col: result.newEndCol, exact: result.newEndExact !== 0 },
+    },
+    oldExtent: { rows: result.oldExtentRows, columns: result.oldExtentColumns },
+    newExtent: { rows: result.newExtentRows, columns: result.newExtentColumns },
+  }
 }
 export type EditBufferHandle = NativeHandle<"edit_buffer">
 export type EditorViewHandle = NativeHandle<"editor_view">
@@ -1073,6 +1109,26 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32", "u32", "ptr", "u32", "u32", "buffer"],
       returns: "u32",
     },
+    textBufferGetDocumentRange: {
+      args: ["u32", "u64", "buffer"],
+      returns: "u32",
+    },
+    textBufferGetDocumentRangeText: {
+      args: ["u32", "u64", "ptr", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferMeasureDocumentRange: {
+      args: ["u32", "u64", "buffer"],
+      returns: "u32",
+    },
+    textBufferReplaceDocumentRange: {
+      args: ["u32", "u64", "u32", "u32", "u32", "ptr", "u32", "u32", "ptr", "u32", "buffer", "buffer"],
+      returns: "u32",
+    },
+    textBufferMoveDocumentRange: {
+      args: ["u32", "u64", "u64", "u32"],
+      returns: "u32",
+    },
     textBufferCreateStyleRange: {
       args: ["u32", "u32", "u32", "u32", "buffer", "u32", "buffer"],
       returns: "u32",
@@ -1098,6 +1154,10 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     textBufferGetAnnotationEpoch: {
+      args: ["u32"],
+      returns: "u64",
+    },
+    textBufferGetContentEpoch: {
       args: ["u32"],
       returns: "u64",
     },
@@ -2835,6 +2895,20 @@ export interface RenderLib extends AudioEngineLib {
     chunks: DocumentStyledChunk[],
     owner: number,
   ) => TextSpliceResult
+  textBufferGetDocumentRange: (buffer: TextBufferHandle, id: bigint) => DocumentRange | null
+  textBufferGetDocumentRangeText: (buffer: TextBufferHandle, id: bigint, byteLength: number) => Uint8Array | null
+  textBufferMeasureDocumentRange: (buffer: TextBufferHandle, id: bigint) => number
+  textBufferReplaceDocumentRange: (
+    buffer: TextBufferHandle,
+    targetId: bigint | null,
+    targetMode: "replace" | "before" | "after",
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+    ranges: DocumentRangeInput[],
+  ) => { result: TextSpliceResult; ids: bigint[] }
+  textBufferMoveDocumentRange: (buffer: TextBufferHandle, sourceId: bigint, anchorId: bigint, before: boolean) => void
   textBufferCreateStyleRange: (
     buffer: TextBufferHandle,
     owner: number,
@@ -2849,6 +2923,7 @@ export interface RenderLib extends AudioEngineLib {
   textBufferRemoveStyleRange: (buffer: TextBufferHandle, id: bigint) => boolean
   textBufferClearStyleOwner: (buffer: TextBufferHandle, owner: number) => number
   textBufferGetAnnotationEpoch: (buffer: TextBufferHandle) => bigint
+  textBufferGetContentEpoch: (buffer: TextBufferHandle) => bigint
   textBufferBeginStyleBatch: (buffer: TextBufferHandle) => void
   textBufferEndStyleBatch: (buffer: TextBufferHandle) => void
   textBufferSetDefaultFg: (buffer: TextBufferHandle, fg: RGBA | null) => void
@@ -5066,22 +5141,92 @@ class FFIRenderLib implements RenderLib {
       out,
     )
     checkTextDocumentStatus(status, "replaceStyledRangeBytes")
-    const result = TextSpliceResultStruct.unpack(out.buffer) as Record<string, number>
-    return {
-      oldRange: { start: result.oldStart, end: result.oldEnd },
-      insertedLength: result.insertedLen,
-      newEnd: result.newEnd,
-      oldDisplay: {
-        start: { row: result.oldStartRow, col: result.oldStartCol, exact: result.oldStartExact !== 0 },
-        end: { row: result.oldEndRow, col: result.oldEndCol, exact: result.oldEndExact !== 0 },
-      },
-      newDisplay: {
-        start: { row: result.newStartRow, col: result.newStartCol, exact: result.newStartExact !== 0 },
-        end: { row: result.newEndRow, col: result.newEndCol, exact: result.newEndExact !== 0 },
-      },
-      oldExtent: { rows: result.oldExtentRows, columns: result.oldExtentColumns },
-      newExtent: { rows: result.newExtentRows, columns: result.newExtentColumns },
+    return unpackTextSpliceResult(out)
+  }
+
+  public textBufferGetDocumentRange(buffer: TextBufferHandle, id: bigint): DocumentRange | null {
+    const out = new Uint32Array(DocumentRangeStruct.size / Uint32Array.BYTES_PER_ELEMENT)
+    if (
+      !checkTextDocumentStatus(
+        this.opentui.symbols.textBufferGetDocumentRange(buffer, id, out),
+        "getDocumentRange",
+        true,
+      )
+    ) {
+      return null
     }
+    const range = DocumentRangeStruct.unpack(out.buffer) as Record<string, number>
+    return { owner: range.owner, startByte: range.startByte, endByte: range.endByte, styled: range.styled !== 0 }
+  }
+
+  public textBufferGetDocumentRangeText(buffer: TextBufferHandle, id: bigint, byteLength: number): Uint8Array | null {
+    const output = new Uint8Array(byteLength)
+    const written = new Uint32Array(1)
+    if (
+      !checkTextDocumentStatus(
+        this.opentui.symbols.textBufferGetDocumentRangeText(buffer, id, viewOrNull(output), output.byteLength, written),
+        "getDocumentRangeText",
+        true,
+      )
+    ) {
+      return null
+    }
+    return output.subarray(0, written[0])
+  }
+
+  public textBufferMeasureDocumentRange(buffer: TextBufferHandle, id: bigint): number {
+    const output = new Uint32Array(1)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferMeasureDocumentRange(buffer, id, output),
+      "measureDocumentRange",
+    )
+    return output[0]
+  }
+
+  public textBufferReplaceDocumentRange(
+    buffer: TextBufferHandle,
+    targetId: bigint | null,
+    targetMode: "replace" | "before" | "after",
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+    ranges: DocumentRangeInput[],
+  ): { result: TextSpliceResult; ids: bigint[] } {
+    const packedChunks = chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks)
+    const packedRanges = ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges)
+    const ids = new BigUint64Array(ranges.length)
+    const out = new Uint32Array(TextSpliceResultStruct.size / Uint32Array.BYTES_PER_ELEMENT)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferReplaceDocumentRange(
+        buffer,
+        targetId ?? 0n,
+        targetId === null ? 0 : targetMode === "before" ? 2 : targetMode === "after" ? 3 : 1,
+        startByte,
+        endByte,
+        packedChunks,
+        chunks.length,
+        owner,
+        packedRanges,
+        ranges.length,
+        ids,
+        out,
+      ),
+      "replaceDocumentRange",
+    )
+    return { result: unpackTextSpliceResult(out), ids: Array.from(ids) }
+  }
+
+  public textBufferMoveDocumentRange(
+    buffer: TextBufferHandle,
+    sourceId: bigint,
+    anchorId: bigint,
+    before: boolean,
+  ): void {
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferMoveDocumentRange(buffer, sourceId, anchorId, before ? 1 : 0),
+      "moveDocumentRange",
+    )
   }
 
   public textBufferCreateStyleRange(
@@ -5145,6 +5290,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferGetAnnotationEpoch(buffer: TextBufferHandle): bigint {
     return this.opentui.symbols.textBufferGetAnnotationEpoch(buffer)
+  }
+
+  public textBufferGetContentEpoch(buffer: TextBufferHandle): bigint {
+    return this.opentui.symbols.textBufferGetContentEpoch(buffer)
   }
 
   public textBufferBeginStyleBatch(buffer: TextBufferHandle): void {

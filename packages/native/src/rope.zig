@@ -1128,6 +1128,31 @@ pub fn Rope(comptime T: type) type {
             return .{ .root = next_root };
         }
 
+        /// Build a root with `[start, start + len)` moved to `destination`, where
+        /// destination is measured after removing the source. Existing subtrees
+        /// are retained; only split and join paths are allocated.
+        pub fn prepareMoveRegionByMetric(
+            self: *Self,
+            start: u32,
+            len: u32,
+            destination: u32,
+            splitter: *const Node.MetricSplitFn,
+        ) error{ OutOfMemory, OutOfBounds }!PreparedRoot {
+            const total = splitter.metric(self.root.metrics());
+            const end = std.math.add(u32, start, len) catch return error.OutOfBounds;
+            if (end > total or destination > total - len) return error.OutOfBounds;
+            if (len == 0 or destination == start) return .{ .root = self.root };
+
+            const source_start = try Node.split_at_metric(self.root, start, self.allocator, self.empty_leaf, splitter);
+            const source_end = try Node.split_at_metric(source_start.right, len, self.allocator, self.empty_leaf, splitter);
+            const without_source = try self.joinWithBoundary(source_start.left, source_end.right);
+            const insertion = try Node.split_at_metric(without_source, destination, self.allocator, self.empty_leaf, splitter);
+            var next_root = try self.joinWithBoundary(insertion.left, source_end.left);
+            next_root = try self.joinWithBoundary(next_root, insertion.right);
+            next_root = try self.rootWithEndsInvariant(next_root);
+            return .{ .root = next_root };
+        }
+
         pub fn commitPreparedRoot(self: *Self, prepared: PreparedRoot) void {
             self.root = prepared.root;
             self.version += 1;

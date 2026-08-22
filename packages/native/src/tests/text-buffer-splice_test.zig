@@ -439,6 +439,62 @@ test "setStyledText releases splice backing and history before arena reset" {
     try std.testing.expectEqual(@as(usize, 1), tb.memRegistry().getUsedSlots());
 }
 
+test "document replacement creates stable normalized ranges and structural moves preserve IDs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const texts = [_][]const u8{ "A\r", "\n界", "Z" };
+    var chunks: [texts.len]text_buffer.StyledChunk = undefined;
+    for (texts, 0..) |text, index| chunks[index] = .{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 3, .style = empty_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 0 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = empty_style, .styled = true, .priority = 2 },
+        .{ .start_chunk = 2, .end_chunk = 3, .style = empty_style, .styled = true, .priority = 2 },
+    };
+    var ids: [ranges.len]u64 = undefined;
+    _ = try tb.replaceDocumentRange(null, .replace, 0, 0, &chunks, 77, &ranges, &ids);
+    try expectText(tb, "A\n界Z");
+    try std.testing.expectEqual(@as(u32, 2), tb.getDocumentRange(ids[2]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[2]).?.end_byte);
+
+    const before_edit_epoch = tb.getContentEpoch();
+    const replacement = [_]text_buffer.StyledChunk{.{
+        .text_ptr = "🙂".ptr,
+        .text_len = "🙂".len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    var no_ids: [0]u64 = .{};
+    _ = try tb.replaceDocumentRange(ids[2], .replace, 0, 0, &replacement, 77, &.{}, &no_ids);
+    try expectText(tb, "A\n🙂Z");
+    try std.testing.expectEqual(ids[2], tb.getDocumentRange(ids[2]).?.id);
+    try std.testing.expect(tb.getContentEpoch() > before_edit_epoch);
+
+    try std.testing.expect(try tb.moveDocumentRange(ids[3], ids[1], true));
+    try expectText(tb, "ZA\n🙂");
+    try std.testing.expectEqual(@as(u32, 0), tb.getDocumentRange(ids[3]).?.start_byte);
+    try std.testing.expectEqual(ids[2], tb.getDocumentRange(ids[2]).?.id);
+}
+
 test "splice backing survives undo roots and reset releases it" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

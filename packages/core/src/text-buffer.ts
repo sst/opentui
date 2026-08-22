@@ -3,6 +3,8 @@ import { RGBA } from "./lib/RGBA.js"
 import {
   resolveRenderLib,
   type DocumentStyle,
+  type DocumentRange,
+  type DocumentRangeInput,
   type DocumentStyledChunk,
   type LineInfo,
   type RenderLib,
@@ -114,6 +116,56 @@ export class TextBuffer {
     return result
   }
 
+  public getDocumentRange(id: bigint): DocumentRange | null {
+    this.guard()
+    return this.lib.textBufferGetDocumentRange(this.bufferPtr, id)
+  }
+
+  public getDocumentRangeText(id: bigint): string | null {
+    this.guard()
+    const range = this.getDocumentRange(id)
+    if (!range) return null
+    const bytes = this.lib.textBufferGetDocumentRangeText(this.bufferPtr, id, range.endByte - range.startByte)
+    return bytes ? this.lib.decoder.decode(bytes) : null
+  }
+
+  public measureDocumentRange(id: bigint): number {
+    this.guard()
+    return this.lib.textBufferMeasureDocumentRange(this.bufferPtr, id)
+  }
+
+  public replaceDocumentRange(
+    targetId: bigint | null,
+    targetMode: "replace" | "before" | "after",
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+    ranges: DocumentRangeInput[],
+  ): { result: TextSpliceResult; ids: bigint[] } {
+    this.guard()
+    const result = this.lib.textBufferReplaceDocumentRange(
+      this.bufferPtr,
+      targetId,
+      targetMode,
+      startByte,
+      endByte,
+      chunks,
+      owner,
+      ranges,
+    )
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    return result
+  }
+
+  public moveDocumentRange(sourceId: bigint, anchorId: bigint, before: boolean): void {
+    this.guard()
+    this.lib.textBufferMoveDocumentRange(this.bufferPtr, sourceId, anchorId, before)
+    this._lineInfo = undefined
+  }
+
   public createStyleRange(
     owner: number,
     startByte: number,
@@ -155,14 +207,27 @@ export class TextBuffer {
     return this.lib.textBufferGetAnnotationEpoch(this.bufferPtr)
   }
 
+  public get contentEpoch(): bigint {
+    this.guard()
+    return this.lib.textBufferGetContentEpoch(this.bufferPtr)
+  }
+
   public beginStyleBatch(): void {
     this.guard()
     this.lib.textBufferBeginStyleBatch(this.bufferPtr)
   }
 
+  public beginDocumentBatch(): void {
+    this.beginStyleBatch()
+  }
+
   public endStyleBatch(): void {
     this.guard()
     this.lib.textBufferEndStyleBatch(this.bufferPtr)
+  }
+
+  public endDocumentBatch(): void {
+    this.endStyleBatch()
   }
 
   public setDefaultFg(fg: RGBA | null): void {

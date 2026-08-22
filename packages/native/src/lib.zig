@@ -3136,6 +3136,27 @@ pub const ExternalAnnotationStyle = extern struct {
     link_len: u32,
 };
 
+pub const ExternalDocumentRangeInput = extern struct {
+    id: u64,
+    remove: u32,
+    start_chunk: u32,
+    end_chunk: u32,
+    fg_ptr: ?[*]const u16,
+    bg_ptr: ?[*]const u16,
+    attributes: u32,
+    link_ptr: ?[*]const u8,
+    link_len: u32,
+    styled: u32,
+    priority: u32,
+};
+
+pub const ExternalDocumentRange = extern struct {
+    owner: u32,
+    start_byte: u32,
+    end_byte: u32,
+    styled: u32,
+};
+
 pub const ExternalTextSpliceResult = extern struct {
     old_start: u32,
     old_end: u32,
@@ -3170,6 +3191,7 @@ const TextDocumentStatus = enum(u32) {
 fn textDocumentErrorStatus(err: anyerror) u32 {
     return @intFromEnum(switch (err) {
         error.OutOfMemory => TextDocumentStatus.out_of_memory,
+        error.InvalidIndex => TextDocumentStatus.not_found,
         else => TextDocumentStatus.invalid_argument,
     });
 }
@@ -3256,6 +3278,119 @@ export fn textBufferReplaceStyledRangeBytes(
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
+export fn textBufferGetDocumentRange(tb_handle: NativeHandle, id: u64, out_range: ?*ExternalDocumentRange) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_range orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const range = object_ptr.getDocumentRange(id) orelse return @intFromEnum(TextDocumentStatus.not_found);
+    output.* = .{
+        .owner = range.owner,
+        .start_byte = range.start_byte,
+        .end_byte = range.end_byte,
+        .styled = @intFromBool(range.styled),
+    };
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferGetDocumentRangeText(
+    tb_handle: NativeHandle,
+    id: u64,
+    out_ptr: ?[*]u8,
+    max_len: u32,
+    out_written: ?*u32,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const written = out_written orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    var empty_output: [0]u8 = .{};
+    const output: []u8 = if (max_len == 0) empty_output[0..] else (out_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument))[0..max_len];
+    written.* = @intCast(object_ptr.getDocumentRangeText(id, output) orelse return @intFromEnum(TextDocumentStatus.not_found));
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferMeasureDocumentRange(tb_handle: NativeHandle, id: u64, out_length: ?*u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_length orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    output.* = object_ptr.measureDocumentRange(id) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferReplaceDocumentRange(
+    tb_handle: NativeHandle,
+    target_id: u64,
+    use_target: u32,
+    start_byte: u32,
+    end_byte: u32,
+    chunks_ptr: ?[*]const ExternalStyledChunk32,
+    chunk_count: u32,
+    owner: u32,
+    ranges_ptr: ?[*]const ExternalDocumentRangeInput,
+    range_count: u32,
+    out_ids: ?[*]u64,
+    out_result: ?*ExternalTextSpliceResult,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_result orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (use_target > 3 or (chunk_count != 0 and chunks_ptr == null) or (range_count != 0 and (ranges_ptr == null or out_ids == null))) {
+        return @intFromEnum(TextDocumentStatus.invalid_argument);
+    }
+    const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
+    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+    defer globalAllocator.free(chunks);
+    for (external_chunks, 0..) |chunk, index| {
+        if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+        chunks[index] = externalStyledChunk(chunk);
+    }
+    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
+    const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+    defer globalAllocator.free(ranges);
+    for (external_ranges, 0..) |range, index| {
+        if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or (range.link_len != 0 and range.link_ptr == null)) {
+            return @intFromEnum(TextDocumentStatus.invalid_argument);
+        }
+        ranges[index] = .{
+            .id = range.id,
+            .remove = range.remove != 0,
+            .start_chunk = range.start_chunk,
+            .end_chunk = range.end_chunk,
+            .style = .{
+                .text_ptr = "".ptr,
+                .text_len = 0,
+                .fg_ptr = range.fg_ptr,
+                .bg_ptr = range.bg_ptr,
+                .attributes = range.attributes,
+                .link_ptr = range.link_ptr,
+                .link_len = range.link_len,
+            },
+            .styled = range.styled != 0,
+            .priority = @intCast(range.priority),
+        };
+    }
+    var empty_ids: [0]u64 = .{};
+    const ids: []u64 = if (range_count == 0) empty_ids[0..] else out_ids.?[0..range_count];
+    const result = object_ptr.replaceDocumentRange(
+        if (use_target != 0) target_id else null,
+        switch (use_target) {
+            2 => .before,
+            3 => .after,
+            else => .replace,
+        },
+        start_byte,
+        end_byte,
+        chunks,
+        owner,
+        ranges,
+        ids,
+    ) catch |err| return textDocumentErrorStatus(err);
+    writeExternalSplice(output, result);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferMoveDocumentRange(tb_handle: NativeHandle, source_id: u64, anchor_id: u64, before: u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (before > 1) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    _ = object_ptr.moveDocumentRange(source_id, anchor_id, before != 0) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
 export fn textBufferCreateStyleRange(
     tb_handle: NativeHandle,
     owner: u32,
@@ -3308,6 +3443,11 @@ export fn textBufferClearStyleOwner(tb_handle: NativeHandle, owner: u32, out_rem
 export fn textBufferGetAnnotationEpoch(tb_handle: NativeHandle) u64 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     return object_ptr.getAnnotationEpoch();
+}
+
+export fn textBufferGetContentEpoch(tb_handle: NativeHandle) u64 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getContentEpoch();
 }
 
 export fn textBufferBeginStyleBatch(tb_handle: NativeHandle) u32 {

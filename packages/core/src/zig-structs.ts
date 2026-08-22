@@ -104,6 +104,48 @@ export const AnnotationStyleStruct = defineStruct(
   },
 )
 
+export const DocumentRangeInputStruct = defineStruct(
+  [
+    ["id", "u64", { default: 0n }],
+    ["remove", "u32", { default: 0 }],
+    ["startChunk", "u32"],
+    ["endChunk", "u32"],
+    ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["attributes", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u32", { lengthOf: "link" }],
+    ["styled", "u32", { default: 1 }],
+    ["priority", "u32", { default: 1 }],
+  ],
+  {
+    mapValue: (
+      range: Omit<StyledChunkInput, "text"> & {
+        id?: bigint
+        remove?: boolean
+        startChunk: number
+        endChunk: number
+        styled?: boolean
+        priority?: number
+      },
+    ): any => ({
+      ...range,
+      remove: range.remove ? 1 : 0,
+      styled: range.styled === false ? 0 : 1,
+      fg: normalizeColorValue(range.fg ?? null)?.rgba ?? null,
+      bg: normalizeColorValue(range.bg ?? null)?.rgba ?? null,
+      link: typeof range.link === "object" && range.link ? range.link.url : range.link,
+    }),
+  },
+)
+
+export const DocumentRangeStruct = defineStruct([
+  ["owner", "u32"],
+  ["startByte", "u32"],
+  ["endByte", "u32"],
+  ["styled", "u32"],
+])
+
 export const TextSpliceResultStruct = defineStruct([
   ["oldStart", "u32"],
   ["oldEnd", "u32"],
