@@ -360,11 +360,7 @@ function selectionBehaviorByte(behavior?: SelectionBehavior): number {
   return behavior === "word" ? 1 : behavior === "line" ? 2 : 0
 }
 
-function editorLocalSelectionFlags(
-  updateCursor: boolean,
-  followCursor: boolean,
-  behavior?: SelectionBehavior,
-): number {
+function editorLocalSelectionFlags(updateCursor: boolean, followCursor: boolean, behavior?: SelectionBehavior): number {
   return ffiBool(updateCursor) | (ffiBool(followCursor) << 1) | (selectionBehaviorByte(behavior) << 2)
 }
 
