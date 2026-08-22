@@ -41,6 +41,15 @@ pub const SelectionOccupancy = enum(u8) {
     boundary = 1,
 };
 
+/// How local cell coordinates expand into a highlight range.
+/// `cell` is the current inclusive press/drag. `word` and `line` expand
+/// each endpoint through selectWord / selectLine.
+pub const SelectionBehavior = enum(u8) {
+    cell = 0,
+    word = 1,
+    line = 2,
+};
+
 /// Half-open display-offset range used by word/line click expansion.
 pub const SelectionRange = struct {
     start: u32,
@@ -177,6 +186,7 @@ pub const UnifiedTextBufferView = struct {
     /// cell occupancy can extend `selection.end` past the focus grapheme.
     selection_endpoints: ?SelectionEndpoints,
     selection_occupancy: SelectionOccupancy,
+    selection_behavior: SelectionBehavior,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -236,6 +246,7 @@ pub const UnifiedTextBufferView = struct {
             .selection = null,
             .selection_endpoints = null,
             .selection_occupancy = .cell,
+            .selection_behavior = .cell,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -634,6 +645,7 @@ pub const UnifiedTextBufferView = struct {
     pub fn resetSelection(self: *Self) void {
         self.selection = null;
         self.clearSelectionEndpoints();
+        self.selection_behavior = .cell;
     }
 
     pub fn setSelectionOccupancy(self: *Self, occupancy: SelectionOccupancy) void {
@@ -643,7 +655,8 @@ pub const UnifiedTextBufferView = struct {
         const text_end = self.getTextEndOffset();
         endpoints.anchor = @min(endpoints.anchor, text_end);
         endpoints.focus = @min(endpoints.focus, text_end);
-        const range = self.selectionRange(endpoints.anchor, endpoints.focus, text_end);
+        const range = self.expandSelectionRange(endpoints.anchor, endpoints.focus, text_end, self.selection_behavior) orelse
+            self.selectionRange(endpoints.anchor, endpoints.focus, text_end);
         selection.start = range.start;
         selection.end = range.end;
     }
@@ -686,10 +699,14 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), .cell);
     }
 
-    pub fn setLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    pub fn setLocalSelectionBehavior(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA, behavior: SelectionBehavior) bool {
+        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), behavior);
+    }
+
+    pub fn setLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
             self.ensureTruncation();
@@ -733,8 +750,10 @@ pub const UnifiedTextBufferView = struct {
             };
 
         self.selection_endpoints = .{ .anchor = anchor_offset, .focus = focus_offset };
+        self.selection_behavior = behavior;
 
-        const range = self.selectionRange(anchor_offset, focus_offset, text_end_offset);
+        const range = self.expandSelectionRange(anchor_offset, focus_offset, text_end_offset, behavior) orelse
+            self.selectionRange(anchor_offset, focus_offset, text_end_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
         const new_selection = selectionFromStyle(range.start, range.end, style);
@@ -749,18 +768,22 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), .cell);
     }
 
-    pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    pub fn updateLocalSelectionBehavior(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA, behavior: SelectionBehavior) bool {
+        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), behavior);
+    }
+
+    pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         if (self.selection_endpoints != null) {
-            return self.updateLocalSelectionFocusOnly(focusX, focusY, style);
+            return self.updateLocalSelectionFocusOnly(focusX, focusY, style, behavior);
         } else {
-            return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style);
+            return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style, behavior);
         }
     }
 
-    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         const endpoints = self.selection_endpoints orelse return false;
         const anchor_offset = endpoints.anchor;
 
@@ -783,11 +806,44 @@ pub const UnifiedTextBufferView = struct {
             self.coordsToCharOffset(focusX, focusY) orelse return false;
 
         self.selection_endpoints.?.focus = focus_col_offset;
+        self.selection_behavior = behavior;
 
-        const range = self.selectionRange(anchor_offset, focus_col_offset, text_end_offset);
+        const range = self.expandSelectionRange(anchor_offset, focus_col_offset, text_end_offset, behavior) orelse return false;
         self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
+    }
+
+    fn expandSelectionRange(
+        self: *Self,
+        anchor_offset: u32,
+        focus_offset: u32,
+        text_end_offset: u32,
+        behavior: SelectionBehavior,
+    ) ?SelectionRange {
+        switch (behavior) {
+            .cell => return self.selectionRange(anchor_offset, focus_offset, text_end_offset),
+            .word => {
+                const a = self.selectWordBetween(anchor_offset, focus_offset);
+                const b = self.selectWordBetween(focus_offset, anchor_offset);
+                return unionRanges(a, b);
+            },
+            .line => {
+                const a = self.selectLine(anchor_offset);
+                const b = self.selectLine(focus_offset);
+                return unionRanges(a, b);
+            },
+        }
+    }
+
+    fn unionRanges(a: ?SelectionRange, b: ?SelectionRange) ?SelectionRange {
+        if (a == null and b == null) return null;
+        if (a == null) return b;
+        if (b == null) return a;
+        return .{
+            .start = @min(a.?.start, b.?.start),
+            .end = @max(a.?.end, b.?.end),
+        };
     }
 
     /// Word at `offset`. Null on newline or end-of-buffer. `/` is not a boundary.
@@ -951,7 +1007,7 @@ pub const UnifiedTextBufferView = struct {
     /// `boundary`: `[min, max)` — the insert range the caret swept.
     /// Zero extent (`anchor == focus`) stays empty in both modes: a press is
     /// not a cell to occupy.
-    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
+    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) SelectionRange {
         var start = @min(anchor_offset, focus_offset);
         var end = @max(anchor_offset, focus_offset);
         if (anchor_offset == focus_offset) {

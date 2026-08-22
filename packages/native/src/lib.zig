@@ -2267,7 +2267,7 @@ export fn textBufferViewGetSelectionInfo(view_handle: NativeHandle) u64 {
 
 export fn textBufferViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
     const object_ptr = acquireTextBufferView(view_handle) orelse return false;
-    return object_ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    return object_ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)), .cell);
 }
 
 export fn textBufferViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
@@ -2277,7 +2277,7 @@ export fn textBufferViewUpdateSelection(view_handle: NativeHandle, end: u32, bgC
 
 export fn textBufferViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
     const object_ptr = acquireTextBufferView(view_handle) orelse return false;
-    return object_ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    return object_ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)), .cell);
 }
 
 export fn textBufferViewResetLocalSelection(view_handle: NativeHandle) void {

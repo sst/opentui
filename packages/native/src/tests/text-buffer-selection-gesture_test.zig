@@ -141,3 +141,93 @@ test "selectLine - selected bytes match a whole visual-line drag" {
 
     try expectSelected(pair.view, pair.view.selectLine(0), "hello");
 }
+
+fn expectViewSelected(view: *TextBufferView, expected: []const u8) !void {
+    var out: [128]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings(expected, out[0..len]);
+}
+
+test "behavior - word press on one cell produces a non-empty range" {
+    const pair = try initView("alpha beta gamma");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 6, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta");
+}
+
+test "behavior - word press on padding produces zero-width" {
+    const pair = try initView("alpha beta");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(10, 0, 10, 0, null, null, .word);
+    try expectViewSelected(pair.view, "");
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), pair.view.packSelectionInfo());
+}
+
+test "behavior - word drag beta to gamma selects both words" {
+    const pair = try initView("alpha beta gamma");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 6, 0, null, null, .word);
+    _ = pair.view.updateLocalSelectionBehavior(6, 0, 12, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta gamma");
+}
+
+test "behavior - word drag backward matches forward" {
+    const pair = try initView("alpha beta gamma");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 12, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta gamma");
+
+    pair.view.resetLocalSelection();
+    _ = pair.view.setLocalSelectionBehavior(12, 0, 6, 0, null, null, .word);
+    try expectViewSelected(pair.view, "beta gamma");
+}
+
+test "behavior - line drag across two source lines unions them" {
+    const pair = try initView("hello\nworld");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(0, 0, 0, 0, null, null, .line);
+    _ = pair.view.updateLocalSelectionBehavior(0, 0, 0, 1, null, null, .line);
+    try expectViewSelected(pair.view, "hello\nworld");
+}
+
+test "behavior - cell press still zero-width" {
+    const pair = try initView("alpha beta");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelection(6, 0, 6, 0, null, null);
+    try expectViewSelected(pair.view, "");
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), pair.view.packSelectionInfo());
+}
+
+test "behavior - set and update agree for word and line" {
+    const pair = try initView("alpha beta gamma\nnext");
+    defer deinitView(pair);
+
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 12, 0, null, null, .word);
+    var set_out: [128]u8 = undefined;
+    const set_len = pair.view.getSelectedTextIntoBuffer(&set_out);
+
+    pair.view.resetLocalSelection();
+    _ = pair.view.setLocalSelectionBehavior(6, 0, 6, 0, null, null, .word);
+    _ = pair.view.updateLocalSelectionBehavior(6, 0, 12, 0, null, null, .word);
+    var update_out: [128]u8 = undefined;
+    const update_len = pair.view.getSelectedTextIntoBuffer(&update_out);
+    try std.testing.expectEqualStrings(set_out[0..set_len], update_out[0..update_len]);
+    try std.testing.expectEqualStrings("beta gamma", set_out[0..set_len]);
+
+    pair.view.resetLocalSelection();
+    _ = pair.view.setLocalSelectionBehavior(0, 0, 0, 1, null, null, .line);
+    const line_set_len = pair.view.getSelectedTextIntoBuffer(&set_out);
+
+    pair.view.resetLocalSelection();
+    _ = pair.view.setLocalSelectionBehavior(0, 0, 0, 0, null, null, .line);
+    _ = pair.view.updateLocalSelectionBehavior(0, 0, 0, 1, null, null, .line);
+    const line_update_len = pair.view.getSelectedTextIntoBuffer(&update_out);
+    try std.testing.expectEqualStrings(set_out[0..line_set_len], update_out[0..line_update_len]);
+    try std.testing.expectEqualStrings("alpha beta gamma\nnext", set_out[0..line_set_len]);
+}
