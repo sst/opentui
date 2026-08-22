@@ -41,6 +41,36 @@ pub const SelectionOccupancy = enum(u8) {
     boundary = 1,
 };
 
+/// Half-open display-offset range used by word/line click expansion.
+pub const SelectionRange = struct {
+    start: u32,
+    end: u32,
+};
+
+/// Ghostty-style boundary codepoints, without NUL. A run of these is a word.
+/// Space and tab are included so a double-click on whitespace selects the run.
+const default_word_boundaries = [_]u21{
+    ' ',
+    '\t',
+    '\'',
+    '"',
+    '│',
+    '`',
+    '|',
+    ':',
+    ';',
+    ',',
+    '(',
+    ')',
+    '[',
+    ']',
+    '{',
+    '}',
+    '<',
+    '>',
+    '$',
+};
+
 const SelectionEndpoints = struct {
     anchor: u32,
     focus: u32,
@@ -758,6 +788,162 @@ pub const UnifiedTextBufferView = struct {
         self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
+    }
+
+    /// Word at `offset`. Null on newline or end-of-buffer. `/` is not a boundary.
+    pub fn selectWord(self: *Self, offset: u32) ?SelectionRange {
+        const grapheme = self.selectionGraphemeAt(offset) orelse return null;
+        if (grapheme.is_break) return null;
+
+        const expect_boundary = isWordBoundary(grapheme.first_cp);
+        var start = grapheme.start;
+        var end = grapheme.end;
+
+        while (self.prevSelectionGrapheme(start)) |prev| {
+            if (prev.is_break) break;
+            if (isWordBoundary(prev.first_cp) != expect_boundary) break;
+            start = prev.start;
+        }
+
+        while (self.selectionGraphemeAt(end)) |next| {
+            if (next.is_break) break;
+            if (isWordBoundary(next.first_cp) != expect_boundary) break;
+            end = next.end;
+        }
+
+        return .{ .start = start, .end = end };
+    }
+
+    /// First non-null `selectWord` walking from `from` toward `toward`, inclusive.
+    pub fn selectWordBetween(self: *Self, from: u32, toward: u32) ?SelectionRange {
+        const text_end = self.text_buffer.textEndOffset();
+        var offset = @min(from, text_end);
+        const limit = @min(toward, text_end);
+
+        if (offset <= limit) {
+            while (offset <= limit) {
+                if (self.selectWord(offset)) |range| return range;
+                const next = self.selectionGraphemeAt(offset) orelse return null;
+                offset = next.end;
+            }
+            return null;
+        }
+
+        while (true) {
+            if (self.selectWord(offset)) |range| return range;
+            if (offset <= limit) return null;
+            const prev = self.prevSelectionGrapheme(offset) orelse return null;
+            offset = prev.start;
+        }
+    }
+
+    /// Logical line at `offset`, ASCII space/tab trimmed. All-whitespace keeps
+    /// the full source line so a blank line is still selected.
+    pub fn selectLine(self: *Self, offset: u32) ?SelectionRange {
+        return self.trimLineWhitespace(self.sourceLineRangeAt(offset) orelse return null);
+    }
+
+    fn sourceLineRangeAt(self: *Self, offset: u32) ?SelectionRange {
+        const rope = self.text_buffer.rope();
+        const text_end = self.text_buffer.textEndOffset();
+        if (offset > text_end) return null;
+        const coords = iter_mod.offsetToCoords(rope, offset) orelse return null;
+        const start = offset - coords.col;
+        return .{ .start = start, .end = start + iter_mod.lineWidthAt(rope, coords.row) };
+    }
+
+    fn trimLineWhitespace(self: *Self, range: SelectionRange) SelectionRange {
+        var start = range.start;
+        var end = range.end;
+        var saw_content = false;
+
+        var offset = range.start;
+        while (offset < range.end) {
+            const grapheme = self.selectionGraphemeAt(offset) orelse break;
+            if (grapheme.is_break) break;
+            if (grapheme.first_cp != ' ' and grapheme.first_cp != '\t') {
+                if (!saw_content) start = grapheme.start;
+                end = grapheme.end;
+                saw_content = true;
+            }
+            offset = grapheme.end;
+        }
+
+        if (!saw_content) return range;
+        return .{ .start = start, .end = end };
+    }
+
+    const SelectionGrapheme = struct {
+        start: u32,
+        end: u32,
+        first_cp: u21,
+        is_break: bool,
+    };
+
+    fn selectionGraphemeAt(self: *Self, offset: u32) ?SelectionGrapheme {
+        const text_end = self.text_buffer.textEndOffset();
+        if (offset >= text_end) return null;
+
+        const rope = self.text_buffer.rope();
+        const coords = iter_mod.offsetToCoords(rope, offset) orelse return null;
+        const line_width = iter_mod.lineWidthAt(rope, coords.row);
+        const line_start = offset - coords.col;
+
+        if (coords.col >= line_width) {
+            return .{
+                .start = line_start + line_width,
+                .end = line_start + line_width + 1,
+                .first_cp = '\n',
+                .is_break = true,
+            };
+        }
+
+        const linestart = rope.getMarker(.linestart, coords.row) orelse return null;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
+        const mem_registry = self.text_buffer.memRegistry();
+        const tab_width = self.text_buffer.tabWidth();
+        const width_method = self.text_buffer.widthMethod();
+
+        while (seg_idx < rope.count()) : (seg_idx += 1) {
+            const seg = rope.get(seg_idx) orelse break;
+            if (seg.isBreak() or seg.isLineStart()) break;
+            const chunk = seg.asText() orelse continue;
+            const next_cols = cols_before + chunk.width;
+            if (coords.col < next_cols) {
+                const bytes = chunk.getBytes(mem_registry);
+                const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const pos = utf8.findGraphemePosByWidth(
+                    bytes,
+                    coords.col - cols_before,
+                    tab_width,
+                    is_ascii,
+                    false,
+                    width_method,
+                );
+                if (pos.byte_offset >= bytes.len) return null;
+                const width = utf8.getGraphemeWidthAt(bytes, pos.byte_offset, tab_width, width_method);
+                const first_cp = utf8.decodeUtf8Unchecked(bytes, pos.byte_offset).cp;
+                const start = line_start + cols_before + pos.columns_used;
+                return .{
+                    .start = start,
+                    .end = start + width,
+                    .first_cp = first_cp,
+                    .is_break = first_cp == '\n' or first_cp == '\r',
+                };
+            }
+            cols_before = next_cols;
+        }
+        return null;
+    }
+
+    fn prevSelectionGrapheme(self: *Self, offset: u32) ?SelectionGrapheme {
+        if (offset == 0) return null;
+        return self.selectionGraphemeAt(offset - 1);
+    }
+
+    fn isWordBoundary(cp: u21) bool {
+        return std.mem.indexOfScalar(u21, &default_word_boundaries, cp) != null;
     }
 
     /// Derive the exclusive highlight/copy/delete range from stored endpoints.
