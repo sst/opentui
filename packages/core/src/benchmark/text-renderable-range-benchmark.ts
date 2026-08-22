@@ -6,11 +6,23 @@ import { resolveRenderLib } from "../zig.js"
 import type { AllocatorStats, TextBufferDebugMetrics } from "../zig.js"
 import type { CapturedFrame } from "../types.js"
 
-const leafCount = Number(process.env.TEXT_RANGE_LEAVES ?? 1_000)
-const updates = Number(process.env.TEXT_RANGE_UPDATES ?? 200)
-const rounds = Number(process.env.TEXT_RANGE_ROUNDS ?? 5)
+const profile = process.env.TEXT_RANGE_PROFILE ?? "practical"
+const mode = process.env.TEXT_RANGE_MODE ?? "both"
+const mutation = process.env.TEXT_RANGE_MUTATION ?? "mixed"
+if (profile !== "practical" && profile !== "stress") throw new Error("TEXT_RANGE_PROFILE must be practical or stress")
+if (mode !== "both" && mode !== "per-frame" && mode !== "coalesced") {
+  throw new Error("TEXT_RANGE_MODE must be both, per-frame, or coalesced")
+}
+if (mutation !== "mixed" && mutation !== "style") throw new Error("TEXT_RANGE_MUTATION must be mixed or style")
+const defaults =
+  profile === "stress" ? { leaves: 1_000, updates: 200, rounds: 5 } : { leaves: 200, updates: 40, rounds: 3 }
+const leafCount = Number(process.env.TEXT_RANGE_LEAVES ?? defaults.leaves)
+const updates = Number(process.env.TEXT_RANGE_UPDATES ?? defaults.updates)
+const rounds = Number(process.env.TEXT_RANGE_ROUNDS ?? defaults.rounds)
 
 if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS must be a positive integer")
+if (!Number.isInteger(leafCount) || leafCount < 1) throw new Error("TEXT_RANGE_LEAVES must be a positive integer")
+if (!Number.isInteger(updates) || updates < 1) throw new Error("TEXT_RANGE_UPDATES must be a positive integer")
 
 type BufferMemory = { peak: TextBufferDebugMetrics; endLive: TextBufferDebugMetrics }
 type LiveMemory = {
@@ -116,9 +128,9 @@ function chunks(values: string[], attributes: number[], order: number[]) {
 
 function applyModelMutation(values: string[], attributes: number[], order: number[], index: number): number {
   const leafIndex = index % values.length
-  values[leafIndex] = `${index.toString().padStart(4, "x")} `
   attributes[leafIndex] = index & 1
-  if (index % 20 === 0) {
+  if (mutation === "mixed") values[leafIndex] = `${index.toString().padStart(4, "x")} `
+  if (mutation === "mixed" && index % 20 === 0) {
     order.splice(order.indexOf(leafIndex), 1)
     order.push(leafIndex)
   }
@@ -157,9 +169,9 @@ async function runPerFrameRound(round: number): Promise<Sample> {
         const start = performance.now()
         const leafIndex = applyModelMutation(rangeValues, rangeAttributes, rangeOrder, index)
         const leaf = leaves[leafIndex]!
-        leaf.content = rangeValues[leafIndex]!
+        if (mutation === "mixed") leaf.content = rangeValues[leafIndex]!
         leaf.attributes = rangeAttributes[leafIndex]!
-        if (index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
+        if (mutation === "mixed" && index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
         await rangeSetup.renderOnce()
         rangeMs += performance.now() - start
       }
@@ -225,9 +237,9 @@ async function runCoalescedRound(round: number): Promise<Sample> {
     for (let index = 0; index < updates; index++) {
       const leafIndex = applyModelMutation(rangeValues, rangeAttributes, rangeOrder, index)
       const leaf = leaves[leafIndex]!
-      leaf.content = rangeValues[leafIndex]!
+      if (mutation === "mixed") leaf.content = rangeValues[leafIndex]!
       leaf.attributes = rangeAttributes[leafIndex]!
-      if (index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
+      if (mutation === "mixed" && index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
     }
     await rangeSetup.renderOnce()
     return performance.now() - start
@@ -275,8 +287,21 @@ const allocationStart = lib.getAllocatorStats()
 const arenaStart = lib.getArenaAllocatedBytes()
 const perFrame: Sample[] = []
 const coalesced: Sample[] = []
-for (let round = 0; round < rounds; round++) perFrame.push(await runPerFrameRound(round))
-for (let round = 0; round < rounds; round++) coalesced.push(await runCoalescedRound(round))
+console.error(
+  `text-range benchmark: profile=${profile} mode=${mode} mutation=${mutation} leaves=${leafCount} updates=${updates} rounds=${rounds}`,
+)
+if (mode !== "coalesced") {
+  for (let round = 0; round < rounds; round++) {
+    console.error(`per-frame round ${round + 1}/${rounds}`)
+    perFrame.push(await runPerFrameRound(round))
+  }
+}
+if (mode !== "per-frame") {
+  for (let round = 0; round < rounds; round++) {
+    console.error(`coalesced round ${round + 1}/${rounds}`)
+    coalesced.push(await runCoalescedRound(round))
+  }
+}
 const allocationEnd = lib.getAllocatorStats()
 const arenaEnd = lib.getArenaAllocatedBytes()
 
@@ -319,12 +344,15 @@ console.log(
       leafCount,
       updates,
       rounds,
+      profile,
+      mode,
+      mutation,
       statistics:
         rounds === 1
           ? { estimator: "raw sample only; no median or p95 claim" }
           : { estimator: "nearest-rank percentile (rank = ceil(p * n)); p95 with five rounds is the maximum" },
-      perFrame: summarize(perFrame),
-      coalescedFrameworkCommit: summarize(coalesced),
+      perFrame: perFrame.length === 0 ? null : summarize(perFrame),
+      coalescedFrameworkCommit: coalesced.length === 0 ? null : summarize(coalesced),
       nativeMemory: {
         activeAllocationDelta: allocationEnd.activeAllocations - allocationStart.activeAllocations,
         requestedBytesValid: allocationStart.requestedBytesValid && allocationEnd.requestedBytesValid,
