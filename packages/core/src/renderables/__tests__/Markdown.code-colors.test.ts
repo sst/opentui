@@ -116,8 +116,8 @@ test("unlabeled fenced code blocks inherit markdown fg/bg defaults", async () =>
   const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
   expect(codeBlock).toBeInstanceOf(CodeRenderable)
   expect(codeBlock.filetype).toBeUndefined()
-  expect(codeBlock.fg.equals(fg)).toBe(true)
-  expect(codeBlock.bg.equals(bg)).toBe(true)
+  expect(codeBlock.fg?.equals(fg)).toBe(true)
+  expect(codeBlock.bg?.equals(bg)).toBe(true)
   expectSpanColors("plain code block", fg, bg)
 })
 
@@ -151,8 +151,8 @@ test("unsupported fenced code blocks keep inherited markdown fg/bg after highlig
 
   expect(codeBlock).toBeInstanceOf(CodeRenderable)
   expect(codeBlock.filetype).toBe("toml")
-  expect(codeBlock.fg.equals(fg)).toBe(true)
-  expect(codeBlock.bg.equals(bg)).toBe(true)
+  expect(codeBlock.fg?.equals(fg)).toBe(true)
+  expect(codeBlock.bg?.equals(bg)).toBe(true)
   expectSpanColors("answer = 42", fg, bg)
 })
 
@@ -239,8 +239,8 @@ test("updating markdown fg/bg rerenders existing fenced code block renderables",
   await renderer.idle()
 
   expect(md._blockStates[0]?.renderable).toBe(codeBlock)
-  expect(codeBlock.fg.equals(nextFg)).toBe(true)
-  expect(codeBlock.bg.equals(nextBg)).toBe(true)
+  expect(codeBlock.fg?.equals(nextFg)).toBe(true)
+  expect(codeBlock.bg?.equals(nextBg)).toBe(true)
   expectSpanColors("plain code block", nextFg, nextBg)
 })
 
@@ -282,7 +282,7 @@ test("updating markdown fg/bg rerenders markdown fallback renderables", async ()
   await renderer.idle()
 
   expect(md._blockStates[0]?.renderable).toBe(paragraphBlock)
-  expect(paragraphBlock.fg.equals(nextFg)).toBe(true)
-  expect(paragraphBlock.bg.equals(nextBg)).toBe(true)
+  expect(paragraphBlock.fg?.equals(nextFg)).toBe(true)
+  expect(paragraphBlock.bg?.equals(nextBg)).toBe(true)
   expectSpanColors("Plain paragraph text", nextFg, nextBg)
 })

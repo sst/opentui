@@ -76,6 +76,10 @@ describe("TreeSitter Styled Text", () => {
     const defaultId = syntaxStyle.getStyleId("default")
     const chunks = treeSitterToTextChunks("key plain", [[0, 3, "keyword", {}]], syntaxStyle)
 
+    expect(keywordId).not.toBeNull()
+    expect(defaultId).not.toBeNull()
+    if (keywordId === null || defaultId === null) throw new Error("expected registered syntax style IDs")
+
     expect(chunks[0]?.styleId).toBe(keywordId)
     expect(chunks[1]?.styleId).toBe(defaultId)
 
