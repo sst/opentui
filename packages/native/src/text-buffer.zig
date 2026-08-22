@@ -2859,6 +2859,7 @@ pub const UnifiedTextBuffer = struct {
         for (acquired_styles.items[0..acquisition_used.len], acquisition_used) |style_id, used| {
             if (!used) try released_styles.append(self.global_allocator, style_id);
         }
+        self.link_pool.prepareReleases(released_styles.items.len) catch return TextBufferError.OutOfMemory;
 
         // Transfer every prepared resource to the returned candidate. Commit is
         // now infallible; deinit releases the same ownership on failure.
@@ -3261,6 +3262,14 @@ pub fn applyTwoDocumentOperations(
     defer first_prepared.deinit();
     var second_prepared = try second.prepareDocumentOperations(second_operations, second_out_ids.len);
     defer second_prepared.deinit();
+    if (first.link_pool == second.link_pool) {
+        const release_count = std.math.add(
+            usize,
+            first_prepared.released_styles.items.len,
+            second_prepared.released_styles.items.len,
+        ) catch return TextBufferError.InvalidDimensions;
+        first.link_pool.prepareReleases(release_count) catch return TextBufferError.OutOfMemory;
+    }
     first_prepared.commit(first_out_ids);
     second_prepared.commit(second_out_ids);
 }

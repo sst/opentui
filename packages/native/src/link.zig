@@ -251,6 +251,10 @@ pub const LinkPool = struct {
         }
     }
 
+    pub fn prepareReleases(self: *LinkPool, count: usize) LinkPoolError!void {
+        self.free_list.ensureUnusedCapacity(self.allocator, count) catch return LinkPoolError.OutOfMemory;
+    }
+
     pub fn get(self: *LinkPool, id: IdPayload) LinkPoolError![]const u8 {
         const unpacked = unpackId(id);
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
