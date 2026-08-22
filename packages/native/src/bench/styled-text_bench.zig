@@ -289,6 +289,45 @@ fn benchSetStyledTextOperations(
     }
 
     {
+        const name = "setStyledText - full replacement in 10000 lines";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var document: std.ArrayList(u8) = .empty;
+            defer document.deinit(allocator);
+            for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
+
+            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
+            defer tb.deinit();
+            const style = try SyntaxStyle.init(allocator);
+            defer style.deinit();
+            tb.setSyntaxStyle(style);
+            const chunks = [_]StyledChunk{.{
+                .text_ptr = document.items.ptr,
+                .text_len = document.items.len,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 1,
+            }};
+            try tb.setStyledText(&chunks);
+
+            var stats: BenchStats = .{};
+            for (0..iterations) |_| {
+                const timer = bench_utils.BenchTimer.start(io);
+                try tb.setStyledText(&chunks);
+                stats.record(timer.read());
+            }
+            try results.append(allocator, .{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+        }
+    }
+
+    {
         const name = "replaceStyledRangeBytes - local update in 10000 lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             var document: std.ArrayList(u8) = .empty;
