@@ -323,10 +323,11 @@ pub const TextAnnotations = struct {
         if (update_count_u64 > std.math.maxInt(u64) - self.generation) return error.GenerationExhausted;
     }
 
-    pub fn commitPreparedStyle(self: *Self, id: u64, style_id: u32) void {
+    pub fn commitPreparedStyle(self: *Self, id: u64, style_id: u32, kind_flags: u32) void {
         const payload = self.payloads.getPtr(id) orelse unreachable;
-        std.debug.assert(payload.style_id != style_id);
+        std.debug.assert(payload.style_id != style_id or payload.kind_flags != kind_flags);
         payload.style_id = style_id;
+        payload.kind_flags = kind_flags;
         self.finishMutation();
     }
 

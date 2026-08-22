@@ -108,6 +108,11 @@ pub const StyledChunk = extern struct {
     link_len: usize = 0,
 };
 
+fn styleValuePaints(chunk: StyledChunk) bool {
+    return chunk.style_kind == .registered or chunk.fg_ptr != null or chunk.bg_ptr != null or
+        chunk.attributes != 0 or chunk.link_len != 0;
+}
+
 pub const StyleKind = enum(u32) {
     value = 0,
     registered = 1,
@@ -210,9 +215,7 @@ pub const UnifiedTextBuffer = struct {
     // Maps line_idx to highlights for that line
     external_line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
-    line_highlight_annotation_ids: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u64)),
     line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
-    line_winner_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(WinnerSpan)),
     line_projection_epochs: std.ArrayListUnmanaged(u64),
     projection_epoch: u64,
     internal_highlight_count: usize,
@@ -406,9 +409,7 @@ pub const UnifiedTextBuffer = struct {
             .annotations = TextAnnotations.init(global_allocator),
             .external_line_highlights = .empty,
             .line_highlights = .empty,
-            .line_highlight_annotation_ids = .empty,
             .line_spans = .empty,
-            .line_winner_spans = .empty,
             .line_projection_epochs = .empty,
             .projection_epoch = 1,
             .internal_highlight_count = 0,
@@ -461,19 +462,10 @@ pub const UnifiedTextBuffer = struct {
         }
         self.line_highlights.deinit(self.global_allocator);
 
-        for (self.line_highlight_annotation_ids.items) |*id_list| {
-            id_list.deinit(self.global_allocator);
-        }
-        self.line_highlight_annotation_ids.deinit(self.global_allocator);
-
         for (self.line_spans.items) |*span_list| {
             span_list.deinit(self.global_allocator);
         }
         self.line_spans.deinit(self.global_allocator);
-        for (self.line_winner_spans.items) |*winner_list| {
-            winner_list.deinit(self.global_allocator);
-        }
-        self.line_winner_spans.deinit(self.global_allocator);
         self.line_projection_epochs.deinit(self.global_allocator);
 
         // Free dirty span lines hashmap
@@ -1159,16 +1151,12 @@ pub const UnifiedTextBuffer = struct {
             hl_list.deinit(self.global_allocator);
         }
         self.line_highlights.clearRetainingCapacity();
-        for (self.line_highlight_annotation_ids.items) |*id_list| id_list.deinit(self.global_allocator);
-        self.line_highlight_annotation_ids.clearRetainingCapacity();
         self.internal_highlight_count = 0;
 
         for (self.line_spans.items) |*span_list| {
             span_list.deinit(self.global_allocator);
         }
         self.line_spans.clearRetainingCapacity();
-        for (self.line_winner_spans.items) |*winner_list| winner_list.deinit(self.global_allocator);
-        self.line_winner_spans.clearRetainingCapacity();
         self.line_projection_epochs.clearRetainingCapacity();
         self.dirty_span_lines.clearRetainingCapacity();
         self.highlight_batch_depth = 0;
@@ -1922,14 +1910,8 @@ pub const UnifiedTextBuffer = struct {
         while (self.line_highlights.items.len <= line_idx) {
             try self.line_highlights.append(self.global_allocator, .empty);
         }
-        while (self.line_highlight_annotation_ids.items.len <= line_idx) {
-            try self.line_highlight_annotation_ids.append(self.global_allocator, .empty);
-        }
         while (self.line_spans.items.len <= line_idx) {
             try self.line_spans.append(self.global_allocator, .empty);
-        }
-        while (self.line_winner_spans.items.len <= line_idx) {
-            try self.line_winner_spans.append(self.global_allocator, .empty);
         }
         while (self.line_projection_epochs.items.len <= line_idx) {
             try self.line_projection_epochs.append(self.global_allocator, 0);
@@ -2024,13 +2006,6 @@ pub const UnifiedTextBuffer = struct {
         hl_idx: usize,
     };
 
-    const WinnerSpan = struct {
-        col: u32,
-        next_col: u32,
-        style_id: u32,
-        annotation_id: u64,
-    };
-
     fn projectionBoundaryLessThan(_: void, left: utf8.DisplayBoundary, right: utf8.DisplayBoundary) bool {
         if (left.byte_offset != right.byte_offset) return left.byte_offset < right.byte_offset;
         return @intFromEnum(left.affinity) < @intFromEnum(right.affinity);
@@ -2092,8 +2067,6 @@ pub const UnifiedTextBuffer = struct {
 
         var projected: std.ArrayListUnmanaged(Highlight) = .empty;
         defer projected.deinit(self.global_allocator);
-        var projected_ids: std.ArrayListUnmanaged(u64) = .empty;
-        defer projected_ids.deinit(self.global_allocator);
         const external = self.external_line_highlights.items[line_idx].items;
 
         var projected_annotations: std.ArrayListUnmanaged(ProjectedAnnotation) = .empty;
@@ -2117,8 +2090,8 @@ pub const UnifiedTextBuffer = struct {
                 visited: *u64,
 
                 fn visit(ctx: *@This(), annotation: TextAnnotations.Annotation) !void {
-                    if (annotation.payload.kind_flags & style_range_kind == 0) return;
                     ctx.visited.* +%= 1;
+                    if (annotation.payload.kind_flags & style_range_kind == 0) return;
                     const range = switch (annotation.mark) {
                         .range => |value| value,
                         .point => return,
@@ -2155,9 +2128,7 @@ pub const UnifiedTextBuffer = struct {
 
         const projected_count = std.math.add(usize, external.len, projected_annotations.items.len) catch return TextBufferError.InvalidDimensions;
         try projected.ensureTotalCapacity(self.global_allocator, projected_count);
-        try projected_ids.ensureTotalCapacity(self.global_allocator, projected_count);
         projected.appendSliceAssumeCapacity(external);
-        projected_ids.appendNTimesAssumeCapacity(0, external.len);
         // Visitors return winner-first, while span ties intentionally use later
         // array entries so public highlight insertion order is stable.
         var annotation_index = projected_annotations.items.len;
@@ -2174,13 +2145,10 @@ pub const UnifiedTextBuffer = struct {
                 .hl_ref = 0,
                 .internal = true,
             });
-            projected_ids.appendAssumeCapacity(annotation.annotation.id());
         }
 
         var spans: std.ArrayListUnmanaged(StyleSpan) = .empty;
         defer spans.deinit(self.global_allocator);
-        var winner_spans: std.ArrayListUnmanaged(WinnerSpan) = .empty;
-        defer winner_spans.deinit(self.global_allocator);
         var events: std.ArrayListUnmanaged(ProjectionEvent) = .empty;
         defer events.deinit(self.global_allocator);
         const event_count = std.math.mul(usize, projected.items.len, 2) catch return TextBufferError.InvalidDimensions;
@@ -2191,7 +2159,6 @@ pub const UnifiedTextBuffer = struct {
         defer heap.deinit(self.global_allocator);
         try heap.ensureTotalCapacity(self.global_allocator, projected.items.len);
         try spans.ensureTotalCapacity(self.global_allocator, std.math.add(usize, event_count, 1) catch return TextBufferError.InvalidDimensions);
-        try winner_spans.ensureTotalCapacity(self.global_allocator, std.math.add(usize, event_count, 1) catch return TextBufferError.InvalidDimensions);
 
         // Resolving an internal style publishes an anonymous SyntaxStyle entry
         // and possibly a LinkPool reference. Every later projection step is now
@@ -2224,11 +2191,9 @@ pub const UnifiedTextBuffer = struct {
             }
         }
 
-        self.rebuildLineSpansPrepared(line_idx, projected.items, projected_ids.items, &spans, &winner_spans, &events, active, &heap);
+        self.rebuildLineSpansPrepared(line_idx, projected.items, &spans, &events, active, &heap);
         std.mem.swap(std.ArrayListUnmanaged(Highlight), &projected, &self.line_highlights.items[line_idx]);
-        std.mem.swap(std.ArrayListUnmanaged(u64), &projected_ids, &self.line_highlight_annotation_ids.items[line_idx]);
         std.mem.swap(std.ArrayListUnmanaged(StyleSpan), &spans, &self.line_spans.items[line_idx]);
-        std.mem.swap(std.ArrayListUnmanaged(WinnerSpan), &winner_spans, &self.line_winner_spans.items[line_idx]);
         self.line_projection_epochs.items[line_idx] = self.projection_epoch;
     }
 
@@ -2236,9 +2201,7 @@ pub const UnifiedTextBuffer = struct {
         self: *Self,
         line_idx: usize,
         highlights: []const Highlight,
-        annotation_ids: []const u64,
         spans: *std.ArrayListUnmanaged(StyleSpan),
-        winner_spans: *std.ArrayListUnmanaged(WinnerSpan),
         events: *std.ArrayListUnmanaged(ProjectionEvent),
         active: []bool,
         heap: *std.ArrayListUnmanaged(usize),
@@ -2246,7 +2209,6 @@ pub const UnifiedTextBuffer = struct {
         std.debug.assert(line_idx < self.line_spans.items.len);
         std.debug.assert(events.capacity >= highlights.len * 2);
         std.debug.assert(active.len == highlights.len);
-        std.debug.assert(annotation_ids.len == highlights.len);
         std.debug.assert(heap.capacity >= highlights.len);
         std.debug.assert(spans.capacity >= highlights.len * 2 + 1);
 
@@ -2318,24 +2280,6 @@ pub const UnifiedTextBuffer = struct {
                 }
                 output.appendAssumeCapacity(.{ .col = start, .style_id = style_id, .next_col = end });
             }
-
-            fn appendWinner(
-                output: *std.ArrayListUnmanaged(WinnerSpan),
-                start: u32,
-                end: u32,
-                style_id: u32,
-                annotation_id: u64,
-            ) void {
-                if (start >= end) return;
-                if (output.items.len != 0) {
-                    const previous = &output.items[output.items.len - 1];
-                    if (previous.next_col == start and previous.annotation_id == annotation_id and previous.style_id == style_id) {
-                        previous.next_col = end;
-                        return;
-                    }
-                }
-                output.appendAssumeCapacity(.{ .col = start, .next_col = end, .style_id = style_id, .annotation_id = annotation_id });
-            }
         };
 
         var current_col: u32 = 0;
@@ -2343,10 +2287,7 @@ pub const UnifiedTextBuffer = struct {
         while (event_index < events.items.len) {
             const event_col = events.items[event_index].col;
             const winner = Heap.winner(highlights, heap, active);
-            const winner_style = if (winner) |index| highlights[index].style_id else 0;
-            const winner_id = if (winner) |index| annotation_ids[index] else 0;
-            Heap.appendSpan(spans, current_col, event_col, winner_style);
-            Heap.appendWinner(winner_spans, current_col, event_col, winner_style, winner_id);
+            Heap.appendSpan(spans, current_col, event_col, if (winner) |index| highlights[index].style_id else 0);
             current_col = event_col;
             while (event_index < events.items.len and events.items[event_index].col == event_col) : (event_index += 1) {
                 const event = events.items[event_index];
@@ -2364,7 +2305,6 @@ pub const UnifiedTextBuffer = struct {
         if (events.items.len > 0 and Heap.winner(highlights, heap, active) == null) {
             const line_width = self.lineWidthAt(@intCast(line_idx));
             Heap.appendSpan(spans, current_col, line_width, 0);
-            Heap.appendWinner(winner_spans, current_col, line_width, 0, 0);
         }
     }
 
@@ -2965,20 +2905,10 @@ pub const UnifiedTextBuffer = struct {
             id: u64,
             old_style_id: u32,
             style_id: u32,
-            resolved_style_id: u32,
+            old_kind_flags: u32,
+            kind_flags: u32,
             first_line: u32,
             last_line: u32,
-        };
-
-        const PreparedCachePatch = struct {
-            line_index: usize,
-            entry_index: usize,
-            resolved_style_id: u32,
-        };
-
-        const PreparedPatchedLine = struct {
-            line_index: usize,
-            spans: std.ArrayListUnmanaged(StyleSpan),
         };
 
         owner: *Self,
@@ -3001,9 +2931,6 @@ pub const UnifiedTextBuffer = struct {
         prepared_link_releases: usize,
         style_update_storage: []PreparedStyleUpdate = &.{},
         style_updates: []PreparedStyleUpdate = &.{},
-        highlight_cache_patches: std.ArrayListUnmanaged(PreparedCachePatch) = .empty,
-        winner_cache_patches: std.ArrayListUnmanaged(PreparedCachePatch) = .empty,
-        patched_lines: std.ArrayListUnmanaged(PreparedPatchedLine) = .empty,
         style_only: bool = false,
         committed: bool = false,
 
@@ -3022,16 +2949,8 @@ pub const UnifiedTextBuffer = struct {
             const owner = self.owner;
             if (self.style_only) {
                 for (self.style_updates) |update| {
-                    owner.annotations.commitPreparedStyle(update.id, update.style_id);
-                }
-                for (self.highlight_cache_patches.items) |patch| {
-                    owner.line_highlights.items[patch.line_index].items[patch.entry_index].style_id = patch.resolved_style_id;
-                }
-                for (self.winner_cache_patches.items) |patch| {
-                    owner.line_winner_spans.items[patch.line_index].items[patch.entry_index].style_id = patch.resolved_style_id;
-                }
-                for (self.patched_lines.items) |*patch| {
-                    std.mem.swap(std.ArrayListUnmanaged(StyleSpan), &patch.spans, &owner.line_spans.items[patch.line_index]);
+                    owner.annotations.commitPreparedStyle(update.id, update.style_id, update.kind_flags);
+                    owner.invalidateProjectedLineRange(update.first_line, update.last_line);
                 }
                 for (self.released_styles.items) |style_id| owner.releaseInternalStyle(style_id);
                 if (self.style_updates.len != 0) owner.annotation_epoch +%= 1;
@@ -3084,10 +3003,6 @@ pub const UnifiedTextBuffer = struct {
                 }
                 self.acquired_styles.deinit(owner.global_allocator);
                 self.released_styles.deinit(owner.global_allocator);
-                self.highlight_cache_patches.deinit(owner.global_allocator);
-                self.winner_cache_patches.deinit(owner.global_allocator);
-                for (self.patched_lines.items) |*patch| patch.spans.deinit(owner.global_allocator);
-                self.patched_lines.deinit(owner.global_allocator);
                 owner.global_allocator.free(self.style_update_storage);
                 self.* = undefined;
                 return;
@@ -3109,6 +3024,12 @@ pub const UnifiedTextBuffer = struct {
             self.* = undefined;
         }
     };
+
+    fn invalidateProjectedLineRange(self: *Self, first_line: u32, last_line: u32) void {
+        if (first_line > last_line or first_line >= self.line_projection_epochs.items.len) return;
+        const end = @min(@as(usize, last_line) + 1, self.line_projection_epochs.items.len);
+        for (self.line_projection_epochs.items[first_line..end]) |*epoch| epoch.* = self.projection_epoch -% 1;
+    }
 
     fn prepareStyleOnlyDocumentOperations(
         self: *Self,
@@ -3154,18 +3075,21 @@ pub const UnifiedTextBuffer = struct {
             {
                 return TextBufferError.InvalidIndex;
             }
-            const style_id = try self.acquireInternalStyleFor(operation.style, next_syntax_style);
+            const styled = styleValuePaints(operation.style);
+            const style_id = if (styled) try self.acquireInternalStyleFor(operation.style, next_syntax_style) else 0;
+            const kind_flags = document_range_kind | if (styled) style_range_kind else 0;
             const pending_index = pending_styles.get(operation.target_id);
             const previous_style_id = if (pending_index) |index| updates[index].style_id else existing.payload.style_id;
-            if (style_id == previous_style_id) {
-                self.releaseInternalStyle(style_id);
+            const previous_kind_flags = if (pending_index) |index| updates[index].kind_flags else existing.payload.kind_flags;
+            if (style_id == previous_style_id and kind_flags == previous_kind_flags) {
+                if (styled) self.releaseInternalStyle(style_id);
                 continue;
             }
-            acquired_styles.appendAssumeCapacity(style_id);
+            if (styled) acquired_styles.appendAssumeCapacity(style_id);
             released_styles.appendAssumeCapacity(previous_style_id);
             if (pending_index) |index| {
                 updates[index].style_id = style_id;
-                updates[index].resolved_style_id = try self.resolveAnnotationStyle(style_id);
+                updates[index].kind_flags = kind_flags;
                 continue;
             }
             const range = existing.mark.range;
@@ -3181,7 +3105,8 @@ pub const UnifiedTextBuffer = struct {
                 .id = operation.target_id,
                 .old_style_id = existing.payload.style_id,
                 .style_id = style_id,
-                .resolved_style_id = try self.resolveAnnotationStyle(style_id),
+                .old_kind_flags = existing.payload.kind_flags,
+                .kind_flags = kind_flags,
                 .first_line = first_line,
                 .last_line = last_line,
             };
@@ -3190,86 +3115,13 @@ pub const UnifiedTextBuffer = struct {
         }
         var compacted_count: usize = 0;
         for (updates[0..update_count]) |update| {
-            if (update.style_id == update.old_style_id) continue;
+            if (update.style_id == update.old_style_id and update.kind_flags == update.old_kind_flags) continue;
             updates[compacted_count] = update;
             compacted_count += 1;
         }
         update_count = compacted_count;
         self.annotations.prepareStyleUpdates(update_count) catch return TextBufferError.InvalidDimensions;
         self.link_pool.prepareReleases(released_styles.items.len) catch return TextBufferError.OutOfMemory;
-
-        pending_styles.clearRetainingCapacity();
-        for (updates[0..update_count], 0..) |update, index| pending_styles.putAssumeCapacity(update.id, index);
-
-        var affected_lines = std.AutoHashMap(usize, void).init(self.global_allocator);
-        defer affected_lines.deinit();
-        for (updates[0..update_count]) |update| {
-            if (update.first_line > update.last_line or update.first_line >= self.line_projection_epochs.items.len) continue;
-            const end = @min(@as(usize, update.last_line) + 1, self.line_projection_epochs.items.len);
-            var line_index: usize = update.first_line;
-            while (line_index < end) : (line_index += 1) {
-                if (self.line_projection_epochs.items[line_index] == self.projection_epoch) try affected_lines.put(line_index, {});
-            }
-        }
-
-        var highlight_cache_patches: std.ArrayListUnmanaged(PreparedDocumentOperations.PreparedCachePatch) = .empty;
-        errdefer highlight_cache_patches.deinit(self.global_allocator);
-        var winner_cache_patches: std.ArrayListUnmanaged(PreparedDocumentOperations.PreparedCachePatch) = .empty;
-        errdefer winner_cache_patches.deinit(self.global_allocator);
-        var patched_lines: std.ArrayListUnmanaged(PreparedDocumentOperations.PreparedPatchedLine) = .empty;
-        errdefer {
-            for (patched_lines.items) |*patch| patch.spans.deinit(self.global_allocator);
-            patched_lines.deinit(self.global_allocator);
-        }
-        try patched_lines.ensureTotalCapacity(self.global_allocator, affected_lines.count());
-        var line_iterator = affected_lines.keyIterator();
-        while (line_iterator.next()) |line_ptr| {
-            const line_index = line_ptr.*;
-            const ids = self.line_highlight_annotation_ids.items[line_index].items;
-            for (ids, 0..) |id, entry_index| if (pending_styles.get(id)) |update_index| {
-                try highlight_cache_patches.append(self.global_allocator, .{
-                    .line_index = line_index,
-                    .entry_index = entry_index,
-                    .resolved_style_id = updates[update_index].resolved_style_id,
-                });
-            };
-
-            const winners = self.line_winner_spans.items[line_index].items;
-            var winner_changed = false;
-            for (winners) |winner| {
-                if (pending_styles.contains(winner.annotation_id)) {
-                    winner_changed = true;
-                    break;
-                }
-            }
-            if (!winner_changed) continue;
-
-            var spans: std.ArrayListUnmanaged(StyleSpan) = .empty;
-            errdefer spans.deinit(self.global_allocator);
-            try spans.ensureTotalCapacity(self.global_allocator, winners.len);
-            for (winners, 0..) |winner, entry_index| {
-                const resolved_style_id = if (pending_styles.get(winner.annotation_id)) |update_index|
-                    updates[update_index].resolved_style_id
-                else
-                    winner.style_id;
-                if (resolved_style_id != winner.style_id) try winner_cache_patches.append(self.global_allocator, .{
-                    .line_index = line_index,
-                    .entry_index = entry_index,
-                    .resolved_style_id = resolved_style_id,
-                });
-                if (winner.col >= winner.next_col) continue;
-                if (spans.items.len != 0) {
-                    const previous = &spans.items[spans.items.len - 1];
-                    if (previous.next_col == winner.col and previous.style_id == resolved_style_id) {
-                        previous.next_col = winner.next_col;
-                        continue;
-                    }
-                }
-                spans.appendAssumeCapacity(.{ .col = winner.col, .next_col = winner.next_col, .style_id = resolved_style_id });
-            }
-            patched_lines.appendAssumeCapacity(.{ .line_index = line_index, .spans = spans });
-            spans = .empty;
-        }
 
         acquired_owned = false;
         return .{
@@ -3293,9 +3145,6 @@ pub const UnifiedTextBuffer = struct {
             .prepared_link_releases = released_styles.items.len,
             .style_update_storage = updates,
             .style_updates = updates[0..update_count],
-            .highlight_cache_patches = highlight_cache_patches,
-            .winner_cache_patches = winner_cache_patches,
-            .patched_lines = patched_lines,
             .style_only = true,
         };
     }
@@ -3594,10 +3443,18 @@ pub const UnifiedTextBuffer = struct {
                 .update_style => {
                     const existing = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
                     if (existing.payload.namespace != operation.owner or existing.payload.kind_flags & document_range_kind == 0) return TextBufferError.InvalidIndex;
-                    const style_id = try self.acquireInternalStyleFor(operation.style, next_syntax_style);
-                    acquired_styles.appendAssumeCapacity(style_id);
-                    if (!(candidate_annotations.updateStyle(operation.target_id, style_id) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
-                    if (existing.payload.style_id == style_id) {
+                    const styled = styleValuePaints(operation.style);
+                    const style_id = if (styled) try self.acquireInternalStyleFor(operation.style, next_syntax_style) else 0;
+                    if (styled) acquired_styles.appendAssumeCapacity(style_id);
+                    if (!(candidate_annotations.updatePayload(operation.target_id, .{
+                        .namespace = existing.payload.namespace,
+                        .style_id = style_id,
+                        .priority = existing.payload.priority,
+                        .internal = existing.payload.internal,
+                        .kind_flags = document_range_kind | if (styled) style_range_kind else 0,
+                        .splice_policy = existing.payload.splice_policy,
+                    }) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
+                    if (styled and existing.payload.style_id == style_id) {
                         self.releaseInternalStyle(style_id);
                         _ = acquired_styles.pop();
                     }

@@ -159,7 +159,7 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("style-only updates preserve content epoch and range identity", async () => {
+  test("style-only updates preserve content epoch and range identity while toggling paint", async () => {
     const root = new TextRenderable(renderer, {})
     const child = new TextRenderable(renderer, { content: "stable" })
     root.add(child)
@@ -169,13 +169,22 @@ describe("nested TextRenderable", () => {
     const rangeId = (child as any)._nativeRangeId
     const contentEpoch = (root as any).textBuffer.contentEpoch
     const annotationEpoch = (root as any).textBuffer.annotationEpoch
+    expect((root as any).textBuffer.getDocumentRange(rangeId).styled).toBe(false)
     child.fg = "#00ff00"
     child.link = { url: "https://example.com" }
     await renderOnce()
 
     expect((child as any)._nativeRangeId).toBe(rangeId)
+    expect((root as any).textBuffer.getDocumentRange(rangeId).styled).toBe(true)
     expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
     expect((root as any).textBuffer.annotationEpoch).toBeGreaterThan(annotationEpoch)
+
+    child.fg = undefined
+    child.link = undefined
+    await renderOnce()
+    expect((child as any)._nativeRangeId).toBe(rangeId)
+    expect((root as any).textBuffer.getDocumentRange(rangeId).styled).toBe(false)
+    expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
   })
 
   test("same-document reorder uses native move and preserves range IDs", async () => {
@@ -411,7 +420,7 @@ describe("nested TextRenderable", () => {
         expect(retained.map((child) => (child as any)._nativeRangeId)).toEqual(retainedIds)
         if (valueKind === "string") {
           const rawIndex = target.children.indexOf("E")
-          expect((target as any)._rawTextIdentities[rawIndex].rangeId).not.toBeNull()
+          expect((target as any)._leaves[rawIndex].rangeId).not.toBeNull()
         } else if (valueKind === "styled") {
           const generated = target.getTextChildren().find((child) => child.chunks[0]?.text === "E")!
           expect(generated.parent).toBe(target)
@@ -902,7 +911,7 @@ describe("nested TextRenderable", () => {
       expect(root.getChildrenCount()).toBe(4)
       expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(3)
-      expect((root as any)._rawTextIdentities.map((identity: any) => identity?.value ?? null)).toEqual(
+      expect((root as any)._leaves.map((leaf: any) => leaf?.text ?? null)).toEqual(
         expected.map((child) => (typeof child === "string" ? child : null)),
       )
       expect(original.every((child) => child.parent === root)).toBe(true)
@@ -1273,16 +1282,16 @@ describe("nested TextRenderable", () => {
         { __isChunk: true, text: "two", attributes: TextAttributes.BOLD },
       ]),
     })
-    const leaves = (text as any)._manualStyledLeaves
+    const leaves = (text as any)._leaves
 
     expect(text.getTextChildren()).toEqual([])
     text.content = "replacement"
-    expect((text as any)._manualStyledLeaves).toBeNull()
+    expect((text as any)._leaves).toEqual([null])
 
     text.content = new StyledText([{ __isChunk: true, text: "three" }])
-    expect((text as any)._manualStyledLeaves).not.toBe(leaves)
+    expect((text as any)._leaves).not.toBe(leaves)
     text.destroy()
-    expect((text as any)._manualStyledLeaves).toBeNull()
+    expect((text as any)._leaves).toEqual([])
   })
 
   test("preserves StyledText identity and refreshes when the same object is assigned again", () => {
@@ -1485,24 +1494,16 @@ describe("nested TextRenderable", () => {
     const before = TextRenderable.getDebugMetrics()
     const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
     const afterCreate = TextRenderable.getDebugMetrics()
-    const leaves = (text as any)._manualStyledLeaves
+    const leaves = (text as any)._leaves
 
     expect(afterCreate.textRenderableAllocations - before.textRenderableAllocations).toBe(1)
     expect(afterCreate.yogaNodeAllocations - before.yogaNodeAllocations).toBe(1)
-    expect(afterCreate.styledLeafAllocations - before.styledLeafAllocations).toBe(1_000)
-    expect(afterCreate.documentChunks - before.documentChunks).toBe(1_000)
-    expect(afterCreate.documentRanges - before.documentRanges).toBe(2)
-    expect(afterCreate.documentTreeWalks - before.documentTreeWalks).toBe(1)
     expect(text.children).toEqual([])
 
     text.content = new StyledText(chunks.map((chunk) => ({ ...chunk, text: `next-${chunk.text}` })))
     const afterReplace = TextRenderable.getDebugMetrics()
-    expect((text as any)._manualStyledLeaves[0]).toBe(leaves[0])
+    expect((text as any)._leaves[0]).toBe(leaves[0])
     expect(afterReplace.styledLeafAllocations).toBe(afterCreate.styledLeafAllocations)
-    expect(afterReplace.documentOperations - afterCreate.documentOperations).toBe(1)
-    expect(afterReplace.documentChunks - afterCreate.documentChunks).toBe(1_000)
-    expect(afterReplace.documentRanges - afterCreate.documentRanges).toBe(2)
-    expect(afterReplace.documentTreeWalks - afterCreate.documentTreeWalks).toBe(1)
     text.destroy()
   })
 

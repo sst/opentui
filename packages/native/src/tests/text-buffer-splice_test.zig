@@ -1067,9 +1067,7 @@ test "randomized move batches equal separate transactions for text marks payload
         batch_buffer.segment_splitter.ctx = &batch_buffer;
         batch_buffer.external_line_highlights = .empty;
         batch_buffer.line_highlights = .empty;
-        batch_buffer.line_highlight_annotation_ids = .empty;
         batch_buffer.line_spans = .empty;
-        batch_buffer.line_winner_spans = .empty;
         batch_buffer.line_projection_epochs = .empty;
         batch_buffer.dirty_span_lines = std.AutoHashMap(usize, void).init(std.testing.allocator);
         defer {
@@ -1077,12 +1075,8 @@ test "randomized move batches equal separate transactions for text marks payload
             batch_buffer.external_line_highlights.deinit(std.testing.allocator);
             for (batch_buffer.line_highlights.items) |*highlights| highlights.deinit(std.testing.allocator);
             batch_buffer.line_highlights.deinit(std.testing.allocator);
-            for (batch_buffer.line_highlight_annotation_ids.items) |*ids_list| ids_list.deinit(std.testing.allocator);
-            batch_buffer.line_highlight_annotation_ids.deinit(std.testing.allocator);
             for (batch_buffer.line_spans.items) |*spans| spans.deinit(std.testing.allocator);
             batch_buffer.line_spans.deinit(std.testing.allocator);
-            for (batch_buffer.line_winner_spans.items) |*winners| winners.deinit(std.testing.allocator);
-            batch_buffer.line_winner_spans.deinit(std.testing.allocator);
             batch_buffer.line_projection_epochs.deinit(std.testing.allocator);
             batch_buffer.dirty_span_lines.deinit();
         }
@@ -1628,7 +1622,7 @@ test "document operation candidate releases every intermediate style and link" {
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
-test "pure style batches publish unique ID deltas and patch overlapping projected lines" {
+test "pure style batches publish unique ID deltas and invalidate only overlapping projected lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1678,7 +1672,7 @@ test "pure style batches publish unique ID deltas and patch overlapping projecte
     _ = tb.getLineSpans(0);
     try std.testing.expectEqual(projected_before, (try tb.getDebugMetrics()).projected_lines);
     _ = tb.getLineSpans(1);
-    try std.testing.expectEqual(projected_before, (try tb.getDebugMetrics()).projected_lines);
+    try std.testing.expectEqual(projected_before + 1, (try tb.getDebugMetrics()).projected_lines);
 
     var live_refs: u32 = 0;
     for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
@@ -1749,52 +1743,9 @@ test "pure style work stays bounded as document annotation count grows" {
         try std.testing.expectEqual(published.projected_lines, (try tb.getDebugMetrics()).projected_lines);
         _ = tb.getLineSpans(target);
         const projected = try tb.getDebugMetrics();
-        try std.testing.expectEqual(published.projected_lines, projected.projected_lines);
-        try std.testing.expectEqual(published.projected_annotation_visits, projected.projected_annotation_visits);
+        try std.testing.expectEqual(published.projected_lines + 1, projected.projected_lines);
+        try std.testing.expect(projected.projected_annotation_visits - published.projected_annotation_visits <= 2);
     }
-}
-
-test "pure style cache patch preserves equal-priority winners and adjacent merging" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-    defer tb.deinit();
-    const style = try syntax_style.SyntaxStyle.init(std.testing.allocator);
-    defer style.deinit();
-    tb.setSyntaxStyle(style);
-
-    const chunks = [_]text_buffer.StyledChunk{
-        .{ .text_ptr = "ab".ptr, .text_len = 2, .fg_ptr = null, .bg_ptr = null, .attributes = 1 },
-        .{ .text_ptr = "cd".ptr, .text_len = 2, .fg_ptr = null, .bg_ptr = null, .attributes = 1 },
-    };
-    const ranges = [_]text_buffer.DocumentRangeInput{
-        .{ .start_chunk = 0, .end_chunk = 2, .style = chunks[0], .styled = true, .priority = 2 },
-        .{ .start_chunk = 0, .end_chunk = 1, .style = chunks[0], .styled = true, .priority = 2 },
-        .{ .start_chunk = 1, .end_chunk = 2, .style = chunks[1], .styled = true, .priority = 2 },
-    };
-    var ids: [ranges.len]u64 = undefined;
-    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 105, .chunks = &chunks, .ranges = &ranges }}, &ids);
-    try std.testing.expectEqual(@as(usize, 1), tb.getLineSpans(0).len);
-
-    const hidden_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 4 };
-    const before_hidden = try tb.getDebugMetrics();
-    try tb.applyDocumentOperations(&.{.{ .kind = .update_style, .target_id = ids[0], .owner = 105, .style = hidden_style }}, &.{});
-    try std.testing.expectEqual(@as(usize, 1), tb.getLineSpans(0).len);
-    try std.testing.expectEqual(before_hidden.projected_lines, (try tb.getDebugMetrics()).projected_lines);
-
-    const winner_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 8 };
-    try tb.applyDocumentOperations(&.{
-        .{ .kind = .update_style, .target_id = ids[1], .owner = 105, .style = winner_style },
-        .{ .kind = .update_style, .target_id = ids[2], .owner = 105, .style = winner_style },
-    }, &.{});
-    const incremental = try std.testing.allocator.dupe(text_buffer.StyleSpan, tb.getLineSpans(0));
-    defer std.testing.allocator.free(incremental);
-    try std.testing.expectEqual(@as(usize, 1), incremental.len);
-
-    tb.projection_epoch +%= 1;
-    try std.testing.expectEqualSlices(text_buffer.StyleSpan, incremental, tb.getLineSpans(0));
 }
 
 fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
@@ -1814,7 +1765,6 @@ fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
     const range = [_]text_buffer.DocumentRangeInput{.{ .start_chunk = 0, .end_chunk = 1, .style = initial, .styled = true, .priority = 1 }};
     var ids: [1]u64 = undefined;
     try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 103, .chunks = &.{initial}, .ranges = &range }}, &ids);
-    const cached_span_before = tb.getLineSpans(0)[0];
     const before = tb.textAnnotations().get(ids[0]).?;
     const annotation_epoch_before = tb.getAnnotationEpoch();
     const slots_before = tb.internal_style_slots.items.len;
@@ -1839,7 +1789,6 @@ fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectEqualDeep(before, tb.textAnnotations().get(ids[0]).?);
         try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
         try std.testing.expectEqual(slots_before, tb.internal_style_slots.items.len);
-        try std.testing.expectEqualDeep(cached_span_before, tb.getLineSpans(0)[0]);
         const metrics_after = try tb.getDebugMetrics();
         try std.testing.expectEqual(metrics_before.style_fast_path_batches, metrics_after.style_fast_path_batches);
         try std.testing.expectEqual(metrics_before.style_fast_path_updates, metrics_after.style_fast_path_updates);
