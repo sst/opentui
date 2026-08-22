@@ -124,27 +124,45 @@ export class Selection {
       })
       .filter((renderable) => !renderable.isDestroyed)
 
+    const ownersByY = new Map<number, Array<{ first: number; last: number }>>()
     for (const renderable of selectedRenderables) {
-      const text = renderable.getSelectedText()
-      if (!text) continue
-      const lines = text.split("\n")
-      for (let index = 0; index < lines.length; index += 1) {
-        const y = renderable.y + index
+      const segments = renderable.getSelectedTextSegments()
+      if (segments.length === 0) continue
+      const span = renderable.getSelectedVisualLineSpan()
+      const first = span?.first ?? segments[0].row
+      const last = Math.max(span?.last ?? segments[0].row, segments[segments.length - 1].row)
+      const owner = { first: renderable.y + first, last: renderable.y + last }
+      for (const segment of segments) {
+        const y = renderable.y + segment.row
         const line = selectedTextsByLine.get(y) ?? []
-        line.push({ x: renderable.x, text: lines[index] })
+        line.push({ x: renderable.x, text: segment.text })
         selectedTextsByLine.set(y, line)
+        const owners = ownersByY.get(y) ?? []
+        owners.push(owner)
+        ownersByY.set(y, owners)
       }
     }
 
-    return [...selectedTextsByLine.entries()]
-      .sort(([leftY], [rightY]) => leftY - rightY)
-      .map(([, line]) =>
-        line
+    const occupied = [...selectedTextsByLine.entries()].sort(([leftY], [rightY]) => leftY - rightY)
+    if (occupied.length === 0) return ""
+
+    const assembled: string[] = []
+    let previousY = occupied[0][0]
+    for (const [y, segments] of occupied) {
+      const previousOwners = ownersByY.get(previousY) ?? []
+      for (let gap = previousY + 1; gap < y; gap++) {
+        const ownedByPrevious = previousOwners.some((owner) => gap >= owner.first && gap <= owner.last)
+        if (!ownedByPrevious) assembled.push("")
+      }
+      assembled.push(
+        segments
           .sort((left, right) => left.x - right.x)
           .map((segment) => segment.text)
           .join(""),
       )
-      .join("\n")
+      previousY = y
+    }
+    return assembled.join("\n")
   }
 }
 

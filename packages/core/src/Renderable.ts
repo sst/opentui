@@ -392,6 +392,16 @@ export abstract class Renderable extends BaseRenderable {
     return ""
   }
 
+  public getSelectedVisualLineSpan(): { first: number; last: number } | null {
+    return null
+  }
+
+  public getSelectedTextSegments(): Array<{ row: number; text: string }> {
+    const text = this.getSelectedText()
+    if (!text) return []
+    return text.split("\n").map((line, index) => ({ row: index, text: line }))
+  }
+
   public shouldStartSelection(x: number, y: number): boolean {
     return false
   }
