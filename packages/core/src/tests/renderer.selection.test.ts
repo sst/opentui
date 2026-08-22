@@ -1,14 +1,17 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"
+import { ManualClock } from "../testing/manual-clock.js"
 import { BoxRenderable } from "../renderables/Box.js"
 import { TextRenderable } from "../renderables/Text.js"
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let mockMouse: MockMouse
+let clock: ManualClock
 
 beforeEach(async () => {
-  ;({ renderer, renderOnce, mockMouse } = await createTestRenderer({}))
+  clock = new ManualClock()
+  ;({ renderer, renderOnce, mockMouse } = await createTestRenderer({ clock }))
 })
 
 afterEach(() => {
@@ -169,7 +172,7 @@ test("triple-click selects the line", async () => {
 test("two clicks 600ms apart stay a cell press", async () => {
   const text = await addSelectableText()
   await mockMouse.click(text.x + 6, text.y)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  clock.advance(600)
   await mockMouse.click(text.x + 6, text.y)
   await renderOnce()
   expect(text.getSelectedText()).toBe("")

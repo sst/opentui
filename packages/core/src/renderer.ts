@@ -4809,7 +4809,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private nextClickBehavior(renderable: Renderable, x: number, y: number): SelectionBehavior {
-    const now = Date.now()
+    const now = this.clock.now()
     const last = this.lastClick
     const continued =
       last !== null &&
