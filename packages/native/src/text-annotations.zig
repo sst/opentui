@@ -52,6 +52,17 @@ pub const TextAnnotations = struct {
         }
     };
 
+    pub const MoveSnapshotPlan = struct {
+        target_id: u64,
+        start_byte: u32,
+        len: u32,
+        destination_byte: u32,
+        affected_start: u32,
+        affected_end: u32,
+        original_start: u32,
+        original_end: u32,
+    };
+
     pub const IntegrityError = MarkTree.IntegrityError || error{
         MissingMark,
         CountMismatch,
@@ -554,6 +565,153 @@ pub const TextAnnotations = struct {
             }
             annotation.mark = try MarkTree.movedMark(annotation.mark, start_byte, end_byte, len, destination_byte);
         }
+    }
+
+    pub fn transformAnnotationMoves(
+        annotation_value: Annotation,
+        plans: []const MoveSnapshotPlan,
+        preserve_kind_flags: u32,
+    ) !Annotation {
+        var annotation = annotation_value;
+        for (plans) |plan| {
+            if (annotation.id() != plan.target_id and annotation.payload.kind_flags & preserve_kind_flags != 0 and annotation.mark == .range) {
+                const range = annotation.mark.range;
+                if (range.start_byte <= plan.affected_start and range.end_byte >= plan.affected_end) continue;
+            }
+            annotation.mark = try MarkTree.movedMark(
+                annotation.mark,
+                plan.start_byte,
+                plan.start_byte + plan.len,
+                plan.len,
+                plan.destination_byte,
+            );
+        }
+        return annotation;
+    }
+
+    /// Applies a disjoint sequence of forward moves to a detached snapshot via
+    /// one piecewise permutation. Ranges ending at the document boundary are
+    /// replayed because explicit document parents may preserve that boundary.
+    pub fn transformForwardEndMoveSnapshot(
+        allocator: Allocator,
+        annotations: []Annotation,
+        plans: []const MoveSnapshotPlan,
+        document_len: u32,
+        preserve_kind_flags: u32,
+    ) !bool {
+        if (plans.len == 0) return true;
+        const Piece = struct { original_start: u32, original_end: u32, final_start: u32 };
+        const source_order = try allocator.alloc(usize, plans.len);
+        defer allocator.free(source_order);
+        for (source_order, 0..) |*value, index| value.* = index;
+        const Context = struct {
+            plans: []const MoveSnapshotPlan,
+            fn lessThan(ctx: @This(), left: usize, right: usize) bool {
+                return ctx.plans[left].original_start < ctx.plans[right].original_start;
+            }
+        };
+        std.mem.sort(usize, source_order, Context{ .plans = plans }, Context.lessThan);
+
+        var previous_end: u32 = 0;
+        for (source_order) |index| {
+            const plan = plans[index];
+            if (plan.original_start < previous_end or plan.original_end <= plan.original_start or
+                plan.original_end - plan.original_start != plan.len or
+                plan.destination_byte + plan.len != document_len)
+            {
+                return false;
+            }
+            previous_end = plan.original_end;
+        }
+
+        var suffix_count: usize = 0;
+        for (annotations) |annotation| {
+            if (annotation.payload.kind_flags & preserve_kind_flags != 0 and annotation.mark == .range and
+                annotation.mark.range.end_byte == document_len)
+            {
+                suffix_count += 1;
+            }
+        }
+        if (plans.len > 4 and suffix_count > annotations.len / 8 + 8) return false;
+
+        const pieces = try allocator.alloc(Piece, plans.len * 2 + 1);
+        defer allocator.free(pieces);
+        var piece_count: usize = 0;
+        var original_cursor: u32 = 0;
+        var final_cursor: u32 = 0;
+        for (source_order) |index| {
+            const plan = plans[index];
+            if (original_cursor < plan.original_start) {
+                pieces[piece_count] = .{
+                    .original_start = original_cursor,
+                    .original_end = plan.original_start,
+                    .final_start = final_cursor,
+                };
+                piece_count += 1;
+                final_cursor += plan.original_start - original_cursor;
+            }
+            original_cursor = plan.original_end;
+        }
+        if (original_cursor < document_len) {
+            pieces[piece_count] = .{
+                .original_start = original_cursor,
+                .original_end = document_len,
+                .final_start = final_cursor,
+            };
+            piece_count += 1;
+            final_cursor += document_len - original_cursor;
+        }
+        for (plans) |plan| {
+            pieces[piece_count] = .{
+                .original_start = plan.original_start,
+                .original_end = plan.original_end,
+                .final_start = final_cursor,
+            };
+            piece_count += 1;
+            final_cursor += plan.len;
+        }
+        std.debug.assert(final_cursor == document_len);
+        std.mem.sort(Piece, pieces[0..piece_count], {}, struct {
+            fn lessThan(_: void, left: Piece, right: Piece) bool {
+                return left.original_start < right.original_start;
+            }
+        }.lessThan);
+
+        const Mapper = struct {
+            fn position(values: []const Piece, document_size: u32, byte: u32, gravity: Gravity) u32 {
+                if (byte == 0 and gravity == .left) return 0;
+                if (byte == document_size and gravity == .right) return document_size;
+                const attached = if (gravity == .right) byte else byte - 1;
+                var low: usize = 0;
+                var high = values.len;
+                while (low < high) {
+                    const middle = low + (high - low) / 2;
+                    if (values[middle].original_end <= attached) low = middle + 1 else high = middle;
+                }
+                const piece = values[low];
+                const mapped = piece.final_start + attached - piece.original_start;
+                return if (gravity == .right) mapped else mapped + 1;
+            }
+        };
+
+        for (annotations) |*annotation| {
+            if (annotation.payload.kind_flags & preserve_kind_flags != 0 and annotation.mark == .range and
+                annotation.mark.range.end_byte == document_len)
+            {
+                annotation.* = try transformAnnotationMoves(annotation.*, plans, preserve_kind_flags);
+                continue;
+            }
+            switch (annotation.mark) {
+                .range => |*range| {
+                    range.start_byte = Mapper.position(pieces[0..piece_count], document_len, range.start_byte, range.start_gravity);
+                    range.end_byte = Mapper.position(pieces[0..piece_count], document_len, range.end_byte, range.end_gravity);
+                },
+                .point => |*point| {
+                    point.byte = Mapper.position(pieces[0..piece_count], document_len, point.byte, point.gravity);
+                },
+            }
+        }
+        return true;
     }
 
     /// Publishes positions from a complete detached snapshot in one MarkTree

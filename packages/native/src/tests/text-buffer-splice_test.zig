@@ -1316,8 +1316,8 @@ fn exerciseGroupedDocumentMoveFailure(fail_offset: ?usize) !usize {
     if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
 
     const operations = [_]text_buffer.DocumentOperation{
-        .{ .kind = .move, .target_id = ids[2], .anchor_id = ids[3], .owner = 96, .before = false },
         .{ .kind = .move, .target_id = ids[1], .anchor_id = ids[3], .owner = 96, .before = false },
+        .{ .kind = .move, .target_id = ids[2], .anchor_id = ids[1], .owner = 96, .before = false },
     };
     const result = tb.applyDocumentOperations(&operations, &.{});
     if (fail_offset != null) {
@@ -1332,6 +1332,14 @@ fn exerciseGroupedDocumentMoveFailure(fail_offset: ?usize) !usize {
         try result;
     }
     try expectText(tb, "CAB");
+    try std.testing.expectEqual(@as(u32, 0), tb.getDocumentRange(ids[0]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 3), tb.getDocumentRange(ids[0]).?.end_byte);
+    try std.testing.expectEqual(@as(u32, 1), tb.getDocumentRange(ids[1]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 2), tb.getDocumentRange(ids[1]).?.end_byte);
+    try std.testing.expectEqual(@as(u32, 2), tb.getDocumentRange(ids[2]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 3), tb.getDocumentRange(ids[2]).?.end_byte);
+    try std.testing.expectEqual(@as(u32, 0), tb.getDocumentRange(ids[3]).?.start_byte);
+    try std.testing.expectEqual(@as(u32, 1), tb.getDocumentRange(ids[3]).?.end_byte);
     return failing.alloc_index - before_alloc;
 }
 

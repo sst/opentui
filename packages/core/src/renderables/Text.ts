@@ -699,15 +699,15 @@ export class TextRenderable extends TextBufferRenderable {
         const currentIndex = this._children.indexOf(obj)
         if (currentIndex < insertIndex) insertIndex -= 1
         if (currentIndex === insertIndex) return insertIndex
-        const previous = this._children as TextRenderable[]
-        const next = [...previous]
-        next.splice(currentIndex, 1)
-        next.splice(insertIndex, 0, obj)
-        this._children = next
-        this._rawTextIdentities.splice(0, this._rawTextIdentities.length, ...next.map(() => null))
+        const anchor = this._children[insertIndex] as TextRenderable
+        const identity = this._rawTextIdentities[currentIndex]!
+        this._children.splice(currentIndex, 1)
+        this._children.splice(insertIndex, 0, obj)
+        this._rawTextIdentities.splice(currentIndex, 1)
+        this._rawTextIdentities.splice(insertIndex, 0, identity)
         this._manualStyledText = null
         const owner = this.getDocumentOwner()!
-        owner.queueNativeChildMoves(previous, next)
+        owner.queueNativeChildMove(obj, anchor, currentIndex > insertIndex)
         owner.yogaNode.markDirty()
         this.requestRender()
         return insertIndex
@@ -1466,16 +1466,21 @@ export class TextRenderable extends TextBufferRenderable {
       reverseOrder.splice(index, 0, desired)
     }
     const moves = forward.length <= reverse.length ? forward : reverse
-    const hasEmptySource = moves.some((move) => {
-      if (move.source._nativeRangeId === null) return true
-      const range = this.textBuffer.getDocumentRange(move.source._nativeRangeId)
-      return !range || range.startByte === range.endByte
-    })
-    if (hasEmptySource) {
-      return
-    }
+    if (moves.some((move) => !this.canMoveNativeChild(move.source))) return
     this._pendingNativeMoves.push(...moves)
     if (this._pendingNativeMoves.length > 0) this._textDocumentPending = true
+  }
+
+  private queueNativeChildMove(source: TextRenderable, anchor: TextRenderable, before: boolean): void {
+    if (!this.canMoveNativeChild(source)) return
+    this._pendingNativeMoves.push({ source, anchor, before })
+    this._textDocumentPending = true
+  }
+
+  private canMoveNativeChild(source: TextRenderable): boolean {
+    if (source._nativeRangeId === null) return false
+    const range = this.textBuffer.getDocumentRange(source._nativeRangeId)
+    return !!range && range.startByte !== range.endByte
   }
 
   protected override emitLineInfoChange(): void {
