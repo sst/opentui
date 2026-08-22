@@ -134,6 +134,54 @@ describe("TextBuffer", () => {
       expect(buffer.getPlainText()).toBe("🙂A中")
       expect(buffer.getDocumentRange(lastId!)?.startByte).toBe(0)
     })
+
+    it("atomically transfers document operations and returns complete ID mappings", () => {
+      const destination = TextBuffer.create("wcwidth")
+      try {
+        const sourceIds = buffer.replaceDocumentRange(null, "replace", 0, 0, [{ text: "L" }, { text: "X" }], 81, [
+          { startChunk: 0, endChunk: 2, styled: false },
+          { startChunk: 1, endChunk: 2, styled: true },
+        ]).ids
+        const destinationIds = destination.replaceDocumentRange(null, "replace", 0, 0, [{ text: "R" }], 82, [
+          { startChunk: 0, endChunk: 1, styled: false },
+        ]).ids
+
+        const transfer = buffer.applyTwoDocumentOperations(
+          destination,
+          [
+            {
+              kind: "replace",
+              targetId: sourceIds[1],
+              owner: 81,
+              ranges: [{ id: sourceIds[1], remove: true, startChunk: 0, endChunk: 0, styled: false }],
+            },
+          ],
+          [
+            {
+              kind: "replace",
+              targetId: destinationIds[0],
+              owner: 82,
+              chunks: [{ text: "R" }, { text: "X" }],
+              ranges: [
+                { id: destinationIds[0], startChunk: 0, endChunk: 2, styled: false },
+                { startChunk: 1, endChunk: 2, styled: true },
+              ],
+            },
+          ],
+        )
+
+        expect(buffer.getPlainText()).toBe("L")
+        expect(destination.getPlainText()).toBe("RX")
+        expect(transfer.ids).toEqual([sourceIds[1]])
+        expect(transfer.otherIds[0]).toBe(destinationIds[0])
+        expect(transfer.otherIds[1]).not.toBe(sourceIds[1])
+        expect(() => buffer.applyTwoDocumentOperations(buffer, [{ kind: "clearOwner", owner: 81 }], [])).toThrow(
+          "distinct",
+        )
+      } finally {
+        destination.destroy()
+      }
+    })
   })
 
   describe("getPlainText", () => {

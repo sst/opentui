@@ -2405,15 +2405,85 @@ pub const UnifiedTextBuffer = struct {
         return result;
     }
 
-    /// Apply an ordered document operation log against one annotation/Rope
-    /// candidate. Stable range IDs are resolved again for every operation, so
-    /// earlier edits may shift later targets without exposing intermediate
-    /// state. All allocation and storage work completes before publication.
-    pub fn applyDocumentOperations(
+    pub const PreparedDocumentOperations = struct {
+        owner: *Self,
+        annotations: TextAnnotations,
+        transaction_arena: *std.heap.ArenaAllocator,
+        rope_root: UnifiedRope.PreparedRoot,
+        staged_storage: ?[]u8,
+        staged_mem_id: ?u8,
+        storage_used: usize,
+        acquired_styles: std.ArrayListUnmanaged(u32),
+        released_styles: std.ArrayListUnmanaged(u32),
+        created_ids: []u64,
+        content_changed: bool,
+        annotations_changed: bool,
+        committed: bool = false,
+
+        pub fn ids(self: *const PreparedDocumentOperations) []const u64 {
+            return self.created_ids;
+        }
+
+        pub fn commit(self: *PreparedDocumentOperations, out_ids: []u64) void {
+            std.debug.assert(!self.committed and out_ids.len == self.created_ids.len);
+            const owner = self.owner;
+            if (self.content_changed) {
+                if (self.staged_storage) |storage| {
+                    if (owner.splice_mem_id) |id| {
+                        owner.mem_registry.replace(id, storage, true) catch unreachable;
+                    } else {
+                        const id = owner.mem_registry.register(storage, true) catch unreachable;
+                        std.debug.assert(id == self.staged_mem_id.?);
+                        owner.splice_mem_id = id;
+                    }
+                    owner.splice_buffer = storage;
+                    owner.splice_len = self.storage_used;
+                    self.staged_storage = null;
+                }
+                owner._rope.commitPreparedRoot(self.rope_root);
+                owner.rope_transaction_arenas.appendAssumeCapacity(self.transaction_arena);
+            } else {
+                self.transaction_arena.deinit();
+                owner.global_allocator.destroy(self.transaction_arena);
+            }
+            var old_annotations = owner.annotations;
+            owner.annotations = self.annotations;
+            old_annotations.deinit();
+            for (self.released_styles.items) |style_id| owner.releaseInternalStyle(style_id);
+            @memcpy(out_ids, self.created_ids);
+            if (self.annotations_changed) owner.annotation_epoch +%= 1;
+            if (self.content_changed) {
+                owner.markAllViewsDirty();
+            } else if (self.annotations_changed) {
+                owner.projection_epoch +%= 1;
+            }
+            self.committed = true;
+        }
+
+        pub fn deinit(self: *PreparedDocumentOperations) void {
+            const owner = self.owner;
+            if (!self.committed) {
+                for (self.acquired_styles.items) |style_id| owner.releaseInternalStyle(style_id);
+                self.annotations.deinit();
+                self.transaction_arena.deinit();
+                owner.global_allocator.destroy(self.transaction_arena);
+                if (self.staged_storage) |storage| owner.global_allocator.free(storage);
+            }
+            self.acquired_styles.deinit(owner.global_allocator);
+            self.released_styles.deinit(owner.global_allocator);
+            owner.global_allocator.free(self.created_ids);
+            self.* = undefined;
+        }
+    };
+
+    /// Prepare an ordered operation log without changing live state. Stable IDs
+    /// are resolved after each candidate edit; every commit action is reserved
+    /// before this function returns.
+    pub fn prepareDocumentOperations(
         self: *Self,
         operations: []const DocumentOperation,
-        out_ids: []u64,
-    ) TextBufferError!void {
+        output_id_count: usize,
+    ) TextBufferError!PreparedDocumentOperations {
         var output_count: usize = 0;
         var replacement_bytes: usize = 0;
         var content_operation_count: usize = 0;
@@ -2428,8 +2498,7 @@ pub const UnifiedTextBuffer = struct {
                 return TextBufferError.InvalidDimensions;
             }
         }
-        if (output_count != out_ids.len) return TextBufferError.InvalidDimensions;
-        if (operations.len == 0) return;
+        if (output_count != output_id_count or operations.len == 0) return TextBufferError.InvalidDimensions;
 
         var candidate_annotations = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
@@ -2492,8 +2561,9 @@ pub const UnifiedTextBuffer = struct {
         try acquired_styles.ensureTotalCapacity(self.global_allocator, maximum_acquired_styles);
         const maximum_released_styles = std.math.add(usize, self.annotations.count(), maximum_acquired_styles) catch return TextBufferError.InvalidDimensions;
         try released_styles.ensureTotalCapacity(self.global_allocator, maximum_released_styles);
-        const created_ids = self.global_allocator.alloc(u64, out_ids.len) catch return TextBufferError.OutOfMemory;
-        defer self.global_allocator.free(created_ids);
+        const created_ids = self.global_allocator.alloc(u64, output_id_count) catch return TextBufferError.OutOfMemory;
+        var created_ids_owned = true;
+        defer if (created_ids_owned) self.global_allocator.free(created_ids);
         var output_index: usize = 0;
         var content_changed = false;
         var annotations_changed = false;
@@ -2786,37 +2856,44 @@ pub const UnifiedTextBuffer = struct {
             if (!used) try released_styles.append(self.global_allocator, style_id);
         }
 
-        // No fallible work follows this point.
-        if (content_changed) {
-            if (content_operation_count != 0) {
-                if (self.splice_mem_id) |id| {
-                    self.mem_registry.replace(id, staged_storage.?, true) catch unreachable;
-                } else {
-                    const id = self.mem_registry.register(staged_storage.?, true) catch unreachable;
-                    std.debug.assert(id == staged_mem_id.?);
-                    self.splice_mem_id = id;
-                }
-                self.splice_buffer = staged_storage.?;
-                self.splice_len = storage_used;
-                storage_owned = false;
-            }
-            self._rope.commitPreparedRoot(.{ .root = candidate_buffer._rope.root });
-            self.rope_transaction_arenas.appendAssumeCapacity(transaction_arena);
-            arena_owned = false;
-        }
-        var old_annotations = self.annotations;
-        self.annotations = candidate_annotations;
+        // Transfer every prepared resource to the returned candidate. Commit is
+        // now infallible; deinit releases the same ownership on failure.
         annotations_owned = false;
-        old_annotations.deinit();
-        for (released_styles.items) |style_id| self.releaseInternalStyle(style_id);
+        arena_owned = false;
+        storage_owned = false;
         styles_committed = true;
-        @memcpy(out_ids, created_ids);
-        if (annotations_changed) self.annotation_epoch +%= 1;
-        if (content_changed) {
-            self.markAllViewsDirty();
-        } else if (annotations_changed) {
-            self.projection_epoch +%= 1;
+        created_ids_owned = false;
+        const prepared = PreparedDocumentOperations{
+            .owner = self,
+            .annotations = candidate_annotations,
+            .transaction_arena = transaction_arena,
+            .rope_root = .{ .root = candidate_buffer._rope.root },
+            .staged_storage = staged_storage,
+            .staged_mem_id = staged_mem_id,
+            .storage_used = storage_used,
+            .acquired_styles = acquired_styles,
+            .released_styles = released_styles,
+            .created_ids = created_ids,
+            .content_changed = content_changed,
+            .annotations_changed = annotations_changed,
+        };
+        acquired_styles = .empty;
+        released_styles = .empty;
+        return prepared;
+    }
+
+    pub fn applyDocumentOperations(
+        self: *Self,
+        operations: []const DocumentOperation,
+        out_ids: []u64,
+    ) TextBufferError!void {
+        if (operations.len == 0) {
+            if (out_ids.len != 0) return TextBufferError.InvalidDimensions;
+            return;
         }
+        var prepared = try self.prepareDocumentOperations(operations, out_ids.len);
+        defer prepared.deinit();
+        prepared.commit(out_ids);
     }
 
     /// Replaces the current native range and creates all supplied owner/node
@@ -3162,3 +3239,23 @@ pub const UnifiedTextBuffer = struct {
         return self.getTextRange(start_offset, end_offset, out_buffer);
     }
 };
+
+/// Prepares both independent document candidates before publishing either one.
+/// The two commits contain no allocation or validation and therefore cannot
+/// expose a one-sided transfer.
+pub fn applyTwoDocumentOperations(
+    first: *UnifiedTextBuffer,
+    first_operations: []const DocumentOperation,
+    first_out_ids: []u64,
+    second: *UnifiedTextBuffer,
+    second_operations: []const DocumentOperation,
+    second_out_ids: []u64,
+) TextBufferError!void {
+    if (first == second) return TextBufferError.InvalidDimensions;
+    var first_prepared = try first.prepareDocumentOperations(first_operations, first_out_ids.len);
+    defer first_prepared.deinit();
+    var second_prepared = try second.prepareDocumentOperations(second_operations, second_out_ids.len);
+    defer second_prepared.deinit();
+    first_prepared.commit(first_out_ids);
+    second_prepared.commit(second_out_ids);
+}

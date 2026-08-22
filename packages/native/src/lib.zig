@@ -3476,41 +3476,75 @@ export fn textBufferMoveDocumentRange(tb_handle: NativeHandle, source_id: u64, a
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
-export fn textBufferApplyDocumentOperations(
-    tb_handle: NativeHandle,
-    operations_ptr: ?[*]const ExternalDocumentOperation,
-    operation_count: u32,
-    chunks_ptr: ?[*]const ExternalStyledChunk32,
-    chunk_count: u32,
-    ranges_ptr: ?[*]const ExternalDocumentRangeInput,
-    range_count: u32,
-    out_ids: ?[*]u64,
-    out_id_count: u32,
-    out_statuses: ?[*]u32,
-) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    if ((operation_count != 0 and (operations_ptr == null or out_statuses == null)) or
-        (chunk_count != 0 and chunks_ptr == null) or
-        (range_count != 0 and ranges_ptr == null) or
-        (out_id_count != 0 and out_ids == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    const external_operations = if (operation_count == 0) &[_]ExternalDocumentOperation{} else operations_ptr.?[0..operation_count];
-    var empty_statuses: [0]u32 = .{};
-    const statuses: []u32 = if (operation_count == 0) empty_statuses[0..] else out_statuses.?[0..operation_count];
-    @memset(statuses, @intFromEnum(TextDocumentStatus.invalid_argument));
-    const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
-    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
-    defer globalAllocator.free(chunks);
-    for (external_chunks, 0..) |chunk, index| {
-        if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-        chunks[index] = externalStyledChunk(chunk).?;
+const DecodedDocumentBatch = struct {
+    operations: []text_buffer.DocumentOperation,
+    chunks: []text_buffer.StyledChunk,
+    ranges: []text_buffer.DocumentRangeInput,
+
+    fn deinit(self: *DecodedDocumentBatch) void {
+        globalAllocator.free(self.operations);
+        globalAllocator.free(self.chunks);
+        globalAllocator.free(self.ranges);
+        self.* = undefined;
     }
-    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
-    const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
-    defer globalAllocator.free(ranges);
-    for (external_ranges, 0..) |range, index| {
-        const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len);
+};
+
+const DecodeDocumentBatchError = error{ InvalidArgument, OutOfMemory };
+
+fn decodeDocumentBatch(
+    external_operations: []const ExternalDocumentOperation,
+    external_chunks: []const ExternalStyledChunk32,
+    external_ranges: []const ExternalDocumentRangeInput,
+    out_id_count: u32,
+) DecodeDocumentBatchError!DecodedDocumentBatch {
+    for (external_chunks) |chunk| if (!validExternalStyledChunk(chunk)) return error.InvalidArgument;
+    for (external_ranges) |range| {
         if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or
-            (range.link_len != 0 and range.link_ptr == null) or style == null) return @intFromEnum(TextDocumentStatus.invalid_argument);
+            (range.link_len != 0 and range.link_ptr == null) or
+            externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len) == null)
+            return error.InvalidArgument;
+    }
+    var expected_ids: usize = 0;
+    for (external_operations) |operation| {
+        if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.target_mode > 2 or
+            operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null) or
+            externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len) == null)
+            return error.InvalidArgument;
+        const chunk_end = std.math.add(u32, operation.chunk_start, operation.chunk_count) catch return error.InvalidArgument;
+        const range_end = std.math.add(u32, operation.range_start, operation.range_count) catch return error.InvalidArgument;
+        if (chunk_end > external_chunks.len or range_end > external_ranges.len) return error.InvalidArgument;
+        const kind: text_buffer.DocumentOperationKind = @enumFromInt(operation.kind);
+        switch (kind) {
+            .replace => {
+                if ((operation.use_target != 0 and operation.target_id == 0) or
+                    (operation.use_target == 0 and (operation.target_mode != 0 or operation.anchor_id != 0)) or
+                    (operation.anchor_id != 0 and (operation.use_target == 0 or operation.target_mode != 0))) return error.InvalidArgument;
+                for (external_ranges[operation.range_start..range_end]) |range| {
+                    if (range.remove != 0) {
+                        if (range.id == 0) return error.InvalidArgument;
+                    } else if (range.start_chunk > range.end_chunk or range.end_chunk > operation.chunk_count) {
+                        return error.InvalidArgument;
+                    }
+                }
+            },
+            .update_style, .remove => if (operation.use_target == 0 or operation.target_id == 0 or
+                operation.anchor_id != 0 or operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
+            .move => if (operation.use_target == 0 or operation.target_id == 0 or operation.anchor_id == 0 or
+                operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
+            .clear_owner => if (operation.use_target != 0 or operation.target_id != 0 or operation.anchor_id != 0 or
+                operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
+        }
+        expected_ids = std.math.add(usize, expected_ids, operation.range_count) catch return error.InvalidArgument;
+    }
+    if (expected_ids != out_id_count or external_operations.len == 0) return error.InvalidArgument;
+
+    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return error.OutOfMemory;
+    errdefer globalAllocator.free(chunks);
+    for (external_chunks, 0..) |chunk, index| chunks[index] = externalStyledChunk(chunk).?;
+    const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return error.OutOfMemory;
+    errdefer globalAllocator.free(ranges);
+    for (external_ranges, 0..) |range, index| {
+        const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len).?;
         ranges[index] = .{
             .id = range.id,
             .remove = range.remove != 0,
@@ -3523,8 +3557,8 @@ export fn textBufferApplyDocumentOperations(
                 .bg_ptr = range.bg_ptr,
                 .attributes = range.attributes,
                 .style_id = range.style_id,
-                .style_kind = style.?.kind,
-                .syntax_style = style.?.source,
+                .style_kind = style.kind,
+                .syntax_style = style.source,
                 .link_ptr = range.link_ptr,
                 .link_len = range.link_len,
             },
@@ -3532,18 +3566,12 @@ export fn textBufferApplyDocumentOperations(
             .priority = @intCast(range.priority),
         };
     }
-    const operations = globalAllocator.alloc(text_buffer.DocumentOperation, external_operations.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
-    defer globalAllocator.free(operations);
-    var expected_ids: usize = 0;
+    const operations = globalAllocator.alloc(text_buffer.DocumentOperation, external_operations.len) catch return error.OutOfMemory;
+    errdefer globalAllocator.free(operations);
     for (external_operations, 0..) |operation, index| {
-        const style = externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len);
-        if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.target_mode > 2 or
-            operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null) or style == null)
-            return @intFromEnum(TextDocumentStatus.invalid_argument);
-        const chunk_end = std.math.add(u32, operation.chunk_start, operation.chunk_count) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
-        const range_end = std.math.add(u32, operation.range_start, operation.range_count) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
-        if (chunk_end > chunk_count or range_end > range_count) return @intFromEnum(TextDocumentStatus.invalid_argument);
-        expected_ids = std.math.add(usize, expected_ids, operation.range_count) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
+        const style = externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len).?;
+        const chunk_end = operation.chunk_start + operation.chunk_count;
+        const range_end = operation.range_start + operation.range_count;
         operations[index] = .{
             .kind = @enumFromInt(operation.kind),
             .target_mode = @enumFromInt(operation.target_mode),
@@ -3563,22 +3591,99 @@ export fn textBufferApplyDocumentOperations(
                 .bg_ptr = operation.bg_ptr,
                 .attributes = operation.attributes,
                 .style_id = operation.style_id,
-                .style_kind = style.?.kind,
-                .syntax_style = style.?.source,
+                .style_kind = style.kind,
+                .syntax_style = style.source,
                 .link_ptr = operation.link_ptr,
                 .link_len = operation.link_len,
             },
         };
     }
-    if (expected_ids != out_id_count) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    return .{ .operations = operations, .chunks = chunks, .ranges = ranges };
+}
+
+fn decodeDocumentBatchStatus(err: DecodeDocumentBatchError) u32 {
+    return @intFromEnum(switch (err) {
+        error.InvalidArgument => TextDocumentStatus.invalid_argument,
+        error.OutOfMemory => TextDocumentStatus.out_of_memory,
+    });
+}
+
+export fn textBufferApplyDocumentOperations(
+    tb_handle: NativeHandle,
+    operations_ptr: ?[*]const ExternalDocumentOperation,
+    operation_count: u32,
+    chunks_ptr: ?[*]const ExternalStyledChunk32,
+    chunk_count: u32,
+    ranges_ptr: ?[*]const ExternalDocumentRangeInput,
+    range_count: u32,
+    out_ids: ?[*]u64,
+    out_id_count: u32,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if ((operation_count != 0 and operations_ptr == null) or
+        (chunk_count != 0 and chunks_ptr == null) or
+        (range_count != 0 and ranges_ptr == null) or
+        (out_id_count != 0 and out_ids == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const external_operations = if (operation_count == 0) &[_]ExternalDocumentOperation{} else operations_ptr.?[0..operation_count];
+    const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
+    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
+    var batch = decodeDocumentBatch(external_operations, external_chunks, external_ranges, out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    defer batch.deinit();
     var empty_ids: [0]u64 = .{};
     const ids = if (out_id_count == 0) empty_ids[0..] else out_ids.?[0..out_id_count];
-    object_ptr.applyDocumentOperations(operations, ids) catch |err| {
-        const status = textDocumentErrorStatus(err);
-        @memset(statuses, status);
-        return status;
-    };
-    @memset(statuses, @intFromEnum(TextDocumentStatus.ok));
+    object_ptr.applyDocumentOperations(batch.operations, ids) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferApplyTwoDocumentOperations(
+    first_handle: NativeHandle,
+    second_handle: NativeHandle,
+    first_operations_ptr: ?[*]const ExternalDocumentOperation,
+    first_operation_count: u32,
+    first_chunks_ptr: ?[*]const ExternalStyledChunk32,
+    first_chunk_count: u32,
+    first_ranges_ptr: ?[*]const ExternalDocumentRangeInput,
+    first_range_count: u32,
+    second_operations_ptr: ?[*]const ExternalDocumentOperation,
+    second_operation_count: u32,
+    second_chunks_ptr: ?[*]const ExternalStyledChunk32,
+    second_chunk_count: u32,
+    second_ranges_ptr: ?[*]const ExternalDocumentRangeInput,
+    second_range_count: u32,
+    first_out_ids: ?[*]u64,
+    first_out_id_count: u32,
+    second_out_ids: ?[*]u64,
+    second_out_id_count: u32,
+) u32 {
+    const first = acquireTextBuffer(first_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const second = acquireTextBuffer(second_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (first_handle == second_handle or first == second) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if ((first_operation_count != 0 and first_operations_ptr == null) or
+        (first_chunk_count != 0 and first_chunks_ptr == null) or
+        (first_range_count != 0 and first_ranges_ptr == null) or
+        (second_operation_count != 0 and second_operations_ptr == null) or
+        (second_chunk_count != 0 and second_chunks_ptr == null) or
+        (second_range_count != 0 and second_ranges_ptr == null) or
+        (first_out_id_count != 0 and first_out_ids == null) or
+        (second_out_id_count != 0 and second_out_ids == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+
+    const first_external_operations = if (first_operation_count == 0) &[_]ExternalDocumentOperation{} else first_operations_ptr.?[0..first_operation_count];
+    const first_external_chunks = if (first_chunk_count == 0) &[_]ExternalStyledChunk32{} else first_chunks_ptr.?[0..first_chunk_count];
+    const first_external_ranges = if (first_range_count == 0) &[_]ExternalDocumentRangeInput{} else first_ranges_ptr.?[0..first_range_count];
+    const second_external_operations = if (second_operation_count == 0) &[_]ExternalDocumentOperation{} else second_operations_ptr.?[0..second_operation_count];
+    const second_external_chunks = if (second_chunk_count == 0) &[_]ExternalStyledChunk32{} else second_chunks_ptr.?[0..second_chunk_count];
+    const second_external_ranges = if (second_range_count == 0) &[_]ExternalDocumentRangeInput{} else second_ranges_ptr.?[0..second_range_count];
+
+    var first_batch = decodeDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges, first_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    defer first_batch.deinit();
+    var second_batch = decodeDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges, second_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    defer second_batch.deinit();
+
+    var empty_first_ids: [0]u64 = .{};
+    var empty_second_ids: [0]u64 = .{};
+    const first_ids = if (first_out_id_count == 0) empty_first_ids[0..] else first_out_ids.?[0..first_out_id_count];
+    const second_ids = if (second_out_id_count == 0) empty_second_ids[0..] else second_out_ids.?[0..second_out_id_count];
+    text_buffer.applyTwoDocumentOperations(first, first_batch.operations, first_ids, second, second_batch.operations, second_ids) catch |err| return textDocumentErrorStatus(err);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 

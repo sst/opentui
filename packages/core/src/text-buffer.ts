@@ -205,6 +205,35 @@ export class TextBuffer {
     return ids
   }
 
+  public applyTwoDocumentOperations(
+    other: TextBuffer,
+    operations: DocumentOperation[],
+    otherOperations: DocumentOperation[],
+  ): { ids: bigint[]; otherIds: bigint[] } {
+    this.guard()
+    other.guard()
+    if (other === this) throw new Error("Two-document operations require distinct TextBuffers")
+    const withSources = (buffer: TextBuffer, values: DocumentOperation[]) =>
+      values.map((operation) => ({
+        ...buffer.withStyleSource(operation),
+        chunks: operation.chunks?.map((chunk) => buffer.withStyleSource(chunk)),
+        ranges: operation.ranges?.map((range) => buffer.withStyleSource(range)),
+      }))
+    const result = this.lib.textBufferApplyTwoDocumentOperations(
+      this.bufferPtr,
+      withSources(this, operations),
+      other.bufferPtr,
+      withSources(other, otherOperations),
+    )
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    other._length = this.lib.textBufferGetLength(other.bufferPtr)
+    other._byteSize = this.lib.textBufferGetByteSize(other.bufferPtr)
+    other._lineInfo = undefined
+    return { ids: result.firstIds, otherIds: result.secondIds }
+  }
+
   public createStyleRange(
     owner: number,
     startByte: number,

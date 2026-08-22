@@ -753,6 +753,171 @@ test "document operation candidate releases every intermediate style and link" {
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
+fn exerciseTwoDocumentTransferFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const source = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer source.deinit();
+    const destination = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer destination.deinit();
+    const source_style = try syntax_style.SyntaxStyle.init(allocator);
+    defer source_style.deinit();
+    const destination_style = try syntax_style.SyntaxStyle.init(allocator);
+    defer destination_style.deinit();
+    source.setSyntaxStyle(source_style);
+    destination.setSyntaxStyle(destination_style);
+
+    const url = "https://transfer.test";
+    const value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const source_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "L".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "X".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const source_ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 2, .style = empty_style, .styled = false, .priority = 1 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = value, .styled = true, .priority = 2 },
+    };
+    var source_ids: [2]u64 = undefined;
+    try source.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 71,
+        .chunks = &source_chunks,
+        .ranges = &source_ranges,
+    }}, &source_ids);
+    const destination_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = "R".ptr,
+        .text_len = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    const destination_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = empty_style,
+        .styled = false,
+        .priority = 1,
+    }};
+    var destination_ids: [1]u64 = undefined;
+    try destination.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 72,
+        .chunks = &destination_chunks,
+        .ranges = &destination_ranges,
+    }}, &destination_ids);
+    _ = source.getLineHighlights(0);
+
+    const source_transfer_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .id = source_ids[1],
+        .remove = true,
+        .start_chunk = 0,
+        .end_chunk = 0,
+        .style = empty_style,
+        .styled = false,
+        .priority = 0,
+    }};
+    const destination_transfer_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "R".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "X".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const destination_transfer_ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .id = destination_ids[0], .start_chunk = 0, .end_chunk = 2, .style = empty_style, .styled = false, .priority = 1 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = value, .styled = true, .priority = 2 },
+    };
+    const source_operations = [_]text_buffer.DocumentOperation{.{
+        .kind = .replace,
+        .target_id = source_ids[1],
+        .owner = 71,
+        .ranges = &source_transfer_ranges,
+    }};
+    const destination_operations = [_]text_buffer.DocumentOperation{.{
+        .kind = .replace,
+        .target_id = destination_ids[0],
+        .owner = 72,
+        .chunks = &destination_transfer_chunks,
+        .ranges = &destination_transfer_ranges,
+    }};
+
+    const source_root = source.rope().root;
+    const destination_root = destination.rope().root;
+    const source_epoch = source.getContentEpoch();
+    const destination_epoch = destination.getContentEpoch();
+    const source_annotation_epoch = source.getAnnotationEpoch();
+    const destination_annotation_epoch = destination.getAnnotationEpoch();
+    const source_range = source.getDocumentRange(source_ids[1]).?;
+    const destination_range = destination.getDocumentRange(destination_ids[0]).?;
+    const source_refs = source.internal_style_slots.items[0].refs;
+    const source_anonymous = source_style.getAnonymousStyleCount();
+    const destination_anonymous = destination_style.getAnonymousStyleCount();
+    const live_links = link_pool.getLiveSlotCount();
+    var source_output = [_]u64{std.math.maxInt(u64)};
+    var destination_output = [_]u64{std.math.maxInt(u64)} ** 2;
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const transfer = text_buffer.applyTwoDocumentOperations(
+        source,
+        &source_operations,
+        &source_output,
+        destination,
+        &destination_operations,
+        &destination_output,
+    );
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, transfer);
+        try std.testing.expect(source.rope().root == source_root);
+        try std.testing.expect(destination.rope().root == destination_root);
+        try std.testing.expectEqual(source_epoch, source.getContentEpoch());
+        try std.testing.expectEqual(destination_epoch, destination.getContentEpoch());
+        try std.testing.expectEqual(source_annotation_epoch, source.getAnnotationEpoch());
+        try std.testing.expectEqual(destination_annotation_epoch, destination.getAnnotationEpoch());
+        try std.testing.expectEqualDeep(source_range, source.getDocumentRange(source_ids[1]).?);
+        try std.testing.expectEqualDeep(destination_range, destination.getDocumentRange(destination_ids[0]).?);
+        try std.testing.expectEqual(source_refs, source.internal_style_slots.items[0].refs);
+        try std.testing.expectEqual(source_anonymous, source_style.getAnonymousStyleCount());
+        try std.testing.expectEqual(destination_anonymous, destination_style.getAnonymousStyleCount());
+        try std.testing.expectEqual(live_links, link_pool.getLiveSlotCount());
+        try std.testing.expectEqualSlices(u64, &.{std.math.maxInt(u64)}, &source_output);
+        try std.testing.expectEqualSlices(u64, &.{ std.math.maxInt(u64), std.math.maxInt(u64) }, &destination_output);
+        try expectText(source, "LX");
+        try expectText(destination, "R");
+    } else {
+        try transfer;
+        try expectText(source, "L");
+        try expectText(destination, "RX");
+        try std.testing.expectEqual(source_ids[1], source_output[0]);
+        try std.testing.expectEqual(destination_ids[0], destination_output[0]);
+        try std.testing.expect(destination_output[1] != source_ids[1]);
+    }
+    return failing.alloc_index - before_alloc;
+}
+
+test "two-document transfer publishes both candidates or neither at every allocation" {
+    const allocations = try exerciseTwoDocumentTransferFailure(null);
+    for (0..allocations) |offset| _ = try exerciseTwoDocumentTransferFailure(offset);
+}
+
 test "splice backing survives undo roots and reset releases it" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

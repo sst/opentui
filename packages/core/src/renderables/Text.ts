@@ -31,10 +31,18 @@ export type TextStyle = {
 
 const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRenderable")
 let nextTextDocumentOwner = 1
+let textDocumentMutationDepth = 0
+const deferredDocumentOwners = new Set<TextRenderable>()
 
 type RawTextIdentity = {
   value: string
   rangeId: bigint | null
+}
+
+type PreparedTextDocumentFlush = {
+  operations: DocumentOperation[]
+  assignments: Array<(id: bigint) => void>
+  contentChanged: boolean
 }
 
 export function isTextRenderable(obj: any): obj is TextRenderable {
@@ -217,6 +225,9 @@ export class TextRenderable extends TextBufferRenderable {
         dirty: boolean
         rawTextIdentities: (RawTextIdentity | null)[]
         pendingRemovedRangeIds: Set<bigint>
+        pendingDocumentRoots: Set<TextRenderable>
+        pendingStyleRoots: Set<TextRenderable>
+        pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }>
       }
     >()
     const snapshotParent = (parent: TextRenderable): void => {
@@ -228,6 +239,9 @@ export class TextRenderable extends TextBufferRenderable {
         dirty: parent._textDocumentPending,
         rawTextIdentities: [...parent._rawTextIdentities],
         pendingRemovedRangeIds: new Set(parent._pendingRemovedRangeIds),
+        pendingDocumentRoots: new Set(parent._pendingDocumentRoots),
+        pendingStyleRoots: new Set(parent._pendingStyleRoots),
+        pendingNativeMoves: [...parent._pendingNativeMoves],
       })
     }
     snapshotParent(this)
@@ -258,6 +272,16 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of previousChildren) {
       if (isTextRenderable(child)) snapshotChild(child)
     }
+    const sourceDocumentOwners = new Set<TextRenderable>()
+    for (const child of seenChildren) {
+      const owner = child.getDocumentOwner()
+      if (!child.hasTextDocumentState && owner && owner !== documentOwnerBefore) sourceDocumentOwners.add(owner)
+    }
+    if (sourceDocumentOwners.size > 1) {
+      throw new Error("A single text mutation cannot transfer children from multiple text documents")
+    }
+    for (const owner of sourceDocumentOwners) snapshotParent(owner)
+    const deferredBefore = new Set(deferredDocumentOwners)
 
     const rollback = (): void => {
       for (const [parent, snapshot] of parentSnapshots) {
@@ -269,6 +293,11 @@ export class TextRenderable extends TextBufferRenderable {
         parent._rawTextIdentities = [...snapshot.rawTextIdentities]
         parent._pendingRemovedRangeIds.clear()
         for (const id of snapshot.pendingRemovedRangeIds) parent._pendingRemovedRangeIds.add(id)
+        parent._pendingDocumentRoots.clear()
+        for (const root of snapshot.pendingDocumentRoots) parent._pendingDocumentRoots.add(root)
+        parent._pendingStyleRoots.clear()
+        for (const root of snapshot.pendingStyleRoots) parent._pendingStyleRoots.add(root)
+        parent._pendingNativeMoves.splice(0, parent._pendingNativeMoves.length, ...snapshot.pendingNativeMoves)
         for (const child of parent.getTextChildren()) child.parent = parent
       }
       for (const [child, snapshot] of childSnapshots) {
@@ -292,6 +321,7 @@ export class TextRenderable extends TextBufferRenderable {
       }
     }
 
+    textDocumentMutationDepth += 1
     try {
       for (const child of seenChildren) {
         const parent = child.parent
@@ -340,22 +370,40 @@ export class TextRenderable extends TextBufferRenderable {
           child.flushTextDocument()
         }
       }
+
+      this._manualStyledText = null
+      if (isPureNativeReorder)
+        documentOwnerBefore!.queueNativeChildMoves(
+          previousChildren as TextRenderable[],
+          nextChildren as TextRenderable[],
+        )
+      for (const parent of parentSnapshots.keys()) {
+        if (parent !== this) parent.invalidateTextDocument()
+      }
+      if (isPureNativeReorder) {
+        documentOwnerBefore!.yogaNode.markDirty()
+        this.requestRender()
+      } else {
+        this.invalidateTextDocument()
+      }
+
+      const sourceOwner = sourceDocumentOwners.values().next().value
+      const targetOwner = this.getDocumentOwner()
+      if (sourceOwner && targetOwner && sourceOwner !== targetOwner && sourceOwner.hasTextDocumentState) {
+        TextRenderable.flushTwoTextDocuments(sourceOwner, targetOwner)
+      }
     } catch (error) {
       rollback()
+      deferredDocumentOwners.clear()
+      for (const owner of deferredBefore) deferredDocumentOwners.add(owner)
       throw error
-    }
-
-    this._manualStyledText = null
-    if (isPureNativeReorder)
-      documentOwnerBefore!.queueNativeChildMoves(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
-    for (const parent of parentSnapshots.keys()) {
-      if (parent !== this) parent.invalidateTextDocument()
-    }
-    if (isPureNativeReorder) {
-      documentOwnerBefore!.yogaNode.markDirty()
-      this.requestRender()
-    } else {
-      this.invalidateTextDocument()
+    } finally {
+      textDocumentMutationDepth -= 1
+      if (textDocumentMutationDepth === 0) {
+        const owners = [...deferredDocumentOwners]
+        deferredDocumentOwners.clear()
+        for (const owner of owners) owner.flushTextDocument()
+      }
     }
 
     const destroyErrors: unknown[] = []
@@ -955,13 +1003,22 @@ export class TextRenderable extends TextBufferRenderable {
     if (owner) {
       owner._textDocumentPending = true
       owner._pendingDocumentRoots.add(this)
-      if (!owner.parent) owner.flushTextDocument()
+      if (!owner.parent) {
+        if (textDocumentMutationDepth === 0) owner.flushTextDocument()
+        else deferredDocumentOwners.add(owner)
+      }
     }
     this.requestRender()
   }
 
   private flushTextDocument(): void {
     if (!this.hasTextDocumentState || isTextRenderable(this.parent)) return
+    const prepared = this.prepareTextDocumentFlush()
+    const ids = this.textBuffer.applyDocumentOperations(prepared.operations)
+    this.commitPreparedTextDocumentFlush(prepared, ids)
+  }
+
+  private prepareTextDocumentFlush(): PreparedTextDocumentFlush {
     if (this._textDocumentOwner === 0) this._textDocumentOwner = nextTextDocumentOwner++
     if (nextTextDocumentOwner === 0xffffffff) nextTextDocumentOwner = 1
 
@@ -1025,9 +1082,16 @@ export class TextRenderable extends TextBufferRenderable {
     if (syntaxStyles.size > 1)
       throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
     this.textBuffer.setSyntaxStyle(syntaxStyles.values().next().value ?? this._textBufferSyntaxStyle)
-    const ids = this.textBuffer.applyDocumentOperations(operations)
+    return {
+      operations,
+      assignments,
+      contentChanged: roots.length > 0 || this._pendingNativeMoves.length > 0,
+    }
+  }
+
+  private commitPreparedTextDocumentFlush(prepared: PreparedTextDocumentFlush, ids: bigint[]): void {
+    const { assignments, contentChanged } = prepared
     ids.forEach((id, index) => assignments[index]!(id))
-    const contentChanged = roots.length > 0 || this._pendingNativeMoves.length > 0
     this._pendingDocumentRoots.clear()
     this._pendingStyleRoots.clear()
     this._pendingNativeMoves.splice(0)
@@ -1042,6 +1106,24 @@ export class TextRenderable extends TextBufferRenderable {
       this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
       this.emit("line-info-change")
     }
+  }
+
+  private static flushTwoTextDocuments(first: TextRenderable, second: TextRenderable): void {
+    if (first === second) {
+      first.flushTextDocument()
+      return
+    }
+    const firstPrepared = first.prepareTextDocumentFlush()
+    const secondPrepared = second.prepareTextDocumentFlush()
+    const result = first.textBuffer.applyTwoDocumentOperations(
+      second.textBuffer,
+      firstPrepared.operations,
+      secondPrepared.operations,
+    )
+    first.commitPreparedTextDocumentFlush(firstPrepared, result.ids)
+    second.commitPreparedTextDocumentFlush(secondPrepared, result.otherIds)
+    deferredDocumentOwners.delete(first)
+    deferredDocumentOwners.delete(second)
   }
 
   private collectNativeSubtreeOperation(

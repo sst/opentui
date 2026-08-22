@@ -538,14 +538,59 @@ describe("nested TextRenderable", () => {
     renderer.root.add(right)
     await renderOnce()
 
-    right.add(child)
-    await renderOnce()
+    const oldId = (child as any)._nativeRangeId
+    const transfer = spyOn(TextBuffer.prototype, "applyTwoDocumentOperations")
+    try {
+      right.add(child)
+      await renderOnce()
 
-    expect(left.plainText).toBe("LY")
-    expect(right.plainText).toBe("RX")
-    expect(left.getTextChildren()).toEqual([sibling])
-    expect(child.parent).toBe(right)
-    expect((child as any).hasTextDocumentState).toBe(false)
+      expect(transfer).toHaveBeenCalledTimes(1)
+      expect(left.plainText).toBe("LY")
+      expect(right.plainText).toBe("RX")
+      expect(left.getTextChildren()).toEqual([sibling])
+      expect(child.parent).toBe(right)
+      expect((child as any).hasTextDocumentState).toBe(false)
+      expect((child as any)._nativeRangeId).not.toBe(oldId)
+    } finally {
+      transfer.mockRestore()
+    }
+  })
+
+  test("leaves both native documents and pending tree state unchanged when transfer preparation fails", async () => {
+    const left = new TextRenderable(renderer, { content: "L" })
+    const right = new TextRenderable(renderer, { content: "R" })
+    const child = new TextRenderable(renderer, { content: "X" })
+    const sibling = new TextRenderable(renderer, { content: "Y" })
+    left.add(child)
+    left.add(sibling)
+    renderer.root.add(left)
+    renderer.root.add(right)
+    await renderOnce()
+    const oldId = (child as any)._nativeRangeId
+    const leftEpoch = (left as any).textBuffer.contentEpoch
+    const rightEpoch = (right as any).textBuffer.contentEpoch
+
+    const transfer = spyOn(TextBuffer.prototype, "applyTwoDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected destination preparation failure")
+    })
+    try {
+      expect(() => right.add(child)).toThrow("destination preparation failure")
+      expect(left.plainText).toBe("LXY")
+      expect(right.plainText).toBe("R")
+      expect(left.getTextChildren()).toEqual([child, sibling])
+      expect(right.getTextChildren()).toEqual([])
+      expect(child.parent).toBe(left)
+      expect((child as any)._nativeRangeId).toBe(oldId)
+      expect((left as any).textBuffer.contentEpoch).toBe(leftEpoch)
+      expect((right as any).textBuffer.contentEpoch).toBe(rightEpoch)
+
+      child.content = "Z"
+      await renderOnce()
+      expect(left.plainText).toBe("LZY")
+      expect(right.plainText).toBe("R")
+    } finally {
+      transfer.mockRestore()
+    }
   })
 
   test("rolls back a multi-child setter when a later adoption fails", () => {

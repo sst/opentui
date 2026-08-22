@@ -12,6 +12,7 @@ const rgbaUnpackTransform = (ptr?: Pointer) =>
 type StyledChunkInput = {
   text: string
   styleId?: number | null
+  styleKind?: number
   syntaxStyle?: Pointer | null
   fg?: RGBA | null
   bg?: RGBA | null
