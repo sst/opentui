@@ -159,6 +159,35 @@ pub const DocumentOperation = struct {
     before: bool = false,
 };
 
+pub const annotation_kind_style: u32 = 1 << 0;
+const annotation_kind_document: u32 = 1 << 1;
+pub const annotation_kind_virtual: u32 = 1 << 2;
+
+pub const AnnotationOperationKind = enum {
+    add_range,
+    add_point,
+    update_range,
+    update_point,
+    update_payload,
+    remove,
+    clear_namespace,
+};
+
+pub const AnnotationOperation = struct {
+    kind: AnnotationOperationKind,
+    id: u64 = 0,
+    start_byte: u32 = 0,
+    end_byte: u32 = 0,
+    start_gravity: TextAnnotations.Gravity = .right,
+    end_gravity: TextAnnotations.Gravity = .left,
+    payload: TextAnnotations.PayloadInput = .{ .namespace = 0 },
+};
+
+pub const AnnotationBatchResult = struct {
+    created_count: usize,
+    deleted_count: usize,
+};
+
 const InternalStyleSlot = struct {
     definition: ss.StyleDefinition,
     resolved_syntax_style: ?*const SyntaxStyle,
@@ -171,8 +200,8 @@ const InternalStyleSlot = struct {
 pub const UnifiedTextBuffer = struct {
     const Self = UnifiedTextBuffer;
     const styled_text_owner: u32 = std.math.maxInt(u32);
-    const style_range_kind: u32 = 1;
-    const document_range_kind: u32 = 2;
+    const style_range_kind = annotation_kind_style;
+    const document_range_kind = annotation_kind_document;
     pub const internal_style_base: u32 = 0x8000_0000;
     pub const rope_compaction_arena_limit: usize = 32;
     pub const rope_compaction_byte_limit: usize = 8 * 1024 * 1024;
@@ -516,6 +545,97 @@ pub const UnifiedTextBuffer = struct {
         return &self.annotations;
     }
 
+    /// Applies one annotation-only transaction. IDs deleted by explicit removes
+    /// follow operation order; namespace clears use the MarkTree iterator order
+    /// (lower byte, then native ID).
+    pub fn applyAnnotationOperations(
+        self: *Self,
+        operations: []const AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+    ) TextBufferError!AnnotationBatchResult {
+        var created_count: usize = 0;
+        for (operations) |operation| created_count += @intFromBool(operation.kind == .add_range or operation.kind == .add_point);
+        if (created_ids.len < created_count) return TextBufferError.InvalidDimensions;
+        if (operations.len == 0) return .{ .created_count = 0, .deleted_count = 0 };
+
+        for (operations) |operation| switch (operation.kind) {
+            .add_range, .update_range => {
+                _ = try self.normalizedByteOffsetToLocation(operation.start_byte);
+                _ = try self.normalizedByteOffsetToLocation(operation.end_byte);
+            },
+            .add_point, .update_point => _ = try self.normalizedByteOffsetToLocation(operation.start_byte),
+            .update_payload, .remove, .clear_namespace => {},
+        };
+
+        var candidate = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
+        var candidate_owned = true;
+        defer if (candidate_owned) candidate.deinit();
+        const prepared_created = self.global_allocator.alloc(u64, created_count) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(prepared_created);
+        var prepared_deleted: std.ArrayListUnmanaged(u64) = .empty;
+        defer prepared_deleted.deinit(self.global_allocator);
+
+        var created_index: usize = 0;
+        for (operations) |operation| switch (operation.kind) {
+            .add_range => {
+                prepared_created[created_index] = candidate.addRange(.{
+                    .start_byte = operation.start_byte,
+                    .end_byte = operation.end_byte,
+                    .start_gravity = operation.start_gravity,
+                    .end_gravity = operation.end_gravity,
+                }, operation.payload) catch |err| return annotationMutationError(err);
+                created_index += 1;
+            },
+            .add_point => {
+                prepared_created[created_index] = candidate.addPoint(.{
+                    .byte = operation.start_byte,
+                    .gravity = operation.start_gravity,
+                }, operation.payload) catch |err| return annotationMutationError(err);
+                created_index += 1;
+            },
+            .update_range => if (!(candidate.updateRange(operation.id, .{
+                .start_byte = operation.start_byte,
+                .end_byte = operation.end_byte,
+                .start_gravity = operation.start_gravity,
+                .end_gravity = operation.end_gravity,
+            }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
+            .update_point => if (!(candidate.updatePoint(operation.id, .{
+                .byte = operation.start_byte,
+                .gravity = operation.start_gravity,
+            }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
+            .update_payload => if (!(candidate.updatePayload(operation.id, operation.payload) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
+            .remove => {
+                if (candidate.get(operation.id) == null) return TextBufferError.InvalidIndex;
+                prepared_deleted.append(self.global_allocator, operation.id) catch return TextBufferError.OutOfMemory;
+                if (!(candidate.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
+            },
+            .clear_namespace => {
+                var iterator = candidate.iterator();
+                while (iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+                    if (annotation.payload.namespace == operation.payload.namespace) {
+                        prepared_deleted.append(self.global_allocator, annotation.id()) catch return TextBufferError.OutOfMemory;
+                    }
+                }
+                _ = candidate.clearNamespace(operation.payload.namespace) catch |err| return annotationMutationError(err);
+            },
+        };
+        if (deleted_ids.len < prepared_deleted.items.len) return TextBufferError.InvalidDimensions;
+
+        candidate_owned = false;
+        try self.publishAnnotationCandidate(candidate);
+        @memcpy(created_ids[0..created_count], prepared_created);
+        @memcpy(deleted_ids[0..prepared_deleted.items.len], prepared_deleted.items);
+        return .{ .created_count = created_count, .deleted_count = prepared_deleted.items.len };
+    }
+
+    fn annotationMutationError(err: anyerror) TextBufferError {
+        return switch (err) {
+            error.OutOfMemory => TextBufferError.OutOfMemory,
+            else => TextBufferError.InvalidDimensions,
+        };
+    }
+
     pub fn checkpointAnnotations(self: *Self) TextBufferError!TextAnnotations {
         var checkpoint = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         errdefer checkpoint.deinit();
@@ -563,7 +683,8 @@ pub const UnifiedTextBuffer = struct {
 
         var next = candidate.iterator();
         while (next.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            if (self.annotations.get(annotation.id()) == null) {
+            const current = self.annotations.get(annotation.id());
+            if (current == null or current.?.payload.style_id != annotation.payload.style_id) {
                 self.retainInternalStyle(annotation.payload.style_id) catch |err| {
                     for (retained.items) |style_id| self.releaseInternalStyle(style_id);
                     return err;
@@ -579,7 +700,10 @@ pub const UnifiedTextBuffer = struct {
 
         var current = self.annotations.iterator();
         while (current.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            if (candidate.get(annotation.id()) == null) try removed.append(self.global_allocator, annotation.payload.style_id);
+            const replacement = candidate.get(annotation.id());
+            if (replacement == null or replacement.?.payload.style_id != annotation.payload.style_id) {
+                try removed.append(self.global_allocator, annotation.payload.style_id);
+            }
         }
 
         var old = self.annotations;

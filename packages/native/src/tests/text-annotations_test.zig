@@ -600,6 +600,7 @@ fn modelPayload(input: PayloadInput, sequence: u64) TextAnnotations.Payload {
     return .{
         .namespace = input.namespace,
         .style_id = input.style_id,
+        .client_token = input.client_token,
         .priority = input.priority,
         .sequence = sequence,
         .internal = input.internal,

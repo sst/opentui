@@ -27,6 +27,7 @@ pub const TextAnnotations = struct {
     pub const PayloadInput = struct {
         namespace: u32,
         style_id: u32 = 0,
+        client_token: u64 = 0,
         priority: u8 = 0,
         internal: bool = false,
         kind_flags: u32 = 0,
@@ -36,6 +37,7 @@ pub const TextAnnotations = struct {
     pub const Payload = struct {
         namespace: u32,
         style_id: u32,
+        client_token: u64,
         priority: u8,
         sequence: u64,
         internal: bool,
@@ -715,6 +717,7 @@ pub const TextAnnotations = struct {
         return .{
             .namespace = input.namespace,
             .style_id = input.style_id,
+            .client_token = input.client_token,
             .priority = input.priority,
             .sequence = sequence,
             .internal = input.internal,
@@ -727,6 +730,7 @@ pub const TextAnnotations = struct {
         return .{
             .namespace = payload.namespace,
             .style_id = payload.style_id,
+            .client_token = payload.client_token,
             .priority = payload.priority,
             .internal = payload.internal,
             .kind_flags = payload.kind_flags,

@@ -3155,6 +3155,62 @@ pub const ExternalHighlight = extern struct {
     hl_ref: u16,
 };
 
+pub const ExternalAnnotationOperation = extern struct {
+    kind: u32,
+    internal: u32 = 0,
+    id: u64 = 0,
+    client_token: u64 = 0,
+    start_byte: u32 = 0,
+    end_byte: u32 = 0,
+    namespace: u32 = 0,
+    style_id: u32 = 0,
+    kind_flags: u32 = 0,
+    priority: u32 = 0,
+    start_gravity: u32 = 0,
+    end_gravity: u32 = 0,
+    splice_policy: u32 = 0,
+    reserved: u32 = 0,
+};
+
+pub const ExternalAnnotationQuery = extern struct {
+    mode: u32,
+    kind_mask: u32 = 0,
+    id: u64 = 0,
+    namespace: u32 = 0,
+    start_byte: u32 = 0,
+    end_byte: u32 = 0,
+    byte: u32 = 0,
+};
+
+pub const ExternalAnnotationRecord = extern struct {
+    id: u64,
+    client_token: u64,
+    sequence: u64,
+    start_byte: u32,
+    end_byte: u32,
+    namespace: u32,
+    style_id: u32,
+    kind_flags: u32,
+    kind: u32,
+    point_gravity: u32,
+    start_gravity: u32,
+    end_gravity: u32,
+    priority: u32,
+    splice_policy: u32,
+    internal: u32,
+};
+
+pub const ExternalAnnotationBatchResult = extern struct {
+    created_count: u32,
+    deleted_count: u32,
+};
+
+pub const ExternalDisplayPoint = extern struct {
+    row: u32,
+    col: u32,
+    exact: u32,
+};
+
 pub const ExternalStyledChunk32 = extern struct {
     text_ptr: ?[*]const u8,
     text_len: u32,
@@ -3240,6 +3296,16 @@ pub const ExternalTextSpliceResult = extern struct {
 };
 
 comptime {
+    std.debug.assert(@sizeOf(ExternalAnnotationOperation) == 64);
+    std.debug.assert(@offsetOf(ExternalAnnotationOperation, "id") == 8);
+    std.debug.assert(@offsetOf(ExternalAnnotationOperation, "client_token") == 16);
+    std.debug.assert(@sizeOf(ExternalAnnotationQuery) == 32);
+    std.debug.assert(@offsetOf(ExternalAnnotationQuery, "id") == 8);
+    std.debug.assert(@sizeOf(ExternalAnnotationRecord) == 72);
+    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "sequence") == 16);
+    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "kind_flags") == 40);
+    std.debug.assert(@sizeOf(ExternalAnnotationBatchResult) == 8);
+    std.debug.assert(@sizeOf(ExternalDisplayPoint) == 12);
     std.debug.assert(@sizeOf(ExternalStyledChunk32) == 64);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "style_kind") == 40);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "syntax_style_handle") == 44);
@@ -3259,6 +3325,7 @@ const TextDocumentStatus = enum(u32) {
     invalid_argument = 2,
     out_of_memory = 3,
     not_found = 4,
+    buffer_too_small = 5,
 };
 
 fn textDocumentErrorStatus(err: anyerror) u32 {
@@ -3267,6 +3334,249 @@ fn textDocumentErrorStatus(err: anyerror) u32 {
         error.InvalidIndex => TextDocumentStatus.not_found,
         else => TextDocumentStatus.invalid_argument,
     });
+}
+
+const AnnotationQueryMode = enum(u32) {
+    by_id,
+    all,
+    namespace,
+    kind_mask,
+    overlap,
+    containing_byte,
+    starts_at,
+    points_at,
+};
+
+fn externalAnnotationPayloadIsZero(operation: ExternalAnnotationOperation) bool {
+    return operation.internal == 0 and operation.client_token == 0 and operation.namespace == 0 and
+        operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0;
+}
+
+fn validExternalAnnotationPayload(operation: ExternalAnnotationOperation) bool {
+    return operation.internal <= 1 and operation.priority <= std.math.maxInt(u8) and
+        operation.splice_policy <= @intFromEnum(@import("text-annotations.zig").TextAnnotations.SplicePolicy.delete_when_covered);
+}
+
+fn validExternalAnnotationOperation(operation: ExternalAnnotationOperation) bool {
+    if (operation.kind > @intFromEnum(text_buffer.AnnotationOperationKind.clear_namespace) or operation.reserved != 0) return false;
+    const kind: text_buffer.AnnotationOperationKind = @enumFromInt(operation.kind);
+    return switch (kind) {
+        .add_range => operation.id == 0 and operation.start_gravity <= 1 and operation.end_gravity <= 1 and
+            validExternalAnnotationPayload(operation),
+        .add_point => operation.id == 0 and operation.end_byte == 0 and operation.start_gravity <= 1 and
+            operation.end_gravity == 0 and validExternalAnnotationPayload(operation),
+        .update_range => operation.id != 0 and operation.start_gravity <= 1 and operation.end_gravity <= 1 and
+            externalAnnotationPayloadIsZero(operation),
+        .update_point => operation.id != 0 and operation.end_byte == 0 and operation.start_gravity <= 1 and
+            operation.end_gravity == 0 and externalAnnotationPayloadIsZero(operation),
+        .update_payload => operation.id != 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.start_gravity == 0 and operation.end_gravity == 0 and validExternalAnnotationPayload(operation),
+        .remove => operation.id != 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.start_gravity == 0 and operation.end_gravity == 0 and externalAnnotationPayloadIsZero(operation),
+        .clear_namespace => operation.id == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.start_gravity == 0 and operation.end_gravity == 0 and operation.internal == 0 and
+            operation.client_token == 0 and operation.style_id == 0 and operation.kind_flags == 0 and
+            operation.priority == 0 and operation.splice_policy == 0,
+    };
+}
+
+fn decodeAnnotationOperation(operation: ExternalAnnotationOperation) text_buffer.AnnotationOperation {
+    return .{
+        .kind = @enumFromInt(operation.kind),
+        .id = operation.id,
+        .start_byte = operation.start_byte,
+        .end_byte = operation.end_byte,
+        .start_gravity = @enumFromInt(operation.start_gravity),
+        .end_gravity = @enumFromInt(operation.end_gravity),
+        .payload = .{
+            .namespace = operation.namespace,
+            .style_id = operation.style_id,
+            .client_token = operation.client_token,
+            .priority = @intCast(operation.priority),
+            .internal = operation.internal != 0,
+            .kind_flags = operation.kind_flags,
+            .splice_policy = @enumFromInt(operation.splice_policy),
+        },
+    };
+}
+
+fn validExternalAnnotationQuery(query: ExternalAnnotationQuery) bool {
+    if (query.mode > @intFromEnum(AnnotationQueryMode.points_at)) return false;
+    const mode: AnnotationQueryMode = @enumFromInt(query.mode);
+    return switch (mode) {
+        .by_id => query.id != 0 and query.kind_mask == 0 and query.namespace == 0 and query.start_byte == 0 and query.end_byte == 0 and query.byte == 0,
+        .all => query.kind_mask == 0 and query.id == 0 and query.namespace == 0 and query.start_byte == 0 and query.end_byte == 0 and query.byte == 0,
+        .namespace => query.kind_mask == 0 and query.id == 0 and query.start_byte == 0 and query.end_byte == 0 and query.byte == 0,
+        .kind_mask => query.kind_mask != 0 and query.id == 0 and query.namespace == 0 and query.start_byte == 0 and query.end_byte == 0 and query.byte == 0,
+        .overlap => query.kind_mask == 0 and query.id == 0 and query.namespace == 0 and query.start_byte <= query.end_byte and query.byte == 0,
+        .containing_byte, .starts_at, .points_at => query.kind_mask == 0 and query.id == 0 and query.namespace == 0 and query.start_byte == 0 and query.end_byte == 0,
+    };
+}
+
+fn annotationMatches(annotation: anytype, query: ExternalAnnotationQuery) bool {
+    const mode: AnnotationQueryMode = @enumFromInt(query.mode);
+    return switch (mode) {
+        .by_id => annotation.id() == query.id,
+        .all => true,
+        .namespace => annotation.payload.namespace == query.namespace,
+        .kind_mask => annotation.payload.kind_flags & query.kind_mask != 0,
+        .overlap => switch (annotation.mark) {
+            .range => |range| range.start_byte < range.end_byte and range.start_byte < query.end_byte and range.end_byte > query.start_byte,
+            .point => false,
+        },
+        .containing_byte => switch (annotation.mark) {
+            .range => |range| range.start_byte <= query.byte and query.byte < range.end_byte,
+            .point => false,
+        },
+        .starts_at => switch (annotation.mark) {
+            .range => |range| range.start_byte == query.byte,
+            .point => false,
+        },
+        .points_at => switch (annotation.mark) {
+            .range => false,
+            .point => |point| point.byte == query.byte,
+        },
+    };
+}
+
+fn externalAnnotationRecord(annotation: anytype) ExternalAnnotationRecord {
+    var result: ExternalAnnotationRecord = .{
+        .id = annotation.id(),
+        .client_token = annotation.payload.client_token,
+        .sequence = annotation.payload.sequence,
+        .start_byte = 0,
+        .end_byte = 0,
+        .namespace = annotation.payload.namespace,
+        .style_id = annotation.payload.style_id,
+        .kind_flags = annotation.payload.kind_flags,
+        .kind = 0,
+        .point_gravity = 0,
+        .start_gravity = 0,
+        .end_gravity = 0,
+        .priority = annotation.payload.priority,
+        .splice_policy = @intFromEnum(annotation.payload.splice_policy),
+        .internal = @intFromBool(annotation.payload.internal),
+    };
+    switch (annotation.mark) {
+        .range => |range| {
+            result.kind = 1;
+            result.start_byte = range.start_byte;
+            result.end_byte = range.end_byte;
+            result.start_gravity = @intFromEnum(range.start_gravity);
+            result.end_gravity = @intFromEnum(range.end_gravity);
+        },
+        .point => |point| {
+            result.kind = 2;
+            result.start_byte = point.byte;
+            result.end_byte = point.byte;
+            result.point_gravity = @intFromEnum(point.gravity);
+        },
+    }
+    return result;
+}
+
+export fn textBufferApplyAnnotationOperations(
+    tb_handle: NativeHandle,
+    operations_ptr: ?[*]const ExternalAnnotationOperation,
+    operation_count: u32,
+    out_created_ids: ?[*]u64,
+    created_capacity: u32,
+    out_deleted_ids: ?[*]u64,
+    deleted_capacity: u32,
+    out_result: ?*ExternalAnnotationBatchResult,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_result orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if ((operation_count != 0 and operations_ptr == null) or (created_capacity != 0 and out_created_ids == null) or
+        (deleted_capacity != 0 and out_deleted_ids == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const external_operations = if (operation_count == 0) &[_]ExternalAnnotationOperation{} else operations_ptr.?[0..operation_count];
+    var expected_created: usize = 0;
+    for (external_operations) |operation| {
+        if (!validExternalAnnotationOperation(operation)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+        expected_created += @intFromBool(operation.kind == @intFromEnum(text_buffer.AnnotationOperationKind.add_range) or
+            operation.kind == @intFromEnum(text_buffer.AnnotationOperationKind.add_point));
+    }
+    if (created_capacity != expected_created) return @intFromEnum(TextDocumentStatus.invalid_argument);
+
+    const operations = globalAllocator.alloc(text_buffer.AnnotationOperation, external_operations.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+    defer globalAllocator.free(operations);
+    for (external_operations, 0..) |operation, index| operations[index] = decodeAnnotationOperation(operation);
+    var empty_created: [0]u64 = .{};
+    var empty_deleted: [0]u64 = .{};
+    const created = if (created_capacity == 0) empty_created[0..] else out_created_ids.?[0..created_capacity];
+    const deleted = if (deleted_capacity == 0) empty_deleted[0..] else out_deleted_ids.?[0..deleted_capacity];
+    const result = object_ptr.applyAnnotationOperations(operations, created, deleted) catch |err| return textDocumentErrorStatus(err);
+    output.* = .{ .created_count = @intCast(result.created_count), .deleted_count = @intCast(result.deleted_count) };
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+/// Query results are always ordered by derived lower byte, then native ID.
+export fn textBufferQueryAnnotations(
+    tb_handle: NativeHandle,
+    query_ptr: ?*const ExternalAnnotationQuery,
+    out_records: ?[*]ExternalAnnotationRecord,
+    record_capacity: u32,
+    out_count: ?*u32,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const query = (query_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument)).*;
+    const count_output = out_count orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (!validExternalAnnotationQuery(query) or (record_capacity != 0 and out_records == null)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    switch (@as(AnnotationQueryMode, @enumFromInt(query.mode))) {
+        .overlap => {
+            _ = object_ptr.normalizedByteOffsetToLocation(query.start_byte) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
+            _ = object_ptr.normalizedByteOffsetToLocation(query.end_byte) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
+        },
+        .containing_byte, .starts_at, .points_at => _ = object_ptr.normalizedByteOffsetToLocation(query.byte) catch return @intFromEnum(TextDocumentStatus.invalid_argument),
+        .by_id, .all, .namespace, .kind_mask => {},
+    }
+
+    var count: u32 = 0;
+    var iterator = object_ptr.textAnnotations().iterator();
+    while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
+        if (annotationMatches(annotation, query)) count += 1;
+    }
+    count_output.* = count;
+    if (record_capacity == 0 and out_records == null) return @intFromEnum(TextDocumentStatus.ok);
+    if (record_capacity < count) return @intFromEnum(TextDocumentStatus.buffer_too_small);
+    if (count == 0) return @intFromEnum(TextDocumentStatus.ok);
+    const records = out_records.?[0..record_capacity];
+    iterator = object_ptr.textAnnotations().iterator();
+    var index: usize = 0;
+    while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
+        if (!annotationMatches(annotation, query)) continue;
+        records[index] = externalAnnotationRecord(annotation);
+        index += 1;
+    }
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferDisplayPointToNormalizedByte(
+    tb_handle: NativeHandle,
+    row: u32,
+    col: u32,
+    affinity: u32,
+    out_byte: ?*u32,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_byte orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (affinity > 1) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    output.* = object_ptr.displayPointToNormalizedByteOffset(.{ .row = row, .col = col }, @enumFromInt(affinity)) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferNormalizedByteToDisplayPoint(
+    tb_handle: NativeHandle,
+    byte: u32,
+    affinity: u32,
+    out_point: ?*ExternalDisplayPoint,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_point orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (affinity > 1) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const mapped = object_ptr.normalizedByteOffsetToDisplayPoint(byte, @enumFromInt(affinity)) catch return @intFromEnum(TextDocumentStatus.invalid_argument);
+    output.* = .{ .row = mapped.point.row, .col = mapped.point.col, .exact = @intFromBool(mapped.exact) };
+    return @intFromEnum(TextDocumentStatus.ok);
 }
 
 fn externalStyleSource(style_kind: u32, style_id: u32, style_handle: NativeHandle, link_ptr: ?[*]const u8, link_len: u32) ?struct {
@@ -3808,6 +4118,147 @@ export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
     return object_ptr.getHighlightCount();
 }
 
+test "annotation FFI batch CRUD and bulk queries preserve deterministic records" {
+    const handle = createTextBuffer(1);
+    try std.testing.expect(handle != INVALID_HANDLE);
+    defer destroyTextBuffer(handle);
+    textBufferAppend(handle, "abcdef".ptr, 6);
+
+    var add = [_]ExternalAnnotationOperation{
+        .{
+            .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_range),
+            .client_token = 99,
+            .start_byte = 1,
+            .end_byte = 5,
+            .namespace = 7,
+            .style_id = 11,
+            .kind_flags = text_buffer.annotation_kind_style,
+            .priority = 3,
+            .start_gravity = 1,
+            .splice_policy = 1,
+        },
+        .{
+            .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_point),
+            .client_token = 100,
+            .start_byte = 1,
+            .namespace = 8,
+            .kind_flags = text_buffer.annotation_kind_virtual,
+            .start_gravity = 1,
+        },
+    };
+    var created: [2]u64 = undefined;
+    var deleted: [2]u64 = undefined;
+    var batch_result: ExternalAnnotationBatchResult = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferApplyAnnotationOperations(
+        handle,
+        &add,
+        add.len,
+        &created,
+        created.len,
+        &deleted,
+        deleted.len,
+        &batch_result,
+    ));
+    try std.testing.expectEqual(@as(u32, 2), batch_result.created_count);
+    try std.testing.expectEqual(@as(u32, 0), batch_result.deleted_count);
+
+    var count: u32 = 0;
+    var all_query = ExternalAnnotationQuery{ .mode = @intFromEnum(AnnotationQueryMode.all) };
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, null, 0, &count));
+    try std.testing.expectEqual(@as(u32, 2), count);
+    var undersized: [1]ExternalAnnotationRecord = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.buffer_too_small), textBufferQueryAnnotations(handle, &all_query, &undersized, 1, &count));
+    var records: [2]ExternalAnnotationRecord = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, &records, records.len, &count));
+    try std.testing.expectEqualSlices(u64, &created, &.{ records[0].id, records[1].id });
+    try std.testing.expectEqual(@as(u64, 99), records[0].client_token);
+    try std.testing.expectEqual(@as(u32, 1), records[0].kind);
+    try std.testing.expectEqual(@as(u32, 2), records[1].kind);
+    try std.testing.expectEqual(@as(u32, 1), records[1].point_gravity);
+
+    const queries = [_]ExternalAnnotationQuery{
+        .{ .mode = @intFromEnum(AnnotationQueryMode.by_id), .id = created[0] },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.namespace), .namespace = 7 },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.kind_mask), .kind_mask = text_buffer.annotation_kind_style },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.overlap), .start_byte = 2, .end_byte = 3 },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.containing_byte), .byte = 2 },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.starts_at), .byte = 1 },
+        .{ .mode = @intFromEnum(AnnotationQueryMode.points_at), .byte = 1 },
+    };
+    for (queries) |query_value| {
+        var query = query_value;
+        try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &query, null, 0, &count));
+        try std.testing.expectEqual(@as(u32, 1), count);
+    }
+
+    var mutate = [_]ExternalAnnotationOperation{
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_range), .id = created[0], .start_byte = 2, .end_byte = 6, .start_gravity = 1 },
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_point), .id = created[1], .start_byte = 3 },
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_payload), .id = created[0], .client_token = 101, .namespace = 9, .kind_flags = text_buffer.annotation_kind_style },
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.remove), .id = created[1] },
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.clear_namespace), .namespace = 9 },
+    };
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferApplyAnnotationOperations(
+        handle,
+        &mutate,
+        mutate.len,
+        null,
+        0,
+        &deleted,
+        deleted.len,
+        &batch_result,
+    ));
+    try std.testing.expectEqual(@as(u32, 2), batch_result.deleted_count);
+    try std.testing.expectEqualSlices(u64, &.{ created[1], created[0] }, deleted[0..2]);
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, null, 0, &count));
+    try std.testing.expectEqual(@as(u32, 0), count);
+}
+
+test "annotation FFI rejects malformed descriptors atomically and converts Unicode coordinates" {
+    const handle = createTextBuffer(1);
+    try std.testing.expect(handle != INVALID_HANDLE);
+    defer destroyTextBuffer(handle);
+    const text = "Ae\u{301}\n界";
+    textBufferAppend(handle, text.ptr, text.len);
+
+    var invalid = [_]ExternalAnnotationOperation{.{
+        .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_point),
+        .start_byte = 1,
+        .namespace = 1,
+        .reserved = 1,
+    }};
+    var created = [_]u64{std.math.maxInt(u64)};
+    var batch_result = ExternalAnnotationBatchResult{ .created_count = std.math.maxInt(u32), .deleted_count = std.math.maxInt(u32) };
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferApplyAnnotationOperations(
+        handle,
+        &invalid,
+        1,
+        &created,
+        1,
+        null,
+        0,
+        &batch_result,
+    ));
+    try std.testing.expectEqual(std.math.maxInt(u64), created[0]);
+    try std.testing.expectEqual(std.math.maxInt(u32), batch_result.created_count);
+    var count: u32 = 0;
+    var all_query = ExternalAnnotationQuery{ .mode = @intFromEnum(AnnotationQueryMode.all) };
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, null, 0, &count));
+    try std.testing.expectEqual(@as(u32, 0), count);
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferQueryAnnotations(handle, null, null, 0, &count));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferQueryAnnotations(handle, &all_query, null, 1, &count));
+
+    var byte: u32 = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferDisplayPointToNormalizedByte(handle, 0, 2, 1, &byte));
+    try std.testing.expectEqual(@as(u32, "Ae\u{301}".len), byte);
+    var point: ExternalDisplayPoint = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferNormalizedByteToDisplayPoint(handle, 2, 0, &point));
+    try std.testing.expectEqual(@as(u32, 1), point.col);
+    try std.testing.expectEqual(@as(u32, 0), point.exact);
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferNormalizedByteToDisplayPoint(handle, 2, 2, &point));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferDisplayPointToNormalizedByte(handle, 0, 0, 0, null));
+}
+
 test "text document FFI rejects null pointer length and output combinations" {
     const handle = createTextBuffer(1);
     try std.testing.expect(handle != INVALID_HANDLE);
@@ -3844,7 +4295,6 @@ test "text document FFI rejects null pointer length and output combinations" {
         ));
         textBufferSetStyledText(handle, &chunks, 1);
     }
-
 }
 
 test "text document FFI rejects invalid registered style discriminants and ownership" {
