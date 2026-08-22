@@ -692,14 +692,15 @@ test "document operation batch resolves shifted stable IDs and publishes once" {
 }
 
 test "document transactions compact Rope generations while preserving stable ranges" {
+    var tracked = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
-    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-    defer tb.deinit();
+    const tb = try TextBuffer.init(tracked.allocator(), pool, link_pool, .unicode);
+    var tb_owned = true;
+    defer if (tb_owned) tb.deinit();
     const view_id = try tb.registerView();
-    defer tb.unregisterView(view_id);
 
     const initial_chunks = [_]text_buffer.StyledChunk{
         .{ .text_ptr = "L".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
@@ -728,6 +729,7 @@ test "document transactions compact Rope generations while preserving stable ran
     }}, &ids);
     const initial_epoch = tb.getContentEpoch();
     const initial_annotation_epoch = tb.getAnnotationEpoch();
+    const initial_active_allocations = tracked.allocations - tracked.deallocations;
     const replacements = [_][]const u8{ "alpha\r\n🙂", "中", "é\rZ", "wide界🙂" };
     const normalized = [_][]const u8{ "alpha\n🙂", "中", "é\nZ", "wide界🙂" };
 
@@ -749,6 +751,7 @@ test "document transactions compact Rope generations while preserving stable ran
         try tb.applyDocumentOperations(operations[0..operation_count], &.{});
         try std.testing.expect(tb.getRopeTransactionArenaCount() <= TextBuffer.rope_compaction_arena_limit);
         try std.testing.expect(tb.getRopeTransactionArenaBytes() < TextBuffer.rope_compaction_byte_limit);
+        try std.testing.expect(tracked.allocations - tracked.deallocations <= initial_active_allocations + 256);
         if (index % 97 == 0) {
             try std.testing.expect(tb.isViewDirty(view_id));
             tb.clearViewDirty(view_id);
@@ -763,6 +766,10 @@ test "document transactions compact Rope generations while preserving stable ran
     }
     try std.testing.expectEqual(initial_epoch + 4000, tb.getContentEpoch());
     try std.testing.expectEqual(initial_annotation_epoch + 4000, tb.getAnnotationEpoch());
+    tb.unregisterView(view_id);
+    tb.deinit();
+    tb_owned = false;
+    try std.testing.expectEqual(tracked.allocations, tracked.deallocations);
 }
 
 test "Rope compaction defers for EditBuffer history then reclaims after history clear" {
