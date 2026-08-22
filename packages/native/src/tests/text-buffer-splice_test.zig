@@ -555,6 +555,56 @@ test "splice allocation failures preserve logical state and permit reuse" {
     for (0..growth_allocations) |offset| _ = try exerciseSpliceFailure(offset, true);
 }
 
+fn exerciseStyledTransactionFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const style = try syntax_style.SyntaxStyle.init(allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+    try tb.setText("left middle right");
+    const replacement = "中🙂";
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = replacement.ptr,
+        .text_len = replacement.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+    }};
+    const before_root = tb.rope().root;
+    const before_epoch = tb.getContentEpoch();
+    const before_annotations = tb.textAnnotations().count();
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const transaction = tb.replaceStyledRangeBytes(5, 11, &chunks, 9);
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, transaction);
+        try std.testing.expect(tb.rope().root == before_root);
+        try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
+        try std.testing.expectEqual(before_annotations, tb.textAnnotations().count());
+        try expectText(tb, "left middle right");
+
+        failing.fail_index = std.math.maxInt(usize);
+        _ = try tb.replaceStyledRangeBytes(5, 11, &chunks, 9);
+        try expectText(tb, "left 中🙂 right");
+    } else {
+        _ = try transaction;
+    }
+    return failing.alloc_index - before_alloc;
+}
+
+test "styled replacement failures preserve text annotations and epoch at every allocation" {
+    const allocations = try exerciseStyledTransactionFailure(null);
+    for (0..allocations) |offset| _ = try exerciseStyledTransactionFailure(offset);
+}
+
 test "EditBuffer display splitter preserves interior wide and tab behavior" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
