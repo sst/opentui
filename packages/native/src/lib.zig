@@ -2120,6 +2120,18 @@ export fn textBufferGetByteSize(tb_handle: NativeHandle) u32 {
     return object_ptr.getByteSize();
 }
 
+/// Non-semantic diagnostics for benchmarks and leak tests. Values describe
+/// only the currently acquired TextBuffer and do not expose Rope node identity.
+export fn textBufferGetDebugMetrics(tb_handle: NativeHandle, out_metrics: ?*ExternalTextBufferDebugMetrics) bool {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
+    const output = out_metrics orelse return false;
+    output.* = .{
+        .rope_transaction_arena_count = @intCast(object_ptr.getRopeTransactionArenaCount()),
+        .rope_transaction_arena_bytes = @intCast(object_ptr.getRopeTransactionArenaBytes()),
+    };
+    return true;
+}
+
 export fn textBufferReset(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     object_ptr.reset();
@@ -3213,6 +3225,11 @@ pub const ExternalTextSpliceResult = extern struct {
     new_extent_columns: u32,
 };
 
+pub const ExternalTextBufferDebugMetrics = extern struct {
+    rope_transaction_arena_count: u64,
+    rope_transaction_arena_bytes: u64,
+};
+
 comptime {
     std.debug.assert(@sizeOf(ExternalStyledChunk32) == 64);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "style_kind") == 40);
@@ -3228,6 +3245,7 @@ comptime {
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
+    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 16);
 }
 
 const TextDocumentStatus = enum(u32) {
@@ -3290,6 +3308,83 @@ fn validExternalStyledChunk(chunk: ExternalStyledChunk32) bool {
 fn validAnnotationStyle(style: ExternalAnnotationStyle) bool {
     return (style.link_len == 0 or style.link_ptr != null) and
         externalStyleSource(style.style_kind, style.style_id, style.syntax_style_handle, style.link_ptr, style.link_len) != null;
+}
+
+fn externalDocumentStyleIsDefault(
+    fg_ptr: ?[*]const u16,
+    bg_ptr: ?[*]const u16,
+    attributes: u32,
+    style_id: u32,
+    style_kind: u32,
+    syntax_style_handle: NativeHandle,
+    link_ptr: ?[*]const u8,
+    link_len: u32,
+) bool {
+    return fg_ptr == null and bg_ptr == null and attributes == 0 and style_id == 0 and style_kind == 0 and
+        syntax_style_handle == INVALID_HANDLE and link_ptr == null and link_len == 0;
+}
+
+fn validExternalDocumentRange(range: ExternalDocumentRangeInput) bool {
+    if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8)) return false;
+    if (range.remove != 0) {
+        return range.id != 0 and range.start_chunk == 0 and range.end_chunk == 0 and range.styled == 0 and
+            range.priority == 0 and externalDocumentStyleIsDefault(
+            range.fg_ptr,
+            range.bg_ptr,
+            range.attributes,
+            range.style_id,
+            range.style_kind,
+            range.syntax_style_handle,
+            range.link_ptr,
+            range.link_len,
+        );
+    }
+    if (range.styled == 0 and !externalDocumentStyleIsDefault(
+        range.fg_ptr,
+        range.bg_ptr,
+        range.attributes,
+        range.style_id,
+        range.style_kind,
+        range.syntax_style_handle,
+        range.link_ptr,
+        range.link_len,
+    )) return false;
+    return (range.link_len == 0 or range.link_ptr != null) and
+        externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len) != null;
+}
+
+fn validExternalDocumentOperation(operation: ExternalDocumentOperation) bool {
+    if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.use_target > 1 or operation.before > 1) return false;
+    const default_style = externalDocumentStyleIsDefault(
+        operation.fg_ptr,
+        operation.bg_ptr,
+        operation.attributes,
+        operation.style_id,
+        operation.style_kind,
+        operation.syntax_style_handle,
+        operation.link_ptr,
+        operation.link_len,
+    );
+    const kind: text_buffer.DocumentOperationKind = @enumFromInt(operation.kind);
+    return switch (kind) {
+        .replace => operation.target_mode <= 2 and operation.before == 0 and default_style and
+            (operation.use_target != 0 or (operation.target_id == 0 and operation.anchor_id == 0 and operation.target_mode == 0)) and
+            (operation.anchor_id == 0 or (operation.use_target != 0 and operation.target_mode == 0)),
+        .update_style => operation.target_mode == 0 and operation.target_id != 0 and operation.anchor_id == 0 and
+            operation.use_target != 0 and operation.before == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.chunk_count == 0 and operation.range_count == 0 and
+            (operation.link_len == 0 or operation.link_ptr != null) and
+            externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len) != null,
+        .move => operation.target_mode == 0 and operation.target_id != 0 and operation.anchor_id != 0 and
+            operation.use_target != 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.chunk_count == 0 and operation.range_count == 0 and default_style,
+        .remove => operation.target_mode == 0 and operation.target_id != 0 and operation.anchor_id == 0 and
+            operation.use_target != 0 and operation.before == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.chunk_count == 0 and operation.range_count == 0 and default_style,
+        .clear_owner => operation.target_mode == 0 and operation.target_id == 0 and operation.anchor_id == 0 and
+            operation.use_target == 0 and operation.before == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
+            operation.chunk_count == 0 and operation.range_count == 0 and default_style,
+    };
 }
 
 fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk {
@@ -3412,20 +3507,19 @@ export fn textBufferReplaceDocumentRange(
         return @intFromEnum(TextDocumentStatus.invalid_argument);
     }
     const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
+    for (external_chunks) |chunk| if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
+    for (external_ranges) |range| if (!validExternalDocumentRange(range)) return @intFromEnum(TextDocumentStatus.invalid_argument);
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
     defer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| {
-        if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
         chunks[index] = externalStyledChunk(chunk).?;
     }
-    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
     const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
     defer globalAllocator.free(ranges);
     for (external_ranges, 0..) |range, index| {
         const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len);
-        if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or
-            (range.link_len != 0 and range.link_ptr == null) or style == null)
-        {
+        if (!validExternalDocumentRange(range) or style == null) {
             return @intFromEnum(TextDocumentStatus.invalid_argument);
         }
         ranges[index] = .{
@@ -3498,20 +3592,12 @@ fn decodeDocumentBatch(
     out_id_count: u32,
 ) DecodeDocumentBatchError!DecodedDocumentBatch {
     for (external_chunks) |chunk| if (!validExternalStyledChunk(chunk)) return error.InvalidArgument;
-    for (external_ranges) |range| {
-        if (range.remove > 1 or range.styled > 1 or range.priority > std.math.maxInt(u8) or
-            (range.link_len != 0 and range.link_ptr == null) or
-            externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len) == null)
-            return error.InvalidArgument;
-    }
+    for (external_ranges) |range| if (!validExternalDocumentRange(range)) return error.InvalidArgument;
     var expected_ids: usize = 0;
     var expected_chunk_start: u32 = 0;
     var expected_range_start: u32 = 0;
     for (external_operations) |operation| {
-        if (operation.kind > @intFromEnum(text_buffer.DocumentOperationKind.clear_owner) or operation.target_mode > 2 or
-            operation.use_target > 1 or operation.before > 1 or (operation.link_len != 0 and operation.link_ptr == null) or
-            externalStyleSource(operation.style_kind, operation.style_id, operation.syntax_style_handle, operation.link_ptr, operation.link_len) == null)
-            return error.InvalidArgument;
+        if (!validExternalDocumentOperation(operation)) return error.InvalidArgument;
         const chunk_end = std.math.add(u32, operation.chunk_start, operation.chunk_count) catch return error.InvalidArgument;
         const range_end = std.math.add(u32, operation.range_start, operation.range_count) catch return error.InvalidArgument;
         if (operation.chunk_start != expected_chunk_start or operation.range_start != expected_range_start or
@@ -3521,23 +3607,14 @@ fn decodeDocumentBatch(
         const kind: text_buffer.DocumentOperationKind = @enumFromInt(operation.kind);
         switch (kind) {
             .replace => {
-                if ((operation.use_target != 0 and operation.target_id == 0) or
-                    (operation.use_target == 0 and (operation.target_mode != 0 or operation.anchor_id != 0)) or
-                    (operation.anchor_id != 0 and (operation.use_target == 0 or operation.target_mode != 0))) return error.InvalidArgument;
+                if (operation.use_target != 0 and operation.target_id == 0) return error.InvalidArgument;
                 for (external_ranges[operation.range_start..range_end]) |range| {
-                    if (range.remove != 0) {
-                        if (range.id == 0) return error.InvalidArgument;
-                    } else if (range.start_chunk > range.end_chunk or range.end_chunk > operation.chunk_count) {
+                    if (range.remove != 0) {} else if (range.start_chunk > range.end_chunk or range.end_chunk > operation.chunk_count) {
                         return error.InvalidArgument;
                     }
                 }
             },
-            .update_style, .remove => if (operation.use_target == 0 or operation.target_id == 0 or
-                operation.anchor_id != 0 or operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
-            .move => if (operation.use_target == 0 or operation.target_id == 0 or operation.anchor_id == 0 or
-                operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
-            .clear_owner => if (operation.use_target != 0 or operation.target_id != 0 or operation.anchor_id != 0 or
-                operation.chunk_count != 0 or operation.range_count != 0) return error.InvalidArgument,
+            .update_style, .move, .remove, .clear_owner => {},
         }
         expected_ids = std.math.add(usize, expected_ids, operation.range_count) catch return error.InvalidArgument;
     }
@@ -4067,7 +4144,7 @@ test "document operation FFI validates complete descriptors before outputs" {
         .target_id = 0,
         .anchor_id = 0,
         .use_target = 0,
-        .before = 1,
+        .before = 0,
         .start_byte = 0,
         .end_byte = 0,
         .owner = 1,
@@ -4193,6 +4270,171 @@ test "document operation FFI validates complete descriptors before outputs" {
         null,
         0,
     ));
+}
+
+test "document descriptor tags reject every forbidden field" {
+    const default_operation: ExternalDocumentOperation = .{
+        .kind = 0,
+        .target_mode = 0,
+        .target_id = 0,
+        .anchor_id = 0,
+        .use_target = 0,
+        .before = 0,
+        .start_byte = 0,
+        .end_byte = 0,
+        .owner = 7,
+        .chunk_start = 0,
+        .chunk_count = 0,
+        .range_start = 0,
+        .range_count = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .style_id = 0,
+        .style_kind = 0,
+        .syntax_style_handle = INVALID_HANDLE,
+        .link_ptr = null,
+        .link_len = 0,
+    };
+    var rgba = [_]u16{ 1, 2, 3, 4 };
+    const url = "https://invalid.test";
+
+    var clear_owner = default_operation;
+    clear_owner.kind = @intFromEnum(text_buffer.DocumentOperationKind.clear_owner);
+    try std.testing.expect(validExternalDocumentOperation(clear_owner));
+    inline for (.{ "target_mode", "use_target", "before", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+        var invalid = clear_owner;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    inline for (.{ "target_id", "anchor_id" }) |field| {
+        var invalid = clear_owner;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
+        var invalid = clear_owner;
+        @field(invalid, field) = rgba[0..].ptr;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    var clear_link = clear_owner;
+    clear_link.link_ptr = url.ptr;
+    try std.testing.expect(!validExternalDocumentOperation(clear_link));
+
+    var remove = default_operation;
+    remove.kind = @intFromEnum(text_buffer.DocumentOperationKind.remove);
+    remove.target_id = 1;
+    remove.use_target = 1;
+    try std.testing.expect(validExternalDocumentOperation(remove));
+    inline for (.{ "target_mode", "before", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+        var invalid = remove;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    var remove_anchor = remove;
+    remove_anchor.anchor_id = 1;
+    try std.testing.expect(!validExternalDocumentOperation(remove_anchor));
+
+    var move = default_operation;
+    move.kind = @intFromEnum(text_buffer.DocumentOperationKind.move);
+    move.target_id = 1;
+    move.anchor_id = 2;
+    move.use_target = 1;
+    move.before = 1;
+    try std.testing.expect(validExternalDocumentOperation(move));
+    inline for (.{ "target_mode", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+        var invalid = move;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+
+    var update_style = default_operation;
+    update_style.kind = @intFromEnum(text_buffer.DocumentOperationKind.update_style);
+    update_style.target_id = 1;
+    update_style.use_target = 1;
+    update_style.fg_ptr = rgba[0..].ptr;
+    update_style.attributes = 2;
+    update_style.link_ptr = url.ptr;
+    update_style.link_len = url.len;
+    try std.testing.expect(validExternalDocumentOperation(update_style));
+    inline for (.{ "target_mode", "before", "start_byte", "end_byte", "chunk_count", "range_count" }) |field| {
+        var invalid = update_style;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    var update_anchor = update_style;
+    update_anchor.anchor_id = 1;
+    try std.testing.expect(!validExternalDocumentOperation(update_anchor));
+
+    var replace = default_operation;
+    replace.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
+    replace.start_byte = 1;
+    replace.end_byte = 2;
+    try std.testing.expect(validExternalDocumentOperation(replace));
+    inline for (.{ "before", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+        var invalid = replace;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
+        var invalid = replace;
+        @field(invalid, field) = rgba[0..].ptr;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
+    var replace_link = replace;
+    replace_link.link_ptr = url.ptr;
+    try std.testing.expect(!validExternalDocumentOperation(replace_link));
+    var replace_target_without_tag = replace;
+    replace_target_without_tag.target_id = 1;
+    try std.testing.expect(!validExternalDocumentOperation(replace_target_without_tag));
+
+    const default_range: ExternalDocumentRangeInput = .{
+        .id = 0,
+        .remove = 0,
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+        .style_id = 0,
+        .style_kind = 0,
+        .syntax_style_handle = INVALID_HANDLE,
+        .link_ptr = null,
+        .link_len = 0,
+        .styled = 0,
+        .priority = 1,
+    };
+    try std.testing.expect(validExternalDocumentRange(default_range));
+    inline for (.{ "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
+        var invalid = default_range;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentRange(invalid));
+    }
+    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
+        var invalid = default_range;
+        @field(invalid, field) = rgba[0..].ptr;
+        try std.testing.expect(!validExternalDocumentRange(invalid));
+    }
+
+    var remove_range = default_range;
+    remove_range.id = 9;
+    remove_range.remove = 1;
+    remove_range.end_chunk = 0;
+    remove_range.priority = 0;
+    try std.testing.expect(validExternalDocumentRange(remove_range));
+    inline for (.{ "start_chunk", "end_chunk", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len", "styled", "priority" }) |field| {
+        var invalid = remove_range;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentRange(invalid));
+    }
+    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
+        var invalid = remove_range;
+        @field(invalid, field) = rgba[0..].ptr;
+        try std.testing.expect(!validExternalDocumentRange(invalid));
+    }
+    var remove_range_link = remove_range;
+    remove_range_link.link_ptr = url.ptr;
+    try std.testing.expect(!validExternalDocumentRange(remove_range_link));
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {

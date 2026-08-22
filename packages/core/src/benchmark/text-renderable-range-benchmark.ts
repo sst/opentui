@@ -3,17 +3,89 @@ import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
 import { resolveRenderLib } from "../zig.js"
+import type { AllocatorStats, TextBufferDebugMetrics } from "../zig.js"
 import type { CapturedFrame } from "../types.js"
 
 const leafCount = Number(process.env.TEXT_RANGE_LEAVES ?? 1_000)
 const updates = Number(process.env.TEXT_RANGE_UPDATES ?? 200)
 const rounds = Number(process.env.TEXT_RANGE_ROUNDS ?? 5)
 
-type Sample = { rangeMs: number; replacementMs: number; frameHash: number }
+if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS must be a positive integer")
 
+type BufferMemory = {
+  peakArenaCount: number
+  peakArenaBytes: number
+  endLiveArenaCount: number
+  endLiveArenaBytes: number
+}
+type LiveMemory = {
+  range: BufferMemory
+  replacement: BufferMemory
+  activeAllocations: { start: number; peakGrowth: number; endLiveGrowth: number; afterTeardownGrowth: number }
+}
+type Sample = { rangeMs: number; replacementMs: number; frameHash: number; renderCount: number; memory: LiveMemory }
+
+// Nearest-rank: rank = ceil(p * n), one-based. With five rounds p95 is the maximum sample.
 function percentile(values: number[], fraction: number): number {
   const sorted = [...values].sort((a, b) => a - b)
-  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction))] ?? 0
+  return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0
+}
+
+function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRenderable) {
+  const lib = resolveRenderLib()
+  const textBuffer = (root: TextRenderable) =>
+    (root as unknown as { textBuffer: { getDebugMetrics(): TextBufferDebugMetrics } }).textBuffer
+  const start = lib.getAllocatorStats()
+  let peakActiveGrowth = 0
+  let rangePeak = { transactionArenaCount: 0, transactionArenaBytes: 0 }
+  let replacementPeak = { transactionArenaCount: 0, transactionArenaBytes: 0 }
+  const sample = () => {
+    const allocations = lib.getAllocatorStats()
+    const range = textBuffer(rangeRoot).getDebugMetrics()
+    const replacement = textBuffer(replacementRoot).getDebugMetrics()
+    peakActiveGrowth = Math.max(peakActiveGrowth, allocations.activeAllocations - start.activeAllocations)
+    if (range.transactionArenaCount > rangePeak.transactionArenaCount)
+      rangePeak.transactionArenaCount = range.transactionArenaCount
+    if (range.transactionArenaBytes > rangePeak.transactionArenaBytes)
+      rangePeak.transactionArenaBytes = range.transactionArenaBytes
+    if (replacement.transactionArenaCount > replacementPeak.transactionArenaCount)
+      replacementPeak.transactionArenaCount = replacement.transactionArenaCount
+    if (replacement.transactionArenaBytes > replacementPeak.transactionArenaBytes)
+      replacementPeak.transactionArenaBytes = replacement.transactionArenaBytes
+  }
+  sample()
+  return {
+    sample,
+    finishLive(): { memory: LiveMemory; start: AllocatorStats } {
+      sample()
+      const allocationEnd = lib.getAllocatorStats()
+      const rangeEnd = textBuffer(rangeRoot).getDebugMetrics()
+      const replacementEnd = textBuffer(replacementRoot).getDebugMetrics()
+      return {
+        start,
+        memory: {
+          range: {
+            peakArenaCount: rangePeak.transactionArenaCount,
+            peakArenaBytes: rangePeak.transactionArenaBytes,
+            endLiveArenaCount: rangeEnd.transactionArenaCount,
+            endLiveArenaBytes: rangeEnd.transactionArenaBytes,
+          },
+          replacement: {
+            peakArenaCount: replacementPeak.transactionArenaCount,
+            peakArenaBytes: replacementPeak.transactionArenaBytes,
+            endLiveArenaCount: replacementEnd.transactionArenaCount,
+            endLiveArenaBytes: replacementEnd.transactionArenaBytes,
+          },
+          activeAllocations: {
+            start: start.activeAllocations,
+            peakGrowth: peakActiveGrowth,
+            endLiveGrowth: allocationEnd.activeAllocations - start.activeAllocations,
+            afterTeardownGrowth: 0,
+          },
+        },
+      }
+    },
+  }
 }
 
 function frameHash(frame: CapturedFrame): number {
@@ -69,6 +141,7 @@ async function runPerFrameRound(round: number): Promise<Sample> {
   // Initial renders warm native projection, wrapping, drawing, and both framework paths.
   await rangeSetup.renderOnce()
   await replacementSetup.renderOnce()
+  const memoryTracker = trackLiveMemory(rangeRoot, replacementRoot)
   let rangeMs = 0
   let replacementMs = 0
   let rollingHash = 0
@@ -103,12 +176,19 @@ async function runPerFrameRound(round: number): Promise<Sample> {
       if (rangeRoot.plainText !== replacementRoot.plainText || rangeHash !== replacementHash) {
         throw new Error(`benchmark outputs diverged after mutation ${index}`)
       }
+      memoryTracker.sample()
       rollingHash = Math.imul(rollingHash ^ rangeHash, 16777619) >>> 0
     }
-    return { rangeMs, replacementMs, frameHash: rollingHash }
-  } finally {
+    const live = memoryTracker.finishLive()
+    const sample: Sample = { rangeMs, replacementMs, frameHash: rollingHash, renderCount: updates, memory: live.memory }
     rangeSetup.renderer.destroy()
     replacementSetup.renderer.destroy()
+    sample.memory.activeAllocations.afterTeardownGrowth =
+      resolveRenderLib().getAllocatorStats().activeAllocations - live.start.activeAllocations
+    return sample
+  } finally {
+    if (!rangeSetup.renderer.isDestroyed) rangeSetup.renderer.destroy()
+    if (!replacementSetup.renderer.isDestroyed) replacementSetup.renderer.destroy()
   }
 }
 
@@ -132,6 +212,7 @@ async function runCoalescedRound(round: number): Promise<Sample> {
   replacementSetup.renderer.root.add(replacementRoot)
   await rangeSetup.renderOnce()
   await replacementSetup.renderOnce()
+  const memoryTracker = trackLiveMemory(rangeRoot, replacementRoot)
 
   const runRange = async () => {
     const start = performance.now()
@@ -169,10 +250,17 @@ async function runCoalescedRound(round: number): Promise<Sample> {
     if (rangeRoot.plainText !== replacementRoot.plainText || rangeHash !== replacementHash) {
       throw new Error("coalesced benchmark outputs diverged")
     }
-    return { rangeMs, replacementMs, frameHash: rangeHash }
-  } finally {
+    memoryTracker.sample()
+    const live = memoryTracker.finishLive()
+    const sample: Sample = { rangeMs, replacementMs, frameHash: rangeHash, renderCount: 1, memory: live.memory }
     rangeSetup.renderer.destroy()
     replacementSetup.renderer.destroy()
+    sample.memory.activeAllocations.afterTeardownGrowth =
+      resolveRenderLib().getAllocatorStats().activeAllocations - live.start.activeAllocations
+    return sample
+  } finally {
+    if (!rangeSetup.renderer.isDestroyed) rangeSetup.renderer.destroy()
+    if (!replacementSetup.renderer.isDestroyed) replacementSetup.renderer.destroy()
   }
 }
 
@@ -186,28 +274,23 @@ for (let round = 0; round < rounds; round++) coalesced.push(await runCoalescedRo
 const allocationEnd = lib.getAllocatorStats()
 const arenaEnd = lib.getArenaAllocatedBytes()
 
+const timing = (values: number[]) =>
+  values.length === 1
+    ? { sampleKind: "raw" as const, rawMs: values[0] }
+    : { medianMs: percentile(values, 0.5), p95Ms: percentile(values, 0.95) }
 const summarize = (samples: Sample[]) => ({
-  range: {
-    medianMs: percentile(
-      samples.map((sample) => sample.rangeMs),
-      0.5,
-    ),
-    p95Ms: percentile(
-      samples.map((sample) => sample.rangeMs),
-      0.95,
-    ),
-  },
-  fullReplacement: {
-    medianMs: percentile(
-      samples.map((sample) => sample.replacementMs),
-      0.5,
-    ),
-    p95Ms: percentile(
-      samples.map((sample) => sample.replacementMs),
-      0.95,
-    ),
-  },
+  range: timing(samples.map((sample) => sample.rangeMs)),
+  fullReplacement: timing(samples.map((sample) => sample.replacementMs)),
   frameHashes: samples.map((sample) => sample.frameHash),
+  renderCounts: samples.map((sample) => sample.renderCount),
+  liveMemoryByRound: samples.map((sample) => sample.memory),
+  liveMemoryBounds: {
+    rangePeakArenaCount: Math.max(...samples.map((sample) => sample.memory.range.peakArenaCount)),
+    rangePeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.range.peakArenaBytes)),
+    replacementPeakArenaCount: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaCount)),
+    replacementPeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaBytes)),
+    peakActiveAllocationGrowth: Math.max(...samples.map((sample) => sample.memory.activeAllocations.peakGrowth)),
+  },
 })
 
 console.log(
@@ -216,6 +299,10 @@ console.log(
       leafCount,
       updates,
       rounds,
+      statistics:
+        rounds === 1
+          ? { estimator: "raw sample only; no median or p95 claim" }
+          : { estimator: "nearest-rank percentile (rank = ceil(p * n)); p95 with five rounds is the maximum" },
       perFrame: summarize(perFrame),
       coalescedFrameworkCommit: summarize(coalesced),
       nativeMemory: {

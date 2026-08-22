@@ -11,6 +11,7 @@ import {
   type RenderLib,
   type TextBufferHandle,
   type TextSpliceResult,
+  type TextBufferDebugMetrics,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import type { SyntaxStyle } from "./syntax-style.js"
@@ -169,6 +170,11 @@ export class TextBuffer {
   public measureDocumentRange(id: bigint): number {
     this.guard()
     return this.lib.textBufferMeasureDocumentRange(this.bufferPtr, id)
+  }
+
+  public getDebugMetrics(): TextBufferDebugMetrics {
+    this.guard()
+    return this.lib.textBufferGetDebugMetrics(this.bufferPtr)
   }
 
   public replaceDocumentRange(

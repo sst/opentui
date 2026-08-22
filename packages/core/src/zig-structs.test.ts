@@ -43,4 +43,39 @@ describe("document transaction ABI", () => {
     expect(registered.styleId).toBe(7)
     expect(registered.syntaxStyle).toBe(123)
   })
+
+  test("packs forbidden tagged fields to canonical zero defaults", () => {
+    const operation = DocumentOperationStruct.unpack(DocumentOperationStruct.pack({ kind: 4, owner: 9 })) as any
+    expect(operation.before).toBe(0)
+
+    const removed = DocumentRangeInputStruct.unpack(
+      DocumentRangeInputStruct.pack({
+        id: 4n,
+        remove: true,
+        startChunk: 3,
+        endChunk: 7,
+        styled: true,
+        priority: 8,
+        attributes: 2,
+        styleId: 5,
+        syntaxStyle: 6,
+        link: "https://forbidden.test",
+      }),
+    ) as any
+    expect(removed).toMatchObject({
+      id: 4n,
+      remove: 1,
+      startChunk: 0,
+      endChunk: 0,
+      attributes: 0,
+      styleId: 0,
+      styleKind: 0,
+      syntaxStyle: 0,
+      styled: 0,
+      priority: 0,
+    })
+    expect(removed.fg).toBeUndefined()
+    expect(removed.bg).toBeUndefined()
+    expect(removed.link).toBeNull()
+  })
 })

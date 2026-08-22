@@ -145,6 +145,11 @@ export type DocumentRange = {
   styled: boolean
 }
 
+export type TextBufferDebugMetrics = {
+  transactionArenaCount: number
+  transactionArenaBytes: number
+}
+
 export type DocumentOperation = DocumentStyle & {
   kind: "replace" | "updateStyle" | "move" | "remove" | "clearOwner"
   targetId?: bigint
@@ -1055,6 +1060,10 @@ function getOpenTUILib(libPath?: string) {
     textBufferGetByteSize: {
       args: ["u32"],
       returns: "u32",
+    },
+    textBufferGetDebugMetrics: {
+      args: ["u32", "buffer"],
+      returns: "bool",
     },
 
     textBufferReset: {
@@ -2917,6 +2926,7 @@ export interface RenderLib extends AudioEngineLib {
   destroyTextBuffer: (buffer: TextBufferHandle) => void
   textBufferGetLength: (buffer: TextBufferHandle) => number
   textBufferGetByteSize: (buffer: TextBufferHandle) => number
+  textBufferGetDebugMetrics: (buffer: TextBufferHandle) => TextBufferDebugMetrics
 
   textBufferReset: (buffer: TextBufferHandle) => void
   textBufferClear: (buffer: TextBufferHandle) => void
@@ -5080,6 +5090,17 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetByteSize(buffer)
   }
 
+  public textBufferGetDebugMetrics(buffer: Pointer): TextBufferDebugMetrics {
+    const metrics = new BigUint64Array(2)
+    if (!this.opentui.symbols.textBufferGetDebugMetrics(buffer, metrics)) {
+      throw new Error("Failed to read TextBuffer debug metrics")
+    }
+    return {
+      transactionArenaCount: toNumber(metrics[0]),
+      transactionArenaBytes: toSafeByteCount(metrics[1], "TextBuffer transaction arena bytes"),
+    }
+  }
+
   public textBufferReset(buffer: Pointer): void {
     this.opentui.symbols.textBufferReset(buffer)
   }
@@ -5305,7 +5326,7 @@ class FFIRenderLib implements RenderLib {
           targetId: operation.targetId ?? 0n,
           anchorId: operation.anchorId ?? 0n,
           useTarget: operation.targetId === undefined ? 0 : 1,
-          before: operation.before === false ? 0 : 1,
+          before: operation.kind === "move" && operation.before !== false ? 1 : 0,
           chunkStart,
           chunkCount: operation.chunks?.length ?? 0,
           rangeStart,
@@ -5364,7 +5385,7 @@ class FFIRenderLib implements RenderLib {
             targetId: operation.targetId ?? 0n,
             anchorId: operation.anchorId ?? 0n,
             useTarget: operation.targetId === undefined ? 0 : 1,
-            before: operation.before === false ? 0 : 1,
+            before: operation.kind === "move" && operation.before !== false ? 1 : 0,
             chunkStart,
             chunkCount: operation.chunks?.length ?? 0,
             rangeStart,
