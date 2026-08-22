@@ -3239,14 +3239,10 @@ pub const UnifiedTextBuffer = struct {
                     }
                     std.debug.assert(snapshot_index == annotation_snapshot.len);
 
-                    const move_plans = self.global_allocator.alloc(TextAnnotations.MoveSnapshotPlan, run_end - operation_index) catch return TextBufferError.OutOfMemory;
-                    defer self.global_allocator.free(move_plans);
-                    var move_plan_count: usize = 0;
+                    var moved = false;
                     for (operations[operation_index..run_end]) |move_operation| {
-                        const source_original = annotation_snapshot[annotation_indices.get(move_operation.target_id) orelse return TextBufferError.InvalidIndex];
-                        const anchor_original = annotation_snapshot[annotation_indices.get(move_operation.anchor_id) orelse return TextBufferError.InvalidIndex];
-                        const source_annotation = TextAnnotations.transformAnnotationMoves(source_original, move_plans[0..move_plan_count], document_range_kind) catch return TextBufferError.InvalidDimensions;
-                        const anchor_annotation = TextAnnotations.transformAnnotationMoves(anchor_original, move_plans[0..move_plan_count], document_range_kind) catch return TextBufferError.InvalidDimensions;
+                        const source_annotation = annotation_snapshot[annotation_indices.get(move_operation.target_id) orelse return TextBufferError.InvalidIndex];
+                        const anchor_annotation = annotation_snapshot[annotation_indices.get(move_operation.anchor_id) orelse return TextBufferError.InvalidIndex];
                         if (source_annotation.mark != .range or anchor_annotation.mark != .range or source_annotation.payload.namespace != move_operation.owner or anchor_annotation.payload.namespace != move_operation.owner) return TextBufferError.InvalidIndex;
                         const source = source_annotation.mark.range;
                         const anchor = anchor_annotation.mark.range;
@@ -3259,55 +3255,24 @@ pub const UnifiedTextBuffer = struct {
                         const destination = if (desired > source_end) desired - len else desired;
                         const affected_start = @min(source_start, desired);
                         const affected_end = @max(source_end, desired);
-                        const original_range = source_original.mark.range;
-                        move_plans[move_plan_count] = .{
-                            .target_id = move_operation.target_id,
-                            .start_byte = source_start,
-                            .len = len,
-                            .destination_byte = destination,
-                            .affected_start = affected_start,
-                            .affected_end = affected_end,
-                            .original_start = @min(original_range.start_byte, original_range.end_byte),
-                            .original_end = @max(original_range.start_byte, original_range.end_byte),
-                        };
-                        move_plan_count += 1;
-                    }
-
-                    const used_permutation = TextAnnotations.transformForwardEndMoveSnapshot(
-                        self.global_allocator,
-                        annotation_snapshot,
-                        move_plans[0..move_plan_count],
-                        candidate_buffer.getByteSize(),
-                        document_range_kind,
-                    ) catch |err| switch (err) {
-                        error.OutOfMemory => return TextBufferError.OutOfMemory,
-                        else => return TextBufferError.InvalidDimensions,
-                    };
-                    if (!used_permutation) {
-                        for (move_plans[0..move_plan_count]) |plan| {
-                            TextAnnotations.transformMoveSnapshot(
-                                annotation_snapshot,
-                                plan.target_id,
-                                plan.start_byte,
-                                plan.len,
-                                plan.destination_byte,
-                                plan.affected_start,
-                                plan.affected_end,
-                                document_range_kind,
-                            ) catch return TextBufferError.InvalidDimensions;
-                        }
-                    }
-                    for (move_plans[0..move_plan_count]) |plan| {
-                        const source_start = plan.start_byte;
-                        const len = plan.len;
-                        const destination = plan.destination_byte;
+                        TextAnnotations.transformMoveSnapshot(
+                            annotation_snapshot,
+                            move_operation.target_id,
+                            source_start,
+                            len,
+                            destination,
+                            affected_start,
+                            affected_end,
+                            document_range_kind,
+                        ) catch return TextBufferError.InvalidDimensions;
                         const prepared = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
                             error.OutOfMemory => return TextBufferError.OutOfMemory,
                             error.OutOfBounds => return TextBufferError.InvalidByteOffset,
                         };
                         candidate_buffer._rope.commitPreparedRoot(prepared);
+                        moved = true;
                     }
-                    if (move_plan_count != 0) {
+                    if (moved) {
                         candidate_annotations.replaceSnapshotMarks(annotation_snapshot) catch |err| switch (err) {
                             error.OutOfMemory => return TextBufferError.OutOfMemory,
                             else => return TextBufferError.InvalidDimensions,

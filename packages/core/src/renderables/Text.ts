@@ -121,12 +121,149 @@ function localLineInfo(text: string): LineInfo {
   }
 }
 
+type ChildOrderNode = {
+  child: TextRenderable
+  priority: number
+  size: number
+  left: ChildOrderNode | null
+  right: ChildOrderNode | null
+  parent: ChildOrderNode | null
+}
+
+function childOrderSize(node: ChildOrderNode | null): number {
+  return node?.size ?? 0
+}
+
+function setChildOrderLeft(node: ChildOrderNode, child: ChildOrderNode | null): void {
+  node.left = child
+  if (child) child.parent = node
+  node.size = 1 + childOrderSize(node.left) + childOrderSize(node.right)
+}
+
+function setChildOrderRight(node: ChildOrderNode, child: ChildOrderNode | null): void {
+  node.right = child
+  if (child) child.parent = node
+  node.size = 1 + childOrderSize(node.left) + childOrderSize(node.right)
+}
+
+function mergeChildOrder(left: ChildOrderNode | null, right: ChildOrderNode | null): ChildOrderNode | null {
+  if (!left) {
+    if (right) right.parent = null
+    return right
+  }
+  if (!right) {
+    left.parent = null
+    return left
+  }
+  if (left.priority < right.priority) {
+    setChildOrderRight(left, mergeChildOrder(left.right, right))
+    left.parent = null
+    return left
+  }
+  setChildOrderLeft(right, mergeChildOrder(left, right.left))
+  right.parent = null
+  return right
+}
+
+function splitChildOrder(root: ChildOrderNode | null, count: number): [ChildOrderNode | null, ChildOrderNode | null] {
+  if (!root) return [null, null]
+  if (childOrderSize(root.left) >= count) {
+    const [left, middle] = splitChildOrder(root.left, count)
+    setChildOrderLeft(root, middle)
+    root.parent = null
+    return [left, root]
+  }
+  const [middle, right] = splitChildOrder(root.right, count - childOrderSize(root.left) - 1)
+  setChildOrderRight(root, middle)
+  root.parent = null
+  return [root, right]
+}
+
+class PendingChildOrder {
+  private root: ChildOrderNode | null = null
+  private readonly nodes = new Map<TextRenderable, ChildOrderNode>()
+
+  constructor(children: TextRenderable[]) {
+    for (const child of children) {
+      let value = child.num | 0
+      value = Math.imul(value ^ (value >>> 16), 0x45d9f3b)
+      value = Math.imul(value ^ (value >>> 16), 0x45d9f3b)
+      const node: ChildOrderNode = {
+        child,
+        priority: (value ^ (value >>> 16)) >>> 0,
+        size: 1,
+        left: null,
+        right: null,
+        parent: null,
+      }
+      this.nodes.set(child, node)
+      this.root = mergeChildOrder(this.root, node)
+    }
+  }
+
+  public get length(): number {
+    return childOrderSize(this.root)
+  }
+
+  public at(index: number): TextRenderable {
+    let node = this.root
+    while (node) {
+      const leftSize = childOrderSize(node.left)
+      if (index < leftSize) node = node.left
+      else if (index === leftSize) return node.child
+      else {
+        index -= leftSize + 1
+        node = node.right
+      }
+    }
+    throw new Error("Text child order index is out of bounds")
+  }
+
+  public indexOf(child: TextRenderable): number {
+    const node = this.nodes.get(child)
+    if (!node) return -1
+    let index = childOrderSize(node.left)
+    let current = node
+    while (current.parent) {
+      if (current === current.parent.right) index += childOrderSize(current.parent.left) + 1
+      current = current.parent
+    }
+    return index
+  }
+
+  public move(child: TextRenderable, index: number): void {
+    const currentIndex = this.indexOf(child)
+    const [before, tail] = splitChildOrder(this.root, currentIndex)
+    const [node, after] = splitChildOrder(tail, 1)
+    this.root = mergeChildOrder(before, after)
+    const [left, right] = splitChildOrder(this.root, index)
+    this.root = mergeChildOrder(mergeChildOrder(left, node), right)
+  }
+
+  public toArray(): TextRenderable[] {
+    const result: TextRenderable[] = []
+    const stack: ChildOrderNode[] = []
+    let node = this.root
+    while (node || stack.length > 0) {
+      while (node) {
+        stack.push(node)
+        node = node.left
+      }
+      node = stack.pop()!
+      result.push(node.child)
+      node = node.right
+    }
+    return result
+  }
+}
+
 export class TextRenderable extends TextBufferRenderable {
   get [BrandedTextRenderable](): true {
     return true
   }
 
   private _children: (string | TextRenderable)[] = []
+  private _pendingChildOrder: PendingChildOrder | null = null
   private _rawTextIdentities: (RawTextIdentity | null)[] = []
   private _localFg?: RGBA
   private _localBg?: RGBA
@@ -141,12 +278,13 @@ export class TextRenderable extends TextBufferRenderable {
   private readonly _pendingDocumentRoots = new Set<TextRenderable>()
   private readonly _pendingStyleRoots = new Set<TextRenderable>()
   private readonly _pendingRemovedRangeIds = new Set<bigint>()
-  private readonly _pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
+  private _pendingNativeMoves: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
   private _lastCommittedLineInfoFrame: number = -1
   private _layoutPromotionPending: boolean = false
+  private readonly _structuralMoveMetrics = { orderNodes: 0, orderMoves: 0, materializedChildren: 0 }
 
   constructor(ctx: RenderContext, options: TextOptions, attachTextDocumentState?: boolean)
   constructor(options: TextOptions, attachTextDocumentState?: boolean)
@@ -184,11 +322,27 @@ export class TextRenderable extends TextBufferRenderable {
     }
   }
 
+  private materializeChildOrder(): (string | TextRenderable)[] {
+    if (this._pendingChildOrder) {
+      this._structuralMoveMetrics.materializedChildren += this._pendingChildOrder.length
+      this._children = this._pendingChildOrder.toArray()
+      this._rawTextIdentities = this._children.map(() => null)
+      this._pendingChildOrder = null
+    }
+    return this._children
+  }
+
+  private materializePendingChildOrders(): void {
+    const children = this.materializeChildOrder()
+    for (const child of children) if (isTextRenderable(child)) child.materializePendingChildOrders()
+  }
+
   public get children(): readonly (string | TextRenderable)[] {
-    return [...this._children]
+    return [...this.materializeChildOrder()]
   }
 
   public set children(children: (string | TextRenderable)[]) {
+    this.materializeChildOrder()
     const nextChildren = [...children]
     const seenChildren = new Set<TextRenderable>()
     for (const child of nextChildren) {
@@ -206,8 +360,26 @@ export class TextRenderable extends TextBufferRenderable {
       previousChildren.length === nextChildren.length &&
       previousChildren.every(isTextRenderable) &&
       nextChildren.every(isTextRenderable) &&
-      previousChildren.every((child) => nextChildren.includes(child)) &&
+      previousChildren.every((child) => seenChildren.has(child)) &&
       documentOwnerBefore !== null
+    if (isPureNativeReorder) {
+      const moves = this.planNativeChildMoves(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
+      const nativeMoves = moves.filter((move) => documentOwnerBefore!.canMoveNativeChild(move.source, move.anchor))
+      const nextPendingMoves = [...documentOwnerBefore!._pendingNativeMoves, ...nativeMoves]
+      const previousDirty = this._dirty
+      try {
+        this.requestRender()
+      } catch (error) {
+        this._dirty = previousDirty
+        throw error
+      }
+      documentOwnerBefore!._pendingNativeMoves = nextPendingMoves
+      if (nativeMoves.length > 0) documentOwnerBefore!._textDocumentPending = true
+      this._children = nextChildren
+      this._rawTextIdentities = nextChildren.map(() => null)
+      this._manualStyledText = null
+      return
+    }
     const previousRawTextIdentities = [...this._rawTextIdentities]
     const nextRawTextIdentities = nextChildren.map((child, index) => {
       if (typeof child !== "string") return null
@@ -232,6 +404,7 @@ export class TextRenderable extends TextBufferRenderable {
     >()
     const snapshotParent = (parent: TextRenderable): void => {
       if (parentSnapshots.has(parent)) return
+      parent.materializeChildOrder()
       parentSnapshots.set(parent, {
         children: [...parent._children],
         ownedChildren: new Set(parent._ownedChildren),
@@ -372,20 +545,10 @@ export class TextRenderable extends TextBufferRenderable {
       }
 
       this._manualStyledText = null
-      if (isPureNativeReorder)
-        documentOwnerBefore!.queueNativeChildMoves(
-          previousChildren as TextRenderable[],
-          nextChildren as TextRenderable[],
-        )
       for (const parent of parentSnapshots.keys()) {
         if (parent !== this) parent.invalidateTextDocument()
       }
-      if (isPureNativeReorder) {
-        documentOwnerBefore!.yogaNode.markDirty()
-        this.requestRender()
-      } else {
-        this.invalidateTextDocument()
-      }
+      this.invalidateTextDocument()
 
       const sourceOwner = sourceDocumentOwners.values().next().value
       const targetOwner = this.getDocumentOwner()
@@ -688,30 +851,51 @@ export class TextRenderable extends TextBufferRenderable {
 
   public add(obj: TextRenderable | StyledText | string, index?: number): number {
     if (typeof obj === "string" || isTextRenderable(obj)) {
-      let insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
+      const childCount = this._pendingChildOrder?.length ?? this._children.length
+      let insertIndex = Math.max(0, Math.min(index ?? childCount, childCount))
       if (
         isTextRenderable(obj) &&
         obj.parent === this &&
-        this._children.includes(obj) &&
-        this._children.every(isTextRenderable) &&
+        (this._pendingChildOrder?.indexOf(obj) ?? this._children.indexOf(obj)) !== -1 &&
+        (this._pendingChildOrder !== null || this._children.every(isTextRenderable)) &&
         this.getDocumentOwner()
       ) {
-        const currentIndex = this._children.indexOf(obj)
+        const currentIndex = this._pendingChildOrder?.indexOf(obj) ?? this._children.indexOf(obj)
         if (currentIndex < insertIndex) insertIndex -= 1
         if (currentIndex === insertIndex) return insertIndex
-        const anchor = this._children[insertIndex] as TextRenderable
-        const identity = this._rawTextIdentities[currentIndex]!
-        this._children.splice(currentIndex, 1)
-        this._children.splice(insertIndex, 0, obj)
-        this._rawTextIdentities.splice(currentIndex, 1)
-        this._rawTextIdentities.splice(insertIndex, 0, identity)
-        this._manualStyledText = null
         const owner = this.getDocumentOwner()!
-        owner.queueNativeChildMove(obj, anchor, currentIndex > insertIndex)
-        owner.yogaNode.markDirty()
-        this.requestRender()
+        const order = this._pendingChildOrder ?? new PendingChildOrder(this._children as TextRenderable[])
+        if (!this._pendingChildOrder) this._structuralMoveMetrics.orderNodes += childCount
+        const anchor = order.at(insertIndex)
+        const move = owner.canMoveNativeChild(obj, anchor)
+          ? { source: obj, anchor, before: currentIndex > insertIndex }
+          : null
+        const pendingLength = owner._pendingNativeMoves.length
+        const pendingBefore = owner._textDocumentPending
+        const dirtyBefore = this._dirty
+        try {
+          if (move) {
+            owner._pendingNativeMoves.push(move)
+            owner._textDocumentPending = true
+          }
+          this.requestRender()
+        } catch (error) {
+          owner._pendingNativeMoves.length = pendingLength
+          owner._textDocumentPending = pendingBefore
+          this._dirty = dirtyBefore
+          throw error
+        }
+        order.move(obj, insertIndex)
+        this._structuralMoveMetrics.orderMoves += 1
+        if (!this._pendingChildOrder) {
+          this._pendingChildOrder = order
+          this._children = []
+          this._rawTextIdentities = []
+        }
+        this._manualStyledText = null
         return insertIndex
       }
+      this.materializeChildOrder()
       const nextChildren = [...this._children]
       if (isTextRenderable(obj) && obj.parent === this) {
         const currentIndex = nextChildren.indexOf(obj)
@@ -752,6 +936,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public replace(obj: TextRenderable | string, index: number): void {
+    this.materializeChildOrder()
     if (isTextRenderable(obj)) this.assertCanInsertTextChild(obj)
     const existing = this._children[index]
     if (existing === undefined) {
@@ -779,7 +964,7 @@ export class TextRenderable extends TextBufferRenderable {
   ): number {
     if (!anchorNode || !isTextRenderable(anchorNode)) throw new Error("Anchor must be a TextNodeRenderable")
 
-    const anchorIndex = this._children.indexOf(anchorNode)
+    const anchorIndex = this._pendingChildOrder?.indexOf(anchorNode) ?? this._children.indexOf(anchorNode)
     if (anchorIndex === -1) throw new Error("Anchor node not found in children")
     if (child === anchorNode) return anchorIndex
     return this.add(child, anchorIndex)
@@ -788,6 +973,7 @@ export class TextRenderable extends TextBufferRenderable {
   public remove(child: BaseRenderable): void {
     if (!isTextRenderable(child)) throw new Error("remove expects a TextNodeRenderable child object")
 
+    this.materializeChildOrder()
     const childIndex = this._children.indexOf(child)
     if (childIndex === -1) {
       if (process.env.NODE_ENV !== "production") {
@@ -804,6 +990,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public clear(): void {
+    this.materializeChildOrder()
     this.clearChildren(false)
     this._manualStyledText = null
     this.invalidateTextDocument()
@@ -859,7 +1046,7 @@ export class TextRenderable extends TextBufferRenderable {
   ): TextChunk[] {
     const currentStyle = this.mergeStyles(parentStyle)
     const chunks: TextChunk[] = []
-    for (const child of this._children) {
+    for (const child of this.materializeChildOrder()) {
       if (typeof child === "string") {
         chunks.push({ __isChunk: true, text: child, ...currentStyle })
       } else {
@@ -874,7 +1061,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public getTextChildren(): TextRenderable[] {
-    return this._children.filter(isTextRenderable)
+    return this.materializeChildOrder().filter(isTextRenderable)
   }
 
   public getChildren(): TextRenderable[] {
@@ -882,7 +1069,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public getChildrenCount(): number {
-    return this._children.length
+    return this._pendingChildOrder?.length ?? this._children.length
   }
 
   public getRenderable(id: string): TextRenderable | undefined {
@@ -890,7 +1077,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public getRenderableIndex(id: string): number {
-    return this._children.findIndex((child) => isTextRenderable(child) && child.id === id)
+    return this.materializeChildOrder().findIndex((child) => isTextRenderable(child) && child.id === id)
   }
 
   public findDescendantById(id: string): TextRenderable | undefined {
@@ -1141,6 +1328,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private prepareTextDocumentFlush(): PreparedTextDocumentFlush {
+    this.materializePendingChildOrders()
     this.commitPendingRegisteredStyles()
     if (this._textDocumentOwner === 0) this._textDocumentOwner = nextTextDocumentOwner++
     if (nextTextDocumentOwner === 0xffffffff) nextTextDocumentOwner = 1
@@ -1441,46 +1629,39 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
   }
 
-  private queueNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): void {
+  private planNativeChildMoves(
+    previous: TextRenderable[],
+    next: TextRenderable[],
+  ): Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> {
     const forward: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
-    const forwardOrder = [...previous]
+    const forwardOrder = new PendingChildOrder(previous)
     for (let index = 0; index < next.length; index++) {
       const desired = next[index]!
       const currentIndex = forwardOrder.indexOf(desired)
       if (currentIndex === index) continue
-      const anchor = forwardOrder[index]!
+      const anchor = forwardOrder.at(index)
       forward.push({ source: desired, anchor, before: true })
-      forwardOrder.splice(currentIndex, 1)
-      forwardOrder.splice(index, 0, desired)
+      forwardOrder.move(desired, index)
     }
 
     const reverse: Array<{ source: TextRenderable; anchor: TextRenderable; before: boolean }> = []
-    const reverseOrder = [...previous]
+    const reverseOrder = new PendingChildOrder(previous)
     for (let index = next.length - 1; index >= 0; index--) {
       const desired = next[index]!
       const currentIndex = reverseOrder.indexOf(desired)
       if (currentIndex === index) continue
-      const anchor = reverseOrder[index]!
+      const anchor = reverseOrder.at(index)
       reverse.push({ source: desired, anchor, before: false })
-      reverseOrder.splice(currentIndex, 1)
-      reverseOrder.splice(index, 0, desired)
+      reverseOrder.move(desired, index)
     }
-    const moves = forward.length <= reverse.length ? forward : reverse
-    if (moves.some((move) => !this.canMoveNativeChild(move.source))) return
-    this._pendingNativeMoves.push(...moves)
-    if (this._pendingNativeMoves.length > 0) this._textDocumentPending = true
+    return forward.length <= reverse.length ? forward : reverse
   }
 
-  private queueNativeChildMove(source: TextRenderable, anchor: TextRenderable, before: boolean): void {
-    if (!this.canMoveNativeChild(source)) return
-    this._pendingNativeMoves.push({ source, anchor, before })
-    this._textDocumentPending = true
-  }
-
-  private canMoveNativeChild(source: TextRenderable): boolean {
-    if (source._nativeRangeId === null) return false
-    const range = this.textBuffer.getDocumentRange(source._nativeRangeId)
-    return !!range && range.startByte !== range.endByte
+  private canMoveNativeChild(source: TextRenderable, anchor: TextRenderable): boolean {
+    if (source._nativeRangeId === null || anchor._nativeRangeId === null) return false
+    const sourceRange = this.textBuffer.getDocumentRange(source._nativeRangeId)
+    const anchorRange = this.textBuffer.getDocumentRange(anchor._nativeRangeId)
+    return !!sourceRange && sourceRange.startByte !== sourceRange.endByte && !!anchorRange
   }
 
   protected override emitLineInfoChange(): void {
@@ -1556,6 +1737,7 @@ export class TextRenderable extends TextBufferRenderable {
       parent?.remove(child)
       return
     }
+    parent.materializeChildOrder()
     const index = parent._children.indexOf(child)
     if (index !== -1) {
       parent._children.splice(index, 1)
@@ -1566,6 +1748,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private clearChildren(requestRender: boolean): void {
+    this.materializeChildOrder()
     const previousChildren = [...this._children]
     this._children.splice(0)
     this._rawTextIdentities.splice(0)

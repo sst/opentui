@@ -202,6 +202,144 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("preflights move range queries and lifecycle scheduling before changing child order", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = children.map((child) => (child as any)._nativeRangeId)
+    const dirty = root.isDirty
+
+    const range = spyOn(TextBuffer.prototype, "getDocumentRange").mockImplementationOnce(() => {
+      throw new Error("injected range query failure")
+    })
+    try {
+      expect(() => root.add(children[0]!, root.getChildrenCount())).toThrow("range query failure")
+      expect(root.children).toEqual(children)
+      expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(root.isDirty).toBe(dirty)
+      expect(root.plainText).toBe("ABC")
+    } finally {
+      range.mockRestore()
+    }
+
+    const request = spyOn(root, "requestRender").mockImplementationOnce(() => {
+      throw new Error("injected lifecycle failure")
+    })
+    try {
+      expect(() => root.add(children[0]!, root.getChildrenCount())).toThrow("lifecycle failure")
+      expect(root.children).toEqual(children)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(root.isDirty).toBe(dirty)
+    } finally {
+      request.mockRestore()
+    }
+  })
+
+  test("rolls back a failed move-log append before scheduling or changing order", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const pending = (root as any)._pendingNativeMoves as Array<unknown> & { push: (...items: unknown[]) => number }
+    const originalPush = pending.push
+    const request = spyOn(root, "requestRender")
+    pending.push = () => {
+      throw new Error("injected move-log allocation failure")
+    }
+    try {
+      expect(() => root.add(children[0]!, root.getChildrenCount())).toThrow("move-log allocation failure")
+      expect(request).not.toHaveBeenCalled()
+      expect(root.children).toEqual(children)
+      expect(pending).toHaveLength(0)
+      expect(root.plainText).toBe("ABC")
+    } finally {
+      pending.push = originalPush
+      request.mockRestore()
+    }
+  })
+
+  test("retains a queued structural move after native apply failure and retries without duplicate events", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    let events = 0
+    root.on("line-info-change", () => events++)
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected native apply failure")
+    })
+    try {
+      root.add(children[0]!, root.getChildrenCount())
+      expect(root.children).toEqual([children[1], children[2], children[0]])
+      expect(() => root.plainText).toThrow("native apply failure")
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
+      expect(events).toBe(0)
+      expect(root.plainText).toBe("BCA")
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect(events).toBe(1)
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("stages repeated reorder work without child-array reconciliation per move", async () => {
+    const root = new TextRenderable(renderer, {})
+    const children = Array.from({ length: 200 }, (_, index) => new TextRenderable(renderer, { content: `${index} ` }))
+    root.children = children
+    renderer.root.add(root)
+    await renderOnce()
+    const rangeQueries = spyOn(TextBuffer.prototype, "getDocumentRange")
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    const requests = spyOn(root, "requestRender")
+    try {
+      for (let index = 0; index < 100; index++) root.add(children[index]!, root.getChildrenCount())
+
+      expect((root as any)._structuralMoveMetrics).toEqual({
+        orderNodes: 200,
+        orderMoves: 100,
+        materializedChildren: 0,
+      })
+      expect((root as any)._pendingNativeMoves).toHaveLength(100)
+      expect(rangeQueries).toHaveBeenCalledTimes(200)
+      expect(requests).toHaveBeenCalledTimes(100)
+      expect(apply).not.toHaveBeenCalled()
+      await renderOnce()
+      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(200)
+      expect(apply).toHaveBeenCalledTimes(1)
+      expect(apply.mock.calls[0]![0].filter((operation) => operation.kind === "move")).toHaveLength(100)
+    } finally {
+      rangeQueries.mockRestore()
+      apply.mockRestore()
+      requests.mockRestore()
+    }
+  })
+
+  test("keeps coalesced structural move scaling within a generous near-linear ratio", async () => {
+    const measure = async (childCount: number, moveCount: number): Promise<number> => {
+      const root = new TextRenderable(renderer, {})
+      const children = Array.from(
+        { length: childCount },
+        (_, index) => new TextRenderable(renderer, { content: String.fromCharCode(65 + (index % 26)) }),
+      )
+      root.children = children
+      renderer.root.add(root)
+      await renderOnce()
+      const start = performance.now()
+      for (let index = 0; index < moveCount; index++) root.add(children[index]!, root.getChildrenCount())
+      await renderOnce()
+      return performance.now() - start
+    }
+
+    const small = await measure(500, 100)
+    const large = await measure(2000, 400)
+    expect(large).toBeLessThan(small * 12 + 10)
+  })
+
   test("reorders empty and coextensive subtrees without moving text or changing IDs", async () => {
     const root = new TextRenderable(renderer, {})
     const first = new TextRenderable(renderer, { content: "" })

@@ -892,6 +892,215 @@ test "document operation batch resolves shifted stable IDs and publishes once" {
     try std.testing.expectEqual(@as(u32, 11), tb.getDocumentRange(ids[2]).?.end_byte);
 }
 
+test "batched moves preserve sequential enclosing styled range expansion" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 4,
+    };
+    const values = [_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H" };
+    var chunks: [values.len]text_buffer.StyledChunk = undefined;
+    for (values, 0..) |value, index| chunks[index] = .{
+        .text_ptr = value.ptr,
+        .text_len = value.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    var ranges: [values.len + 2]text_buffer.DocumentRangeInput = undefined;
+    ranges[0] = .{ .start_chunk = 0, .end_chunk = values.len, .style = empty_style, .styled = false, .priority = 1 };
+    for (0..values.len) |index| ranges[index + 1] = .{
+        .start_chunk = @intCast(index),
+        .end_chunk = @intCast(index + 1),
+        .style = empty_style,
+        .styled = false,
+        .priority = 2,
+    };
+    ranges[values.len + 1] = .{
+        .start_chunk = 2,
+        .end_chunk = 6,
+        .style = empty_style,
+        .styled = true,
+        .priority = 3,
+    };
+    var ids: [ranges.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 51,
+        .chunks = &chunks,
+        .ranges = &ranges,
+    }}, &ids);
+
+    const operations = [_]text_buffer.DocumentOperation{
+        .{ .kind = .move, .target_id = ids[6], .anchor_id = ids[8], .owner = 51, .before = false },
+        .{ .kind = .move, .target_id = ids[5], .anchor_id = ids[6], .owner = 51, .before = false },
+        .{ .kind = .move, .target_id = ids[4], .anchor_id = ids[5], .owner = 51, .before = false },
+        .{ .kind = .move, .target_id = ids[3], .anchor_id = ids[4], .owner = 51, .before = false },
+    };
+    try tb.applyDocumentOperations(&operations, &.{});
+
+    try expectText(tb, "ABGHFEDC");
+    const styled = tb.getDocumentRange(ids[values.len + 1]).?;
+    try std.testing.expectEqual(@as(u32, 2), styled.start_byte);
+    try std.testing.expectEqual(@as(u32, 8), styled.end_byte);
+    var output: [8]u8 = undefined;
+    const written = tb.getDocumentRangeText(styled.id, &output).?;
+    try std.testing.expectEqualStrings("GHFEDC", output[0..written]);
+}
+
+test "randomized move batches equal separate transactions for text marks payloads and projection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var prng = std.Random.DefaultPrng.init(0x6d6f766564696666);
+    const random = prng.random();
+
+    for (0..24) |scenario| {
+        const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+        defer tb.deinit();
+        const values = [_][]const u8{ "A", "b", "界", "d", "🙂", "f", "G", "h", "i", "J", "k", "L" };
+        var chunks: [values.len]text_buffer.StyledChunk = undefined;
+        for (values, 0..) |value, index| chunks[index] = .{
+            .text_ptr = value.ptr,
+            .text_len = value.len,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = @intCast(index % 4),
+        };
+        const empty_style: text_buffer.StyledChunk = .{
+            .text_ptr = "".ptr,
+            .text_len = 0,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = 0,
+        };
+        var ranges: [values.len + 9]text_buffer.DocumentRangeInput = undefined;
+        ranges[0] = .{ .start_chunk = 0, .end_chunk = values.len, .style = empty_style, .styled = true, .priority = 1 };
+        for (0..values.len) |index| ranges[index + 1] = .{
+            .start_chunk = @intCast(index),
+            .end_chunk = @intCast(index + 1),
+            .style = chunks[index],
+            .styled = index % 2 == 0,
+            .priority = @intCast(2 + index % 5),
+        };
+        for (0..8) |index| {
+            var start = random.uintLessThan(u32, values.len + 1);
+            var end = random.uintLessThan(u32, values.len + 1);
+            if (start > end) std.mem.swap(u32, &start, &end);
+            ranges[values.len + 1 + index] = .{
+                .start_chunk = start,
+                .end_chunk = end,
+                .style = empty_style,
+                .styled = true,
+                .priority = @intCast(8 + index),
+            };
+        }
+        var ids: [ranges.len]u64 = undefined;
+        try tb.applyDocumentOperations(&.{.{
+            .kind = .replace,
+            .use_target = false,
+            .owner = 61,
+            .chunks = &chunks,
+            .ranges = &ranges,
+        }}, &ids);
+
+        var compared_ids: std.ArrayList(u64) = .empty;
+        defer compared_ids.deinit(std.testing.allocator);
+        try compared_ids.appendSlice(std.testing.allocator, &ids);
+        const document_size = tb.getByteSize();
+        for (0..16) |index| {
+            var first = random.uintLessThan(u32, document_size + 1);
+            var second = random.uintLessThan(u32, document_size + 1);
+            if (first > second and index % 3 != 0) std.mem.swap(u32, &first, &second);
+            const gravity: TextAnnotations.Gravity = if (random.boolean()) .left else .right;
+            const id = if (index % 4 == 0)
+                try tb.textAnnotations().addPoint(.{ .byte = first, .gravity = gravity }, .{
+                    .namespace = @intCast(700 + scenario),
+                    .priority = @intCast(index % 11),
+                })
+            else
+                try tb.textAnnotations().addRange(.{
+                    .start_byte = first,
+                    .end_byte = second,
+                    .start_gravity = gravity,
+                    .end_gravity = if (random.boolean()) .left else .right,
+                }, .{
+                    .namespace = @intCast(700 + scenario),
+                    .priority = @intCast(index % 11),
+                });
+            try compared_ids.append(std.testing.allocator, id);
+        }
+
+        const move_count = 1 + random.uintLessThan(usize, 50);
+        const operations = try std.testing.allocator.alloc(text_buffer.DocumentOperation, move_count);
+        defer std.testing.allocator.free(operations);
+        for (operations) |*operation| {
+            const source = random.uintLessThan(usize, values.len);
+            var anchor = random.uintLessThan(usize, values.len - 1);
+            if (anchor >= source) anchor += 1;
+            operation.* = .{
+                .kind = .move,
+                .target_id = ids[source + 1],
+                .anchor_id = ids[anchor + 1],
+                .owner = 61,
+                .before = random.boolean(),
+            };
+        }
+
+        var prepared = try tb.prepareDocumentOperations(operations, 0);
+        defer prepared.deinit();
+        var batch_buffer = tb.*;
+        batch_buffer._rope = prepared.rope;
+        batch_buffer.annotations = prepared.annotations;
+        batch_buffer.byte_splitter.ctx = &batch_buffer;
+        batch_buffer.segment_splitter.ctx = &batch_buffer;
+        batch_buffer.external_line_highlights = .empty;
+        batch_buffer.line_highlights = .empty;
+        batch_buffer.line_spans = .empty;
+        batch_buffer.line_projection_epochs = .empty;
+        batch_buffer.dirty_span_lines = std.AutoHashMap(usize, void).init(std.testing.allocator);
+        defer {
+            for (batch_buffer.external_line_highlights.items) |*highlights| highlights.deinit(std.testing.allocator);
+            batch_buffer.external_line_highlights.deinit(std.testing.allocator);
+            for (batch_buffer.line_highlights.items) |*highlights| highlights.deinit(std.testing.allocator);
+            batch_buffer.line_highlights.deinit(std.testing.allocator);
+            for (batch_buffer.line_spans.items) |*spans| spans.deinit(std.testing.allocator);
+            batch_buffer.line_spans.deinit(std.testing.allocator);
+            batch_buffer.line_projection_epochs.deinit(std.testing.allocator);
+            batch_buffer.dirty_span_lines.deinit();
+        }
+        const batch_text = try std.testing.allocator.alloc(u8, batch_buffer.getByteSize());
+        defer std.testing.allocator.free(batch_text);
+        const batch_written = batch_buffer.getPlainTextIntoBuffer(batch_text);
+        const batch_highlights_source = batch_buffer.getLineHighlights(0);
+        const batch_highlights = try std.testing.allocator.dupe(text_buffer.Highlight, batch_highlights_source);
+        defer std.testing.allocator.free(batch_highlights);
+
+        for (operations) |operation| _ = try tb.moveDocumentRange(operation.target_id, operation.anchor_id, operation.before);
+        const sequential_text = try std.testing.allocator.alloc(u8, tb.getByteSize());
+        defer std.testing.allocator.free(sequential_text);
+        const sequential_written = tb.getPlainTextIntoBuffer(sequential_text);
+        try std.testing.expectEqualStrings(batch_text[0..batch_written], sequential_text[0..sequential_written]);
+        for (compared_ids.items) |id| {
+            try std.testing.expectEqualDeep(prepared.annotations.get(id).?, tb.textAnnotations().get(id).?);
+        }
+        try std.testing.expectEqualSlices(text_buffer.Highlight, batch_highlights, tb.getLineHighlights(0));
+        try prepared.annotations.validateIntegrity();
+        try tb.textAnnotations().validateIntegrity();
+    }
+}
+
 test "coalesced long-line edits publish only exact final backing" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
