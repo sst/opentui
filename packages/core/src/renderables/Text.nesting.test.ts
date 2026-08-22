@@ -159,6 +159,36 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("publishes adjacent equal-metric text as one payload-only operation", async () => {
+    const leaves = Array.from(
+      { length: 200 },
+      (_, index) => new TextRenderable(renderer, { content: `${index.toString().padStart(3, "0")} ` }, false),
+    )
+    const root = new TextRenderable(renderer, {})
+    root.children = leaves
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = leaves.map((leaf) => (leaf as any)._nativeRangeId)
+    const annotationEpoch = (root as any).textBuffer.annotationEpoch
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      for (let index = 0; index < leaves.length; index++) {
+        leaves[index]!.content = `${(999 - index).toString().padStart(3, "0")} `
+      }
+      await renderOnce()
+
+      const operations = apply.mock.calls.at(-1)![0]
+      expect(operations).toHaveLength(1)
+      expect(operations[0]!.chunks).toHaveLength(1)
+      expect(operations[0]!.ranges).toHaveLength(0)
+      expect(leaves.map((leaf) => (leaf as any)._nativeRangeId)).toEqual(ids)
+      expect((root as any).textBuffer.annotationEpoch).toBe(annotationEpoch)
+      expect(root.plainText).toStartWith("999 998 997 ")
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
   test("style-only updates preserve content epoch and range identity while toggling paint", async () => {
     const root = new TextRenderable(renderer, {})
     const child = new TextRenderable(renderer, { content: "stable" })
@@ -1505,6 +1535,34 @@ describe("nested TextRenderable", () => {
     expect((text as any)._leaves[0]).toBe(leaves[0])
     expect(afterReplace.styledLeafAllocations).toBe(afterCreate.styledLeafAllocations)
     text.destroy()
+  })
+
+  test("reuses private ranges for equal-metric manual StyledText replacement", async () => {
+    const chunks = Array.from({ length: 200 }, (_, index) => ({
+      __isChunk: true as const,
+      text: `${index.toString().padStart(3, "0")} `,
+      attributes: index & 1,
+    }))
+    const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
+    renderer.root.add(text)
+    await renderOnce()
+    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
+    const annotationEpoch = (text as any).textBuffer.annotationEpoch
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      text.content = new StyledText(chunks.map((chunk) => ({ ...chunk, text: `x${chunk.text.slice(1)}` })))
+      await renderOnce()
+
+      const operations = apply.mock.calls.at(-1)![0]
+      expect(operations).toHaveLength(1)
+      expect(operations[0]!.chunks).toHaveLength(1)
+      expect(operations[0]!.ranges).toHaveLength(0)
+      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
+      expect((text as any).textBuffer.annotationEpoch).toBe(annotationEpoch)
+      expect(text.plainText).toStartWith("x00 x01 x02 ")
+    } finally {
+      apply.mockRestore()
+    }
   })
 
   test("preserves authoritative registered style IDs through canonical text ranges", async () => {

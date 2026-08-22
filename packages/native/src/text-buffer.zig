@@ -156,7 +156,7 @@ pub const DocumentOperation = struct {
     chunks: []const StyledChunk = &.{},
     ranges: []const DocumentRangeInput = &.{},
     style: StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
-    before: bool = true,
+    before: bool = false,
 };
 
 const InternalStyleSlot = struct {
@@ -622,6 +622,11 @@ pub const UnifiedTextBuffer = struct {
         for (self.view_dirty_flags.items) |*flag| {
             flag.* = true;
         }
+    }
+
+    fn markTextBytesDirty(self: *Self) void {
+        self.content_epoch +%= 1;
+        for (self.view_dirty_flags.items) |*flag| flag.* = true;
     }
 
     fn markViewCachesDirty(self: *Self) void {
@@ -1679,10 +1684,16 @@ pub const UnifiedTextBuffer = struct {
         const current_bytes = self.ownedRangeBytes(current_ranges);
         const history_bytes = self.ownedHistoryOnlyBytes(history_ranges, current_ranges);
         const live_bytes = self.getBackingStoreBytes();
+        var reachable_blocks = [_]bool{false} ** 255;
+        self._rope.walkRetainedItems(&reachable_blocks, markReachableBacking);
+        var unreachable_bytes: usize = 0;
+        for (self.owned_backing_ids, 0..) |owned, index| {
+            if (owned and !reachable_blocks[index]) unreachable_bytes += self.mem_registry.get(@intCast(index)).?.len;
+        }
         return .{
             .current_reachable_bytes = current_bytes,
             .history_reachable_bytes = history_bytes,
-            .committed_unreachable_bytes = live_bytes -| (current_bytes + history_bytes),
+            .committed_unreachable_bytes = unreachable_bytes,
             .live_backing_bytes = live_bytes,
             .live_backing_capacity = self.getBackingStoreCapacity(),
             .live_backing_blocks = self.getBackingStoreBlockCount(),
@@ -2932,6 +2943,7 @@ pub const UnifiedTextBuffer = struct {
         style_update_storage: []PreparedStyleUpdate = &.{},
         style_updates: []PreparedStyleUpdate = &.{},
         style_only: bool = false,
+        payload_only: bool = false,
         committed: bool = false,
 
         pub fn ids(self: *const PreparedDocumentOperations) []const u64 {
@@ -2947,6 +2959,18 @@ pub const UnifiedTextBuffer = struct {
         pub fn commit(self: *PreparedDocumentOperations, out_ids: []u64) void {
             std.debug.assert(!self.committed and out_ids.len == self.created_ids.len);
             const owner = self.owner;
+            if (self.payload_only) {
+                const id = owner.mem_registry.register(self.staged_storage.?, true) catch unreachable;
+                std.debug.assert(id == self.staged_mem_id.?);
+                owner.owned_backing_ids[id] = true;
+                self.staged_storage = null;
+                owner._rope = self.rope;
+                owner.rope_transaction_arenas.appendAssumeCapacity(self.transaction_arena);
+                owner.sweepUnreachableBacking();
+                owner.markTextBytesDirty();
+                self.committed = true;
+                return;
+            }
             if (self.style_only) {
                 for (self.style_updates) |update| {
                     owner.annotations.commitPreparedStyle(update.id, update.style_id, update.kind_flags);
@@ -2996,6 +3020,15 @@ pub const UnifiedTextBuffer = struct {
 
         pub fn deinit(self: *PreparedDocumentOperations) void {
             const owner = self.owner;
+            if (self.payload_only) {
+                if (!self.committed) {
+                    self.transaction_arena.deinit();
+                    owner.global_allocator.destroy(self.transaction_arena);
+                    owner.global_allocator.free(self.staged_storage.?);
+                }
+                self.* = undefined;
+                return;
+            }
             if (self.style_only) {
                 if (!self.committed) {
                     for (self.acquired_styles.items) |style_id| owner.releaseInternalStyle(style_id);
@@ -3149,6 +3182,84 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
+    /// Replaces one printable-ASCII byte run without transforming annotations.
+    /// Equal normalized byte length keeps every MarkTree position and payload valid.
+    fn preparePayloadOnlyDocumentOperation(
+        self: *Self,
+        operations: []const DocumentOperation,
+        output_id_count: usize,
+    ) TextBufferError!?PreparedDocumentOperations {
+        if (operations.len != 1 or output_id_count != 0) return null;
+        const operation = operations[0];
+        if (operation.kind != .replace or !operation.before or !operation.use_target or
+            operation.target_mode != .replace or operation.chunks.len != 1 or operation.ranges.len != 0 or
+            styleValuePaints(operation.chunks[0])) return null;
+
+        const target = self.annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
+        if (target.payload.namespace != operation.owner or target.payload.kind_flags & document_range_kind == 0 or target.mark != .range) return TextBufferError.InvalidIndex;
+        const target_mark = target.mark.range;
+        const start = @min(target_mark.start_byte, target_mark.end_byte);
+        const end = if (operation.anchor_id == 0) @max(target_mark.start_byte, target_mark.end_byte) else blk: {
+            const anchor = self.annotations.get(operation.anchor_id) orelse return TextBufferError.InvalidIndex;
+            if (anchor.payload.namespace != operation.owner or anchor.payload.kind_flags & document_range_kind == 0 or anchor.mark != .range) return TextBufferError.InvalidIndex;
+            break :blk @max(anchor.mark.range.start_byte, anchor.mark.range.end_byte);
+        };
+        const replacement = operation.chunks[0].text_ptr[0..operation.chunks[0].text_len];
+        if (start >= end or replacement.len != end - start) return TextBufferError.InvalidDimensions;
+
+        const storage = self.global_allocator.alloc(u8, replacement.len) catch return TextBufferError.OutOfMemory;
+        var storage_owned = true;
+        defer if (storage_owned) self.global_allocator.free(storage);
+        if (self.copyNormalizedByteRange(start, end, storage) != storage.len) return TextBufferError.InvalidByteOffset;
+        for (storage, replacement) |old, new| {
+            if (old < 0x20 or old > 0x7e or new < 0x20 or new > 0x7e) return TextBufferError.InvalidDimensions;
+        }
+        @memcpy(storage, replacement);
+
+        try self.compactRopeTransactionArenasIfNeeded();
+        self.mem_registry.prepareRegister() catch return TextBufferError.OutOfMemory;
+        const mem_id = self.mem_registry.nextId() orelse return TextBufferError.OutOfMemory;
+        try self.rope_transaction_arenas.ensureUnusedCapacity(self.global_allocator, 1);
+        const transaction_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        var arena_owned = true;
+        defer if (arena_owned) self.global_allocator.destroy(transaction_arena);
+        transaction_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
+        defer if (arena_owned) transaction_arena.deinit();
+        var segments = try self.textToSegments(self.global_allocator, storage, mem_id, 0, true);
+        defer segments.segments.deinit(segments.allocator);
+        var candidate_rope = self._rope;
+        candidate_rope.allocator = transaction_arena.allocator();
+        const root = candidate_rope.prepareReplaceRangeByMetric(start, end, segments.segments.items, &self.byte_splitter) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            error.OutOfBounds => return TextBufferError.InvalidByteOffset,
+        };
+        candidate_rope.commitPreparedRoot(root);
+
+        storage_owned = false;
+        arena_owned = false;
+        return .{
+            .owner = self,
+            .annotations = undefined,
+            .transaction_arena = transaction_arena,
+            .rope = candidate_rope,
+            .staged_storage = storage,
+            .staged_mem_id = mem_id,
+            .storage_used = storage.len,
+            .transient_content_bytes = storage.len,
+            .acquired_styles = .empty,
+            .released_styles = .empty,
+            .created_ids = &.{},
+            .content_changed = true,
+            .annotations_changed = false,
+            .initial_style_slot_len = self.internal_style_slots.items.len,
+            .previous_syntax_style = self.syntax_style,
+            .next_syntax_style = self.syntax_style,
+            .syntax_listener_prepared = false,
+            .prepared_link_releases = 0,
+            .payload_only = true,
+        };
+    }
+
     /// Prepare an ordered operation log without changing live state. Stable IDs
     /// are resolved after each candidate edit; every commit action is reserved
     /// before this function returns.
@@ -3158,6 +3269,7 @@ pub const UnifiedTextBuffer = struct {
         output_id_count: usize,
     ) TextBufferError!PreparedDocumentOperations {
         if (try self.prepareStyleOnlyDocumentOperations(operations, output_id_count)) |prepared| return prepared;
+        if (try self.preparePayloadOnlyDocumentOperation(operations, output_id_count)) |prepared| return prepared;
         // Compaction is prepared and published before semantic preparation. If
         // it runs out of memory, this edit is wholly uncommitted and retryable.
         try self.compactRopeTransactionArenasIfNeeded();

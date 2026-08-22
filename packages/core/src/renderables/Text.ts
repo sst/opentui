@@ -83,10 +83,22 @@ function hasTextStyle(style: TextStyle): boolean {
   )
 }
 
+function textStylesEqual(left: TextStyle, right: TextStyle): boolean {
+  return Boolean(
+    left.attributes === right.attributes &&
+    left.styleId === right.styleId &&
+    left.styleSource === right.styleSource &&
+    left.link?.url === right.link?.url &&
+    (left.fg === right.fg || left.fg?.equals(right.fg)) &&
+    (left.bg === right.bg || left.bg?.equals(right.bg)),
+  )
+}
+
 type PreparedTextDocumentFlush = {
   operations: DocumentOperation[]
   assignments: Array<(id: bigint) => void>
   contentChanged: boolean
+  layoutChanged: boolean
 }
 
 type PlannedNativeMove = { source: TextRenderable; anchor: TextRenderable; before: boolean }
@@ -341,6 +353,8 @@ export class TextRenderable extends TextBufferRenderable {
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
+  private _manualTextOnly = false
+  private _publicTextOnly = false
   private _manualStyledSyntaxStyle: SyntaxStyle | null = null
   private _lastCommittedLineInfoFrame: number = -1
   private _layoutPromotionPending: boolean = false
@@ -1338,6 +1352,27 @@ export class TextRenderable extends TextBufferRenderable {
       this.replaceManualStyledText(content, requestRender)
       return
     }
+    if (
+      content !== "" &&
+      this._manualStyledText === null &&
+      this._pendingChildOrder === null &&
+      this._children.length === 1 &&
+      typeof this._children[0] === "string"
+    ) {
+      this._publicTextOnly =
+        this._children[0].length === content.length &&
+        /^[\x20-\x7e]+$/.test(this._children[0]) &&
+        /^[\x20-\x7e]+$/.test(content)
+      const owner = this.getDocumentOwner()
+      const renderPending = owner?._textDocumentPending === true
+      this._children[0] = content
+      this._textDocumentPending = true
+      if (requestRender) {
+        this.invalidateTextDocument(!renderPending || owner?.parent === null)
+        if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
+      }
+      return
+    }
     const nextChildren: (string | TextRenderable)[] = content === "" ? [] : [content]
     try {
       this.children = nextChildren
@@ -1363,6 +1398,7 @@ export class TextRenderable extends TextBufferRenderable {
     const styles = new Map<string | number, TextStyle>()
     const previousLeaves = this._manualStyledText === null ? null : this._leaves
     const nextLeaves = new Array<TextLeaf>(content.chunks.length)
+    let textOnly = previousLeaves !== null && previousLeaves.length === content.chunks.length
     let syntaxStyle: SyntaxStyle | null = null
     for (const chunk of content.chunks) {
       if ((chunk.styleId === undefined) !== (chunk.styleSource === undefined)) {
@@ -1386,6 +1422,12 @@ export class TextRenderable extends TextBufferRenderable {
       const style = this.internStyledLeafStyle(chunk, styles)
       const leaf = previousLeaves?.[index]
       if (leaf) {
+        textOnly &&=
+          leaf.rangeId !== null &&
+          leaf.text.length === chunk.text.length &&
+          /^[\x20-\x7e]+$/.test(leaf.text) &&
+          /^[\x20-\x7e]+$/.test(chunk.text) &&
+          textStylesEqual(leaf.style!, style)
         leaf.text = chunk.text
         leaf.style = style
         nextLeaves[index] = leaf
@@ -1408,6 +1450,7 @@ export class TextRenderable extends TextBufferRenderable {
       if (hadPublicContent) this.children = []
       this._leaves = nextLeaves
       this._manualStyledText = content
+      this._manualTextOnly = textOnly
       this._manualStyledSyntaxStyle = syntaxStyle
       this._textDocumentPending = true
       if (requestRender) {
@@ -1515,7 +1558,7 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of this.getTextChildren()) child.adoptTextContext(ctx)
   }
 
-  private invalidateTextDocument(): void {
+  private invalidateTextDocument(requestRender: boolean = true): void {
     const owner = this.getDocumentOwner()
     if (owner) {
       owner._textDocumentPending = true
@@ -1525,7 +1568,7 @@ export class TextRenderable extends TextBufferRenderable {
         else deferredDocumentOwners.add(owner)
       }
     }
-    this.requestRender()
+    if (requestRender) this.requestRender()
   }
 
   private flushTextDocument(): void {
@@ -1554,9 +1597,15 @@ export class TextRenderable extends TextBufferRenderable {
         }),
       ),
     ]
-    const roots = pending.filter(
-      (candidate) => !pending.some((other) => other !== candidate && candidate.isTextDescendantOf(other)),
-    )
+    const pendingSet = new Set(pending)
+    const roots = pending.filter((candidate) => {
+      let parent = candidate.parent
+      while (isTextRenderable(parent)) {
+        if (pendingSet.has(parent)) return false
+        parent = parent.parent
+      }
+      return true
+    })
     const replacementPlans: NativeReplacementPlan[] = []
     const plannedRoots = new Set<TextRenderable>()
     const addReplacementPlan = (run: TextRenderable[]): void => {
@@ -1573,10 +1622,9 @@ export class TextRenderable extends TextBufferRenderable {
       let previousIndex = isTextRenderable(parent) ? parent._children.indexOf(roots[index]!) : -1
       while (isTextRenderable(parent) && index + run.length < roots.length) {
         const candidate = roots[index + run.length]!
-        const candidateIndex = parent._children.indexOf(candidate)
-        if (candidate.parent !== parent || candidateIndex !== previousIndex + 1) break
+        if (candidate.parent !== parent || parent._children[previousIndex + 1] !== candidate) break
         run.push(candidate)
-        previousIndex = candidateIndex
+        previousIndex += 1
       }
       addReplacementPlan(run)
       index += run.length
@@ -1596,7 +1644,13 @@ export class TextRenderable extends TextBufferRenderable {
 
     const operations: DocumentOperation[] = []
     const assignments: Array<(id: bigint) => void> = []
-    for (const plan of replacementPlans) this.collectNativeSubtreeOperation(plan.roots, operations, assignments)
+    const payloadOnlyBatch =
+      replacementPlans.length === 1 &&
+      this._pendingNativeMoves.length === 0 &&
+      this._pendingRemovedRangeIds.size === 0 &&
+      this._pendingStyleRoots.size === 0
+    for (const plan of replacementPlans)
+      this.collectNativeSubtreeOperation(plan.roots, operations, assignments, payloadOnlyBatch)
     for (const move of this._pendingNativeMoves) {
       // Queued node ancestry may have changed; stable native IDs describe whether this replacement publishes the move.
       const ownedByReplacement = move.owner === this._textDocumentOwner
@@ -1639,11 +1693,12 @@ export class TextRenderable extends TextBufferRenderable {
       operations,
       assignments,
       contentChanged: replacementPlans.length > 0 || this._pendingNativeMoves.length > 0,
+      layoutChanged: !operations.some((operation) => operation.kind === "replace" && operation.before),
     }
   }
 
   private commitPreparedTextDocumentFlush(prepared: PreparedTextDocumentFlush, ids: bigint[]): void {
-    const { assignments, contentChanged } = prepared
+    const { assignments, contentChanged, layoutChanged } = prepared
     ids.forEach((id, index) => assignments[index]!(id))
     this._pendingDocumentRoots.clear()
     this._pendingStyleRoots.clear()
@@ -1655,8 +1710,10 @@ export class TextRenderable extends TextBufferRenderable {
     this._textDocumentPending = false
     if (contentChanged) {
       this.refreshLocalSelection()
-      this.yogaNode.markDirty()
-      textRenderableDebugMetrics.yogaDirties += 1
+      if (layoutChanged) {
+        this.yogaNode.markDirty()
+        textRenderableDebugMetrics.yogaDirties += 1
+      }
       this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
       this.emit("line-info-change")
     }
@@ -1684,7 +1741,54 @@ export class TextRenderable extends TextBufferRenderable {
     roots: TextRenderable[],
     operations: DocumentOperation[],
     batchAssignments: Array<(id: bigint) => void>,
+    payloadOnlyBatch: boolean,
   ): void {
+    const stableAsciiLeaf = (root: TextRenderable): boolean => {
+      if (
+        root._nativeRangeId === null ||
+        !root._publicTextOnly ||
+        root._manualStyledText !== null ||
+        root._pendingChildOrder !== null ||
+        root._children.length !== 1 ||
+        typeof root._children[0] !== "string" ||
+        !root.ancestorsVisible() ||
+        !/^[\x20-\x7e]+$/.test(root._children[0])
+      )
+        return false
+      return true
+    }
+    if (payloadOnlyBatch && roots.every(stableAsciiLeaf)) {
+      operations.push({
+        kind: "replace",
+        targetId: roots[0]!._nativeRangeId!,
+        anchorId: roots.length > 1 ? roots.at(-1)!._nativeRangeId! : undefined,
+        targetMode: "replace",
+        owner: this._textDocumentOwner,
+        before: true,
+        chunks: [{ text: roots.map((root) => root._children[0] as string).join("") }],
+        ranges: [],
+      })
+      return
+    }
+    const manual = roots.length === 1 ? roots[0]! : null
+    if (
+      payloadOnlyBatch &&
+      manual !== null &&
+      manual._manualStyledText !== null &&
+      manual._manualTextOnly &&
+      manual._nativeRangeId !== null
+    ) {
+      operations.push({
+        kind: "replace",
+        targetId: manual._nativeRangeId,
+        targetMode: "replace",
+        owner: this._textDocumentOwner,
+        before: true,
+        chunks: [{ text: manual._leaves.map((leaf) => leaf!.text).join("") }],
+        ranges: [],
+      })
+      return
+    }
     const chunks: Array<{ text: string }> = []
     const ranges: DocumentRangeInput[] = []
     const assignments: Array<(id: bigint) => void> = []
@@ -1888,15 +1992,6 @@ export class TextRenderable extends TextBufferRenderable {
       current = current.parent
     }
     return depth
-  }
-
-  private isTextDescendantOf(ancestor: TextRenderable): boolean {
-    let current = this.parent
-    while (isTextRenderable(current)) {
-      if (current === ancestor) return true
-      current = current.parent
-    }
-    return false
   }
 
   private resetNativeRanges(): void {

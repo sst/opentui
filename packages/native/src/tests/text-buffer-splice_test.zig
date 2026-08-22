@@ -1809,6 +1809,68 @@ test "pure style transaction rolls back every allocation failure" {
     for (0..allocations) |offset| _ = try exerciseStyleOnlyTransactionFailure(offset);
 }
 
+fn exercisePayloadOnlyTransactionFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(failing.allocator(), pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const initial: text_buffer.StyledChunk = .{ .text_ptr = "value".ptr, .text_len = 5, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 1, .style = initial, .styled = false, .priority = 1 },
+        .{ .start_chunk = 0, .end_chunk = 1, .style = initial, .styled = true, .priority = 2 },
+    };
+    var ids: [2]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 107, .chunks = &.{initial}, .ranges = &ranges }}, &ids);
+    const annotations_before = [_]TextAnnotations.Annotation{
+        tb.textAnnotations().get(ids[0]).?,
+        tb.textAnnotations().get(ids[1]).?,
+    };
+    const content_epoch_before = tb.getContentEpoch();
+    const annotation_epoch_before = tb.getAnnotationEpoch();
+    const metrics_before = try tb.getDebugMetrics();
+    const allocations_before = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = allocations_before + offset;
+
+    const replacement: text_buffer.StyledChunk = .{ .text_ptr = "other".ptr, .text_len = 5, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const operation = [_]text_buffer.DocumentOperation{.{
+        .kind = .replace,
+        .target_id = ids[0],
+        .owner = 107,
+        .chunks = &.{replacement},
+        .before = true,
+    }};
+    const result = tb.applyDocumentOperations(&operation, &.{});
+    const operation_allocations = failing.alloc_index - allocations_before;
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, result);
+        failing.fail_index = std.math.maxInt(usize);
+        try expectText(tb, "value");
+        try std.testing.expectEqual(content_epoch_before, tb.getContentEpoch());
+        try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
+        for (ids, annotations_before) |id, annotation| try std.testing.expectEqualDeep(annotation, tb.textAnnotations().get(id).?);
+        try tb.applyDocumentOperations(&operation, &.{});
+    } else try result;
+
+    try expectText(tb, "other");
+    try std.testing.expectEqual(content_epoch_before + 1, tb.getContentEpoch());
+    try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
+    for (ids, annotations_before) |id, annotation| try std.testing.expectEqualDeep(annotation, tb.textAnnotations().get(id).?);
+    const metrics_after = try tb.getDebugMetrics();
+    try std.testing.expectEqual(metrics_before.annotation_clone_entries, metrics_after.annotation_clone_entries);
+    try std.testing.expectEqual(metrics_before.style_reconciliation_entries, metrics_after.style_reconciliation_entries);
+    try std.testing.expectEqual(@as(usize, 0), metrics_after.committed_unreachable_bytes);
+    return operation_allocations;
+}
+
+test "payload-only transaction retains annotations and retries every allocation failure" {
+    const allocations = try exercisePayloadOnlyTransactionFailure(null);
+    for (0..allocations) |offset| _ = try exercisePayloadOnlyTransactionFailure(offset);
+}
+
 fn exerciseTwoDocumentTransferFailure(fail_offset: ?usize) !usize {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const allocator = failing.allocator();
