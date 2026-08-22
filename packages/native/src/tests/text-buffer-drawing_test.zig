@@ -14,6 +14,55 @@ const RGBA = text_buffer.RGBA;
 const WrapMode = text_buffer.WrapMode;
 const StyledChunk = text_buffer.StyledChunk;
 
+test "incremental styled document renders through selection wrap and truncate views" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+    try tb.setText("alpha beta gamma");
+    const replacement = "BETA";
+    const chunks = [_]StyledChunk{.{
+        .text_ptr = replacement.ptr,
+        .text_len = replacement.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+    }};
+    _ = try tb.replaceStyledRangeBytes(6, 10, &chunks, 33);
+
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.char);
+    view.setWrapWidth(6);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 8, .height = 3 });
+    const selected_bg = ansi.rgbaFromFloats(1, 1, 0, 1);
+    view.setSelection(6, 10, selected_bg, null);
+
+    var target = try OptimizedBuffer.init(std.testing.allocator, 8, 3, .{ .pool = pool, .width_method = .unicode });
+    defer target.deinit();
+    target.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    target.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(@as(u32, 'a'), target.get(0, 0).?.char);
+    const selected = target.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, 'T'), selected.char);
+    try std.testing.expectEqual(selected_bg, selected.bg);
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 8, .height = 1 });
+    target.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    target.drawTextBuffer(view, 0, 0);
+    var saw_ellipsis = false;
+    for (0..8) |column| saw_ellipsis = saw_ellipsis or target.get(@intCast(column), 0).?.char == '.';
+    try std.testing.expect(saw_ellipsis);
+}
+
 test "drawTextBuffer - simple single line text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

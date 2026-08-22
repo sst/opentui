@@ -289,38 +289,87 @@ fn benchSetStyledTextOperations(
     }
 
     {
-        const name = "setStyledText - full replacement in 10000 lines";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+        const baseline_name = "paired equal-output: full rebuild + owner style + projection (min/avg/max)";
+        const incremental_name = "paired equal-output: incremental splice + owner style + projection (min/avg/max)";
+        if (bench_utils.matchesBenchFilter(baseline_name, bench_filter) or bench_utils.matchesBenchFilter(incremental_name, bench_filter)) {
             var document: std.ArrayList(u8) = .empty;
             defer document.deinit(allocator);
             for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
 
-            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
-            defer tb.deinit();
-            const style = try SyntaxStyle.init(allocator);
-            defer style.deinit();
-            tb.setSyntaxStyle(style);
-            const chunks = [_]StyledChunk{.{
-                .text_ptr = document.items.ptr,
-                .text_len = document.items.len,
-                .fg_ptr = null,
-                .bg_ptr = null,
-                .attributes = 1,
-            }};
-            try tb.setStyledText(&chunks);
+            const baseline = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
+            defer baseline.deinit();
+            const incremental = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
+            defer incremental.deinit();
+            const baseline_style = try SyntaxStyle.init(allocator);
+            defer baseline_style.deinit();
+            const incremental_style = try SyntaxStyle.init(allocator);
+            defer incremental_style.deinit();
+            baseline.setSyntaxStyle(baseline_style);
+            incremental.setSyntaxStyle(incremental_style);
+            try baseline.setText(document.items);
+            try incremental.setText(document.items);
 
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                try tb.setStyledText(&chunks);
-                stats.record(timer.read());
+            var baseline_stats: BenchStats = .{};
+            var incremental_stats: BenchStats = .{};
+            for (0..iterations) |iteration| {
+                const line_index = (iteration *% 7919) % 10000;
+                const position: u32 = @intCast(line_index * 17 + 7);
+                const replacement = if (iteration & 1 == 0) "X" else "Y";
+                document.items[position] = replacement[0];
+                const chunk = [_]StyledChunk{.{
+                    .text_ptr = replacement.ptr,
+                    .text_len = replacement.len,
+                    .fg_ptr = null,
+                    .bg_ptr = null,
+                    .attributes = 1,
+                }};
+                const style_value: StyledChunk = .{
+                    .text_ptr = "".ptr,
+                    .text_len = 0,
+                    .fg_ptr = null,
+                    .bg_ptr = null,
+                    .attributes = 1,
+                };
+
+                var timer = bench_utils.BenchTimer.start(io);
+                _ = try baseline.replaceNormalizedBytes(0, baseline.getByteSize(), document.items);
+                _ = try baseline.clearStyleOwner(7);
+                _ = try baseline.createStyleValueRange(7, position, position + 1, style_value, 1);
+                std.mem.doNotOptimizeAway(baseline.getLineSpans(line_index));
+                baseline_stats.record(timer.read());
+
+                timer = bench_utils.BenchTimer.start(io);
+                _ = try incremental.clearStyleOwner(7);
+                _ = try incremental.replaceStyledRangeBytes(position, position + 1, &chunk, 7);
+                std.mem.doNotOptimizeAway(incremental.getLineSpans(line_index));
+                incremental_stats.record(timer.read());
             }
-            try results.append(allocator, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
+
+            const baseline_output = try allocator.alloc(u8, baseline.getByteSize());
+            defer allocator.free(baseline_output);
+            const incremental_output = try allocator.alloc(u8, incremental.getByteSize());
+            defer allocator.free(incremental_output);
+            const baseline_len = baseline.getPlainTextIntoBuffer(baseline_output);
+            const incremental_len = incremental.getPlainTextIntoBuffer(incremental_output);
+            if (!std.mem.eql(u8, baseline_output[0..baseline_len], incremental_output[0..incremental_len])) return error.BenchmarkOutputMismatch;
+            _ = try baseline.clearStyleOwner(7);
+            _ = try incremental.clearStyleOwner(7);
+
+            if (bench_utils.matchesBenchFilter(baseline_name, bench_filter)) try results.append(allocator, .{
+                .name = baseline_name,
+                .min_ns = baseline_stats.min_ns,
+                .avg_ns = baseline_stats.avg(),
+                .max_ns = baseline_stats.max_ns,
+                .total_ns = baseline_stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+            if (bench_utils.matchesBenchFilter(incremental_name, bench_filter)) try results.append(allocator, .{
+                .name = incremental_name,
+                .min_ns = incremental_stats.min_ns,
+                .avg_ns = incremental_stats.avg(),
+                .max_ns = incremental_stats.max_ns,
+                .total_ns = incremental_stats.total_ns,
                 .iterations = iterations,
                 .mem_stats = null,
             });
@@ -328,48 +377,9 @@ fn benchSetStyledTextOperations(
     }
 
     {
-        const name = "replaceStyledRangeBytes - local update in 10000 lines";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var document: std.ArrayList(u8) = .empty;
-            defer document.deinit(allocator);
-            for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
-
-            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
-            defer tb.deinit();
-            const style = try SyntaxStyle.init(allocator);
-            defer style.deinit();
-            tb.setSyntaxStyle(style);
-            try tb.setText(document.items);
-            const replacement = "WXYZ";
-            const chunks = [_]StyledChunk{.{
-                .text_ptr = replacement.ptr,
-                .text_len = replacement.len,
-                .fg_ptr = null,
-                .bg_ptr = null,
-                .attributes = 1,
-            }};
-            const start: u32 = @intCast(document.items.len / 2);
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                _ = try tb.replaceStyledRangeBytes(start, start + @as(u32, @intCast(replacement.len)), &chunks, 1);
-                stats.record(timer.read());
-            }
-            try results.append(allocator, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-        }
-    }
-
-    {
-        const name = "annotation projection - one line from 10000-line document";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+        const line_100_name = "paired line-local projection: line 100 of 10000 (min/avg/max)";
+        const line_10000_name = "paired line-local projection: line 10000 of 10000 (min/avg/max)";
+        if (bench_utils.matchesBenchFilter(line_100_name, bench_filter) or bench_utils.matchesBenchFilter(line_10000_name, bench_filter)) {
             var document: std.ArrayList(u8) = .empty;
             defer document.deinit(allocator);
             for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
@@ -377,24 +387,43 @@ fn benchSetStyledTextOperations(
             const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
             defer tb.deinit();
             try tb.setText(document.items);
+            var line_100_id: u64 = 0;
+            var line_10000_id: u64 = 0;
             for (0..10000) |line_index| {
                 const start: u32 = @intCast(line_index * 17);
-                _ = try tb.createStyleRange(2, start, start + 8, 1, 1);
+                const id = try tb.createStyleRange(2, start, start + 8, 1, 1);
+                if (line_index == 99) line_100_id = id;
+                if (line_index == 9999) line_10000_id = id;
             }
 
-            var stats: BenchStats = .{};
+            var line_100_stats: BenchStats = .{};
+            var line_10000_stats: BenchStats = .{};
             for (0..iterations) |iteration| {
-                const line_index = iteration % 10000;
-                const timer = bench_utils.BenchTimer.start(io);
-                std.mem.doNotOptimizeAway(tb.getLineSpans(line_index));
-                stats.record(timer.read());
+                const style_id: u32 = if (iteration & 1 == 0) 1 else 2;
+                _ = try tb.updateStyleRangeStyle(line_100_id, style_id);
+                var timer = bench_utils.BenchTimer.start(io);
+                std.mem.doNotOptimizeAway(tb.getLineSpans(99));
+                line_100_stats.record(timer.read());
+                _ = try tb.updateStyleRangeStyle(line_10000_id, style_id);
+                timer = bench_utils.BenchTimer.start(io);
+                std.mem.doNotOptimizeAway(tb.getLineSpans(9999));
+                line_10000_stats.record(timer.read());
             }
-            try results.append(allocator, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
+            if (bench_utils.matchesBenchFilter(line_100_name, bench_filter)) try results.append(allocator, .{
+                .name = line_100_name,
+                .min_ns = line_100_stats.min_ns,
+                .avg_ns = line_100_stats.avg(),
+                .max_ns = line_100_stats.max_ns,
+                .total_ns = line_100_stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+            if (bench_utils.matchesBenchFilter(line_10000_name, bench_filter)) try results.append(allocator, .{
+                .name = line_10000_name,
+                .min_ns = line_10000_stats.min_ns,
+                .avg_ns = line_10000_stats.avg(),
+                .max_ns = line_10000_stats.max_ns,
+                .total_ns = line_10000_stats.total_ns,
                 .iterations = iterations,
                 .mem_stats = null,
             });
