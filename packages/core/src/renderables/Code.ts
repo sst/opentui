@@ -292,7 +292,49 @@ export class CodeRenderable extends TextBufferRenderable {
     if (!this._onChunks) return chunks
 
     const modified = await this._onChunks(chunks, context)
-    return modified ?? chunks
+    return (modified ?? chunks).map((chunk) => {
+      const { styleId, styleSource } = chunk
+      if (styleId === undefined && styleSource === undefined) return chunk
+
+      let registered
+      try {
+        registered = styleId === undefined || !styleSource ? undefined : styleSource.getStyleById(styleId)
+      } catch {
+        registered = undefined
+      }
+
+      if (!registered) {
+        return { ...chunk, styleId: undefined, styleSource: undefined }
+      }
+
+      const fg = chunk.fg ?? registered.fg
+      const bg = chunk.bg ?? registered.bg
+      const attributes = chunk.attributes ?? registered.attributes
+      const exact =
+        chunk.link === undefined &&
+        attributes === registered.attributes &&
+        (fg === registered.fg || fg?.equals(registered.fg)) &&
+        (bg === registered.bg || bg?.equals(registered.bg))
+
+      if (exact) {
+        return {
+          ...chunk,
+          fg: undefined,
+          bg: undefined,
+          attributes: undefined,
+          link: undefined,
+        }
+      }
+
+      return {
+        ...chunk,
+        styleId: undefined,
+        styleSource: undefined,
+        fg,
+        bg,
+        attributes,
+      }
+    })
   }
 
   private ensureVisibleTextBeforeHighlight(): void {

@@ -1380,6 +1380,39 @@ test("CodeRenderable - onChunks callback can transform chunks when highlights ar
   expect(codeRenderable.plainText).toBe("HELLO")
 })
 
+test("CodeRenderable - onChunks keeps registered provenance only for an exact effective style", async () => {
+  const keyword = RGBA.fromValues(0.2, 0.4, 0.8, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({ keyword: { fg: keyword, bold: true } })
+  const keywordId = syntaxStyle.getStyleId("keyword")!
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [[0, 5, "keyword"]] as SimpleHighlight[] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "registered-on-chunks",
+    content: "const",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: (chunks) => chunks,
+  })
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(codeRenderable, mockClient)
+  expect(codeRenderable.getLineHighlights(0).some((highlight) => highlight.styleId === keywordId)).toBe(true)
+
+  codeRenderable.onChunks = (chunks) => chunks.map((chunk) => ({ ...chunk, link: { url: "https://example.com" } }))
+  await renderOnce()
+  mockClient.resolveHighlightOnce(0)
+  await waitForHighlight(codeRenderable)
+  await renderOnce()
+
+  const highlights = codeRenderable.getLineHighlights(0)
+  expect(highlights.length).toBeGreaterThan(0)
+  expect(highlights.some((highlight) => highlight.styleId === keywordId)).toBe(false)
+  const span = findSpanContaining(captureSpans(), "const")
+  expect(span?.fg.toInts()).toEqual(keyword.toInts())
+  expect((span?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
+})
+
 test("CodeRenderable - baseHighlight applies a style when parser highlights are empty", async () => {
   const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
   const syntaxStyle = SyntaxStyle.fromStyles({
