@@ -4,10 +4,183 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
+const utf8 = @import("../utf8.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const Cursor = edit_buffer.Cursor;
+
+fn expectEditText(eb: *EditBuffer, expected: []const u8) !void {
+    const output = try std.testing.allocator.alloc(u8, eb.tb.getByteSize());
+    defer std.testing.allocator.free(output);
+    const written = eb.getText(output);
+    try std.testing.expectEqualStrings(expected, output[0..written]);
+}
+
+fn expectPrimaryCursor(eb: *EditBuffer, row: u32, col: u32, desired_col: u32, offset: u32) !void {
+    const cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(row, cursor.row);
+    try std.testing.expectEqual(col, cursor.col);
+    try std.testing.expectEqual(desired_col, cursor.desired_col);
+    try std.testing.expectEqual(offset, cursor.offset);
+}
+
+fn exerciseInteriorCursorInsertion(width_method: utf8.WidthMethod) !void {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, width_method, null);
+    defer eb.deinit();
+
+    const cases = [_]struct {
+        text: []const u8,
+        requested_col: u32,
+        canonical_col: u32,
+        inserted: []const u8,
+    }{
+        .{ .text = "界A", .requested_col = 1, .canonical_col = 2, .inserted = "界XA" },
+        .{ .text = "A界B", .requested_col = 2, .canonical_col = 3, .inserted = "A界XB" },
+        .{ .text = "A界", .requested_col = 2, .canonical_col = 3, .inserted = "A界X" },
+        .{ .text = "\tA", .requested_col = 1, .canonical_col = 0, .inserted = "X\tA" },
+        .{ .text = "A\tB", .requested_col = 2, .canonical_col = 1, .inserted = "AX\tB" },
+        .{ .text = "A\t", .requested_col = 2, .canonical_col = 1, .inserted = "AX\t" },
+    };
+
+    for (cases) |case| {
+        try eb.setText(case.text);
+        try eb.setCursor(0, case.requested_col);
+        try expectPrimaryCursor(eb, 0, case.requested_col, case.requested_col, case.requested_col);
+
+        try eb.insertText("X");
+        try expectEditText(eb, case.inserted);
+        try expectPrimaryCursor(eb, 0, case.canonical_col + 1, case.canonical_col + 1, case.canonical_col + 1);
+
+        _ = try eb.undo();
+        try expectEditText(eb, case.text);
+        try expectPrimaryCursor(eb, 0, case.requested_col, case.requested_col, case.requested_col);
+        _ = try eb.redo();
+        try expectEditText(eb, case.inserted);
+        try expectPrimaryCursor(eb, 0, case.canonical_col + 1, case.canonical_col + 1, case.canonical_col + 1);
+    }
+}
+
+test "EditBuffer - interior display cursors map for insertion and restore exactly in every width mode" {
+    inline for (std.meta.tags(utf8.WidthMethod)) |width_method| {
+        try exerciseInteriorCursorInsertion(width_method);
+    }
+}
+
+fn exerciseCursorEditBoundaries(width_method: utf8.WidthMethod) !void {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, width_method, null);
+    defer eb.deinit();
+
+    try eb.setText("A界B");
+    try eb.setCursor(0, 1);
+    try eb.insertText("X");
+    try expectEditText(eb, "AX界B");
+
+    try eb.setText("A界B");
+    try eb.setCursor(0, 3);
+    try eb.insertText("X");
+    try expectEditText(eb, "A界XB");
+
+    try eb.setText("A\tB");
+    try eb.setCursor(0, 3);
+    try eb.insertText("X");
+    try expectEditText(eb, "A\tXB");
+
+    try eb.setText("A界B");
+    try eb.setCursor(0, 2);
+    try eb.backspace();
+    try expectEditText(eb, "AB");
+    try expectPrimaryCursor(eb, 0, 1, 1, 1);
+    _ = try eb.undo();
+    try expectEditText(eb, "A界B");
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+    _ = try eb.redo();
+    try expectEditText(eb, "AB");
+    try expectPrimaryCursor(eb, 0, 1, 1, 1);
+
+    try eb.setText("A界B");
+    try eb.setCursor(0, 2);
+    try eb.deleteForward();
+    try expectEditText(eb, "A界");
+    try expectPrimaryCursor(eb, 0, 3, 3, 3);
+
+    try eb.setText("A界B");
+    try eb.deleteRange(.{ .row = 0, .col = 2 }, .{ .row = 0, .col = 3 });
+    try expectEditText(eb, "AB");
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+
+    try eb.setText("A\tB");
+    try eb.setCursor(0, 2);
+    try eb.deleteForward();
+    try expectEditText(eb, "AB");
+    try expectPrimaryCursor(eb, 0, 1, 1, 1);
+
+    try eb.setText("A\tB");
+    try eb.setCursor(0, 2);
+    try eb.backspace();
+    try expectEditText(eb, "\tB");
+    try expectPrimaryCursor(eb, 0, 0, 0, 0);
+
+    try eb.setText("A\tB");
+    try eb.deleteRange(.{ .row = 0, .col = 2 }, .{ .row = 0, .col = 3 });
+    try expectEditText(eb, "AB");
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+
+    try eb.setText("Ae\u{301}B");
+    try eb.setCursor(0, 2);
+    try eb.backspace();
+    try expectEditText(eb, if (width_method == .wcwidth) "A\u{301}B" else "AB");
+    try expectPrimaryCursor(eb, 0, 1, 1, 1);
+
+    try eb.setText("12\nA界B\nA\tB");
+    try eb.setCursor(0, 2);
+    eb.moveDown();
+    try expectPrimaryCursor(eb, 1, 2, 2, 5);
+    eb.moveDown();
+    try expectPrimaryCursor(eb, 2, 2, 2, 10);
+    eb.moveUp();
+    try expectPrimaryCursor(eb, 1, 2, 2, 5);
+    eb.moveUp();
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+}
+
+test "EditBuffer - display cursor boundaries drive insert delete backspace range and movement" {
+    inline for (std.meta.tags(utf8.WidthMethod)) |width_method| {
+        try exerciseCursorEditBoundaries(width_method);
+    }
+}
+
+fn exerciseZwjCursorUnits(width_method: utf8.WidthMethod, after_backspace: []const u8) !void {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, width_method, null);
+    defer eb.deinit();
+
+    try eb.setText("A👩‍💻B");
+    try eb.setCursor(0, 2);
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+    try eb.backspace();
+    try expectEditText(eb, after_backspace);
+    _ = try eb.undo();
+    try expectEditText(eb, "A👩‍💻B");
+    try expectPrimaryCursor(eb, 0, 2, 2, 2);
+}
+
+test "EditBuffer - ZWJ interiors follow each width mode cursor unit" {
+    try exerciseZwjCursorUnits(.unicode, "AB");
+    try exerciseZwjCursorUnits(.no_zwj, "A💻B");
+    try exerciseZwjCursorUnits(.wcwidth, "A‍💻B");
+}
 
 test "EditBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);

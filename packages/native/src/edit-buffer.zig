@@ -182,6 +182,31 @@ pub const EditBuffer = struct {
         return self.cursors.items[0];
     }
 
+    /// Editing needs an insertion boundary even though the visual cursor may
+    /// occupy an interior display cell. Wide cursor units edit from their end;
+    /// expanded tab cells edit from the tab's start.
+    fn canonicalEditCursorCoords(self: *EditBuffer, row: u32, col: u32) EditBufferError!CursorCoords {
+        const line_count = self.tb.lineCount();
+        if (row >= line_count) return EditBufferError.InvalidCursor;
+        const line_width = iter_mod.lineWidthAt(self.tb.rope(), row);
+        if (col > line_width) return EditBufferError.InvalidCursor;
+        var canonical_col = col;
+        const offset = iter_mod.coordsToOffset(self.tb.rope(), row, col) orelse return EditBufferError.InvalidCursor;
+
+        if (self.tb.cursorUnitBoundsAtOffset(offset)) |bounds| {
+            if (offset > bounds.start and offset < bounds.end) {
+                var first_byte: [1]u8 = undefined;
+                const is_tab = self.tb.getTextRange(bounds.start, bounds.end, &first_byte) == 1 and first_byte[0] == '\t';
+                const canonical_offset = if (is_tab) bounds.start else bounds.end;
+                if (iter_mod.offsetToCoords(self.tb.rope(), canonical_offset)) |coords| {
+                    if (coords.row == row) canonical_col = coords.col;
+                }
+            }
+        }
+
+        return .{ .row = row, .col = canonical_col };
+    }
+
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
         const line_count = self.tb.lineCount();
         const clamped_row = @min(row, line_count -| 1);
@@ -214,7 +239,8 @@ pub const EditBuffer = struct {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
 
-        const cursor = self.cursors.items[0];
+        const stored_cursor = self.cursors.items[0];
+        const cursor = try self.canonicalEditCursorCoords(stored_cursor.row, stored_cursor.col);
         const insert_byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = cursor.row, .col = cursor.col }, .before) catch return EditBufferError.InvalidCursor;
         if (!std.unicode.utf8ValidateSlice(bytes)) return tb.TextBufferError.InvalidUtf8;
         var history = try self.prepareAutoStoreUndo();
@@ -274,7 +300,8 @@ pub const EditBuffer = struct {
 
     pub fn backspace(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
-        const cursor = self.cursors.items[0];
+        const stored_cursor = self.cursors.items[0];
+        const cursor = try self.canonicalEditCursorCoords(stored_cursor.row, stored_cursor.col);
 
         if (cursor.row == 0 and cursor.col == 0) return;
 
@@ -302,7 +329,8 @@ pub const EditBuffer = struct {
 
     pub fn deleteForward(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
-        const cursor = self.cursors.items[0];
+        const stored_cursor = self.cursors.items[0];
+        const cursor = try self.canonicalEditCursorCoords(stored_cursor.row, stored_cursor.col);
 
         const line_width = iter_mod.lineWidthAt(self.tb.rope(), cursor.row);
         const line_count = self.tb.lineCount();
