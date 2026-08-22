@@ -1332,6 +1332,23 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
         self.caps.hyperlinks = true;
     }
+
+    // Ghostty currently parses OSC 66 but does not apply its width metadata.
+    // The probe's plain space still advances the cursor, producing a false
+    // positive that causes later graphemes to be wrapped in unsupported OSC 66.
+    // Keep the explicit force-on escape hatch available for future releases.
+    if (self.term_info.from_xtversion and
+        std.ascii.eqlIgnoreCase(self.getTerminalName(), "ghostty") and
+        !self.isExplicitWidthForcedOn())
+    {
+        self.caps.explicit_width = false;
+    }
+}
+
+fn isExplicitWidthForcedOn(self: *Terminal) bool {
+    const env_map = self.opts.env_map orelse return false;
+    const value = env_map.get("OPENTUI_FORCE_EXPLICIT_WIDTH") orelse return false;
+    return std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "1");
 }
 
 fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {

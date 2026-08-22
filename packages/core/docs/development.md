@@ -151,4 +151,4 @@ OPENTUI_FORCE_EXPLICIT_WIDTH=false
 - Falls back to standard width calculation
 - No visual artifacts on unsupported terminals
 
-**Modern Terminals:** If your terminal supports OSC 66 (Kitty, Ghostty, WezTerm, Alacritty, iTerm2), you don't need this setting - they work correctly by default.
+**Modern Terminals:** If your terminal supports OSC 66 (Kitty, WezTerm, Alacritty, iTerm2), you don't need this setting - they work correctly by default. OpenTUI automatically disables OSC 66 for Ghostty versions that parse the sequence but do not yet apply its sizing metadata.

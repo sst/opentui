@@ -341,6 +341,30 @@ test "parseXtversion - full ghostty response" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
+test "Ghostty OSC 66 probe does not enable explicit width" {
+    var term = Terminal.init(.{});
+
+    // Ghostty parses OSC 66 but does not yet apply its width metadata. The
+    // probe's plain space therefore advances the cursor and looks supported.
+    term.processCapabilityResponse("\x1b[1;2R\x1bP>|ghostty 1.3.1\x1b\\");
+    try testing.expect(!term.caps.explicit_width);
+
+    // A CPR delivered after XTVERSION must not re-enable the false positive.
+    term.processCapabilityResponse("\x1b[1;2R");
+    try testing.expect(!term.caps.explicit_width);
+}
+
+test "Ghostty explicit width force-on overrides identity guard" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "true");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.processCapabilityResponse("\x1b[1;2R\x1bP>|ghostty 1.3.1\x1b\\");
+
+    try testing.expect(term.caps.explicit_width);
+}
+
 test "notifications - OSC99 query response enables OSC99 protocol" {
     var term = Terminal.init(.{});
 
