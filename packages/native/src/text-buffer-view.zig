@@ -857,12 +857,11 @@ pub const UnifiedTextBufferView = struct {
     }
 
     fn unionRanges(a: ?SelectionRange, b: ?SelectionRange) ?SelectionRange {
-        if (a == null and b == null) return null;
-        if (a == null) return b;
-        if (b == null) return a;
+        const left = a orelse return b;
+        const right = b orelse return a;
         return .{
-            .start = @min(a.?.start, b.?.start),
-            .end = @max(a.?.end, b.?.end),
+            .start = @min(left.start, right.start),
+            .end = @max(left.end, right.end),
         };
     }
 

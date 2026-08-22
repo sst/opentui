@@ -33,11 +33,6 @@ fn deinitView(pair: ViewPair) void {
     link.deinitGlobalLinkPool();
 }
 
-fn selected(view: *TextBufferView, range: text_buffer_view.SelectionRange, out: []u8) []const u8 {
-    const len = view.getTextBuffer().getTextRange(range.start, range.end, out);
-    return out[0..len];
-}
-
 fn expectSelected(
     view: *TextBufferView,
     range: ?text_buffer_view.SelectionRange,
@@ -45,7 +40,8 @@ fn expectSelected(
 ) !void {
     const found = range orelse return error.TestUnexpectedResult;
     var out: [128]u8 = undefined;
-    try std.testing.expectEqualStrings(expected, selected(view, found, &out));
+    const len = view.getTextBuffer().getTextRange(found.start, found.end, &out);
+    try std.testing.expectEqualStrings(expected, out[0..len]);
 }
 
 test "selectWord - alpha beta click on b selects beta" {
