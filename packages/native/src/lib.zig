@@ -2205,11 +2205,18 @@ export fn textBufferLoadFile(tb_handle: NativeHandle, pathPtr: ?[*]const u8, pat
 
 export fn textBufferSetStyledText(
     tb_handle: NativeHandle,
-    chunksPtr: ?[*]const text_buffer.StyledChunk,
+    chunksPtr: ?[*]const ExternalStyledChunk32,
     chunkCount: u32,
 ) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
-    const chunks = if (chunkCount == 0) &[_]text_buffer.StyledChunk{} else chunksPtr.?[0..@as(usize, chunkCount)];
+    if (chunkCount != 0 and chunksPtr == null) return;
+    const external_chunks = if (chunkCount == 0) &[_]ExternalStyledChunk32{} else chunksPtr.?[0..@as(usize, chunkCount)];
+    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return;
+    defer globalAllocator.free(chunks);
+    for (external_chunks, 0..) |chunk, index| {
+        if (!validExternalStyledChunk(chunk)) return;
+        chunks[index] = externalStyledChunk(chunk);
+    }
     object_ptr.setStyledText(chunks) catch {};
 }
 
@@ -3053,7 +3060,7 @@ export fn editorViewGetVisualEOL(view_handle: NativeHandle, outPtr: *ExternalVis
 
 export fn editorViewSetPlaceholderStyledText(
     view_handle: NativeHandle,
-    chunksPtr: ?[*]const text_buffer.StyledChunk,
+    chunksPtr: ?[*]const ExternalStyledChunk32,
     chunkCount: u32,
 ) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
@@ -3061,7 +3068,13 @@ export fn editorViewSetPlaceholderStyledText(
         object_ptr.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
         return;
     }
-    const chunks = chunksPtr.?[0..@as(usize, chunkCount)];
+    const external_chunks = (chunksPtr orelse return)[0..@as(usize, chunkCount)];
+    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return;
+    defer globalAllocator.free(chunks);
+    for (external_chunks, 0..) |chunk, index| {
+        if (!validExternalStyledChunk(chunk)) return;
+        chunks[index] = externalStyledChunk(chunk);
+    }
     object_ptr.setPlaceholderStyledText(chunks) catch {};
 }
 
@@ -3173,6 +3186,15 @@ fn externalStyledChunk(chunk: ExternalStyledChunk32) text_buffer.StyledChunk {
     };
 }
 
+fn validExternalStyledChunk(chunk: ExternalStyledChunk32) bool {
+    return (chunk.text_len == 0 or chunk.text_ptr != null) and
+        (chunk.link_len == 0 or chunk.link_ptr != null);
+}
+
+fn validAnnotationStyle(style: ExternalAnnotationStyle) bool {
+    return style.link_len == 0 or style.link_ptr != null;
+}
+
 fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk {
     return .{
         .text_ptr = "".ptr,
@@ -3217,15 +3239,20 @@ export fn textBufferReplaceStyledRangeBytes(
     chunks_ptr: ?[*]const ExternalStyledChunk32,
     chunk_count: u32,
     owner: u32,
-    out_result: *ExternalTextSpliceResult,
+    out_result: ?*ExternalTextSpliceResult,
 ) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const output = out_result orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (chunk_count != 0 and chunks_ptr == null) return @intFromEnum(TextDocumentStatus.invalid_argument);
     const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
     defer globalAllocator.free(chunks);
-    for (external_chunks, 0..) |chunk, index| chunks[index] = externalStyledChunk(chunk);
+    for (external_chunks, 0..) |chunk, index| {
+        if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+        chunks[index] = externalStyledChunk(chunk);
+    }
     const result = object_ptr.replaceStyledRangeBytes(start_byte, end_byte, chunks, owner) catch |err| return textDocumentErrorStatus(err);
-    writeExternalSplice(out_result, result);
+    writeExternalSplice(output, result);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
@@ -3234,13 +3261,16 @@ export fn textBufferCreateStyleRange(
     owner: u32,
     start_byte: u32,
     end_byte: u32,
-    style_ptr: *const ExternalAnnotationStyle,
+    style_ptr: ?*const ExternalAnnotationStyle,
     priority: u32,
-    out_id: *u64,
+    out_id: ?*u64,
 ) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const style = style_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const output = out_id orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (!validAnnotationStyle(style.*)) return @intFromEnum(TextDocumentStatus.invalid_argument);
     if (priority > std.math.maxInt(u8)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    out_id.* = object_ptr.createStyleValueRange(owner, start_byte, end_byte, annotationStyleChunk(style_ptr.*), @intCast(priority)) catch |err| return textDocumentErrorStatus(err);
+    output.* = object_ptr.createStyleValueRange(owner, start_byte, end_byte, annotationStyleChunk(style.*), @intCast(priority)) catch |err| return textDocumentErrorStatus(err);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
@@ -3254,9 +3284,11 @@ export fn textBufferMoveStyleRange(tb_handle: NativeHandle, id: u64, start_byte:
     return textBufferUpdateStyleRange(tb_handle, id, start_byte, end_byte);
 }
 
-export fn textBufferUpdateStyleRangeStyle(tb_handle: NativeHandle, id: u64, style_ptr: *const ExternalAnnotationStyle) u32 {
+export fn textBufferUpdateStyleRangeStyle(tb_handle: NativeHandle, id: u64, style_ptr: ?*const ExternalAnnotationStyle) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const found = object_ptr.updateStyleRangeStyleValue(id, annotationStyleChunk(style_ptr.*)) catch |err| return textDocumentErrorStatus(err);
+    const style = style_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    if (!validAnnotationStyle(style.*)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    const found = object_ptr.updateStyleRangeStyleValue(id, annotationStyleChunk(style.*)) catch |err| return textDocumentErrorStatus(err);
     return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
 }
 
@@ -3266,9 +3298,10 @@ export fn textBufferRemoveStyleRange(tb_handle: NativeHandle, id: u64) u32 {
     return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
 }
 
-export fn textBufferClearStyleOwner(tb_handle: NativeHandle, owner: u32, out_removed: *u32) u32 {
+export fn textBufferClearStyleOwner(tb_handle: NativeHandle, owner: u32, out_removed: ?*u32) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    out_removed.* = object_ptr.clearStyleOwner(owner) catch |err| return textDocumentErrorStatus(err);
+    const output = out_removed orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
+    output.* = object_ptr.clearStyleOwner(owner) catch |err| return textDocumentErrorStatus(err);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
@@ -3365,16 +3398,17 @@ export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: Native
 export fn textBufferGetLineHighlightsPtr(
     tb_handle: NativeHandle,
     line_idx: u32,
-    out_count: *u32,
+    out_count: ?*u32,
 ) ?[*]const ExternalHighlight {
+    const output = out_count orelse return null;
     const object_ptr = acquireTextBuffer(tb_handle) orelse {
-        out_count.* = 0;
+        output.* = 0;
         return null;
     };
     const highs = object_ptr.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
-        out_count.* = 0;
+        output.* = 0;
         return null;
     }
 
@@ -3390,17 +3424,49 @@ export fn textBufferGetLineHighlightsPtr(
         };
     }
 
-    out_count.* = @intCast(highs.len);
+    output.* = @intCast(highs.len);
     return slice.ptr;
 }
 
-export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: u32) void {
-    globalAllocator.free(@constCast(ptr)[0..@as(usize, count)]);
+export fn textBufferFreeLineHighlights(ptr: ?[*]const ExternalHighlight, count: u32) void {
+    if (count == 0) return;
+    const values = ptr orelse return;
+    globalAllocator.free(@constCast(values)[0..@as(usize, count)]);
 }
 
 export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     return object_ptr.getHighlightCount();
+}
+
+test "text document FFI rejects null pointer length and output combinations" {
+    const handle = createTextBuffer(1);
+    try std.testing.expect(handle != INVALID_HANDLE);
+    defer destroyTextBuffer(handle);
+
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
+        handle,
+        0,
+        0,
+        null,
+        1,
+        1,
+        null,
+    ));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferCreateStyleRange(
+        handle,
+        1,
+        0,
+        0,
+        null,
+        1,
+        null,
+    ));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferUpdateStyleRangeStyle(handle, 1, null));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferClearStyleOwner(handle, 1, null));
+    try std.testing.expect(textBufferGetLineHighlightsPtr(handle, 0, null) == null);
+    textBufferFreeLineHighlights(null, 1);
+    textBufferSetStyledText(handle, null, 1);
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {

@@ -173,6 +173,10 @@ export class SyntaxStyle {
     return this.stylePtr
   }
 
+  public get isDestroyed(): boolean {
+    return this._destroyed
+  }
+
   public getStyleCount(): number {
     this.guard()
     return this.lib.syntaxStyleGetStyleCount(this.stylePtr)

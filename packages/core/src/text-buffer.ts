@@ -280,6 +280,7 @@ export class TextBuffer {
 
   public getSyntaxStyle(): SyntaxStyle | null {
     this.guard()
+    if (this._syntaxStyle?.isDestroyed) this._syntaxStyle = undefined
     return this._syntaxStyle ?? null
   }
 

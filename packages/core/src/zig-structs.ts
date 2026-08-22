@@ -20,7 +20,7 @@ type StyledChunkInput = {
 export const StyledChunkStruct = defineStruct(
   [
     ["text", "char*"],
-    ["text_len", "u64", { lengthOf: "text" }],
+    ["text_len", "u32", { lengthOf: "text" }],
     [
       "fg",
       "pointer",
@@ -41,7 +41,7 @@ export const StyledChunkStruct = defineStruct(
     ],
     ["attributes", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
-    ["link_len", "u64", { lengthOf: "link" }],
+    ["link_len", "u32", { lengthOf: "link" }],
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
