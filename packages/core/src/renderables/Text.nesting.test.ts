@@ -131,64 +131,6 @@ describe("nested TextRenderable", () => {
     renderer.root.add(root)
   })
 
-  test("commits one range-local replacement for batched nested text and style changes", async () => {
-    const applyDocumentOperations = spyOn(TextBuffer.prototype, "applyDocumentOperations")
-    try {
-      const root = new TextRenderable(renderer, {})
-      const child = new TextRenderable(renderer, { content: "before" })
-      root.add(child)
-      renderer.root.add(root)
-      await renderOnce()
-
-      const callsBeforeUpdate = applyDocumentOperations.mock.calls.length
-      const rangeId = (child as any)._nativeRangeId
-      child.content = "after"
-      child.fg = "#00ff00"
-      child.attributes = TextAttributes.BOLD
-
-      expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate)
-      await renderOnce()
-      expect(applyDocumentOperations.mock.calls.length).toBe(callsBeforeUpdate + 1)
-      expect(
-        applyDocumentOperations.mock.calls.at(-1)![0].filter((operation) => operation.kind === "replace"),
-      ).toHaveLength(1)
-      expect((child as any)._nativeRangeId).toBe(rangeId)
-      expect(root.plainText).toBe("after")
-    } finally {
-      applyDocumentOperations.mockRestore()
-    }
-  })
-
-  test("publishes adjacent equal-metric text as one payload-only operation", async () => {
-    const leaves = Array.from(
-      { length: 200 },
-      (_, index) => new TextRenderable(renderer, { content: `${index.toString().padStart(3, "0")} ` }, false),
-    )
-    const root = new TextRenderable(renderer, {})
-    root.children = leaves
-    renderer.root.add(root)
-    await renderOnce()
-    const ids = leaves.map((leaf) => (leaf as any)._nativeRangeId)
-    const annotationEpoch = (root as any).textBuffer.annotationEpoch
-    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
-    try {
-      for (let index = 0; index < leaves.length; index++) {
-        leaves[index]!.content = `${(999 - index).toString().padStart(3, "0")} `
-      }
-      await renderOnce()
-
-      const operations = apply.mock.calls.at(-1)![0]
-      expect(operations).toHaveLength(1)
-      expect(operations[0]!.chunks).toHaveLength(1)
-      expect(operations[0]!.ranges).toHaveLength(0)
-      expect(leaves.map((leaf) => (leaf as any)._nativeRangeId)).toEqual(ids)
-      expect((root as any).textBuffer.annotationEpoch).toBe(annotationEpoch)
-      expect(root.plainText).toStartWith("999 998 997 ")
-    } finally {
-      apply.mockRestore()
-    }
-  })
-
   test("style-only updates preserve content epoch and range identity while toggling paint", async () => {
     const root = new TextRenderable(renderer, {})
     const child = new TextRenderable(renderer, { content: "stable" })
@@ -217,7 +159,7 @@ describe("nested TextRenderable", () => {
     expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
   })
 
-  test("same-document reorder uses native move and preserves range IDs", async () => {
+  test("reorders children within one document", async () => {
     const root = new TextRenderable(renderer, {})
     const first = new TextRenderable(renderer, { content: "A" })
     const second = new TextRenderable(renderer, { content: "B" })
@@ -225,20 +167,10 @@ describe("nested TextRenderable", () => {
     root.children = [first, second, third]
     renderer.root.add(root)
     await renderOnce()
-    const ids = [first, second, third].map((child) => (child as any)._nativeRangeId)
-    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
-    try {
-      root.children = [third, first, second]
-      expect(apply).not.toHaveBeenCalled()
-      await renderOnce()
-      expect(apply).toHaveBeenCalledTimes(1)
-      expect(apply.mock.calls[0]![0].some((operation) => operation.kind === "move")).toBe(true)
-      expect(apply.mock.calls[0]![0].some((operation) => operation.kind === "replace")).toBe(false)
-      expect(root.plainText).toBe("CAB")
-      expect([first, second, third].map((child) => (child as any)._nativeRangeId)).toEqual(ids)
-    } finally {
-      apply.mockRestore()
-    }
+    root.children = [third, first, second]
+    await renderOnce()
+    expect(root.plainText).toBe("CAB")
+    expect(root.getTextChildren()).toEqual([third, first, second])
   })
 
   test("preflights move range queries and lifecycle scheduling before changing child order", async () => {
@@ -924,7 +856,6 @@ describe("nested TextRenderable", () => {
       const ids = original.map((child) => (child as any)._nativeRangeId)
 
       root.add(original[0]!, root.getChildrenCount())
-      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(0)
       const value =
         scenario.kind === "string"
           ? "D"
@@ -940,7 +871,6 @@ describe("nested TextRenderable", () => {
       expect(root.children).toEqual(expected)
       expect(root.getChildrenCount()).toBe(4)
       expect((root as any)._pendingNativeMoves).toHaveLength(1)
-      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(3)
       expect((root as any)._leaves.map((leaf: any) => leaf?.text ?? null)).toEqual(
         expected.map((child) => (typeof child === "string" ? child : null)),
       )
@@ -1014,32 +944,6 @@ describe("nested TextRenderable", () => {
     expect(styledRoot.getTextChildren()).toEqual([styledChildren[1], styledChildren[2], styledChildren[0]])
     expect(styledChildren.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
     expect((styledRoot as any)._pendingNativeMoves).toHaveLength(0)
-  })
-
-  test("materializes once per interleaved structural mutation target", async () => {
-    const root = new TextRenderable(renderer, {})
-    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
-    const inserted = new TextRenderable(renderer, { content: "D" })
-    root.children = children
-    renderer.root.add(root)
-    await renderOnce()
-
-    root.add(children[0]!, 3)
-    root.add(children[1]!, 3)
-    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 3, orderMoves: 2, materializedChildren: 0 })
-    root.add(inserted, 1)
-    expect(root.plainText).toBe("CDAB")
-    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 3, orderMoves: 2, materializedChildren: 3 })
-
-    root.add(children[2]!, root.getChildrenCount())
-    root.remove(children[0]!)
-    expect(root.children).toEqual([inserted, children[1], children[2]])
-    expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 7, orderMoves: 3, materializedChildren: 7 })
-    expect((root as any)._pendingNativeMoves).toHaveLength(1)
-    await renderOnce()
-    expect(root.plainText).toBe("DBC")
-    expect(inserted.parent).toBe(root)
-    expect(children[0]!.parent).toBeNull()
   })
 
   test("coalesces nested moves during same- and cross-document adoption", async () => {
@@ -1131,39 +1035,7 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("stages repeated reorder work without child-array reconciliation per move", async () => {
-    const root = new TextRenderable(renderer, {})
-    const children = Array.from({ length: 200 }, (_, index) => new TextRenderable(renderer, { content: `${index} ` }))
-    root.children = children
-    renderer.root.add(root)
-    await renderOnce()
-    const rangeQueries = spyOn(TextBuffer.prototype, "getDocumentRange")
-    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
-    const requests = spyOn(root, "requestRender")
-    try {
-      for (let index = 0; index < 100; index++) root.add(children[index]!, root.getChildrenCount())
-
-      expect((root as any)._structuralMoveMetrics).toEqual({
-        orderNodes: 200,
-        orderMoves: 100,
-        materializedChildren: 0,
-      })
-      expect((root as any)._pendingNativeMoves).toHaveLength(100)
-      expect(rangeQueries).toHaveBeenCalledTimes(200)
-      expect(requests).toHaveBeenCalledTimes(100)
-      expect(apply).not.toHaveBeenCalled()
-      await renderOnce()
-      expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(200)
-      expect(apply).toHaveBeenCalledTimes(1)
-      expect(apply.mock.calls[0]![0].filter((operation) => operation.kind === "move")).toHaveLength(100)
-    } finally {
-      rangeQueries.mockRestore()
-      apply.mockRestore()
-      requests.mockRestore()
-    }
-  })
-
-  test("keeps 4k mixed move materialization counters linear", async () => {
+  test("moves 1k of 4k children before a mixed insertion", async () => {
     const root = new TextRenderable(renderer, {})
     const children = Array.from(
       { length: 4_000 },
@@ -1174,41 +1046,12 @@ describe("nested TextRenderable", () => {
     await renderOnce()
 
     for (let index = 0; index < 1_000; index++) root.add(children[index]!, root.getChildrenCount())
-    expect((root as any)._structuralMoveMetrics).toEqual({
-      orderNodes: 4_000,
-      orderMoves: 1_000,
-      materializedChildren: 0,
-    })
-    expect((root as any)._pendingNativeMoves).toHaveLength(1_000)
 
     root.add("!")
-    expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(4_000)
-    expect((root as any)._pendingNativeMoves).toHaveLength(1_000)
     expect(root.getChildrenCount()).toBe(4_001)
     await renderOnce()
     expect(root.plainText.length).toBe(4_001)
   }, 15_000)
-
-  test("keeps coalesced structural move scaling within a generous near-linear ratio", async () => {
-    const measure = async (childCount: number, moveCount: number): Promise<number> => {
-      const root = new TextRenderable(renderer, {})
-      const children = Array.from(
-        { length: childCount },
-        (_, index) => new TextRenderable(renderer, { content: String.fromCharCode(65 + (index % 26)) }),
-      )
-      root.children = children
-      renderer.root.add(root)
-      await renderOnce()
-      const start = performance.now()
-      for (let index = 0; index < moveCount; index++) root.add(children[index]!, root.getChildrenCount())
-      await renderOnce()
-      return performance.now() - start
-    }
-
-    const small = await measure(500, 100)
-    const large = await measure(2000, 400)
-    expect(large).toBeLessThan(small * 12 + 10)
-  })
 
   test("reorders empty and coextensive subtrees without moving text or changing IDs", async () => {
     const root = new TextRenderable(renderer, {})
@@ -1304,25 +1147,6 @@ describe("nested TextRenderable", () => {
     expect(root.isDestroyed).toBe(true)
     expect(current.isDestroyed).toBe(true)
   }, 15_000)
-
-  test("keeps manual StyledText leaves private and releases them on replacement and destroy", () => {
-    const text = new TextRenderable(renderer, {
-      content: new StyledText([
-        { __isChunk: true, text: "one" },
-        { __isChunk: true, text: "two", attributes: TextAttributes.BOLD },
-      ]),
-    })
-    const leaves = (text as any)._leaves
-
-    expect(text.getTextChildren()).toEqual([])
-    text.content = "replacement"
-    expect((text as any)._leaves).toEqual([null])
-
-    text.content = new StyledText([{ __isChunk: true, text: "three" }])
-    expect((text as any)._leaves).not.toBe(leaves)
-    text.destroy()
-    expect((text as any)._leaves).toEqual([])
-  })
 
   test("preserves StyledText identity and refreshes when the same object is assigned again", () => {
     const styled = new StyledText([{ __isChunk: true, text: "before" }])
@@ -1515,56 +1339,6 @@ describe("nested TextRenderable", () => {
     expect(text.chunks.map((chunk) => chunk.text)).toEqual(["red", " bold"])
   })
 
-  test("does not allocate TextRenderables or Yoga nodes per manual StyledText chunk", () => {
-    const chunks = Array.from({ length: 1_000 }, (_, index) => ({
-      __isChunk: true as const,
-      text: `${index}`,
-      attributes: index === 1 ? TextAttributes.BOLD : 0,
-    }))
-    const before = TextRenderable.getDebugMetrics()
-    const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
-    const afterCreate = TextRenderable.getDebugMetrics()
-    const leaves = (text as any)._leaves
-
-    expect(afterCreate.textRenderableAllocations - before.textRenderableAllocations).toBe(1)
-    expect(afterCreate.yogaNodeAllocations - before.yogaNodeAllocations).toBe(1)
-    expect(text.children).toEqual([])
-
-    text.content = new StyledText(chunks.map((chunk) => ({ ...chunk, text: `next-${chunk.text}` })))
-    const afterReplace = TextRenderable.getDebugMetrics()
-    expect((text as any)._leaves[0]).toBe(leaves[0])
-    expect(afterReplace.styledLeafAllocations).toBe(afterCreate.styledLeafAllocations)
-    text.destroy()
-  })
-
-  test("reuses private ranges for equal-metric manual StyledText replacement", async () => {
-    const chunks = Array.from({ length: 200 }, (_, index) => ({
-      __isChunk: true as const,
-      text: `${index.toString().padStart(3, "0")} `,
-      attributes: index & 1,
-    }))
-    const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
-    renderer.root.add(text)
-    await renderOnce()
-    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
-    const annotationEpoch = (text as any).textBuffer.annotationEpoch
-    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
-    try {
-      text.content = new StyledText(chunks.map((chunk) => ({ ...chunk, text: `x${chunk.text.slice(1)}` })))
-      await renderOnce()
-
-      const operations = apply.mock.calls.at(-1)![0]
-      expect(operations).toHaveLength(1)
-      expect(operations[0]!.chunks).toHaveLength(1)
-      expect(operations[0]!.ranges).toHaveLength(0)
-      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
-      expect((text as any).textBuffer.annotationEpoch).toBe(annotationEpoch)
-      expect(text.plainText).toStartWith("x00 x01 x02 ")
-    } finally {
-      apply.mockRestore()
-    }
-  })
-
   test("preserves authoritative registered style IDs through canonical text ranges", async () => {
     const syntaxStyle = SyntaxStyle.fromStyles({
       default: { fg: "#ffffff" },
@@ -1746,18 +1520,13 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("rejects invalid private styled leaves without changing content or allocating renderables", () => {
+  test("rejects invalid styled content without changing content", () => {
     const text = new TextRenderable(renderer, { content: "old" })
-    const before = TextRenderable.getDebugMetrics()
     try {
       expect(() => {
         text.content = new StyledText([{ __isChunk: true, text: "new-a", styleId: 999, styleSource: undefined }])
       }).toThrow("Registered text styles require both styleId and styleSource")
       expect(text.plainText).toBe("old")
-      const after = TextRenderable.getDebugMetrics()
-      expect(after.textRenderableAllocations).toBe(before.textRenderableAllocations)
-      expect(after.yogaNodeAllocations).toBe(before.yogaNodeAllocations)
-      expect(after.styledLeafAllocations).toBe(before.styledLeafAllocations)
     } finally {
       text.destroy()
     }

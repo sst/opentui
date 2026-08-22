@@ -3,7 +3,6 @@ import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
 import { resolveRenderLib } from "../zig.js"
-import type { AllocatorStats, TextBufferDebugMetrics } from "../zig.js"
 import type { CapturedFrame } from "../types.js"
 
 const profile = process.env.TEXT_RANGE_PROFILE ?? "practical"
@@ -26,100 +25,12 @@ if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS 
 if (!Number.isInteger(leafCount) || leafCount < 1) throw new Error("TEXT_RANGE_LEAVES must be a positive integer")
 if (!Number.isInteger(updates) || updates < 1) throw new Error("TEXT_RANGE_UPDATES must be a positive integer")
 
-type BufferMemory = {
-  start: TextBufferDebugMetrics
-  peak: TextBufferDebugMetrics
-  endLive: TextBufferDebugMetrics
-}
-type LiveMemory = {
-  range: BufferMemory
-  replacement: BufferMemory
-  activeAllocations: { start: number; peakGrowth: number; endLiveGrowth: number; afterTeardownGrowth: number }
-}
-type Sample = { rangeMs: number; replacementMs: number; frameHash: number; renderCount: number; memory: LiveMemory }
+type Sample = { rangeMs: number; replacementMs: number; frameHash: number; renderCount: number }
 
 // Nearest-rank: rank = ceil(p * n), one-based. With five rounds p95 is the maximum sample.
 function percentile(values: number[], fraction: number): number {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0
-}
-
-function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRenderable) {
-  const lib = resolveRenderLib()
-  const textBuffer = (root: TextRenderable) =>
-    (root as unknown as { textBuffer: { getDebugMetrics(): TextBufferDebugMetrics } }).textBuffer
-  const start = lib.getAllocatorStats()
-  let peakActiveGrowth = 0
-  const emptyMetrics = (): TextBufferDebugMetrics => ({
-    transactionArenaCount: 0,
-    transactionArenaBytes: 0,
-    arenaBytes: 0,
-    currentReachableBytes: 0,
-    historyReachableBytes: 0,
-    committedUnreachableBytes: 0,
-    liveBackingBytes: 0,
-    liveBackingCapacity: 0,
-    liveBackingBlocks: 0,
-    styleFastPathBatches: 0,
-    styleFastPathUpdates: 0,
-    annotationCloneEntries: 0,
-    styleReconciliationEntries: 0,
-    projectedAnnotationVisits: 0,
-    projectedLines: 0,
-  })
-  let rangePeak = emptyMetrics()
-  let replacementPeak = { ...rangePeak }
-  const updatePeak = (peak: TextBufferDebugMetrics, current: TextBufferDebugMetrics) => {
-    for (const key of Object.keys(peak) as Array<keyof TextBufferDebugMetrics>) {
-      peak[key] = Math.max(peak[key], current[key])
-    }
-  }
-  const sample = () => {
-    const allocations = lib.getAllocatorStats()
-    const range = textBuffer(rangeRoot).getDebugMetrics()
-    const replacement = textBuffer(replacementRoot).getDebugMetrics()
-    peakActiveGrowth = Math.max(peakActiveGrowth, allocations.activeAllocations - start.activeAllocations)
-    updatePeak(rangePeak, range)
-    updatePeak(replacementPeak, replacement)
-    // Publication sweeps every unreachable owned block; non-zero is a regression,
-    // not allocator noise or history retention.
-    if (range.committedUnreachableBytes !== 0 || replacement.committedUnreachableBytes !== 0) {
-      throw new Error("committed unreachable backing exceeded the documented zero-byte post-commit bound")
-    }
-  }
-  sample()
-  const rangeStart = { ...rangePeak }
-  const replacementStart = { ...replacementPeak }
-  return {
-    sample,
-    finishLive(): { memory: LiveMemory; start: AllocatorStats } {
-      sample()
-      const allocationEnd = lib.getAllocatorStats()
-      const rangeEnd = textBuffer(rangeRoot).getDebugMetrics()
-      const replacementEnd = textBuffer(replacementRoot).getDebugMetrics()
-      return {
-        start,
-        memory: {
-          range: {
-            start: rangeStart,
-            peak: rangePeak,
-            endLive: rangeEnd,
-          },
-          replacement: {
-            start: replacementStart,
-            peak: replacementPeak,
-            endLive: replacementEnd,
-          },
-          activeAllocations: {
-            start: start.activeAllocations,
-            peakGrowth: peakActiveGrowth,
-            endLiveGrowth: allocationEnd.activeAllocations - start.activeAllocations,
-            afterTeardownGrowth: 0,
-          },
-        },
-      }
-    },
-  }
 }
 
 function frameHash(frame: CapturedFrame): number {
@@ -176,7 +87,6 @@ async function runPerFrameRound(round: number): Promise<Sample> {
   // Initial renders warm native projection, wrapping, drawing, and both framework paths.
   await rangeSetup.renderOnce()
   await replacementSetup.renderOnce()
-  const memoryTracker = trackLiveMemory(rangeRoot, replacementRoot)
   let rangeMs = 0
   let replacementMs = 0
   let rollingHash = 0
@@ -211,15 +121,11 @@ async function runPerFrameRound(round: number): Promise<Sample> {
       if (rangeRoot.plainText !== replacementRoot.plainText || rangeHash !== replacementHash) {
         throw new Error(`benchmark outputs diverged after mutation ${index}`)
       }
-      memoryTracker.sample()
       rollingHash = Math.imul(rollingHash ^ rangeHash, 16777619) >>> 0
     }
-    const live = memoryTracker.finishLive()
-    const sample: Sample = { rangeMs, replacementMs, frameHash: rollingHash, renderCount: updates, memory: live.memory }
+    const sample: Sample = { rangeMs, replacementMs, frameHash: rollingHash, renderCount: updates }
     rangeSetup.renderer.destroy()
     replacementSetup.renderer.destroy()
-    sample.memory.activeAllocations.afterTeardownGrowth =
-      resolveRenderLib().getAllocatorStats().activeAllocations - live.start.activeAllocations
     return sample
   } finally {
     if (!rangeSetup.renderer.isDestroyed) rangeSetup.renderer.destroy()
@@ -247,8 +153,6 @@ async function runCoalescedRound(round: number): Promise<Sample> {
   replacementSetup.renderer.root.add(replacementRoot)
   await rangeSetup.renderOnce()
   await replacementSetup.renderOnce()
-  const memoryTracker = trackLiveMemory(rangeRoot, replacementRoot)
-
   const runRange = async () => {
     const start = performance.now()
     for (let index = 0; index < updates; index++) {
@@ -285,13 +189,9 @@ async function runCoalescedRound(round: number): Promise<Sample> {
     if (rangeRoot.plainText !== replacementRoot.plainText || rangeHash !== replacementHash) {
       throw new Error("coalesced benchmark outputs diverged")
     }
-    memoryTracker.sample()
-    const live = memoryTracker.finishLive()
-    const sample: Sample = { rangeMs, replacementMs, frameHash: rangeHash, renderCount: 1, memory: live.memory }
+    const sample: Sample = { rangeMs, replacementMs, frameHash: rangeHash, renderCount: 1 }
     rangeSetup.renderer.destroy()
     replacementSetup.renderer.destroy()
-    sample.memory.activeAllocations.afterTeardownGrowth =
-      resolveRenderLib().getAllocatorStats().activeAllocations - live.start.activeAllocations
     return sample
   } finally {
     if (!rangeSetup.renderer.isDestroyed) rangeSetup.renderer.destroy()
@@ -300,7 +200,6 @@ async function runCoalescedRound(round: number): Promise<Sample> {
 }
 
 const lib = resolveRenderLib()
-const frameworkMetricsStart = TextRenderable.getDebugMetrics()
 const allocationStart = lib.getAllocatorStats()
 const arenaStart = lib.getArenaAllocatedBytes()
 const perFrame: Sample[] = []
@@ -322,51 +221,16 @@ if (mode !== "per-frame") {
 }
 const allocationEnd = lib.getAllocatorStats()
 const arenaEnd = lib.getArenaAllocatedBytes()
-const frameworkMetricsEnd = TextRenderable.getDebugMetrics()
 
 const timing = (values: number[]) =>
   values.length === 1
     ? { sampleKind: "raw" as const, rawMs: values[0] }
     : { medianMs: percentile(values, 0.5), p95Ms: percentile(values, 0.95) }
-const nativeWork = (memory: BufferMemory) => ({
-  styleFastPathBatches: memory.endLive.styleFastPathBatches - memory.start.styleFastPathBatches,
-  styleFastPathUpdates: memory.endLive.styleFastPathUpdates - memory.start.styleFastPathUpdates,
-  annotationCloneEntries: memory.endLive.annotationCloneEntries - memory.start.annotationCloneEntries,
-  styleReconciliationEntries: memory.endLive.styleReconciliationEntries - memory.start.styleReconciliationEntries,
-  projectedAnnotationVisits: memory.endLive.projectedAnnotationVisits - memory.start.projectedAnnotationVisits,
-  projectedLines: memory.endLive.projectedLines - memory.start.projectedLines,
-})
 const summarize = (samples: Sample[]) => ({
   range: timing(samples.map((sample) => sample.rangeMs)),
   fullReplacement: timing(samples.map((sample) => sample.replacementMs)),
   frameHashes: samples.map((sample) => sample.frameHash),
   renderCounts: samples.map((sample) => sample.renderCount),
-  nativeWorkByRound: samples.map((sample) => ({
-    range: nativeWork(sample.memory.range),
-    fullReplacement: nativeWork(sample.memory.replacement),
-  })),
-  liveMemoryByRound: samples.map((sample) => sample.memory),
-  liveMemoryBounds: {
-    rangePeakArenaCount: Math.max(...samples.map((sample) => sample.memory.range.peak.transactionArenaCount)),
-    rangePeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.range.peak.transactionArenaBytes)),
-    replacementPeakArenaCount: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peak.transactionArenaCount),
-    ),
-    replacementPeakArenaBytes: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peak.transactionArenaBytes),
-    ),
-    rangePeakLiveBackingBytes: Math.max(...samples.map((sample) => sample.memory.range.peak.liveBackingBytes)),
-    rangePeakHistoryReachableBytes: Math.max(
-      ...samples.map((sample) => sample.memory.range.peak.historyReachableBytes),
-    ),
-    replacementPeakLiveBackingBytes: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peak.liveBackingBytes),
-    ),
-    replacementPeakHistoryReachableBytes: Math.max(
-      ...samples.map((sample) => sample.memory.replacement.peak.historyReachableBytes),
-    ),
-    peakActiveAllocationGrowth: Math.max(...samples.map((sample) => sample.memory.activeAllocations.peakGrowth)),
-  },
 })
 
 console.log(
@@ -393,12 +257,6 @@ console.log(
             : null,
         persistentArenaByteDelta: arenaEnd - arenaStart,
       },
-      frameworkActivity: Object.fromEntries(
-        Object.entries(frameworkMetricsEnd).map(([key, value]) => [
-          key,
-          value - frameworkMetricsStart[key as keyof typeof frameworkMetricsStart],
-        ]),
-      ),
     },
     null,
     2,

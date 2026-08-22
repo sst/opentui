@@ -232,11 +232,6 @@ pub const MarkTree = struct {
         return id;
     }
 
-    /// Convenience alias for the original range-only candidate API.
-    pub fn add(self: *Self, input: RangeInput) !u64 {
-        return self.addRange(input);
-    }
-
     pub fn get(self: *Self, id: u64) ?Mark {
         const node = self.ids.get(id) orelse return null;
         materialize(node);

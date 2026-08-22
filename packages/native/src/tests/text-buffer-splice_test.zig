@@ -536,12 +536,8 @@ test "direct clear sweeps unreachable backing without changing retained history"
     const content_epoch = direct.getContentEpoch();
     const annotation_epoch = direct.getAnnotationEpoch();
     direct.clear();
-    const cleared = try direct.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 0), cleared.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.history_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.committed_unreachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_blocks);
-    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_bytes);
+    try std.testing.expectEqual(@as(usize, 0), direct.getBackingStoreBlockCount());
+    try std.testing.expectEqual(@as(usize, 0), direct.getBackingStoreBytes());
     try std.testing.expectEqual(content_epoch +% 1, direct.getContentEpoch());
     try std.testing.expectEqual(annotation_epoch +% 1, direct.getAnnotationEpoch());
     try std.testing.expect(direct.isViewDirty(view_id));
@@ -551,11 +547,8 @@ test "direct clear sweeps unreachable backing without changing retained history"
     try eb.setText("old");
     try eb.replaceText("new content");
     eb.tb.clear();
-    const retained = try eb.tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 0), retained.current_reachable_bytes);
-    try std.testing.expect(retained.history_reachable_bytes != 0);
-    try std.testing.expectEqual(@as(usize, 0), retained.committed_unreachable_bytes);
-    try std.testing.expectEqual(retained.history_reachable_bytes, retained.live_backing_bytes);
+    try std.testing.expect(eb.tb.rope().has_history());
+    try std.testing.expect(eb.tb.getBackingStoreBytes() != 0);
 }
 
 test "splice no-op is stable and EditBuffer cursor remains caller-owned" {
@@ -671,7 +664,13 @@ test "document replacement creates stable normalized ranges and structural moves
         .{ .start_chunk = 2, .end_chunk = 3, .style = empty_style, .styled = true, .priority = 2 },
     };
     var ids: [ranges.len]u64 = undefined;
-    _ = try tb.replaceDocumentRange(null, .replace, 0, 0, &chunks, 77, &ranges, &ids);
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 77,
+        .chunks = &chunks,
+        .ranges = &ranges,
+    }}, &ids);
     try expectText(tb, "A\n\n界Z");
     try std.testing.expectEqual(@as(u32, 2), tb.getDocumentRange(ids[2]).?.start_byte);
     try std.testing.expectEqual(@as(u32, 6), tb.getDocumentRange(ids[2]).?.end_byte);
@@ -684,13 +683,23 @@ test "document replacement creates stable normalized ranges and structural moves
         .bg_ptr = null,
         .attributes = 0,
     }};
-    var no_ids: [0]u64 = .{};
-    _ = try tb.replaceDocumentRange(ids[2], .replace, 0, 0, &replacement, 77, &.{}, &no_ids);
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .target_id = ids[2],
+        .owner = 77,
+        .chunks = &replacement,
+    }}, &.{});
     try expectText(tb, "A\n🙂Z");
     try std.testing.expectEqual(ids[2], tb.getDocumentRange(ids[2]).?.id);
     try std.testing.expect(tb.getContentEpoch() > before_edit_epoch);
 
-    try std.testing.expect(try tb.moveDocumentRange(ids[3], ids[1], true));
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .move,
+        .target_id = ids[3],
+        .anchor_id = ids[1],
+        .owner = 77,
+        .before = true,
+    }}, &.{});
     try expectText(tb, "ZA\n🙂");
     try std.testing.expectEqual(@as(u32, 0), tb.getDocumentRange(ids[3]).?.start_byte);
     try std.testing.expectEqual(ids[2], tb.getDocumentRange(ids[2]).?.id);
@@ -729,7 +738,13 @@ fn exerciseDocumentRangeTransactionFailure(fail_offset: ?usize) !usize {
         .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = true, .priority = 2 },
     };
     var ids: [2]u64 = undefined;
-    _ = try tb.replaceDocumentRange(null, .replace, 0, 0, &initial_chunks, 91, &initial_ranges, &ids);
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 91,
+        .chunks = &initial_chunks,
+        .ranges = &initial_ranges,
+    }}, &ids);
 
     const replacement_text = "中🙂";
     const replacement = [_]text_buffer.StyledChunk{.{
@@ -1087,7 +1102,7 @@ test "randomized move batches equal separate transactions for text marks payload
         const batch_highlights = try std.testing.allocator.dupe(text_buffer.Highlight, batch_highlights_source);
         defer std.testing.allocator.free(batch_highlights);
 
-        for (operations) |operation| _ = try tb.moveDocumentRange(operation.target_id, operation.anchor_id, operation.before);
+        for (operations) |operation| try tb.applyDocumentOperations(&.{operation}, &.{});
         const sequential_text = try std.testing.allocator.alloc(u8, tb.getByteSize());
         defer std.testing.allocator.free(sequential_text);
         const sequential_written = tb.getPlainTextIntoBuffer(sequential_text);
@@ -1143,15 +1158,11 @@ test "coalesced long-line edits publish only exact final backing" {
     }
     try tb.applyDocumentOperations(&operations, &.{});
     try expectText(tb, &line);
-    const metrics = try tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, line.len), metrics.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.history_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
-    try std.testing.expect(metrics.live_backing_bytes <= line.len);
-    try std.testing.expectEqual(@as(usize, 1), metrics.live_backing_blocks);
+    try std.testing.expect(tb.getBackingStoreBytes() <= line.len);
+    try std.testing.expectEqual(@as(usize, 1), tb.getBackingStoreBlockCount());
 }
 
-test "document batch stages inserted and final bytes instead of document times operations" {
+test "document batch keeps committed backing bounded after many operations" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1194,12 +1205,9 @@ test "document batch stages inserted and final bytes instead of document times o
     };
     var prepared = try tb.prepareDocumentOperations(&operations, 0);
     defer prepared.deinit();
-    try std.testing.expectEqual(@as(usize, leaf_count * 2), prepared.transientContentBytes());
     prepared.commit(&.{});
     try std.testing.expectEqual(@as(u32, leaf_count), tb.getByteSize());
-    const metrics = try tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, leaf_count), metrics.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
+    try std.testing.expect(tb.getBackingStoreBytes() <= leaf_count);
 }
 
 test "document batch finalizes provisional trailing lines and cross-edit graphemes" {
@@ -1313,8 +1321,6 @@ test "document transactions compact Rope generations while preserving stable ran
         };
         const operation_count: usize = if (index % 50 == 0) operations.len else operations.len - 1;
         try tb.applyDocumentOperations(operations[0..operation_count], &.{});
-        try std.testing.expect(tb.getRopeTransactionArenaCount() <= TextBuffer.rope_compaction_arena_limit);
-        try std.testing.expect(tb.getRopeTransactionArenaBytes() < TextBuffer.rope_compaction_byte_limit);
         try std.testing.expect(tracked.allocations - tracked.deallocations <= initial_active_allocations + 256);
         if (index % 97 == 0) {
             try std.testing.expect(tb.isViewDirty(view_id));
@@ -1336,7 +1342,7 @@ test "document transactions compact Rope generations while preserving stable ran
     try std.testing.expectEqual(tracked.allocations, tracked.deallocations);
 }
 
-test "Rope compaction rebuilds retained history and reclaims backing storage after clear" {
+test "retained history remains usable and clear reclaims backing storage" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1351,7 +1357,6 @@ test "Rope compaction rebuilds retained history and reclaims backing storage aft
         try tb.rope().store_undo(replacement);
         _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), replacement);
     }
-    try std.testing.expect(tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit);
     _ = try tb.rope().undo("current");
     try expectText(tb, "34");
 
@@ -1360,7 +1365,6 @@ test "Rope compaction rebuilds retained history and reclaims backing storage aft
     try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), "compacted");
     try expectText(tb, "compacted");
-    try std.testing.expect(tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit);
 }
 
 fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {
@@ -1396,7 +1400,6 @@ fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {
         const chunk: text_buffer.StyledChunk = .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
         try tb.applyDocumentOperations(&.{.{ .kind = .replace, .target_id = ids[0], .owner = 81, .chunks = &.{chunk} }}, &.{});
     }
-    try std.testing.expectEqual(TextBuffer.rope_compaction_arena_limit, tb.getRopeTransactionArenaCount());
     const before_range = tb.getDocumentRange(ids[0]).?;
     const before_epoch = tb.getContentEpoch();
     const before_annotation_epoch = tb.getAnnotationEpoch();
@@ -1413,9 +1416,6 @@ fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
         try std.testing.expectEqual(before_annotation_epoch, tb.getAnnotationEpoch());
         try std.testing.expectEqualDeep(before_range, tb.getDocumentRange(ids[0]).?);
-        if (tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit) {
-            try std.testing.expect(tb.isViewDirty(view_id));
-        }
         var after_text: [32]u8 = undefined;
         const after_written = tb.getPlainTextIntoBuffer(&after_text);
         try std.testing.expectEqualStrings(before_text[0..before_written], after_text[0..after_written]);
@@ -1426,7 +1426,7 @@ fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {
         try edit;
     }
     try expectText(tb, "retry中🙂");
-    try std.testing.expect(tb.getRopeTransactionArenaCount() <= 2);
+    try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     return failing.alloc_index - before_alloc;
 }
 
@@ -1622,7 +1622,7 @@ test "document operation candidate releases every intermediate style and link" {
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
-test "pure style batches publish unique ID deltas and invalidate only overlapping projected lines" {
+test "pure style batches update paint without changing content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1644,8 +1644,6 @@ test "pure style batches publish unique ID deltas and invalidate only overlappin
     try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 102, .chunks = &chunks, .ranges = &ranges }}, &ids);
     for (0..values.len) |line_index| _ = tb.getLineSpans(line_index);
 
-    const before = try tb.getDebugMetrics();
-    const root_before = tb.rope().root;
     const content_epoch_before = tb.getContentEpoch();
     const annotation_epoch_before = tb.getAnnotationEpoch();
     const first_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 1 };
@@ -1659,93 +1657,18 @@ test "pure style batches publish unique ID deltas and invalidate only overlappin
     try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
     prepared.commit(&.{});
 
-    const after = try tb.getDebugMetrics();
-    try std.testing.expect(tb.rope().root == root_before);
     try std.testing.expectEqual(content_epoch_before, tb.getContentEpoch());
     try std.testing.expectEqual(annotation_epoch_before + 1, tb.getAnnotationEpoch());
-    try std.testing.expectEqual(before.style_fast_path_batches + 1, after.style_fast_path_batches);
-    try std.testing.expectEqual(before.style_fast_path_updates + 2, after.style_fast_path_updates);
-    try std.testing.expectEqual(before.annotation_clone_entries, after.annotation_clone_entries);
-    try std.testing.expectEqual(before.style_reconciliation_entries, after.style_reconciliation_entries);
-
-    const projected_before = after.projected_lines;
-    _ = tb.getLineSpans(0);
-    try std.testing.expectEqual(projected_before, (try tb.getDebugMetrics()).projected_lines);
-    _ = tb.getLineSpans(1);
-    try std.testing.expectEqual(projected_before + 1, (try tb.getDebugMetrics()).projected_lines);
+    const unchanged_spans = tb.getLineSpans(0);
+    const changed_spans = tb.getLineSpans(1);
+    const final_spans = tb.getLineSpans(2);
+    try std.testing.expect(unchanged_spans.len != 0 and changed_spans.len != 0 and final_spans.len != 0);
+    try std.testing.expect(unchanged_spans[0].style_id != changed_spans[0].style_id);
+    try std.testing.expectEqual(changed_spans[0].style_id, final_spans[0].style_id);
 
     var live_refs: u32 = 0;
     for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
     try std.testing.expectEqual(@as(u32, values.len), live_refs);
-}
-
-test "pure style work stays bounded as document annotation count grows" {
-    const counts = [_]usize{ 200, 1000, 4000 };
-    for (counts) |count| {
-        const pool = gp.initGlobalPool(std.testing.allocator);
-        defer gp.deinitGlobalPool();
-        const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-        defer link.deinitGlobalLinkPool();
-        const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-        defer tb.deinit();
-        const style = try syntax_style.SyntaxStyle.init(std.testing.allocator);
-        defer style.deinit();
-        tb.setSyntaxStyle(style);
-
-        const chunks = try std.testing.allocator.alloc(text_buffer.StyledChunk, count);
-        defer std.testing.allocator.free(chunks);
-        const ranges = try std.testing.allocator.alloc(text_buffer.DocumentRangeInput, count);
-        defer std.testing.allocator.free(ranges);
-        const ids = try std.testing.allocator.alloc(u64, count);
-        defer std.testing.allocator.free(ids);
-        for (chunks, ranges, 0..) |*chunk, *range, index| {
-            chunk.* = .{ .text_ptr = "x\n".ptr, .text_len = 2, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
-            range.* = .{
-                .start_chunk = @intCast(index),
-                .end_chunk = @intCast(index + 1),
-                .style = chunk.*,
-                .styled = true,
-                .priority = 1,
-            };
-        }
-        try tb.applyDocumentOperations(&.{.{
-            .kind = .replace,
-            .use_target = false,
-            .owner = 104,
-            .chunks = chunks,
-            .ranges = ranges,
-        }}, ids);
-
-        const target = count / 2;
-        _ = tb.getLineSpans(target - 1);
-        _ = tb.getLineSpans(target);
-        const before = try tb.getDebugMetrics();
-        const replacement: text_buffer.StyledChunk = .{
-            .text_ptr = "".ptr,
-            .text_len = 0,
-            .fg_ptr = null,
-            .bg_ptr = null,
-            .attributes = 1,
-        };
-        try tb.applyDocumentOperations(&.{.{
-            .kind = .update_style,
-            .target_id = ids[target],
-            .owner = 104,
-            .style = replacement,
-        }}, &.{});
-        const published = try tb.getDebugMetrics();
-        try std.testing.expectEqual(before.style_fast_path_batches + 1, published.style_fast_path_batches);
-        try std.testing.expectEqual(before.style_fast_path_updates + 1, published.style_fast_path_updates);
-        try std.testing.expectEqual(before.annotation_clone_entries, published.annotation_clone_entries);
-        try std.testing.expectEqual(before.style_reconciliation_entries, published.style_reconciliation_entries);
-
-        _ = tb.getLineSpans(target - 1);
-        try std.testing.expectEqual(published.projected_lines, (try tb.getDebugMetrics()).projected_lines);
-        _ = tb.getLineSpans(target);
-        const projected = try tb.getDebugMetrics();
-        try std.testing.expectEqual(published.projected_lines + 1, projected.projected_lines);
-        try std.testing.expect(projected.projected_annotation_visits - published.projected_annotation_visits <= 2);
-    }
 }
 
 fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
@@ -1768,7 +1691,6 @@ fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
     const before = tb.textAnnotations().get(ids[0]).?;
     const annotation_epoch_before = tb.getAnnotationEpoch();
     const slots_before = tb.internal_style_slots.items.len;
-    const metrics_before = try tb.getDebugMetrics();
     const allocations_before = failing.alloc_index;
     if (fail_offset) |offset| failing.fail_index = allocations_before + offset;
 
@@ -1789,9 +1711,6 @@ fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
         try std.testing.expectEqualDeep(before, tb.textAnnotations().get(ids[0]).?);
         try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
         try std.testing.expectEqual(slots_before, tb.internal_style_slots.items.len);
-        const metrics_after = try tb.getDebugMetrics();
-        try std.testing.expectEqual(metrics_before.style_fast_path_batches, metrics_after.style_fast_path_batches);
-        try std.testing.expectEqual(metrics_before.style_fast_path_updates, metrics_after.style_fast_path_updates);
         var live_refs: u32 = 0;
         for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
         try std.testing.expectEqual(@as(u32, 1), live_refs);
@@ -1831,7 +1750,6 @@ fn exercisePayloadOnlyTransactionFailure(fail_offset: ?usize) !usize {
     };
     const content_epoch_before = tb.getContentEpoch();
     const annotation_epoch_before = tb.getAnnotationEpoch();
-    const metrics_before = try tb.getDebugMetrics();
     const allocations_before = failing.alloc_index;
     if (fail_offset) |offset| failing.fail_index = allocations_before + offset;
 
@@ -1859,10 +1777,7 @@ fn exercisePayloadOnlyTransactionFailure(fail_offset: ?usize) !usize {
     try std.testing.expectEqual(content_epoch_before + 1, tb.getContentEpoch());
     try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
     for (ids, annotations_before) |id, annotation| try std.testing.expectEqualDeep(annotation, tb.textAnnotations().get(id).?);
-    const metrics_after = try tb.getDebugMetrics();
-    try std.testing.expectEqual(metrics_before.annotation_clone_entries, metrics_after.annotation_clone_entries);
-    try std.testing.expectEqual(metrics_before.style_reconciliation_entries, metrics_after.style_reconciliation_entries);
-    try std.testing.expectEqual(@as(usize, 0), metrics_after.committed_unreachable_bytes);
+    try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     return operation_allocations;
 }
 

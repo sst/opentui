@@ -4,14 +4,12 @@ import {
   resolveRenderLib,
   type DocumentStyle,
   type DocumentRange,
-  type DocumentRangeInput,
   type DocumentOperation,
   type DocumentStyledChunk,
   type LineInfo,
   type RenderLib,
   type TextBufferHandle,
   type TextSpliceResult,
-  type TextBufferDebugMetrics,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import type { SyntaxStyle } from "./syntax-style.js"
@@ -172,43 +170,6 @@ export class TextBuffer {
     return this.lib.textBufferMeasureDocumentRange(this.bufferPtr, id)
   }
 
-  public getDebugMetrics(): TextBufferDebugMetrics {
-    this.guard()
-    return this.lib.textBufferGetDebugMetrics(this.bufferPtr)
-  }
-
-  public replaceDocumentRange(
-    targetId: bigint | null,
-    targetMode: "replace" | "before" | "after",
-    startByte: number,
-    endByte: number,
-    chunks: DocumentStyledChunk[],
-    owner: number,
-    ranges: DocumentRangeInput[],
-  ): { result: TextSpliceResult; ids: bigint[] } {
-    this.guard()
-    const result = this.lib.textBufferReplaceDocumentRange(
-      this.bufferPtr,
-      targetId,
-      targetMode,
-      startByte,
-      endByte,
-      chunks.map((chunk) => this.withStyleSource(chunk)),
-      owner,
-      ranges.map((range) => this.withStyleSource(range)),
-    )
-    this._length = this.lib.textBufferGetLength(this.bufferPtr)
-    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
-    this._lineInfo = undefined
-    return result
-  }
-
-  public moveDocumentRange(sourceId: bigint, anchorId: bigint, before: boolean): void {
-    this.guard()
-    this.lib.textBufferMoveDocumentRange(this.bufferPtr, sourceId, anchorId, before)
-    this._lineInfo = undefined
-  }
-
   public applyDocumentOperations(operations: DocumentOperation[]): bigint[] {
     this.guard()
     const styleSource = this.documentStyleSource(operations)
@@ -283,11 +244,6 @@ export class TextBuffer {
     this.lib.textBufferUpdateStyleRange(this.bufferPtr, id, startByte, endByte)
   }
 
-  public moveStyleRange(id: bigint, startByte: number, endByte: number): void {
-    this.guard()
-    this.lib.textBufferMoveStyleRange(this.bufferPtr, id, startByte, endByte)
-  }
-
   public updateStyleRangeStyle(id: bigint, style: DocumentStyle): void {
     this.guard()
     this.lib.textBufferUpdateStyleRangeStyle(this.bufferPtr, id, this.withStyleSource(style))
@@ -311,24 +267,6 @@ export class TextBuffer {
   public get contentEpoch(): bigint {
     this.guard()
     return this.lib.textBufferGetContentEpoch(this.bufferPtr)
-  }
-
-  public beginStyleBatch(): void {
-    this.guard()
-    this.lib.textBufferBeginStyleBatch(this.bufferPtr)
-  }
-
-  public beginDocumentBatch(): void {
-    this.beginStyleBatch()
-  }
-
-  public endStyleBatch(): void {
-    this.guard()
-    this.lib.textBufferEndStyleBatch(this.bufferPtr)
-  }
-
-  public endDocumentBatch(): void {
-    this.endStyleBatch()
   }
 
   public setDefaultFg(fg: RGBA | null): void {

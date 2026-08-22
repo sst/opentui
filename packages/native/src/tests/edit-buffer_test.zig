@@ -1786,33 +1786,6 @@ test "EditBuffer - configured history has exact depth and trims redo at runtime"
     try std.testing.expectEqual(@as(?usize, null), eb.getMaxUndoDepth());
 }
 
-test "EditBuffer - backing metrics categorize current and history roots exactly" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
-    defer eb.deinit();
-
-    try eb.setText("abc");
-    try eb.replaceText("wxyz");
-    var metrics = try eb.tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 4), metrics.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 3), metrics.history_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
-    try std.testing.expectEqual(@as(usize, 7), metrics.live_backing_bytes);
-
-    _ = try eb.undo();
-    metrics = try eb.tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 3), metrics.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 4), metrics.history_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.committed_unreachable_bytes);
-    eb.clearHistory();
-    metrics = try eb.tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 3), metrics.live_backing_bytes);
-    try std.testing.expectEqual(@as(usize, 0), metrics.history_reachable_bytes);
-}
-
 test "EditBuffer - explicit bounded history keeps sustained same-length edits bounded" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1850,11 +1823,8 @@ test "EditBuffer - clear releases one MiB backing and accepts a subsequent byte 
     @memset(large, 'x');
     try eb.setText(large);
     try eb.clear();
-    const cleared = try eb.tb.getDebugMetrics();
-    try std.testing.expectEqual(@as(usize, 0), cleared.current_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.history_reachable_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_bytes);
-    try std.testing.expectEqual(@as(usize, 0), cleared.live_backing_capacity);
+    try std.testing.expectEqual(@as(usize, 0), eb.tb.getBackingStoreBytes());
+    try std.testing.expectEqual(@as(usize, 0), eb.tb.getBackingStoreCapacity());
     try eb.insertText("x");
     var output: [1]u8 = undefined;
     try std.testing.expectEqualStrings("x", output[0..eb.getText(&output)]);

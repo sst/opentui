@@ -37,30 +37,6 @@ let nextStyledLeafStyleSource = 1
 const styledLeafStyleSources = new WeakMap<object, number>()
 const simpleStyledLeafStyles = new Map<number, TextStyle>()
 
-export type TextRenderableDebugMetrics = {
-  textRenderableAllocations: number
-  yogaNodeAllocations: number
-  styledLeafAllocations: number
-  documentOperations: number
-  documentChunks: number
-  documentRanges: number
-  documentTreeWalks: number
-  yogaDirties: number
-  renderRequests: number
-}
-
-const textRenderableDebugMetrics: TextRenderableDebugMetrics = {
-  textRenderableAllocations: 0,
-  yogaNodeAllocations: 0,
-  styledLeafAllocations: 0,
-  documentOperations: 0,
-  documentChunks: 0,
-  documentRanges: 0,
-  documentTreeWalks: 0,
-  yogaDirties: 0,
-  renderRequests: 0,
-}
-
 type TextLeaf = {
   text: string
   style: TextStyle | null
@@ -192,149 +168,13 @@ function localLineInfo(text: string): LineInfo {
   }
 }
 
-type ChildOrderNode = {
-  child: TextRenderable
-  priority: number
-  size: number
-  left: ChildOrderNode | null
-  right: ChildOrderNode | null
-  parent: ChildOrderNode | null
-}
-
-function childOrderSize(node: ChildOrderNode | null): number {
-  return node?.size ?? 0
-}
-
-function setChildOrderLeft(node: ChildOrderNode, child: ChildOrderNode | null): void {
-  node.left = child
-  if (child) child.parent = node
-  node.size = 1 + childOrderSize(node.left) + childOrderSize(node.right)
-}
-
-function setChildOrderRight(node: ChildOrderNode, child: ChildOrderNode | null): void {
-  node.right = child
-  if (child) child.parent = node
-  node.size = 1 + childOrderSize(node.left) + childOrderSize(node.right)
-}
-
-function mergeChildOrder(left: ChildOrderNode | null, right: ChildOrderNode | null): ChildOrderNode | null {
-  if (!left) {
-    if (right) right.parent = null
-    return right
-  }
-  if (!right) {
-    left.parent = null
-    return left
-  }
-  if (left.priority < right.priority) {
-    setChildOrderRight(left, mergeChildOrder(left.right, right))
-    left.parent = null
-    return left
-  }
-  setChildOrderLeft(right, mergeChildOrder(left, right.left))
-  right.parent = null
-  return right
-}
-
-function splitChildOrder(root: ChildOrderNode | null, count: number): [ChildOrderNode | null, ChildOrderNode | null] {
-  if (!root) return [null, null]
-  if (childOrderSize(root.left) >= count) {
-    const [left, middle] = splitChildOrder(root.left, count)
-    setChildOrderLeft(root, middle)
-    root.parent = null
-    return [left, root]
-  }
-  const [middle, right] = splitChildOrder(root.right, count - childOrderSize(root.left) - 1)
-  setChildOrderRight(root, middle)
-  root.parent = null
-  return [root, right]
-}
-
-class PendingChildOrder {
-  private root: ChildOrderNode | null = null
-  private readonly nodes = new Map<TextRenderable, ChildOrderNode>()
-
-  constructor(children: TextRenderable[]) {
-    for (const child of children) {
-      let value = child.num | 0
-      value = Math.imul(value ^ (value >>> 16), 0x45d9f3b)
-      value = Math.imul(value ^ (value >>> 16), 0x45d9f3b)
-      const node: ChildOrderNode = {
-        child,
-        priority: (value ^ (value >>> 16)) >>> 0,
-        size: 1,
-        left: null,
-        right: null,
-        parent: null,
-      }
-      this.nodes.set(child, node)
-      this.root = mergeChildOrder(this.root, node)
-    }
-  }
-
-  public get length(): number {
-    return childOrderSize(this.root)
-  }
-
-  public at(index: number): TextRenderable {
-    let node = this.root
-    while (node) {
-      const leftSize = childOrderSize(node.left)
-      if (index < leftSize) node = node.left
-      else if (index === leftSize) return node.child
-      else {
-        index -= leftSize + 1
-        node = node.right
-      }
-    }
-    throw new Error("Text child order index is out of bounds")
-  }
-
-  public indexOf(child: TextRenderable): number {
-    const node = this.nodes.get(child)
-    if (!node) return -1
-    let index = childOrderSize(node.left)
-    let current = node
-    while (current.parent) {
-      if (current === current.parent.right) index += childOrderSize(current.parent.left) + 1
-      current = current.parent
-    }
-    return index
-  }
-
-  public move(child: TextRenderable, index: number): void {
-    const currentIndex = this.indexOf(child)
-    const [before, tail] = splitChildOrder(this.root, currentIndex)
-    const [node, after] = splitChildOrder(tail, 1)
-    this.root = mergeChildOrder(before, after)
-    const [left, right] = splitChildOrder(this.root, index)
-    this.root = mergeChildOrder(mergeChildOrder(left, node), right)
-  }
-
-  public toArray(): TextRenderable[] {
-    const result: TextRenderable[] = []
-    const stack: ChildOrderNode[] = []
-    let node = this.root
-    while (node || stack.length > 0) {
-      while (node) {
-        stack.push(node)
-        node = node.left
-      }
-      node = stack.pop()!
-      result.push(node.child)
-      node = node.right
-    }
-    return result
-  }
-}
-
 export class TextRenderable extends TextBufferRenderable {
   get [BrandedTextRenderable](): true {
     return true
   }
 
   private _children: (string | TextRenderable)[] = []
-  private _pendingChildOrder: PendingChildOrder | null = null
+  private _pendingChildOrder: TextRenderable[] | null = null
   private _leaves: (TextLeaf | null)[] = []
   private _localFg?: RGBA
   private _localBg?: RGBA
@@ -358,7 +198,6 @@ export class TextRenderable extends TextBufferRenderable {
   private _manualStyledSyntaxStyle: SyntaxStyle | null = null
   private _lastCommittedLineInfoFrame: number = -1
   private _layoutPromotionPending: boolean = false
-  private readonly _structuralMoveMetrics = { orderNodes: 0, orderMoves: 0, materializedChildren: 0 }
 
   constructor(ctx: RenderContext, options: TextOptions, attachTextDocumentState?: boolean)
   constructor(options: TextOptions, attachTextDocumentState?: boolean)
@@ -374,9 +213,6 @@ export class TextRenderable extends TextBufferRenderable {
     const shouldAttach = hasContext ? attachTextDocumentState : false
 
     super(ctx, options, shouldAttach)
-    textRenderableDebugMetrics.textRenderableAllocations += 1
-    textRenderableDebugMetrics.yogaNodeAllocations += 1
-
     try {
       this._textDocumentRole = hasContext ? (shouldAttach ? "owner" : "inline") : detachedRole
       this._localFg = options.fg ? parseColor(options.fg) : undefined
@@ -400,8 +236,7 @@ export class TextRenderable extends TextBufferRenderable {
 
   private materializeChildOrder(): (string | TextRenderable)[] {
     if (this._pendingChildOrder) {
-      this._structuralMoveMetrics.materializedChildren += this._pendingChildOrder.length
-      this._children = this._pendingChildOrder.toArray()
+      this._children = this._pendingChildOrder
       this._leaves = this._children.map(() => null)
       this._pendingChildOrder = null
     }
@@ -939,7 +774,6 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public requestRender(): void {
-    textRenderableDebugMetrics.renderRequests += 1
     this.markDirty()
     this._ctx.requestRender()
   }
@@ -959,9 +793,8 @@ export class TextRenderable extends TextBufferRenderable {
         if (currentIndex < insertIndex) insertIndex -= 1
         if (currentIndex === insertIndex) return insertIndex
         const owner = this.getDocumentOwner()!
-        const order = this._pendingChildOrder ?? new PendingChildOrder(this._children as TextRenderable[])
-        if (!this._pendingChildOrder) this._structuralMoveMetrics.orderNodes += childCount
-        const anchor = order.at(insertIndex)
+        const order = this._pendingChildOrder ?? [...(this._children as TextRenderable[])]
+        const anchor = order[insertIndex]!
         const move = owner.createPendingNativeMove(this, {
           source: obj,
           anchor,
@@ -982,8 +815,8 @@ export class TextRenderable extends TextBufferRenderable {
           this._dirty = dirtyBefore
           throw error
         }
-        order.move(obj, insertIndex)
-        this._structuralMoveMetrics.orderMoves += 1
+        order.splice(currentIndex, 1)
+        order.splice(insertIndex, 0, obj)
         if (!this._pendingChildOrder) {
           this._pendingChildOrder = order
           this._children = []
@@ -1319,10 +1152,6 @@ export class TextRenderable extends TextBufferRenderable {
     return node
   }
 
-  public static getDebugMetrics(): TextRenderableDebugMetrics {
-    return { ...textRenderableDebugMetrics }
-  }
-
   public static fromNodes(nodes: TextRenderable[], options?: Partial<TextOptions>): TextRenderable
   public static fromNodes(ctx: RenderContext, nodes: TextRenderable[], options?: Partial<TextOptions>): TextRenderable
   public static fromNodes(
@@ -1432,7 +1261,6 @@ export class TextRenderable extends TextBufferRenderable {
         leaf.style = style
         nextLeaves[index] = leaf
       } else {
-        textRenderableDebugMetrics.styledLeafAllocations += 1
         nextLeaves[index] = { text: chunk.text, style, rangeId: null }
       }
     }
@@ -1684,11 +1512,6 @@ export class TextRenderable extends TextBufferRenderable {
     this.collectRegisteredSyntaxStyles(syntaxStyles)
     if (syntaxStyles.size > 1)
       throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
-    textRenderableDebugMetrics.documentOperations += operations.length
-    for (const operation of operations) {
-      textRenderableDebugMetrics.documentChunks += operation.chunks?.length ?? 0
-      textRenderableDebugMetrics.documentRanges += operation.ranges?.length ?? 0
-    }
     return {
       operations,
       assignments,
@@ -1712,7 +1535,6 @@ export class TextRenderable extends TextBufferRenderable {
       this.refreshLocalSelection()
       if (layoutChanged) {
         this.yogaNode.markDirty()
-        textRenderableDebugMetrics.yogaDirties += 1
       }
       this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
       this.emit("line-info-change")
@@ -1830,7 +1652,6 @@ export class TextRenderable extends TextBufferRenderable {
     ranges: DocumentRangeInput[],
     assignments: Array<(id: bigint) => void>,
   ): void {
-    textRenderableDebugMetrics.documentTreeWalks += 1
     const style = node.mergeStyles(parentStyle)
     const start = chunks.length
     const nodeRangeIndex = ranges.length
@@ -2038,25 +1859,27 @@ export class TextRenderable extends TextBufferRenderable {
 
   private planNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): PlannedNativeMove[] {
     const forward: PlannedNativeMove[] = []
-    const forwardOrder = new PendingChildOrder(previous)
+    const forwardOrder = [...previous]
     for (let index = 0; index < next.length; index++) {
       const desired = next[index]!
       const currentIndex = forwardOrder.indexOf(desired)
       if (currentIndex === index) continue
-      const anchor = forwardOrder.at(index)
+      const anchor = forwardOrder[index]!
       forward.push({ source: desired, anchor, before: true })
-      forwardOrder.move(desired, index)
+      forwardOrder.splice(currentIndex, 1)
+      forwardOrder.splice(index, 0, desired)
     }
 
     const reverse: PlannedNativeMove[] = []
-    const reverseOrder = new PendingChildOrder(previous)
+    const reverseOrder = [...previous]
     for (let index = next.length - 1; index >= 0; index--) {
       const desired = next[index]!
       const currentIndex = reverseOrder.indexOf(desired)
       if (currentIndex === index) continue
-      const anchor = reverseOrder.at(index)
+      const anchor = reverseOrder[index]!
       reverse.push({ source: desired, anchor, before: false })
-      reverseOrder.move(desired, index)
+      reverseOrder.splice(currentIndex, 1)
+      reverseOrder.splice(index, 0, desired)
     }
     return forward.length <= reverse.length ? forward : reverse
   }

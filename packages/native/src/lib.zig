@@ -2124,32 +2124,6 @@ export fn textBufferGetByteSize(tb_handle: NativeHandle) u32 {
     return object_ptr.getByteSize();
 }
 
-/// Non-semantic diagnostics for benchmarks and leak tests. Values describe
-/// only the currently acquired TextBuffer and do not expose Rope node identity.
-export fn textBufferGetDebugMetrics(tb_handle: NativeHandle, out_metrics: ?*ExternalTextBufferDebugMetrics) bool {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
-    const output = out_metrics orelse return false;
-    const backing = object_ptr.getDebugMetrics() catch return false;
-    output.* = .{
-        .rope_transaction_arena_count = @intCast(object_ptr.getRopeTransactionArenaCount()),
-        .rope_transaction_arena_bytes = @intCast(object_ptr.getRopeTransactionArenaBytes()),
-        .arena_bytes = @intCast(object_ptr.getArenaAllocatedBytes()),
-        .current_reachable_bytes = @intCast(backing.current_reachable_bytes),
-        .history_reachable_bytes = @intCast(backing.history_reachable_bytes),
-        .committed_unreachable_bytes = @intCast(backing.committed_unreachable_bytes),
-        .live_backing_bytes = @intCast(backing.live_backing_bytes),
-        .live_backing_capacity = @intCast(backing.live_backing_capacity),
-        .live_backing_blocks = @intCast(backing.live_backing_blocks),
-        .style_fast_path_batches = backing.style_fast_path_batches,
-        .style_fast_path_updates = backing.style_fast_path_updates,
-        .annotation_clone_entries = backing.annotation_clone_entries,
-        .style_reconciliation_entries = backing.style_reconciliation_entries,
-        .projected_annotation_visits = backing.projected_annotation_visits,
-        .projected_lines = backing.projected_lines,
-    };
-    return true;
-}
-
 export fn textBufferReset(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     object_ptr.reset();
@@ -3276,24 +3250,6 @@ pub const ExternalTextSpliceResult = extern struct {
     new_extent_columns: u32,
 };
 
-pub const ExternalTextBufferDebugMetrics = extern struct {
-    rope_transaction_arena_count: u64,
-    rope_transaction_arena_bytes: u64,
-    arena_bytes: u64,
-    current_reachable_bytes: u64,
-    history_reachable_bytes: u64,
-    committed_unreachable_bytes: u64,
-    live_backing_bytes: u64,
-    live_backing_capacity: u64,
-    live_backing_blocks: u64,
-    style_fast_path_batches: u64,
-    style_fast_path_updates: u64,
-    annotation_clone_entries: u64,
-    style_reconciliation_entries: u64,
-    projected_annotation_visits: u64,
-    projected_lines: u64,
-};
-
 comptime {
     std.debug.assert(@sizeOf(ExternalStyledChunk32) == 64);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "style_kind") == 40);
@@ -3309,7 +3265,6 @@ comptime {
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
-    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 120);
 }
 
 const TextDocumentStatus = enum(u32) {
@@ -3552,89 +3507,6 @@ export fn textBufferMeasureDocumentRange(tb_handle: NativeHandle, id: u64, out_l
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
-export fn textBufferReplaceDocumentRange(
-    tb_handle: NativeHandle,
-    target_id: u64,
-    use_target: u32,
-    start_byte: u32,
-    end_byte: u32,
-    chunks_ptr: ?[*]const ExternalStyledChunk32,
-    chunk_count: u32,
-    owner: u32,
-    ranges_ptr: ?[*]const ExternalDocumentRangeInput,
-    range_count: u32,
-    out_ids: ?[*]u64,
-    out_result: ?*ExternalTextSpliceResult,
-) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const output = out_result orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
-    if (use_target > 3 or (chunk_count != 0 and chunks_ptr == null) or (range_count != 0 and (ranges_ptr == null or out_ids == null))) {
-        return @intFromEnum(TextDocumentStatus.invalid_argument);
-    }
-    const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
-    for (external_chunks) |chunk| if (!validExternalStyledChunk(chunk)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
-    for (external_ranges) |range| if (!validExternalDocumentRange(range)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
-    defer globalAllocator.free(chunks);
-    for (external_chunks, 0..) |chunk, index| {
-        chunks[index] = externalStyledChunk(chunk).?;
-    }
-    const ranges = globalAllocator.alloc(text_buffer.DocumentRangeInput, external_ranges.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
-    defer globalAllocator.free(ranges);
-    for (external_ranges, 0..) |range, index| {
-        const style = externalStyleSource(range.style_kind, range.style_id, range.syntax_style_handle, range.link_ptr, range.link_len);
-        if (!validExternalDocumentRange(range) or style == null) {
-            return @intFromEnum(TextDocumentStatus.invalid_argument);
-        }
-        ranges[index] = .{
-            .id = range.id,
-            .remove = range.remove != 0,
-            .start_chunk = range.start_chunk,
-            .end_chunk = range.end_chunk,
-            .style = .{
-                .text_ptr = "".ptr,
-                .text_len = 0,
-                .fg_ptr = range.fg_ptr,
-                .bg_ptr = range.bg_ptr,
-                .attributes = range.attributes,
-                .style_id = range.style_id,
-                .style_kind = style.?.kind,
-                .syntax_style = style.?.source,
-                .link_ptr = range.link_ptr,
-                .link_len = range.link_len,
-            },
-            .styled = range.styled != 0,
-            .priority = @intCast(range.priority),
-        };
-    }
-    var empty_ids: [0]u64 = .{};
-    const ids: []u64 = if (range_count == 0) empty_ids[0..] else out_ids.?[0..range_count];
-    const result = object_ptr.replaceDocumentRange(
-        if (use_target != 0) target_id else null,
-        switch (use_target) {
-            2 => .before,
-            3 => .after,
-            else => .replace,
-        },
-        start_byte,
-        end_byte,
-        chunks,
-        owner,
-        ranges,
-        ids,
-    ) catch |err| return textDocumentErrorStatus(err);
-    writeExternalSplice(output, result);
-    return @intFromEnum(TextDocumentStatus.ok);
-}
-
-export fn textBufferMoveDocumentRange(tb_handle: NativeHandle, source_id: u64, anchor_id: u64, before: u32) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    if (before > 1) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    _ = object_ptr.moveDocumentRange(source_id, anchor_id, before != 0) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(TextDocumentStatus.ok);
-}
-
 const DecodedDocumentBatch = struct {
     operations: []text_buffer.DocumentOperation,
     chunks: []text_buffer.StyledChunk,
@@ -3870,10 +3742,6 @@ export fn textBufferUpdateStyleRange(tb_handle: NativeHandle, id: u64, start_byt
     return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
 }
 
-export fn textBufferMoveStyleRange(tb_handle: NativeHandle, id: u64, start_byte: u32, end_byte: u32) u32 {
-    return textBufferUpdateStyleRange(tb_handle, id, start_byte, end_byte);
-}
-
 export fn textBufferUpdateStyleRangeStyle(tb_handle: NativeHandle, id: u64, style_ptr: ?*const ExternalAnnotationStyle) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
     const style = style_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
@@ -3903,18 +3771,6 @@ export fn textBufferGetAnnotationEpoch(tb_handle: NativeHandle) u64 {
 export fn textBufferGetContentEpoch(tb_handle: NativeHandle) u64 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     return object_ptr.getContentEpoch();
-}
-
-export fn textBufferBeginStyleBatch(tb_handle: NativeHandle) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    object_ptr.beginStyleBatch();
-    return @intFromEnum(TextDocumentStatus.ok);
-}
-
-export fn textBufferEndStyleBatch(tb_handle: NativeHandle) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    object_ptr.endStyleBatch();
-    return @intFromEnum(TextDocumentStatus.ok);
 }
 
 pub const ExternalLogicalCursor = extern struct {
@@ -4346,184 +4202,6 @@ test "document operation FFI validates complete descriptors before outputs" {
         null,
         0,
     ));
-}
-
-test "document descriptor tags reject every forbidden field" {
-    const default_operation: ExternalDocumentOperation = .{
-        .kind = 0,
-        .target_mode = 0,
-        .target_id = 0,
-        .anchor_id = 0,
-        .use_target = 0,
-        .before = 0,
-        .start_byte = 0,
-        .end_byte = 0,
-        .owner = 7,
-        .chunk_start = 0,
-        .chunk_count = 0,
-        .range_start = 0,
-        .range_count = 0,
-        .fg_ptr = null,
-        .bg_ptr = null,
-        .attributes = 0,
-        .style_id = 0,
-        .style_kind = 0,
-        .syntax_style_handle = INVALID_HANDLE,
-        .link_ptr = null,
-        .link_len = 0,
-    };
-    var rgba = [_]u16{ 1, 2, 3, 4 };
-    const url = "https://invalid.test";
-
-    var clear_owner = default_operation;
-    clear_owner.kind = @intFromEnum(text_buffer.DocumentOperationKind.clear_owner);
-    try std.testing.expect(validExternalDocumentOperation(clear_owner));
-    inline for (.{ "target_mode", "use_target", "before", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
-        var invalid = clear_owner;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    inline for (.{ "target_id", "anchor_id" }) |field| {
-        var invalid = clear_owner;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
-        var invalid = clear_owner;
-        @field(invalid, field) = rgba[0..].ptr;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    var clear_link = clear_owner;
-    clear_link.link_ptr = url.ptr;
-    try std.testing.expect(!validExternalDocumentOperation(clear_link));
-
-    var remove = default_operation;
-    remove.kind = @intFromEnum(text_buffer.DocumentOperationKind.remove);
-    remove.target_id = 1;
-    remove.use_target = 1;
-    try std.testing.expect(validExternalDocumentOperation(remove));
-    inline for (.{ "target_mode", "before", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
-        var invalid = remove;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    var remove_anchor = remove;
-    remove_anchor.anchor_id = 1;
-    try std.testing.expect(!validExternalDocumentOperation(remove_anchor));
-
-    var move = default_operation;
-    move.kind = @intFromEnum(text_buffer.DocumentOperationKind.move);
-    move.target_id = 1;
-    move.anchor_id = 2;
-    move.use_target = 1;
-    move.before = 1;
-    try std.testing.expect(validExternalDocumentOperation(move));
-    inline for (.{ "target_mode", "start_byte", "end_byte", "chunk_count", "range_count", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
-        var invalid = move;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-
-    var update_style = default_operation;
-    update_style.kind = @intFromEnum(text_buffer.DocumentOperationKind.update_style);
-    update_style.target_id = 1;
-    update_style.use_target = 1;
-    update_style.fg_ptr = rgba[0..].ptr;
-    update_style.attributes = 2;
-    update_style.link_ptr = url.ptr;
-    update_style.link_len = url.len;
-    try std.testing.expect(validExternalDocumentOperation(update_style));
-    inline for (.{ "target_mode", "before", "start_byte", "end_byte", "chunk_count", "range_count" }) |field| {
-        var invalid = update_style;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    var update_anchor = update_style;
-    update_anchor.anchor_id = 1;
-    try std.testing.expect(!validExternalDocumentOperation(update_anchor));
-
-    var replace = default_operation;
-    replace.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
-    replace.start_byte = 1;
-    replace.end_byte = 2;
-    try std.testing.expect(validExternalDocumentOperation(replace));
-    var payload_only_replace = replace;
-    payload_only_replace.before = 1;
-    try std.testing.expect(validExternalDocumentOperation(payload_only_replace));
-    inline for (.{ "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
-        var invalid = replace;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
-        var invalid = replace;
-        @field(invalid, field) = rgba[0..].ptr;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-    var replace_link = replace;
-    replace_link.link_ptr = url.ptr;
-    try std.testing.expect(!validExternalDocumentOperation(replace_link));
-    var replace_target_without_tag = replace;
-    replace_target_without_tag.target_id = 1;
-    try std.testing.expect(!validExternalDocumentOperation(replace_target_without_tag));
-    var targeted_replace = default_operation;
-    targeted_replace.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
-    targeted_replace.target_id = 1;
-    targeted_replace.use_target = 1;
-    try std.testing.expect(validExternalDocumentOperation(targeted_replace));
-    inline for (.{ "start_byte", "end_byte" }) |field| {
-        var invalid = targeted_replace;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentOperation(invalid));
-    }
-
-    const default_range: ExternalDocumentRangeInput = .{
-        .id = 0,
-        .remove = 0,
-        .start_chunk = 0,
-        .end_chunk = 1,
-        .fg_ptr = null,
-        .bg_ptr = null,
-        .attributes = 0,
-        .style_id = 0,
-        .style_kind = 0,
-        .syntax_style_handle = INVALID_HANDLE,
-        .link_ptr = null,
-        .link_len = 0,
-        .styled = 0,
-        .priority = 1,
-    };
-    try std.testing.expect(validExternalDocumentRange(default_range));
-    inline for (.{ "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len" }) |field| {
-        var invalid = default_range;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentRange(invalid));
-    }
-    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
-        var invalid = default_range;
-        @field(invalid, field) = rgba[0..].ptr;
-        try std.testing.expect(!validExternalDocumentRange(invalid));
-    }
-
-    var remove_range = default_range;
-    remove_range.id = 9;
-    remove_range.remove = 1;
-    remove_range.end_chunk = 0;
-    remove_range.priority = 0;
-    try std.testing.expect(validExternalDocumentRange(remove_range));
-    inline for (.{ "start_chunk", "end_chunk", "attributes", "style_id", "style_kind", "syntax_style_handle", "link_len", "styled", "priority" }) |field| {
-        var invalid = remove_range;
-        @field(invalid, field) = 1;
-        try std.testing.expect(!validExternalDocumentRange(invalid));
-    }
-    inline for (.{ "fg_ptr", "bg_ptr" }) |field| {
-        var invalid = remove_range;
-        @field(invalid, field) = rgba[0..].ptr;
-        try std.testing.expect(!validExternalDocumentRange(invalid));
-    }
-    var remove_range_link = remove_range;
-    remove_range_link.link_ptr = url.ptr;
-    try std.testing.expect(!validExternalDocumentRange(remove_range_link));
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {

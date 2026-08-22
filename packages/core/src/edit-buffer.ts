@@ -4,7 +4,6 @@ import {
   type LogicalCursor,
   type RenderLib,
   type TextBufferHandle,
-  type TextBufferDebugMetrics,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import { RGBA } from "./lib/RGBA.js"
@@ -348,11 +347,6 @@ export class EditBuffer extends EventEmitter {
   public get maxUndoDepth(): number | null {
     this.guard()
     return this.lib.editBufferGetMaxUndoDepth(this.bufferPtr)
-  }
-
-  public getDebugMetrics(): TextBufferDebugMetrics {
-    this.guard()
-    return this.lib.textBufferGetDebugMetrics(this.textBufferPtr)
   }
 
   public setDefaultFg(fg: RGBA | null): void {

@@ -1304,12 +1304,9 @@ describe("EditBuffer History Management", () => {
       for (let index = 0; index < 300; index++) buffer.replaceText(`value-${index.toString().padStart(3, "0")}`)
       expect(buffer.getText()).toBe("value-299")
       expect(buffer.canUndo()).toBe(true)
-      const retained = buffer.getDebugMetrics()
-      expect(retained.liveBackingCapacity).toBeLessThan(64 * 1024)
-      expect(retained.arenaBytes).toBeGreaterThanOrEqual(retained.transactionArenaBytes)
       buffer.clearHistory()
-      const cleared = buffer.getDebugMetrics()
-      expect(cleared.liveBackingBytes).toBeLessThanOrEqual("value-299".length)
+      expect(buffer.getText()).toBe("value-299")
+      expect(buffer.canUndo()).toBe(false)
     })
 
     it("should create undo history when using replaceText", () => {

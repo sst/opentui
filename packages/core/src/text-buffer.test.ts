@@ -93,7 +93,7 @@ describe("TextBuffer", () => {
       const id = buffer.createStyleRange(23, 0, 1, { attributes: 2 })
       expect(typeof id).toBe("bigint")
       expect(buffer.annotationEpoch).toBeGreaterThan(contentEpoch)
-      buffer.moveStyleRange(id, 1, 2)
+      buffer.updateStyleRange(id, 1, 2)
       buffer.updateStyleRangeStyle(id, { attributes: 4 })
       expect(buffer.removeStyleRange(id)).toBe(true)
       expect(buffer.removeStyleRange(id)).toBe(false)
@@ -104,33 +104,40 @@ describe("TextBuffer", () => {
     })
 
     it("creates, reads, edits, and moves stable document ranges", () => {
-      const created = buffer.replaceDocumentRange(
-        null,
-        "replace",
-        0,
-        0,
-        [{ text: "A" }, { text: "界\r\n" }, { text: "🙂" }],
-        41,
-        [
-          { startChunk: 0, endChunk: 3, styled: true },
-          { startChunk: 0, endChunk: 1, styled: true, priority: 2 },
-          { startChunk: 1, endChunk: 2, styled: true, priority: 2 },
-          { startChunk: 2, endChunk: 3, styled: true, priority: 2 },
-        ],
-      )
-      const [rootId, firstId, middleId, lastId] = created.ids
+      const created = buffer.applyDocumentOperations([
+        {
+          kind: "replace",
+          startByte: 0,
+          endByte: 0,
+          chunks: [{ text: "A" }, { text: "界\r\n" }, { text: "🙂" }],
+          owner: 41,
+          ranges: [
+            { startChunk: 0, endChunk: 3, styled: true },
+            { startChunk: 0, endChunk: 1, styled: true, priority: 2 },
+            { startChunk: 1, endChunk: 2, styled: true, priority: 2 },
+            { startChunk: 2, endChunk: 3, styled: true, priority: 2 },
+          ],
+        },
+      ])
+      const [rootId, firstId, middleId, lastId] = created
       expect(buffer.getDocumentRangeText(rootId!)).toBe("A界\n🙂")
       expect(buffer.getDocumentRange(middleId!)).toMatchObject({ owner: 41, startByte: 1, endByte: 5 })
 
       const epoch = buffer.contentEpoch
-      buffer.replaceDocumentRange(middleId!, "replace", 0, 0, [{ text: "中" }], 41, [
-        { id: middleId, startChunk: 0, endChunk: 1, styled: true, priority: 2 },
+      buffer.applyDocumentOperations([
+        {
+          kind: "replace",
+          targetId: middleId,
+          owner: 41,
+          chunks: [{ text: "中" }],
+          ranges: [{ id: middleId, startChunk: 0, endChunk: 1, styled: true, priority: 2 }],
+        },
       ])
       expect(buffer.getPlainText()).toBe("A中🙂")
       expect(buffer.getDocumentRange(middleId!)?.startByte).toBe(1)
       expect(buffer.contentEpoch).toBeGreaterThan(epoch)
 
-      buffer.moveDocumentRange(lastId!, firstId!, true)
+      buffer.applyDocumentOperations([{ kind: "move", targetId: lastId, anchorId: firstId, owner: 41, before: true }])
       expect(buffer.getPlainText()).toBe("🙂A中")
       expect(buffer.getDocumentRange(lastId!)?.startByte).toBe(0)
     })
@@ -138,13 +145,25 @@ describe("TextBuffer", () => {
     it("atomically transfers document operations and returns complete ID mappings", () => {
       const destination = TextBuffer.create("wcwidth")
       try {
-        const sourceIds = buffer.replaceDocumentRange(null, "replace", 0, 0, [{ text: "L" }, { text: "X" }], 81, [
-          { startChunk: 0, endChunk: 2, styled: false },
-          { startChunk: 1, endChunk: 2, styled: true },
-        ]).ids
-        const destinationIds = destination.replaceDocumentRange(null, "replace", 0, 0, [{ text: "R" }], 82, [
-          { startChunk: 0, endChunk: 1, styled: false },
-        ]).ids
+        const sourceIds = buffer.applyDocumentOperations([
+          {
+            kind: "replace",
+            owner: 81,
+            chunks: [{ text: "L" }, { text: "X" }],
+            ranges: [
+              { startChunk: 0, endChunk: 2, styled: false },
+              { startChunk: 1, endChunk: 2, styled: true },
+            ],
+          },
+        ])
+        const destinationIds = destination.applyDocumentOperations([
+          {
+            kind: "replace",
+            owner: 82,
+            chunks: [{ text: "R" }],
+            ranges: [{ startChunk: 0, endChunk: 1, styled: false }],
+          },
+        ])
 
         const transfer = buffer.applyTwoDocumentOperations(
           destination,

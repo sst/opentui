@@ -146,24 +146,6 @@ export type DocumentRange = {
   styled: boolean
 }
 
-export type TextBufferDebugMetrics = {
-  transactionArenaCount: number
-  transactionArenaBytes: number
-  arenaBytes: number
-  currentReachableBytes: number
-  historyReachableBytes: number
-  committedUnreachableBytes: number
-  liveBackingBytes: number
-  liveBackingCapacity: number
-  liveBackingBlocks: number
-  styleFastPathBatches: number
-  styleFastPathUpdates: number
-  annotationCloneEntries: number
-  styleReconciliationEntries: number
-  projectedAnnotationVisits: number
-  projectedLines: number
-}
-
 export type DocumentOperation = DocumentStyle & {
   kind: "replace" | "updateStyle" | "move" | "remove" | "clearOwner"
   targetId?: bigint
@@ -1075,11 +1057,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
-    textBufferGetDebugMetrics: {
-      args: ["u32", "buffer"],
-      returns: "bool",
-    },
-
     textBufferReset: {
       args: ["u32"],
       returns: "void",
@@ -1160,14 +1137,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u64", "buffer"],
       returns: "u32",
     },
-    textBufferReplaceDocumentRange: {
-      args: ["u32", "u64", "u32", "u32", "u32", "ptr", "u32", "u32", "ptr", "u32", "buffer", "buffer"],
-      returns: "u32",
-    },
-    textBufferMoveDocumentRange: {
-      args: ["u32", "u64", "u64", "u32"],
-      returns: "u32",
-    },
     textBufferApplyDocumentOperations: {
       args: ["u32", "ptr", "u32", "ptr", "u32", "ptr", "u32", "ptr", "u32"],
       returns: "u32",
@@ -1203,10 +1172,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u64", "u32", "u32"],
       returns: "u32",
     },
-    textBufferMoveStyleRange: {
-      args: ["u32", "u64", "u32", "u32"],
-      returns: "u32",
-    },
     textBufferUpdateStyleRangeStyle: {
       args: ["u32", "u64", "buffer"],
       returns: "u32",
@@ -1226,14 +1191,6 @@ function getOpenTUILib(libPath?: string) {
     textBufferGetContentEpoch: {
       args: ["u32"],
       returns: "u64",
-    },
-    textBufferBeginStyleBatch: {
-      args: ["u32"],
-      returns: "u32",
-    },
-    textBufferEndStyleBatch: {
-      args: ["u32"],
-      returns: "u32",
     },
     textBufferGetLineCount: {
       args: ["u32"],
@@ -2972,8 +2929,6 @@ export interface RenderLib extends AudioEngineLib {
   destroyTextBuffer: (buffer: TextBufferHandle) => void
   textBufferGetLength: (buffer: TextBufferHandle) => number
   textBufferGetByteSize: (buffer: TextBufferHandle) => number
-  textBufferGetDebugMetrics: (buffer: TextBufferHandle) => TextBufferDebugMetrics
-
   textBufferReset: (buffer: TextBufferHandle) => void
   textBufferClear: (buffer: TextBufferHandle) => void
   textBufferRegisterMemBuffer: (buffer: TextBufferHandle, bytes: Uint8Array, owned?: boolean) => number
@@ -2997,17 +2952,6 @@ export interface RenderLib extends AudioEngineLib {
   textBufferGetDocumentRange: (buffer: TextBufferHandle, id: bigint) => DocumentRange | null
   textBufferGetDocumentRangeText: (buffer: TextBufferHandle, id: bigint, byteLength: number) => Uint8Array | null
   textBufferMeasureDocumentRange: (buffer: TextBufferHandle, id: bigint) => number
-  textBufferReplaceDocumentRange: (
-    buffer: TextBufferHandle,
-    targetId: bigint | null,
-    targetMode: "replace" | "before" | "after",
-    startByte: number,
-    endByte: number,
-    chunks: DocumentStyledChunk[],
-    owner: number,
-    ranges: DocumentRangeInput[],
-  ) => { result: TextSpliceResult; ids: bigint[] }
-  textBufferMoveDocumentRange: (buffer: TextBufferHandle, sourceId: bigint, anchorId: bigint, before: boolean) => void
   textBufferApplyDocumentOperations: (buffer: TextBufferHandle, operations: DocumentOperation[]) => bigint[]
   textBufferApplyTwoDocumentOperations: (
     firstBuffer: TextBufferHandle,
@@ -3024,14 +2968,11 @@ export interface RenderLib extends AudioEngineLib {
     priority: number,
   ) => bigint
   textBufferUpdateStyleRange: (buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number) => void
-  textBufferMoveStyleRange: (buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number) => void
   textBufferUpdateStyleRangeStyle: (buffer: TextBufferHandle, id: bigint, style: DocumentStyle) => void
   textBufferRemoveStyleRange: (buffer: TextBufferHandle, id: bigint) => boolean
   textBufferClearStyleOwner: (buffer: TextBufferHandle, owner: number) => number
   textBufferGetAnnotationEpoch: (buffer: TextBufferHandle) => bigint
   textBufferGetContentEpoch: (buffer: TextBufferHandle) => bigint
-  textBufferBeginStyleBatch: (buffer: TextBufferHandle) => void
-  textBufferEndStyleBatch: (buffer: TextBufferHandle) => void
   textBufferSetDefaultFg: (buffer: TextBufferHandle, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: TextBufferHandle, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: TextBufferHandle, attributes: number | null) => void
@@ -5150,30 +5091,6 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetByteSize(buffer)
   }
 
-  public textBufferGetDebugMetrics(buffer: Pointer): TextBufferDebugMetrics {
-    const metrics = new BigUint64Array(15)
-    if (!this.opentui.symbols.textBufferGetDebugMetrics(buffer, metrics)) {
-      throw new Error("Failed to read TextBuffer debug metrics")
-    }
-    return {
-      transactionArenaCount: toNumber(metrics[0]),
-      transactionArenaBytes: toSafeByteCount(metrics[1], "TextBuffer transaction arena bytes"),
-      arenaBytes: toSafeByteCount(metrics[2], "TextBuffer arena bytes"),
-      currentReachableBytes: toSafeByteCount(metrics[3], "TextBuffer current reachable bytes"),
-      historyReachableBytes: toSafeByteCount(metrics[4], "TextBuffer history reachable bytes"),
-      committedUnreachableBytes: toSafeByteCount(metrics[5], "TextBuffer committed unreachable bytes"),
-      liveBackingBytes: toSafeByteCount(metrics[6], "TextBuffer live backing bytes"),
-      liveBackingCapacity: toSafeByteCount(metrics[7], "TextBuffer live backing capacity"),
-      liveBackingBlocks: toSafeByteCount(metrics[8], "TextBuffer live backing blocks"),
-      styleFastPathBatches: toNumber(metrics[9]),
-      styleFastPathUpdates: toNumber(metrics[10]),
-      annotationCloneEntries: toNumber(metrics[11]),
-      styleReconciliationEntries: toNumber(metrics[12]),
-      projectedAnnotationVisits: toNumber(metrics[13]),
-      projectedLines: toNumber(metrics[14]),
-    }
-  }
-
   public textBufferReset(buffer: Pointer): void {
     this.opentui.symbols.textBufferReset(buffer)
   }
@@ -5325,52 +5242,6 @@ class FFIRenderLib implements RenderLib {
       "measureDocumentRange",
     )
     return output[0]
-  }
-
-  public textBufferReplaceDocumentRange(
-    buffer: TextBufferHandle,
-    targetId: bigint | null,
-    targetMode: "replace" | "before" | "after",
-    startByte: number,
-    endByte: number,
-    chunks: DocumentStyledChunk[],
-    owner: number,
-    ranges: DocumentRangeInput[],
-  ): { result: TextSpliceResult; ids: bigint[] } {
-    const packedChunks = chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks)
-    const packedRanges = ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges)
-    const ids = new BigUint64Array(ranges.length)
-    const out = new Uint32Array(TextSpliceResultStruct.size / Uint32Array.BYTES_PER_ELEMENT)
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferReplaceDocumentRange(
-        buffer,
-        targetId ?? 0n,
-        targetId === null ? 0 : targetMode === "before" ? 2 : targetMode === "after" ? 3 : 1,
-        startByte,
-        endByte,
-        packedChunks,
-        chunks.length,
-        owner,
-        packedRanges,
-        ranges.length,
-        ids,
-        out,
-      ),
-      "replaceDocumentRange",
-    )
-    return { result: unpackTextSpliceResult(out), ids: Array.from(ids) }
-  }
-
-  public textBufferMoveDocumentRange(
-    buffer: TextBufferHandle,
-    sourceId: bigint,
-    anchorId: bigint,
-    before: boolean,
-  ): void {
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferMoveDocumentRange(buffer, sourceId, anchorId, before ? 1 : 0),
-      "moveDocumentRange",
-    )
   }
 
   public textBufferApplyDocumentOperations(buffer: TextBufferHandle, operations: DocumentOperation[]): bigint[] {
@@ -5533,13 +5404,6 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public textBufferMoveStyleRange(buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number): void {
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferMoveStyleRange(buffer, id, startByte, endByte),
-      "moveStyleRange",
-    )
-  }
-
   public textBufferUpdateStyleRangeStyle(buffer: TextBufferHandle, id: bigint, style: DocumentStyle): void {
     const packedStyle = new Uint8Array(AnnotationStyleStruct.pack(style))
     checkTextDocumentStatus(
@@ -5568,14 +5432,6 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferGetContentEpoch(buffer: TextBufferHandle): bigint {
     return this.opentui.symbols.textBufferGetContentEpoch(buffer)
-  }
-
-  public textBufferBeginStyleBatch(buffer: TextBufferHandle): void {
-    checkTextDocumentStatus(this.opentui.symbols.textBufferBeginStyleBatch(buffer), "beginStyleBatch")
-  }
-
-  public textBufferEndStyleBatch(buffer: TextBufferHandle): void {
-    checkTextDocumentStatus(this.opentui.symbols.textBufferEndStyleBatch(buffer), "endStyleBatch")
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
