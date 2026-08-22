@@ -149,7 +149,7 @@ export interface RenderContext extends EventEmitter {
   keyInput: KeyHandler
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
-  startSelection: (renderable: Renderable, x: number, y: number) => void
+  startSelection: (renderable: Renderable, x: number, y: number, behavior?: SelectionBehavior) => void
   updateSelection: (
     currentRenderable: Renderable | undefined,
     x: number,

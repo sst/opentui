@@ -1,5 +1,5 @@
 import { Renderable } from "../Renderable.js"
-import type { ViewportBounds } from "../types.js"
+import type { SelectionBehavior, ViewportBounds } from "../types.js"
 import { coordinateToCharacterIndex, fonts, getCharacterPositions } from "./ascii.font.js"
 
 class SelectionAnchor {
@@ -32,10 +32,17 @@ export class Selection {
   private _isActive: boolean = true
   private _isDragging: boolean = true
   private _isStart: boolean = false
+  readonly behavior: SelectionBehavior
 
-  constructor(anchorRenderable: Renderable, anchor: { x: number; y: number }, focus: { x: number; y: number }) {
+  constructor(
+    anchorRenderable: Renderable,
+    anchor: { x: number; y: number },
+    focus: { x: number; y: number },
+    behavior: SelectionBehavior = "cell",
+  ) {
     this._anchor = new SelectionAnchor(anchorRenderable, anchor.x, anchor.y)
     this._focus = { ...focus }
+    this.behavior = behavior
   }
 
   get isStart(): boolean {
@@ -154,6 +161,7 @@ export interface LocalSelectionBounds {
   focusX: number
   focusY: number
   isActive: boolean
+  behavior: SelectionBehavior
 }
 
 export function convertGlobalToLocalSelection(
@@ -171,6 +179,7 @@ export function convertGlobalToLocalSelection(
     focusX: globalSelection.focus.x - localX,
     focusY: globalSelection.focus.y - localY,
     isActive: true,
+    behavior: globalSelection.behavior,
   }
 }
 

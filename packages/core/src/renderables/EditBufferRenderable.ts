@@ -493,6 +493,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this._selectionBg,
       this._selectionFg,
       false,
+      false,
+      localSelection.behavior,
     )
   }
 
@@ -527,6 +529,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        selection.behavior,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -538,6 +541,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        selection.behavior,
       )
     }
 
@@ -1147,6 +1151,19 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getTextRangeByCoords(startRow, startCol, endRow, endCol)
   }
 
+  private convertGestureSelectionToCell(): void {
+    const range = this.getSelection()
+    if (!range) return
+
+    this.editorView.setCursorByOffset(range.start)
+    const start = this.editorView.getVisualCursor()
+    this.editorView.setCursorByOffset(range.end > range.start ? range.end - 1 : range.start)
+    const end = this.editorView.getVisualCursor()
+
+    this._ctx.startSelection(this, this.x + start.visualCol, this.y + start.visualRow)
+    this._ctx.updateSelection(this, this.x + end.visualCol, this.y + end.visualRow, { finishDragging: true })
+  }
+
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!shiftPressed) {
       this._keyboardSelectionActive = false
@@ -1165,6 +1182,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection || !this.hasSelection()) {
         this._ctx.startSelection(this, cursorX, cursorY)
+      } else if (this._ctx.getSelection()?.behavior !== "cell") {
+        this.convertGestureSelectionToCell()
       }
       return
     }

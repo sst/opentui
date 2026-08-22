@@ -2005,6 +2005,41 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.visualCursor.visualCol).toBe(14)
     })
 
+    it("double-click selects the word and keeps the cursor on that grapheme", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta")
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("shift+right after a word click extends by cell not by word", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("beta")
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta ")
+    })
+
     it("keeps cell visual End on a grapheme boundary", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "ab你cd",
