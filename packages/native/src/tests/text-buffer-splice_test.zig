@@ -1622,6 +1622,193 @@ test "document operation candidate releases every intermediate style and link" {
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
+test "pure style batches publish unique ID deltas and invalidate only overlapping projected lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const style = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const values = [_][]const u8{ "zero\n", "one\n", "two" };
+    var chunks: [values.len]text_buffer.StyledChunk = undefined;
+    var ranges: [values.len]text_buffer.DocumentRangeInput = undefined;
+    for (values, &chunks, &ranges, 0..) |value, *chunk, *range, index| {
+        chunk.* = .{ .text_ptr = value.ptr, .text_len = value.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+        range.* = .{ .start_chunk = @intCast(index), .end_chunk = @intCast(index + 1), .style = chunk.*, .styled = true, .priority = 1 };
+    }
+    var ids: [values.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 102, .chunks = &chunks, .ranges = &ranges }}, &ids);
+    for (0..values.len) |line_index| _ = tb.getLineSpans(line_index);
+
+    const before = try tb.getDebugMetrics();
+    const root_before = tb.rope().root;
+    const content_epoch_before = tb.getContentEpoch();
+    const annotation_epoch_before = tb.getAnnotationEpoch();
+    const first_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 1 };
+    const final_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 2 };
+    var prepared = try tb.prepareDocumentOperations(&.{
+        .{ .kind = .update_style, .target_id = ids[1], .owner = 102, .style = first_style },
+        .{ .kind = .update_style, .target_id = ids[1], .owner = 102, .style = final_style },
+        .{ .kind = .update_style, .target_id = ids[2], .owner = 102, .style = final_style },
+    }, 0);
+    defer prepared.deinit();
+    try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
+    prepared.commit(&.{});
+
+    const after = try tb.getDebugMetrics();
+    try std.testing.expect(tb.rope().root == root_before);
+    try std.testing.expectEqual(content_epoch_before, tb.getContentEpoch());
+    try std.testing.expectEqual(annotation_epoch_before + 1, tb.getAnnotationEpoch());
+    try std.testing.expectEqual(before.style_fast_path_batches + 1, after.style_fast_path_batches);
+    try std.testing.expectEqual(before.style_fast_path_updates + 2, after.style_fast_path_updates);
+    try std.testing.expectEqual(before.annotation_clone_entries, after.annotation_clone_entries);
+    try std.testing.expectEqual(before.style_reconciliation_entries, after.style_reconciliation_entries);
+
+    const projected_before = after.projected_lines;
+    _ = tb.getLineSpans(0);
+    try std.testing.expectEqual(projected_before, (try tb.getDebugMetrics()).projected_lines);
+    _ = tb.getLineSpans(1);
+    try std.testing.expectEqual(projected_before + 1, (try tb.getDebugMetrics()).projected_lines);
+
+    var live_refs: u32 = 0;
+    for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
+    try std.testing.expectEqual(@as(u32, values.len), live_refs);
+}
+
+test "pure style work stays bounded as document annotation count grows" {
+    const counts = [_]usize{ 200, 1000, 4000 };
+    for (counts) |count| {
+        const pool = gp.initGlobalPool(std.testing.allocator);
+        defer gp.deinitGlobalPool();
+        const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+        defer link.deinitGlobalLinkPool();
+        const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+        defer tb.deinit();
+        const style = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+        defer style.deinit();
+        tb.setSyntaxStyle(style);
+
+        const chunks = try std.testing.allocator.alloc(text_buffer.StyledChunk, count);
+        defer std.testing.allocator.free(chunks);
+        const ranges = try std.testing.allocator.alloc(text_buffer.DocumentRangeInput, count);
+        defer std.testing.allocator.free(ranges);
+        const ids = try std.testing.allocator.alloc(u64, count);
+        defer std.testing.allocator.free(ids);
+        for (chunks, ranges, 0..) |*chunk, *range, index| {
+            chunk.* = .{ .text_ptr = "x\n".ptr, .text_len = 2, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+            range.* = .{
+                .start_chunk = @intCast(index),
+                .end_chunk = @intCast(index + 1),
+                .style = chunk.*,
+                .styled = true,
+                .priority = 1,
+            };
+        }
+        try tb.applyDocumentOperations(&.{.{
+            .kind = .replace,
+            .use_target = false,
+            .owner = 104,
+            .chunks = chunks,
+            .ranges = ranges,
+        }}, ids);
+
+        const target = count / 2;
+        _ = tb.getLineSpans(target - 1);
+        _ = tb.getLineSpans(target);
+        const before = try tb.getDebugMetrics();
+        const replacement: text_buffer.StyledChunk = .{
+            .text_ptr = "".ptr,
+            .text_len = 0,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = 1,
+        };
+        try tb.applyDocumentOperations(&.{.{
+            .kind = .update_style,
+            .target_id = ids[target],
+            .owner = 104,
+            .style = replacement,
+        }}, &.{});
+        const published = try tb.getDebugMetrics();
+        try std.testing.expectEqual(before.style_fast_path_batches + 1, published.style_fast_path_batches);
+        try std.testing.expectEqual(before.style_fast_path_updates + 1, published.style_fast_path_updates);
+        try std.testing.expectEqual(before.annotation_clone_entries, published.annotation_clone_entries);
+        try std.testing.expectEqual(before.style_reconciliation_entries, published.style_reconciliation_entries);
+
+        _ = tb.getLineSpans(target - 1);
+        try std.testing.expectEqual(published.projected_lines, (try tb.getDebugMetrics()).projected_lines);
+        _ = tb.getLineSpans(target);
+        const projected = try tb.getDebugMetrics();
+        try std.testing.expectEqual(published.projected_lines + 1, projected.projected_lines);
+        try std.testing.expect(projected.projected_annotation_visits - published.projected_annotation_visits <= 2);
+    }
+}
+
+fn exerciseStyleOnlyTransactionFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const style = try syntax_style.SyntaxStyle.init(allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const initial: text_buffer.StyledChunk = .{ .text_ptr = "value".ptr, .text_len = 5, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const range = [_]text_buffer.DocumentRangeInput{.{ .start_chunk = 0, .end_chunk = 1, .style = initial, .styled = true, .priority = 1 }};
+    var ids: [1]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{ .kind = .replace, .use_target = false, .owner = 103, .chunks = &.{initial}, .ranges = &range }}, &ids);
+    const before = tb.textAnnotations().get(ids[0]).?;
+    const annotation_epoch_before = tb.getAnnotationEpoch();
+    const slots_before = tb.internal_style_slots.items.len;
+    const metrics_before = try tb.getDebugMetrics();
+    const allocations_before = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = allocations_before + offset;
+
+    const url = "https://style-fast-path.test/unique";
+    const replacement: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 7,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const result = tb.applyDocumentOperations(&.{.{ .kind = .update_style, .target_id = ids[0], .owner = 103, .style = replacement }}, &.{});
+    if (fail_offset) |_| {
+        try std.testing.expectError(error.OutOfMemory, result);
+        failing.fail_index = std.math.maxInt(usize);
+        try std.testing.expectEqualDeep(before, tb.textAnnotations().get(ids[0]).?);
+        try std.testing.expectEqual(annotation_epoch_before, tb.getAnnotationEpoch());
+        try std.testing.expectEqual(slots_before, tb.internal_style_slots.items.len);
+        const metrics_after = try tb.getDebugMetrics();
+        try std.testing.expectEqual(metrics_before.style_fast_path_batches, metrics_after.style_fast_path_batches);
+        try std.testing.expectEqual(metrics_before.style_fast_path_updates, metrics_after.style_fast_path_updates);
+        var live_refs: u32 = 0;
+        for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
+        try std.testing.expectEqual(@as(u32, 1), live_refs);
+        try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
+        try tb.applyDocumentOperations(&.{.{ .kind = .update_style, .target_id = ids[0], .owner = 103, .style = replacement }}, &.{});
+    } else {
+        try result;
+    }
+    try std.testing.expect(tb.textAnnotations().get(ids[0]).?.payload.style_id != before.payload.style_id);
+    return failing.alloc_index - allocations_before;
+}
+
+test "pure style transaction rolls back every allocation failure" {
+    const allocations = try exerciseStyleOnlyTransactionFailure(null);
+    for (0..allocations) |offset| _ = try exerciseStyleOnlyTransactionFailure(offset);
+}
+
 fn exerciseTwoDocumentTransferFailure(fail_offset: ?usize) !usize {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const allocator = failing.allocator();

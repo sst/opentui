@@ -156,6 +156,12 @@ export type TextBufferDebugMetrics = {
   liveBackingBytes: number
   liveBackingCapacity: number
   liveBackingBlocks: number
+  styleFastPathBatches: number
+  styleFastPathUpdates: number
+  annotationCloneEntries: number
+  styleReconciliationEntries: number
+  projectedAnnotationVisits: number
+  projectedLines: number
 }
 
 export type DocumentOperation = DocumentStyle & {
@@ -5145,7 +5151,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferGetDebugMetrics(buffer: Pointer): TextBufferDebugMetrics {
-    const metrics = new BigUint64Array(9)
+    const metrics = new BigUint64Array(15)
     if (!this.opentui.symbols.textBufferGetDebugMetrics(buffer, metrics)) {
       throw new Error("Failed to read TextBuffer debug metrics")
     }
@@ -5159,6 +5165,12 @@ class FFIRenderLib implements RenderLib {
       liveBackingBytes: toSafeByteCount(metrics[6], "TextBuffer live backing bytes"),
       liveBackingCapacity: toSafeByteCount(metrics[7], "TextBuffer live backing capacity"),
       liveBackingBlocks: toSafeByteCount(metrics[8], "TextBuffer live backing blocks"),
+      styleFastPathBatches: toNumber(metrics[9]),
+      styleFastPathUpdates: toNumber(metrics[10]),
+      annotationCloneEntries: toNumber(metrics[11]),
+      styleReconciliationEntries: toNumber(metrics[12]),
+      projectedAnnotationVisits: toNumber(metrics[13]),
+      projectedLines: toNumber(metrics[14]),
     }
   }
 

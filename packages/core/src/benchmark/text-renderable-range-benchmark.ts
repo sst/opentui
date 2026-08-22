@@ -26,7 +26,11 @@ if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS 
 if (!Number.isInteger(leafCount) || leafCount < 1) throw new Error("TEXT_RANGE_LEAVES must be a positive integer")
 if (!Number.isInteger(updates) || updates < 1) throw new Error("TEXT_RANGE_UPDATES must be a positive integer")
 
-type BufferMemory = { peak: TextBufferDebugMetrics; endLive: TextBufferDebugMetrics }
+type BufferMemory = {
+  start: TextBufferDebugMetrics
+  peak: TextBufferDebugMetrics
+  endLive: TextBufferDebugMetrics
+}
 type LiveMemory = {
   range: BufferMemory
   replacement: BufferMemory
@@ -56,6 +60,12 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
     liveBackingBytes: 0,
     liveBackingCapacity: 0,
     liveBackingBlocks: 0,
+    styleFastPathBatches: 0,
+    styleFastPathUpdates: 0,
+    annotationCloneEntries: 0,
+    styleReconciliationEntries: 0,
+    projectedAnnotationVisits: 0,
+    projectedLines: 0,
   })
   let rangePeak = emptyMetrics()
   let replacementPeak = { ...rangePeak }
@@ -78,6 +88,8 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
     }
   }
   sample()
+  const rangeStart = { ...rangePeak }
+  const replacementStart = { ...replacementPeak }
   return {
     sample,
     finishLive(): { memory: LiveMemory; start: AllocatorStats } {
@@ -89,10 +101,12 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
         start,
         memory: {
           range: {
+            start: rangeStart,
             peak: rangePeak,
             endLive: rangeEnd,
           },
           replacement: {
+            start: replacementStart,
             peak: replacementPeak,
             endLive: replacementEnd,
           },
@@ -314,11 +328,23 @@ const timing = (values: number[]) =>
   values.length === 1
     ? { sampleKind: "raw" as const, rawMs: values[0] }
     : { medianMs: percentile(values, 0.5), p95Ms: percentile(values, 0.95) }
+const nativeWork = (memory: BufferMemory) => ({
+  styleFastPathBatches: memory.endLive.styleFastPathBatches - memory.start.styleFastPathBatches,
+  styleFastPathUpdates: memory.endLive.styleFastPathUpdates - memory.start.styleFastPathUpdates,
+  annotationCloneEntries: memory.endLive.annotationCloneEntries - memory.start.annotationCloneEntries,
+  styleReconciliationEntries: memory.endLive.styleReconciliationEntries - memory.start.styleReconciliationEntries,
+  projectedAnnotationVisits: memory.endLive.projectedAnnotationVisits - memory.start.projectedAnnotationVisits,
+  projectedLines: memory.endLive.projectedLines - memory.start.projectedLines,
+})
 const summarize = (samples: Sample[]) => ({
   range: timing(samples.map((sample) => sample.rangeMs)),
   fullReplacement: timing(samples.map((sample) => sample.replacementMs)),
   frameHashes: samples.map((sample) => sample.frameHash),
   renderCounts: samples.map((sample) => sample.renderCount),
+  nativeWorkByRound: samples.map((sample) => ({
+    range: nativeWork(sample.memory.range),
+    fullReplacement: nativeWork(sample.memory.replacement),
+  })),
   liveMemoryByRound: samples.map((sample) => sample.memory),
   liveMemoryBounds: {
     rangePeakArenaCount: Math.max(...samples.map((sample) => sample.memory.range.peak.transactionArenaCount)),

@@ -315,6 +315,21 @@ pub const TextAnnotations = struct {
         return true;
     }
 
+    /// Reserves the annotation generations needed by an infallible prepared
+    /// style publication. Positions and MarkTree generations are unchanged.
+    pub fn prepareStyleUpdates(self: *const Self, update_count: usize) !void {
+        if (self.active_visits != 0) return error.MutationDuringVisit;
+        const update_count_u64 = std.math.cast(u64, update_count) orelse return error.GenerationExhausted;
+        if (update_count_u64 > std.math.maxInt(u64) - self.generation) return error.GenerationExhausted;
+    }
+
+    pub fn commitPreparedStyle(self: *Self, id: u64, style_id: u32) void {
+        const payload = self.payloads.getPtr(id) orelse unreachable;
+        std.debug.assert(payload.style_id != style_id);
+        payload.style_id = style_id;
+        self.finishMutation();
+    }
+
     pub fn remove(self: *Self, id: u64) !bool {
         const payload = self.payloads.get(id) orelse return false;
         try self.checkCanMutate(1);

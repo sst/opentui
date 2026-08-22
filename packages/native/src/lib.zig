@@ -2140,6 +2140,12 @@ export fn textBufferGetDebugMetrics(tb_handle: NativeHandle, out_metrics: ?*Exte
         .live_backing_bytes = @intCast(backing.live_backing_bytes),
         .live_backing_capacity = @intCast(backing.live_backing_capacity),
         .live_backing_blocks = @intCast(backing.live_backing_blocks),
+        .style_fast_path_batches = backing.style_fast_path_batches,
+        .style_fast_path_updates = backing.style_fast_path_updates,
+        .annotation_clone_entries = backing.annotation_clone_entries,
+        .style_reconciliation_entries = backing.style_reconciliation_entries,
+        .projected_annotation_visits = backing.projected_annotation_visits,
+        .projected_lines = backing.projected_lines,
     };
     return true;
 }
@@ -3280,6 +3286,12 @@ pub const ExternalTextBufferDebugMetrics = extern struct {
     live_backing_bytes: u64,
     live_backing_capacity: u64,
     live_backing_blocks: u64,
+    style_fast_path_batches: u64,
+    style_fast_path_updates: u64,
+    annotation_clone_entries: u64,
+    style_reconciliation_entries: u64,
+    projected_annotation_visits: u64,
+    projected_lines: u64,
 };
 
 comptime {
@@ -3297,7 +3309,7 @@ comptime {
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
-    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 72);
+    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 120);
 }
 
 const TextDocumentStatus = enum(u32) {
