@@ -14,12 +14,13 @@ interface Props {
   reading?: boolean
   footerLinks?: boolean
   footerAnimation?: ComponentProps<typeof SiteFooter>["animation"]
+  robots?: string
 }
 
-const { title, description, wide = false, reading = false, footerLinks = false, footerAnimation } = Astro.props
+const { title, description, wide = false, reading = false, footerLinks = false, footerAnimation, robots } = Astro.props
 ---
 
-<Minimal {title} {description} wide>
+<Minimal {title} {description} wide {robots}>
   <SiteNav slot="nav" />
   <main class:list={[{ wide, reading }]}><slot /></main>
   <SiteFooter links={footerLinks} animation={footerAnimation} />
