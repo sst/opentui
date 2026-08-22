@@ -98,12 +98,13 @@ describe("React nested text", () => {
 
     act(() => update())
     expect(outer!.getTextChildren()).toEqual([stable[1], stable[2], stable[0], refs.get("d")])
-    expect((outer as any)._pendingNativeMoves).toHaveLength(0)
+    expect((outer as any)._pendingNativeMoves).toHaveLength(1)
     expect(stable.every((child) => child.parent === outer)).toBe(true)
     expect(removed.parent).toBeNull()
 
     await setup.renderOnce()
     expect(outer!.plainText).toBe("bCAD")
+    expect((outer as any)._pendingNativeMoves).toHaveLength(0)
     expect(stable.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
   })
 

@@ -45,7 +45,20 @@ type PreparedTextDocumentFlush = {
   contentChanged: boolean
 }
 
-type PendingNativeMove = { source: TextRenderable; anchor: TextRenderable; before: boolean }
+type PlannedNativeMove = { source: TextRenderable; anchor: TextRenderable; before: boolean }
+
+type PendingNativeMove = PlannedNativeMove & {
+  parent: TextRenderable
+  sourceId: bigint
+  anchorId: bigint
+  parentId: bigint | null
+  owner: number
+}
+
+type NativeReplacementPlan = {
+  roots: TextRenderable[]
+  rangeIds: Set<bigint>
+}
 
 export function isTextRenderable(obj: any): obj is TextRenderable {
   return obj?.[BrandedTextRenderable] === true
@@ -366,7 +379,10 @@ export class TextRenderable extends TextBufferRenderable {
       documentOwnerBefore !== null
     if (isPureNativeReorder) {
       const moves = this.planNativeChildMoves(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
-      const nativeMoves = moves.filter((move) => documentOwnerBefore!.canMoveNativeChild(move.source, move.anchor))
+      const nativeMoves = moves.flatMap((move) => {
+        const nativeMove = documentOwnerBefore!.createPendingNativeMove(this, move)
+        return nativeMove ? [nativeMove] : []
+      })
       const nextPendingMoves = [...documentOwnerBefore!._pendingNativeMoves, ...nativeMoves]
       const previousDirty = this._dirty
       try {
@@ -506,12 +522,10 @@ export class TextRenderable extends TextBufferRenderable {
 
     textDocumentMutationDepth += 1
     try {
-      documentOwnerBefore?.coalescePendingNativeMovesFor(this)
       for (const child of seenChildren) {
         const parent = child.parent
         const sourceOwner = child.getDocumentOwner()
         if (isTextRenderable(parent) && parent !== this) {
-          sourceOwner?.coalescePendingNativeMovesFor(parent)
           const index = parent._children.indexOf(child)
           if (index !== -1) {
             parent._children.splice(index, 1)
@@ -879,9 +893,11 @@ export class TextRenderable extends TextBufferRenderable {
         const order = this._pendingChildOrder ?? new PendingChildOrder(this._children as TextRenderable[])
         if (!this._pendingChildOrder) this._structuralMoveMetrics.orderNodes += childCount
         const anchor = order.at(insertIndex)
-        const move = owner.canMoveNativeChild(obj, anchor)
-          ? { source: obj, anchor, before: currentIndex > insertIndex }
-          : null
+        const move = owner.createPendingNativeMove(this, {
+          source: obj,
+          anchor,
+          before: currentIndex > insertIndex,
+        })
         const pendingLength = owner._pendingNativeMoves.length
         const pendingBefore = owner._textDocumentPending
         const dirtyBefore = this._dirty
@@ -1189,7 +1205,6 @@ export class TextRenderable extends TextBufferRenderable {
   public destroy(): void {
     if (this.isDestroyed) return
     const children = this.getTextChildren()
-    if (this._ctx !== detachedTextContext) this.getDocumentOwner()?.coalescePendingNativeMovesFor(this)
     this._children.splice(0)
     this._rawTextIdentities.splice(0)
     let destroyError: unknown
@@ -1381,8 +1396,16 @@ export class TextRenderable extends TextBufferRenderable {
     const roots = pending.filter(
       (candidate) => !pending.some((other) => other !== candidate && candidate.isTextDescendantOf(other)),
     )
-    const operations: DocumentOperation[] = []
-    const assignments: Array<(id: bigint) => void> = []
+    const replacementPlans: NativeReplacementPlan[] = []
+    const plannedRoots = new Set<TextRenderable>()
+    const addReplacementPlan = (run: TextRenderable[]): void => {
+      const rangeIds = new Set<bigint>()
+      for (const root of run) {
+        plannedRoots.add(root)
+        this.collectNativeRangeIds(root, rangeIds)
+      }
+      replacementPlans.push({ roots: run, rangeIds })
+    }
     for (let index = 0; index < roots.length; ) {
       const run = [roots[index]!]
       const parent = roots[index]!.parent
@@ -1394,22 +1417,44 @@ export class TextRenderable extends TextBufferRenderable {
         run.push(candidate)
         previousIndex = candidateIndex
       }
-      this.collectNativeSubtreeOperation(run, operations, assignments)
+      addReplacementPlan(run)
       index += run.length
     }
     for (const move of this._pendingNativeMoves) {
-      if (move.source._nativeRangeId === null || move.anchor._nativeRangeId === null) {
-        const replacementRoot = move.source.parent
-        if (isTextRenderable(replacementRoot) && !roots.includes(replacementRoot)) {
-          this.collectNativeSubtreeOperation([replacementRoot], operations, assignments)
-        }
+      if (move.source._nativeRangeId !== null && move.anchor._nativeRangeId !== null) continue
+      const parentId = move.parentId
+      if (
+        (parentId !== null && this._pendingRemovedRangeIds.has(parentId)) ||
+        plannedRoots.has(move.parent) ||
+        (parentId !== null && replacementPlans.some((plan) => plan.rangeIds.has(parentId)))
+      ) {
         continue
       }
+      addReplacementPlan([move.parent])
+    }
+
+    const operations: DocumentOperation[] = []
+    const assignments: Array<(id: bigint) => void> = []
+    for (const plan of replacementPlans) this.collectNativeSubtreeOperation(plan.roots, operations, assignments)
+    for (const move of this._pendingNativeMoves) {
+      // Queued node ancestry may have changed; stable native IDs describe whether this replacement publishes the move.
+      const ownedByReplacement = move.owner === this._textDocumentOwner
+      const parentId = move.parentId
+      const subsumed =
+        ownedByReplacement &&
+        replacementPlans.some(
+          (plan) =>
+            (parentId !== null && plan.rangeIds.has(parentId)) ||
+            (plan.rangeIds.has(move.sourceId) && plan.rangeIds.has(move.anchorId)),
+        )
+      const removedWithParent = ownedByReplacement && parentId !== null && this._pendingRemovedRangeIds.has(parentId)
+      if (subsumed || removedWithParent || move.source._nativeRangeId === null || move.anchor._nativeRangeId === null)
+        continue
       operations.push({
         kind: "move",
-        targetId: move.source._nativeRangeId,
-        anchorId: move.anchor._nativeRangeId,
-        owner: this._textDocumentOwner,
+        targetId: move.sourceId,
+        anchorId: move.anchorId,
+        owner: move.owner,
         before: move.before,
       })
     }
@@ -1427,7 +1472,7 @@ export class TextRenderable extends TextBufferRenderable {
     return {
       operations,
       assignments,
-      contentChanged: roots.length > 0 || this._pendingNativeMoves.length > 0,
+      contentChanged: replacementPlans.length > 0 || this._pendingNativeMoves.length > 0,
     }
   }
 
@@ -1496,6 +1541,14 @@ export class TextRenderable extends TextBufferRenderable {
       ranges,
     })
     batchAssignments.push(...assignments)
+  }
+
+  private collectNativeRangeIds(node: TextRenderable, rangeIds: Set<bigint>): void {
+    if (node._nativeRangeId !== null) rangeIds.add(node._nativeRangeId)
+    for (const identity of node._rawTextIdentities) {
+      if (identity?.rangeId !== null && identity?.rangeId !== undefined) rangeIds.add(identity.rangeId)
+    }
+    for (const child of node.getTextChildren()) this.collectNativeRangeIds(child, rangeIds)
   }
 
   private collectNativeDocument(
@@ -1662,8 +1715,8 @@ export class TextRenderable extends TextBufferRenderable {
     for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
   }
 
-  private planNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): PendingNativeMove[] {
-    const forward: PendingNativeMove[] = []
+  private planNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): PlannedNativeMove[] {
+    const forward: PlannedNativeMove[] = []
     const forwardOrder = new PendingChildOrder(previous)
     for (let index = 0; index < next.length; index++) {
       const desired = next[index]!
@@ -1674,7 +1727,7 @@ export class TextRenderable extends TextBufferRenderable {
       forwardOrder.move(desired, index)
     }
 
-    const reverse: PendingNativeMove[] = []
+    const reverse: PlannedNativeMove[] = []
     const reverseOrder = new PendingChildOrder(previous)
     for (let index = next.length - 1; index >= 0; index--) {
       const desired = next[index]!
@@ -1687,21 +1740,29 @@ export class TextRenderable extends TextBufferRenderable {
     return forward.length <= reverse.length ? forward : reverse
   }
 
-  private canMoveNativeChild(source: TextRenderable, anchor: TextRenderable): boolean {
-    if (source._nativeRangeId === null || anchor._nativeRangeId === null) return false
+  private createPendingNativeMove(parent: TextRenderable, move: PlannedNativeMove): PendingNativeMove | null {
+    const { source, anchor, before } = move
+    if (source._nativeRangeId === null || anchor._nativeRangeId === null) return null
     const sourceRange = this.textBuffer.getDocumentRange(source._nativeRangeId)
     const anchorRange = this.textBuffer.getDocumentRange(anchor._nativeRangeId)
-    return !!sourceRange && sourceRange.startByte !== sourceRange.endByte && !!anchorRange
-  }
-
-  private coalescePendingNativeMovesFor(root: TextRenderable): void {
-    this._pendingNativeMoves = this._pendingNativeMoves.filter(
-      (move) =>
-        !(
-          (move.source === root || move.source.isTextDescendantOf(root)) &&
-          (move.anchor === root || move.anchor.isTextDescendantOf(root))
-        ),
-    )
+    if (
+      !sourceRange ||
+      sourceRange.startByte === sourceRange.endByte ||
+      !anchorRange ||
+      sourceRange.owner !== anchorRange.owner
+    ) {
+      return null
+    }
+    return {
+      source,
+      anchor,
+      before,
+      parent,
+      sourceId: source._nativeRangeId,
+      anchorId: anchor._nativeRangeId,
+      parentId: parent._nativeRangeId,
+      owner: sourceRange.owner,
+    }
   }
 
   protected override emitLineInfoChange(): void {

@@ -305,7 +305,7 @@ describe("nested TextRenderable", () => {
       expect(root.getChildrenCount()).toBe(4)
       expect(children.map((child) => child.parent)).toEqual([root, root, root])
       expect(generated.parent).toBe(root)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect(apply).not.toHaveBeenCalled()
 
       await renderOnce()
@@ -338,13 +338,14 @@ describe("nested TextRenderable", () => {
       root.replace("E", 999)
       expect(root.children).toEqual([children[1], children[0], children[3], children[2], "E"])
       expect(children.every((child) => child.parent === root)).toBe(true)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(2)
       await renderOnce()
       expect(root.plainText).toBe("BADCE")
       expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
       expect(apply.mock.calls.flatMap(([operations]) => operations.map((operation) => operation.kind))).toEqual([
         "replace",
       ])
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
     } finally {
       apply.mockRestore()
     }
@@ -399,10 +400,11 @@ describe("nested TextRenderable", () => {
         target.add(children[2]!, target.getChildrenCount())
         expect((mount as any)._pendingNativeMoves).toHaveLength(2)
         target.replace(value, indexCase.index)
-        expect((mount as any)._pendingNativeMoves).toHaveLength(0)
+        expect((mount as any)._pendingNativeMoves).toHaveLength(valueKind === "cross-document" ? 0 : 2)
         expect(target.getChildrenCount()).toBe(indexCase.childCount)
         await renderOnce()
         expect(target.plainText).toBe(indexCase.expected)
+        expect((mount as any)._pendingNativeMoves).toHaveLength(0)
 
         const retained = indexCase.index === 1 ? [children[1], children[2], children[3]] : children
         const retainedIds = indexCase.index === 1 ? [originalIds[1], originalIds[2], originalIds[3]] : originalIds
@@ -442,11 +444,188 @@ describe("nested TextRenderable", () => {
     expect((owner as any)._pendingNativeMoves).toHaveLength(3)
 
     target.replace("E", 999)
-    expect((owner as any)._pendingNativeMoves).toHaveLength(1)
+    expect((owner as any)._pendingNativeMoves).toHaveLength(3)
     expect(owner.children).toEqual([target, after, before])
     await renderOnce()
     expect(owner.plainText).toBe("BADCEYX")
     expect((owner as any)._pendingNativeMoves).toHaveLength(0)
+  })
+
+  test("coalesces parent moves when a nested mutation rebuilds the document owner", async () => {
+    const owner = new TextRenderable(renderer, {})
+    const before = new TextRenderable(renderer, { content: "X" })
+    const target = new TextRenderable(renderer, {})
+    const after = new TextRenderable(renderer, { content: "Y" })
+    const unaffected = new TextRenderable(renderer, { content: "Z" })
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    target.children = children
+    owner.children = [before, target, after, unaffected]
+    renderer.root.add(owner)
+    await renderOnce()
+
+    owner.add(target, owner.getChildrenCount())
+    owner.add(unaffected, 0)
+    target.add(children[0]!, 3)
+    target.add(children[2]!, target.getChildrenCount())
+    expect(owner.getTextChildren()).toEqual([unaffected, before, after, target])
+    expect(target.getTextChildren()).toEqual([children[1], children[0], children[3], children[2]])
+    expect((owner as any)._pendingNativeMoves).toHaveLength(4)
+
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      target.replace("E", 999)
+      await renderOnce()
+      expect(owner.plainText).toBe("ZXYBADCE")
+      expect((owner as any)._pendingNativeMoves).toHaveLength(0)
+      expect(apply.mock.calls.flatMap(([operations]) => operations.map((operation) => operation.kind))).toEqual([
+        "replace",
+      ])
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("preserves boundary moves when only the nested replacement range is rebuilt", async () => {
+    const owner = new TextRenderable(renderer, {})
+    const before = new TextRenderable(renderer, { content: "X" })
+    const target = new TextRenderable(renderer, {})
+    const after = new TextRenderable(renderer, { content: "Y" })
+    const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    target.children = children
+    owner.children = [before, target, after]
+    renderer.root.add(owner)
+    await renderOnce()
+    const targetId = (target as any)._nativeRangeId
+
+    owner.add(target, owner.getChildrenCount())
+    target.add(children[0]!, target.getChildrenCount())
+    target.visible = false
+    expect((owner as any)._pendingNativeMoves).toHaveLength(2)
+
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(() => {
+      throw new Error("injected boundary replacement failure")
+    })
+    try {
+      expect(() => owner.plainText).toThrow("boundary replacement failure")
+      expect((owner as any)._pendingNativeMoves).toHaveLength(2)
+      expect((owner as any).textBuffer.getPlainText()).toBe("XABCY")
+      expect(owner.plainText).toBe("XY")
+      expect((owner as any)._pendingNativeMoves).toHaveLength(0)
+      expect(owner.getTextChildren()).toEqual([before, after, target])
+      expect(target.getTextChildren()).toEqual([children[1], children[2], children[0]])
+      const operations = apply.mock.calls.flatMap(([pending]) => pending)
+      expect(operations.map((operation) => operation.kind)).toEqual(["replace", "move", "replace", "move"])
+      expect(operations[0]!.targetId).toBe(targetId)
+      expect(operations[2]!.targetId).toBe(targetId)
+
+      target.visible = true
+      await renderOnce()
+      expect(owner.plainText).toBe("XYBCA")
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("coalesces moves at every nested level when the owner range is rebuilt", async () => {
+    const owner = new TextRenderable(renderer, {})
+    const before = new TextRenderable(renderer, { content: "X" })
+    const outer = new TextRenderable(renderer, {})
+    const outerBefore = new TextRenderable(renderer, { content: "Q" })
+    const target = new TextRenderable(renderer, {})
+    const outerAfter = new TextRenderable(renderer, { content: "R" })
+    const after = new TextRenderable(renderer, { content: "Y" })
+    const unaffected = new TextRenderable(renderer, { content: "Z" })
+    const children = ["A", "B", "C", "D"].map((content) => new TextRenderable(renderer, { content }))
+    target.children = children
+    outer.children = [outerBefore, target, outerAfter]
+    owner.children = [before, outer, after, unaffected]
+    renderer.root.add(owner)
+    await renderOnce()
+
+    owner.add(outer, owner.getChildrenCount())
+    owner.add(unaffected, 0)
+    outer.add(target, 0)
+    target.add(children[0]!, 3)
+    target.add(children[2]!, target.getChildrenCount())
+    target.replace("E", 999)
+
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      await renderOnce()
+      expect(owner.plainText).toBe("ZXYBADCEQR")
+      expect(apply.mock.calls.flatMap(([operations]) => operations.map((operation) => operation.kind))).toEqual([
+        "replace",
+      ])
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("keeps replacement coalescing isolated between document owners", async () => {
+    const left = new TextRenderable(renderer, {})
+    const leftChildren = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+    const right = new TextRenderable(renderer, {})
+    const rightChildren = ["D", "E", "F"].map((content) => new TextRenderable(renderer, { content }))
+    left.children = leftChildren
+    right.children = rightChildren
+    renderer.root.add(left)
+    renderer.root.add(right)
+    await renderOnce()
+
+    left.add(leftChildren[0]!, left.getChildrenCount())
+    right.add(rightChildren[0]!, right.getChildrenCount())
+    right.add("G")
+    expect((left as any)._pendingNativeMoves).toHaveLength(1)
+    expect((right as any)._pendingNativeMoves).toHaveLength(1)
+
+    await renderOnce()
+    expect(left.plainText).toBe("BCA")
+    expect(right.plainText).toBe("EFDG")
+    expect((left as any)._pendingNativeMoves).toHaveLength(0)
+    expect((right as any)._pendingNativeMoves).toHaveLength(0)
+  })
+
+  test("coalesces whole-owner moves for remove, clear, and content replacement", async () => {
+    const cases = [
+      {
+        mutate(target: TextRenderable, children: TextRenderable[]) {
+          target.remove(children[1]!)
+        },
+        expected: "ZXYCA",
+      },
+      {
+        mutate(target: TextRenderable) {
+          target.clear()
+        },
+        expected: "ZXY",
+      },
+      {
+        mutate(target: TextRenderable) {
+          target.content = "E"
+        },
+        expected: "ZXYE",
+      },
+    ]
+
+    for (const scenario of cases) {
+      const owner = new TextRenderable(renderer, {})
+      const before = new TextRenderable(renderer, { content: "X" })
+      const target = new TextRenderable(renderer, {})
+      const after = new TextRenderable(renderer, { content: "Y" })
+      const unaffected = new TextRenderable(renderer, { content: "Z" })
+      const children = ["A", "B", "C"].map((content) => new TextRenderable(renderer, { content }))
+      target.children = children
+      owner.children = [before, target, after, unaffected]
+      renderer.root.add(owner)
+      await renderOnce()
+
+      owner.add(target, owner.getChildrenCount())
+      owner.add(unaffected, 0)
+      target.add(children[0]!, target.getChildrenCount())
+      scenario.mutate(target, children)
+      await renderOnce()
+      expect(owner.plainText).toBe(scenario.expected)
+    }
   })
 
   test("coalesces forward, backward, and repeated moves before a missing replacement", async () => {
@@ -465,9 +644,10 @@ describe("nested TextRenderable", () => {
     expect((root as any)._pendingNativeMoves).toHaveLength(5)
 
     root.replace("E", 999)
-    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(5)
     await renderOnce()
     expect(root.plainText).toBe("CDBAE")
+    expect((root as any)._pendingNativeMoves).toHaveLength(0)
   })
 
   test("rolls back replacement preflight and scheduling failures and retries native apply", async () => {
@@ -521,7 +701,7 @@ describe("nested TextRenderable", () => {
     root.replace(replacement, 999)
     expect(root.children).toEqual([children[1], children[0], children[3], children[2], replacement])
     expect(replacement.parent).toBe(root)
-    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(2)
     const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations").mockImplementationOnce(() => {
       throw new Error("injected replacement native apply failure")
     })
@@ -532,7 +712,7 @@ describe("nested TextRenderable", () => {
       expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
       expect((replacement as any)._nativeRangeId).toBeNull()
       expect(replacement.parent).toBe(root)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(2)
       expect(root.isDirty).toBe(true)
       expect(events).toBe(0)
 
@@ -540,6 +720,7 @@ describe("nested TextRenderable", () => {
       expect((root as any).textBuffer.getPlainText()).toBe("BADCE")
       expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
       expect((replacement as any)._nativeRangeId).not.toBeNull()
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
       expect(events).toBe(1)
     } finally {
       apply.mockRestore()
@@ -644,9 +825,10 @@ describe("nested TextRenderable", () => {
       expect((root as any)._pendingChildOrder).toBeNull()
       expect((root as any)._pendingNativeMoves.length).toBeGreaterThan(0)
       scenario.mutate(root, children)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves.length).toBeGreaterThan(0)
       await renderOnce()
       expect(root.plainText).toBe(scenario.expected)
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
     }
   })
 
@@ -718,7 +900,7 @@ describe("nested TextRenderable", () => {
       expected.splice(scenario.index, 0, inserted as string | TextRenderable)
       expect(root.children).toEqual(expected)
       expect(root.getChildrenCount()).toBe(4)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(3)
       expect((root as any)._rawTextIdentities.map((identity: any) => identity?.value ?? null)).toEqual(
         expected.map((child) => (typeof child === "string" ? child : null)),
@@ -770,7 +952,7 @@ describe("nested TextRenderable", () => {
       await renderOnce()
       root.add(children[0]!, root.getChildrenCount())
       scenario.mutate(root, children)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect((root as any)._pendingChildOrder).toBeNull()
       await renderOnce()
       expect(root.plainText).toBe(scenario.expected)
@@ -814,7 +996,7 @@ describe("nested TextRenderable", () => {
     root.remove(children[0]!)
     expect(root.children).toEqual([inserted, children[1], children[2]])
     expect((root as any)._structuralMoveMetrics).toEqual({ orderNodes: 7, orderMoves: 3, materializedChildren: 7 })
-    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(1)
     await renderOnce()
     expect(root.plainText).toBe("DBC")
     expect(inserted.parent).toBe(root)
@@ -901,8 +1083,9 @@ describe("nested TextRenderable", () => {
       expect(root.getTextChildren()).toEqual([children[1], children[2], children[0], generated])
       expect(children.every((child) => child.parent === root)).toBe(true)
       expect(generated.parent).toBe(root)
-      expect((root as any)._pendingNativeMoves).toHaveLength(0)
+      expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect(root.plainText).toBe("BCAD")
+      expect((root as any)._pendingNativeMoves).toHaveLength(0)
       expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
     } finally {
       apply.mockRestore()
@@ -961,7 +1144,7 @@ describe("nested TextRenderable", () => {
 
     root.add("!")
     expect((root as any)._structuralMoveMetrics.materializedChildren).toBe(4_000)
-    expect((root as any)._pendingNativeMoves).toHaveLength(0)
+    expect((root as any)._pendingNativeMoves).toHaveLength(1_000)
     expect(root.getChildrenCount()).toBe(4_001)
     await renderOnce()
     expect(root.plainText.length).toBe(4_001)
