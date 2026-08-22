@@ -691,6 +691,177 @@ test "document operation batch resolves shifted stable IDs and publishes once" {
     try std.testing.expectEqual(@as(u32, 11), tb.getDocumentRange(ids[2]).?.end_byte);
 }
 
+test "document transactions compact Rope generations while preserving stable ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const view_id = try tb.registerView();
+    defer tb.unregisterView(view_id);
+
+    const initial_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "L".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "alpha\r\n🙂".ptr, .text_len = "alpha\r\n🙂".len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "R".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const initial_ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 0 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = empty_style, .styled = true, .priority = 2 },
+        .{ .start_chunk = 2, .end_chunk = 3, .style = empty_style, .styled = false, .priority = 0 },
+    };
+    var ids: [3]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 70,
+        .chunks = &initial_chunks,
+        .ranges = &initial_ranges,
+    }}, &ids);
+    const initial_epoch = tb.getContentEpoch();
+    const initial_annotation_epoch = tb.getAnnotationEpoch();
+    const replacements = [_][]const u8{ "alpha\r\n🙂", "中", "é\rZ", "wide界🙂" };
+    const normalized = [_][]const u8{ "alpha\n🙂", "中", "é\nZ", "wide界🙂" };
+
+    for (0..4000) |index| {
+        const replacement = replacements[index % replacements.len];
+        const chunk = text_buffer.StyledChunk{
+            .text_ptr = replacement.ptr,
+            .text_len = replacement.len,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = @intCast(index & 3),
+        };
+        var operations = [_]text_buffer.DocumentOperation{
+            .{ .kind = .replace, .target_id = ids[1], .owner = 70, .chunks = &.{chunk} },
+            .{ .kind = .update_style, .target_id = ids[1], .owner = 70, .style = chunk },
+            .{ .kind = .move, .target_id = ids[1], .anchor_id = if ((index / 50) % 2 == 0) ids[0] else ids[2], .owner = 70, .before = (index / 50) % 2 == 0 },
+        };
+        const operation_count: usize = if (index % 50 == 0) operations.len else operations.len - 1;
+        try tb.applyDocumentOperations(operations[0..operation_count], &.{});
+        try std.testing.expect(tb.getRopeTransactionArenaCount() <= TextBuffer.rope_compaction_arena_limit);
+        try std.testing.expect(tb.getRopeTransactionArenaBytes() < TextBuffer.rope_compaction_byte_limit);
+        if (index % 97 == 0) {
+            try std.testing.expect(tb.isViewDirty(view_id));
+            tb.clearViewDirty(view_id);
+            try std.testing.expectEqual(ids[1], tb.getDocumentRange(ids[1]).?.id);
+            const target = tb.getDocumentRange(ids[1]).?;
+            const output = try std.testing.allocator.alloc(u8, target.end_byte - target.start_byte);
+            defer std.testing.allocator.free(output);
+            const written = tb.getDocumentRangeText(ids[1], output).?;
+            try std.testing.expectEqualStrings(normalized[index % normalized.len], output[0..written]);
+            try expectMarkerInvariants(tb);
+        }
+    }
+    try std.testing.expectEqual(initial_epoch + 4000, tb.getContentEpoch());
+    try std.testing.expectEqual(initial_annotation_epoch + 4000, tb.getAnnotationEpoch());
+}
+
+test "Rope compaction defers for EditBuffer history then reclaims after history clear" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("0");
+
+    for (1..TextBuffer.rope_compaction_arena_limit + 4) |index| {
+        var value: [16]u8 = undefined;
+        const replacement = try std.fmt.bufPrint(&value, "{d}", .{index});
+        try tb.rope().store_undo(replacement);
+        _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), replacement);
+    }
+    try std.testing.expect(tb.getRopeTransactionArenaCount() > TextBuffer.rope_compaction_arena_limit);
+    _ = try tb.rope().undo("current");
+    try expectText(tb, "34");
+
+    tb.rope().clear_history();
+    _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), "compacted");
+    try expectText(tb, "compacted");
+    try std.testing.expect(tb.getRopeTransactionArenaCount() <= 2);
+}
+
+fn exerciseDocumentCompactionFailure(fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing.allocator();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const view_id = try tb.registerView();
+    defer tb.unregisterView(view_id);
+    const empty_style: text_buffer.StyledChunk = .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const initial_chunk: text_buffer.StyledChunk = .{ .text_ptr = "seed🙂".ptr, .text_len = "seed🙂".len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const initial_range = [_]text_buffer.DocumentRangeInput{.{
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = empty_style,
+        .styled = true,
+        .priority = 1,
+    }};
+    var ids: [1]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 81,
+        .chunks = &.{initial_chunk},
+        .ranges = &initial_range,
+    }}, &ids);
+    for (1..TextBuffer.rope_compaction_arena_limit) |index| {
+        const text = if (index % 2 == 0) "seed🙂" else "seed\r\n界";
+        const chunk: text_buffer.StyledChunk = .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+        try tb.applyDocumentOperations(&.{.{ .kind = .replace, .target_id = ids[0], .owner = 81, .chunks = &.{chunk} }}, &.{});
+    }
+    try std.testing.expectEqual(TextBuffer.rope_compaction_arena_limit, tb.getRopeTransactionArenaCount());
+    const before_range = tb.getDocumentRange(ids[0]).?;
+    const before_epoch = tb.getContentEpoch();
+    const before_annotation_epoch = tb.getAnnotationEpoch();
+    tb.clearViewDirty(view_id);
+    var before_text: [32]u8 = undefined;
+    const before_written = tb.getPlainTextIntoBuffer(&before_text);
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const replacement: text_buffer.StyledChunk = .{ .text_ptr = "retry中🙂".ptr, .text_len = "retry中🙂".len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 };
+    const edit = tb.applyDocumentOperations(&.{.{ .kind = .replace, .target_id = ids[0], .owner = 81, .chunks = &.{replacement} }}, &.{});
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, edit);
+        try std.testing.expectEqual(before_epoch, tb.getContentEpoch());
+        try std.testing.expectEqual(before_annotation_epoch, tb.getAnnotationEpoch());
+        try std.testing.expectEqualDeep(before_range, tb.getDocumentRange(ids[0]).?);
+        if (tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit) {
+            try std.testing.expect(tb.isViewDirty(view_id));
+        }
+        var after_text: [32]u8 = undefined;
+        const after_written = tb.getPlainTextIntoBuffer(&after_text);
+        try std.testing.expectEqualStrings(before_text[0..before_written], after_text[0..after_written]);
+
+        failing.fail_index = std.math.maxInt(usize);
+        try tb.applyDocumentOperations(&.{.{ .kind = .replace, .target_id = ids[0], .owner = 81, .chunks = &.{replacement} }}, &.{});
+    } else {
+        try edit;
+    }
+    try expectText(tb, "retry中🙂");
+    try std.testing.expect(tb.getRopeTransactionArenaCount() <= 2);
+    return failing.alloc_index - before_alloc;
+}
+
+test "document compaction OOM is semantic-atomic and retryable at every allocation" {
+    const allocations = try exerciseDocumentCompactionFailure(null);
+    for (0..allocations) |offset| _ = try exerciseDocumentCompactionFailure(offset);
+}
+
 test "document range transaction rolls back every allocation failure" {
     const allocations = try exerciseDocumentRangeTransactionFailure(null);
     for (0..allocations) |offset| _ = try exerciseDocumentRangeTransactionFailure(offset);

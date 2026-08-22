@@ -177,6 +177,8 @@ pub const UnifiedTextBuffer = struct {
     const style_range_kind: u32 = 1;
     const document_range_kind: u32 = 2;
     pub const internal_style_base: u32 = 0x8000_0000;
+    pub const rope_compaction_arena_limit: usize = 32;
+    pub const rope_compaction_byte_limit: usize = 8 * 1024 * 1024;
 
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
@@ -573,6 +575,10 @@ pub const UnifiedTextBuffer = struct {
         }
     }
 
+    fn markViewCachesDirty(self: *Self) void {
+        for (self.view_dirty_flags.items) |*flag| flag.* = true;
+    }
+
     fn markPaintDirty(self: *Self) void {
         self.annotation_epoch +%= 1;
         self.projection_epoch +%= 1;
@@ -944,6 +950,7 @@ pub const UnifiedTextBuffer = struct {
                 .new_extent = displayExtent(old_display),
             };
         }
+        try self.compactRopeTransactionArenasIfNeeded();
 
         const start_location = try self.normalizedByteOffsetToLocation(start);
         const end_location = try self.normalizedByteOffsetToLocation(end);
@@ -1485,6 +1492,56 @@ pub const UnifiedTextBuffer = struct {
         var total = self.arena.queryCapacity();
         for (self.rope_transaction_arenas.items) |arena| total += arena.queryCapacity();
         return total;
+    }
+
+    pub fn getRopeTransactionArenaCount(self: *const Self) usize {
+        return self.rope_transaction_arenas.items.len;
+    }
+
+    pub fn getRopeTransactionArenaBytes(self: *const Self) usize {
+        var total: usize = 0;
+        for (self.rope_transaction_arenas.items) |arena| total += arena.queryCapacity();
+        return total;
+    }
+
+    fn compactRopeTransactionArenasIfNeeded(self: *Self) TextBufferError!void {
+        const arena_bytes = self.getRopeTransactionArenaBytes();
+        if (self.rope_transaction_arenas.items.len < rope_compaction_arena_limit and arena_bytes < rope_compaction_byte_limit) return;
+
+        // EditBuffer owns Rope/annotation history as a pair. Those checkpoints
+        // retain old roots, so defer compaction until the caller clears history.
+        // Document transactions never create checkpoints themselves.
+        if (self._rope.has_history()) return;
+
+        const segments = self._rope.to_array(self.global_allocator) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(segments);
+        for (segments) |*segment| switch (segment.*) {
+            .text => |*chunk| {
+                // Lazy caches use the buffer arena and are identity-independent.
+                // Recompute them from the unchanged memory registry on demand.
+                chunk.graphemes = null;
+                chunk.wrap_offsets = null;
+            },
+            else => {},
+        };
+
+        const compacted_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        var compacted_owned = true;
+        defer if (compacted_owned) self.global_allocator.destroy(compacted_arena);
+        compacted_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
+        defer if (compacted_owned) compacted_arena.deinit();
+
+        var compacted = UnifiedRope.initWithConfig(compacted_arena.allocator(), self._rope.config) catch return TextBufferError.OutOfMemory;
+        compacted.setSegments(segments) catch return TextBufferError.OutOfMemory;
+        compacted.version = self._rope.version;
+
+        // Views cache pointers to Rope-owned TextChunks. Invalidate them even
+        // when a later semantic preparation fails; epochs remain unchanged.
+        self.markViewCachesDirty();
+        self.releaseRopeTransactionArenas();
+        self._rope = compacted;
+        self.rope_transaction_arenas.appendAssumeCapacity(compacted_arena);
+        compacted_owned = false;
     }
 
     fn releaseRopeTransactionArenas(self: *Self) void {
@@ -2504,6 +2561,9 @@ pub const UnifiedTextBuffer = struct {
         operations: []const DocumentOperation,
         output_id_count: usize,
     ) TextBufferError!PreparedDocumentOperations {
+        // Compaction is prepared and published before semantic preparation. If
+        // it runs out of memory, this edit is wholly uncommitted and retryable.
+        try self.compactRopeTransactionArenasIfNeeded();
         const initial_style_slot_len = self.internal_style_slots.items.len;
         errdefer self.internal_style_slots.shrinkRetainingCapacity(initial_style_slot_len);
         var next_syntax_style = self.syntax_style;
@@ -2662,14 +2722,14 @@ pub const UnifiedTextBuffer = struct {
                     } else candidate_buffer.getByteSize();
                     const prefix_len: usize = start - region_start;
                     const suffix_len: usize = region_end - end;
-                    const combined_len = std.math.add(usize, prefix_len, std.math.add(usize, total_raw, suffix_len) catch return TextBufferError.InvalidDimensions) catch return TextBufferError.InvalidDimensions;
+                    const combined_len = std.math.add(usize, prefix_len, std.math.add(usize, normalized_len, suffix_len) catch return TextBufferError.InvalidDimensions) catch return TextBufferError.InvalidDimensions;
                     const combined_start = storage_used;
                     const combined_end = std.math.add(usize, combined_start, combined_len) catch return TextBufferError.InvalidDimensions;
                     if (combined_end > staged_storage.?.len or combined_end > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
                     const combined = staged_storage.?[combined_start..combined_end];
                     if (candidate_buffer.copyNormalizedByteRange(region_start, start, combined[0..prefix_len]) != prefix_len) return TextBufferError.InvalidByteOffset;
-                    if (total_raw != 0) @memcpy(combined[prefix_len .. prefix_len + total_raw], staged_storage.?[raw_start..raw_end]);
-                    if (candidate_buffer.copyNormalizedByteRange(end, region_end, combined[prefix_len + total_raw ..]) != suffix_len) return TextBufferError.InvalidByteOffset;
+                    if (normalized_len != 0) @memcpy(combined[prefix_len .. prefix_len + normalized_len], staged_storage.?[raw_start..raw_end]);
+                    if (candidate_buffer.copyNormalizedByteRange(end, region_end, combined[prefix_len + normalized_len ..]) != suffix_len) return TextBufferError.InvalidByteOffset;
                     storage_used = combined_end;
 
                     var segments = try candidate_buffer.textToSegments(self.global_allocator, combined, staged_mem_id.?, @intCast(combined_start), false);
@@ -3124,6 +3184,7 @@ pub const UnifiedTextBuffer = struct {
         const desired = if (before) anchor.start_byte else anchor.end_byte;
         if (desired >= source.start_byte and desired <= source.end_byte) return false;
         const destination = if (desired > source.end_byte) desired - len else desired;
+        try self.compactRopeTransactionArenasIfNeeded();
 
         var candidate = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,

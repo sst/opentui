@@ -1328,6 +1328,10 @@ pub fn Rope(comptime T: type) type {
             return self.redo_history != null and self.curr_history != null;
         }
 
+        pub fn has_history(self: *const Self) bool {
+            return self.undo_history != null or self.redo_history != null or self.curr_history != null;
+        }
+
         pub fn clear_history(self: *Self) void {
             self.undo_history = null;
             self.redo_history = null;
