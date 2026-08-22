@@ -13,7 +13,9 @@ if (profile !== "practical" && profile !== "stress") throw new Error("TEXT_RANGE
 if (mode !== "both" && mode !== "per-frame" && mode !== "coalesced") {
   throw new Error("TEXT_RANGE_MODE must be both, per-frame, or coalesced")
 }
-if (mutation !== "mixed" && mutation !== "style") throw new Error("TEXT_RANGE_MUTATION must be mixed or style")
+if (mutation !== "mixed" && mutation !== "content" && mutation !== "style") {
+  throw new Error("TEXT_RANGE_MUTATION must be mixed, content, or style")
+}
 const defaults =
   profile === "stress" ? { leaves: 1_000, updates: 200, rounds: 5 } : { leaves: 200, updates: 40, rounds: 3 }
 const leafCount = Number(process.env.TEXT_RANGE_LEAVES ?? defaults.leaves)
@@ -128,8 +130,9 @@ function chunks(values: string[], attributes: number[], order: number[]) {
 
 function applyModelMutation(values: string[], attributes: number[], order: number[], index: number): number {
   const leafIndex = index % values.length
-  attributes[leafIndex] = index & 1
+  if (mutation !== "content") attributes[leafIndex] = index & 1
   if (mutation === "mixed") values[leafIndex] = `${index.toString().padStart(4, "x")} `
+  if (mutation === "content") values[leafIndex] = `${index.toString().padStart(4, "x")} `
   if (mutation === "mixed" && index % 20 === 0) {
     order.splice(order.indexOf(leafIndex), 1)
     order.push(leafIndex)
@@ -169,8 +172,8 @@ async function runPerFrameRound(round: number): Promise<Sample> {
         const start = performance.now()
         const leafIndex = applyModelMutation(rangeValues, rangeAttributes, rangeOrder, index)
         const leaf = leaves[leafIndex]!
-        if (mutation === "mixed") leaf.content = rangeValues[leafIndex]!
-        leaf.attributes = rangeAttributes[leafIndex]!
+        if (mutation !== "style") leaf.content = rangeValues[leafIndex]!
+        if (mutation !== "content") leaf.attributes = rangeAttributes[leafIndex]!
         if (mutation === "mixed" && index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
         await rangeSetup.renderOnce()
         rangeMs += performance.now() - start
@@ -237,8 +240,8 @@ async function runCoalescedRound(round: number): Promise<Sample> {
     for (let index = 0; index < updates; index++) {
       const leafIndex = applyModelMutation(rangeValues, rangeAttributes, rangeOrder, index)
       const leaf = leaves[leafIndex]!
-      if (mutation === "mixed") leaf.content = rangeValues[leafIndex]!
-      leaf.attributes = rangeAttributes[leafIndex]!
+      if (mutation !== "style") leaf.content = rangeValues[leafIndex]!
+      if (mutation !== "content") leaf.attributes = rangeAttributes[leafIndex]!
       if (mutation === "mixed" && index % 20 === 0) rangeRoot.add(leaf, rangeRoot.getChildrenCount())
     }
     await rangeSetup.renderOnce()
@@ -283,6 +286,7 @@ async function runCoalescedRound(round: number): Promise<Sample> {
 }
 
 const lib = resolveRenderLib()
+const frameworkMetricsStart = TextRenderable.getDebugMetrics()
 const allocationStart = lib.getAllocatorStats()
 const arenaStart = lib.getArenaAllocatedBytes()
 const perFrame: Sample[] = []
@@ -304,6 +308,7 @@ if (mode !== "per-frame") {
 }
 const allocationEnd = lib.getAllocatorStats()
 const arenaEnd = lib.getArenaAllocatedBytes()
+const frameworkMetricsEnd = TextRenderable.getDebugMetrics()
 
 const timing = (values: number[]) =>
   values.length === 1
@@ -362,6 +367,12 @@ console.log(
             : null,
         persistentArenaByteDelta: arenaEnd - arenaStart,
       },
+      frameworkActivity: Object.fromEntries(
+        Object.entries(frameworkMetricsEnd).map(([key, value]) => [
+          key,
+          value - frameworkMetricsStart[key as keyof typeof frameworkMetricsStart],
+        ]),
+      ),
     },
     null,
     2,

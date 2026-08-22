@@ -33,10 +33,61 @@ const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRende
 let nextTextDocumentOwner = 1
 let textDocumentMutationDepth = 0
 const deferredDocumentOwners = new Set<TextRenderable>()
+let nextStyledLeafStyleSource = 1
+const styledLeafStyleSources = new WeakMap<object, number>()
+const simpleStyledLeafStyles = new Map<number, TextStyle>()
+
+export type TextRenderableDebugMetrics = {
+  textRenderableAllocations: number
+  yogaNodeAllocations: number
+  styledLeafAllocations: number
+  documentOperations: number
+  documentChunks: number
+  documentRanges: number
+  documentTreeWalks: number
+  yogaDirties: number
+  renderRequests: number
+}
+
+const textRenderableDebugMetrics: TextRenderableDebugMetrics = {
+  textRenderableAllocations: 0,
+  yogaNodeAllocations: 0,
+  styledLeafAllocations: 0,
+  documentOperations: 0,
+  documentChunks: 0,
+  documentRanges: 0,
+  documentTreeWalks: 0,
+  yogaDirties: 0,
+  renderRequests: 0,
+}
 
 type RawTextIdentity = {
   value: string
   rangeId: bigint | null
+}
+
+type StyledTextLeaf = {
+  text: string
+  style: TextStyle
+  rangeId: bigint | null
+}
+
+type NativeRangeSnapshot = {
+  node: TextRenderable
+  id: bigint | null
+  styled: boolean
+  rawIds: Array<bigint | null>
+  styledLeafIds: Array<bigint | null>
+}
+
+function hasTextStyle(style: TextStyle): boolean {
+  return (
+    style.fg !== undefined ||
+    style.bg !== undefined ||
+    style.attributes !== 0 ||
+    style.link !== undefined ||
+    style.styleId !== undefined
+  )
 }
 
 type PreparedTextDocumentFlush = {
@@ -289,6 +340,7 @@ export class TextRenderable extends TextBufferRenderable {
   private _pendingRegisteredStyle?: { styleId?: number; styleSource?: SyntaxStyle }
   private _textDocumentPending: boolean = true
   private _nativeRangeId: bigint | null = null
+  private _nativeRangeStyled: boolean = true
   private _textDocumentOwner = 0
   private readonly _pendingDocumentRoots = new Set<TextRenderable>()
   private readonly _pendingStyleRoots = new Set<TextRenderable>()
@@ -297,6 +349,8 @@ export class TextRenderable extends TextBufferRenderable {
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
+  private _manualStyledLeaves: StyledTextLeaf[] | null = null
+  private _manualStyledSyntaxStyle: SyntaxStyle | null = null
   private _lastCommittedLineInfoFrame: number = -1
   private _layoutPromotionPending: boolean = false
   private readonly _structuralMoveMetrics = { orderNodes: 0, orderMoves: 0, materializedChildren: 0 }
@@ -315,6 +369,8 @@ export class TextRenderable extends TextBufferRenderable {
     const shouldAttach = hasContext ? attachTextDocumentState : false
 
     super(ctx, options, shouldAttach)
+    textRenderableDebugMetrics.textRenderableAllocations += 1
+    textRenderableDebugMetrics.yogaNodeAllocations += 1
 
     try {
       this._textDocumentRole = hasContext ? (shouldAttach ? "owner" : "inline") : detachedRole
@@ -376,6 +432,7 @@ export class TextRenderable extends TextBufferRenderable {
       previousChildren.every(isTextRenderable) &&
       nextChildren.every(isTextRenderable) &&
       previousChildren.every((child) => seenChildren.has(child)) &&
+      this._manualStyledLeaves === null &&
       documentOwnerBefore !== null
     if (isPureNativeReorder) {
       const moves = this.planNativeChildMoves(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
@@ -412,6 +469,8 @@ export class TextRenderable extends TextBufferRenderable {
         children: (string | TextRenderable)[]
         ownedChildren: Set<TextRenderable>
         manualStyledText: StyledText | null
+        manualStyledLeaves: StyledTextLeaf[] | null
+        manualStyledSyntaxStyle: SyntaxStyle | null
         documentDirty: boolean
         renderDirty: boolean
         rawTextIdentities: (RawTextIdentity | null)[]
@@ -428,6 +487,8 @@ export class TextRenderable extends TextBufferRenderable {
         children: [...parent._children],
         ownedChildren: new Set(parent._ownedChildren),
         manualStyledText: parent._manualStyledText,
+        manualStyledLeaves: parent._manualStyledLeaves,
+        manualStyledSyntaxStyle: parent._manualStyledSyntaxStyle,
         documentDirty: parent._textDocumentPending,
         renderDirty: parent._dirty,
         rawTextIdentities: [...parent._rawTextIdentities],
@@ -447,7 +508,7 @@ export class TextRenderable extends TextBufferRenderable {
         context: RenderContext
         hadDocumentState: boolean
         layoutIndex: number
-        nativeRanges: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }>
+        nativeRanges: NativeRangeSnapshot[]
       }
     >()
     const snapshotChild = (child: TextRenderable): void => {
@@ -487,6 +548,8 @@ export class TextRenderable extends TextBufferRenderable {
         parent._ownedChildren.clear()
         for (const child of snapshot.ownedChildren) parent._ownedChildren.add(child)
         parent._manualStyledText = snapshot.manualStyledText
+        parent._manualStyledLeaves = snapshot.manualStyledLeaves
+        parent._manualStyledSyntaxStyle = snapshot.manualStyledSyntaxStyle
         parent._textDocumentPending = snapshot.documentDirty
         parent._dirty = snapshot.renderDirty
         parent._rawTextIdentities = [...snapshot.rawTextIdentities]
@@ -570,7 +633,10 @@ export class TextRenderable extends TextBufferRenderable {
         }
       }
 
+      documentOwnerBefore?.queueManualStyledLeafRemovals(this)
       this._manualStyledText = null
+      this._manualStyledLeaves = null
+      this._manualStyledSyntaxStyle = null
       for (const parent of parentSnapshots.keys()) {
         if (parent !== this) parent.invalidateTextDocument()
       }
@@ -871,6 +937,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public requestRender(): void {
+    textRenderableDebugMetrics.renderRequests += 1
     this.markDirty()
     this._ctx.requestRender()
   }
@@ -1117,6 +1184,13 @@ export class TextRenderable extends TextBufferRenderable {
     parentStyle: TextStyle = { fg: undefined, bg: undefined, attributes: 0 },
   ): TextChunk[] {
     const currentStyle = this.mergeStyles(parentStyle)
+    if (this._manualStyledLeaves !== null) {
+      return this._manualStyledLeaves.map((leaf) => ({
+        __isChunk: true,
+        text: leaf.text,
+        ...this.mergeStyledLeafStyle(leaf.style, currentStyle),
+      }))
+    }
     const chunks: TextChunk[] = []
     for (const child of this.materializeChildOrder()) {
       if (typeof child === "string") {
@@ -1207,6 +1281,9 @@ export class TextRenderable extends TextBufferRenderable {
     const children = this.getTextChildren()
     this._children.splice(0)
     this._rawTextIdentities.splice(0)
+    this._manualStyledLeaves = null
+    this._manualStyledText = null
+    this._manualStyledSyntaxStyle = null
     let destroyError: unknown
     for (const child of children.reverse()) {
       try {
@@ -1241,6 +1318,10 @@ export class TextRenderable extends TextBufferRenderable {
     return node
   }
 
+  public static getDebugMetrics(): TextRenderableDebugMetrics {
+    return { ...textRenderableDebugMetrics }
+  }
+
   public static fromNodes(nodes: TextRenderable[], options?: Partial<TextOptions>): TextRenderable
   public static fromNodes(ctx: RenderContext, nodes: TextRenderable[], options?: Partial<TextOptions>): TextRenderable
   public static fromNodes(
@@ -1266,37 +1347,135 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private replaceContent(content: StyledText | string, requestRender: boolean): void {
-    const styledChildren = typeof content === "string" ? [] : this.styledTextToChildren(content)
-    const nextChildren: (string | TextRenderable)[] =
-      typeof content === "string" ? (content === "" ? [] : [content]) : styledChildren
+    if (typeof content !== "string") {
+      this.replaceManualStyledText(content, requestRender)
+      return
+    }
+    const nextChildren: (string | TextRenderable)[] = content === "" ? [] : [content]
     try {
       this.children = nextChildren
     } catch (error) {
       const committed =
         this._children.length === nextChildren.length &&
         this._children.every((child, index) => child === nextChildren[index])
-      if (committed && typeof content !== "string") {
-        for (const child of styledChildren) this._ownedChildren.add(child)
-        this._manualStyledText = content
-      } else {
-        for (const child of styledChildren.reverse()) {
-          if (!child.isDestroyed) {
-            try {
-              child.destroyRecursively()
-            } catch {}
-          }
-        }
-      }
+      if (!committed) this._manualStyledText = null
       throw error
     }
 
-    this._manualStyledText = typeof content === "string" ? null : content
-    for (const child of styledChildren) this._ownedChildren.add(child)
+    this._manualStyledText = null
+    this._manualStyledLeaves = null
+    this._manualStyledSyntaxStyle = null
     this._textDocumentPending = true
     if (requestRender) {
       this.invalidateTextDocument()
       if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
     }
+  }
+
+  private replaceManualStyledText(content: StyledText, requestRender: boolean): void {
+    const styles = new Map<string | number, TextStyle>()
+    const previousLeaves = this._manualStyledLeaves
+    const nextLeaves = new Array<StyledTextLeaf>(content.chunks.length)
+    let syntaxStyle: SyntaxStyle | null = null
+    for (const chunk of content.chunks) {
+      if ((chunk.styleId === undefined) !== (chunk.styleSource === undefined)) {
+        throw new Error("Registered text styles require both styleId and styleSource")
+      }
+      if (chunk.styleSource) {
+        if (syntaxStyle && syntaxStyle !== chunk.styleSource) {
+          throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
+        }
+        syntaxStyle = chunk.styleSource
+      }
+      if (
+        chunk.styleId !== undefined &&
+        (!Number.isInteger(chunk.styleId) || chunk.styleId <= 0 || !chunk.styleSource?.getStyleById(chunk.styleId))
+      ) {
+        throw new Error(`Unknown registered text style ID ${chunk.styleId}`)
+      }
+    }
+    for (let index = 0; index < content.chunks.length; index++) {
+      const chunk = content.chunks[index]!
+      const style = this.internStyledLeafStyle(chunk, styles)
+      const leaf = previousLeaves?.[index]
+      if (leaf) {
+        leaf.text = chunk.text
+        leaf.style = style
+        nextLeaves[index] = leaf
+      } else {
+        textRenderableDebugMetrics.styledLeafAllocations += 1
+        nextLeaves[index] = { text: chunk.text, style, rangeId: null }
+      }
+    }
+    if (previousLeaves) {
+      const owner = this.getDocumentOwner()
+      for (let index = nextLeaves.length; index < previousLeaves.length; index++) {
+        const id = previousLeaves[index]!.rangeId
+        if (owner && id !== null) owner._pendingRemovedRangeIds.add(id)
+      }
+      for (const leaf of nextLeaves) {
+        if (leaf.rangeId === null || hasTextStyle(leaf.style)) continue
+        if (owner) owner._pendingRemovedRangeIds.add(leaf.rangeId)
+        leaf.rangeId = null
+      }
+    }
+
+    const hadPublicContent = this._children.length > 0 || this._pendingChildOrder !== null
+    if (hadPublicContent) textDocumentMutationDepth += 1
+    try {
+      if (hadPublicContent) this.children = []
+      this._manualStyledLeaves = nextLeaves
+      this._manualStyledText = content
+      this._manualStyledSyntaxStyle = syntaxStyle
+      this._textDocumentPending = true
+      if (requestRender) {
+        this.invalidateTextDocument()
+        if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
+      }
+    } finally {
+      if (hadPublicContent) {
+        textDocumentMutationDepth -= 1
+        if (textDocumentMutationDepth === 0) {
+          const owners = [...deferredDocumentOwners]
+          deferredDocumentOwners.clear()
+          for (const owner of owners) owner.flushTextDocument()
+        }
+      }
+    }
+  }
+
+  private internStyledLeafStyle(chunk: TextChunk, styles: Map<string | number, TextStyle>): TextStyle {
+    const attributes = chunk.attributes ?? 0
+    const simple =
+      chunk.fg === undefined && chunk.bg === undefined && chunk.link === undefined && chunk.styleId === undefined
+    if (simple) {
+      const existing = simpleStyledLeafStyles.get(attributes)
+      if (existing) return existing
+      const style: TextStyle = { attributes }
+      simpleStyledLeafStyles.set(attributes, style)
+      return style
+    }
+    const fg = chunk.fg ? parseColor(chunk.fg) : undefined
+    const bg = chunk.bg ? parseColor(chunk.bg) : undefined
+    let sourceId = 0
+    if (chunk.styleSource) {
+      sourceId = styledLeafStyleSources.get(chunk.styleSource) ?? nextStyledLeafStyleSource++
+      styledLeafStyleSources.set(chunk.styleSource, sourceId)
+    }
+    const colorKey = (color: RGBA | undefined) => (color ? Array.from(color.buffer).join(",") : "")
+    const key = `${colorKey(fg)}|${colorKey(bg)}|${attributes}|${chunk.link?.url ?? ""}|${chunk.styleId ?? 0}|${sourceId}`
+    const existing = styles.get(key)
+    if (existing) return existing
+    const style: TextStyle = {
+      fg,
+      bg,
+      attributes,
+      link: chunk.link,
+      styleId: chunk.styleId,
+      styleSource: chunk.styleSource,
+    }
+    styles.set(key, style)
+    return style
   }
 
   private styledTextToChildren(styledText: StyledText): TextRenderable[] {
@@ -1402,7 +1581,7 @@ export class TextRenderable extends TextBufferRenderable {
       const rangeIds = new Set<bigint>()
       for (const root of run) {
         plannedRoots.add(root)
-        this.collectNativeRangeIds(root, rangeIds)
+        if (this._pendingNativeMoves.length > 0) this.collectNativeRangeIds(root, rangeIds)
       }
       replacementPlans.push({ roots: run, rangeIds })
     }
@@ -1469,6 +1648,11 @@ export class TextRenderable extends TextBufferRenderable {
     this.collectRegisteredSyntaxStyles(syntaxStyles)
     if (syntaxStyles.size > 1)
       throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
+    textRenderableDebugMetrics.documentOperations += operations.length
+    for (const operation of operations) {
+      textRenderableDebugMetrics.documentChunks += operation.chunks?.length ?? 0
+      textRenderableDebugMetrics.documentRanges += operation.ranges?.length ?? 0
+    }
     return {
       operations,
       assignments,
@@ -1490,6 +1674,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (contentChanged) {
       this.refreshLocalSelection()
       this.yogaNode.markDirty()
+      textRenderableDebugMetrics.yogaDirties += 1
       this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
       this.emit("line-info-change")
     }
@@ -1548,6 +1733,7 @@ export class TextRenderable extends TextBufferRenderable {
     for (const identity of node._rawTextIdentities) {
       if (identity?.rangeId !== null && identity?.rangeId !== undefined) rangeIds.add(identity.rangeId)
     }
+    for (const leaf of node._manualStyledLeaves ?? []) if (leaf.rangeId !== null) rangeIds.add(leaf.rangeId)
     for (const child of node.getTextChildren()) this.collectNativeRangeIds(child, rangeIds)
   }
 
@@ -1560,18 +1746,52 @@ export class TextRenderable extends TextBufferRenderable {
     ranges: DocumentRangeInput[],
     assignments: Array<(id: bigint) => void>,
   ): void {
+    textRenderableDebugMetrics.documentTreeWalks += 1
     const style = node.mergeStyles(parentStyle)
     const start = chunks.length
     const nodeRangeIndex = ranges.length
-    ranges.push({
-      id: node._nativeRangeId ?? undefined,
-      startChunk: start,
-      endChunk: start,
-      ...style,
-      styled: true,
-      priority: Math.min(255, depth + 1),
+    const manualLeaves = node._manualStyledLeaves
+    const nodeStyled = manualLeaves === null || hasTextStyle(style)
+    ranges.push(
+      nodeStyled
+        ? {
+            id: node._nativeRangeId ?? undefined,
+            startChunk: start,
+            endChunk: start,
+            ...style,
+            styled: true,
+            priority: Math.min(255, depth + 1),
+          }
+        : {
+            id: node._nativeRangeId ?? undefined,
+            startChunk: start,
+            endChunk: start,
+            styled: false,
+          },
+    )
+    assignments.push((id) => {
+      node._nativeRangeId = id
+      node._nativeRangeStyled = nodeStyled
     })
-    assignments.push((id) => (node._nativeRangeId = id))
+
+    if (manualLeaves !== null) {
+      for (const leaf of manualLeaves) {
+        const leafStart = chunks.length
+        if (visible) chunks.push({ text: leaf.text })
+        if (!hasTextStyle(leaf.style)) continue
+        ranges.push({
+          id: leaf.rangeId ?? undefined,
+          startChunk: leafStart,
+          endChunk: chunks.length,
+          ...this.mergeStyledLeafStyle(leaf.style, style),
+          styled: true,
+          priority: Math.min(255, depth + 2),
+        })
+        assignments.push((id) => (leaf.rangeId = id))
+      }
+      ranges[nodeRangeIndex]!.endChunk = chunks.length
+      return
+    }
 
     const children = node.materializeChildOrder()
     for (let index = 0; index < children.length; index++) {
@@ -1604,6 +1824,14 @@ export class TextRenderable extends TextBufferRenderable {
       this.requestRender()
       return
     }
+    if (
+      this._manualStyledLeaves !== null &&
+      this._nativeRangeId !== null &&
+      hasTextStyle(this.mergeStyles(this.resolvedParentStyle())) !== this._nativeRangeStyled
+    ) {
+      this.invalidateTextDocument()
+      return
+    }
     owner._pendingStyleRoots.add(this)
     owner._textDocumentPending = true
     if (!owner.parent) owner.flushTextDocument()
@@ -1616,7 +1844,25 @@ export class TextRenderable extends TextBufferRenderable {
     operations: DocumentOperation[],
   ): void {
     const style = this.mergeStyles(parentStyle)
-    if (this._nativeRangeId !== null) {
+    if (this._manualStyledLeaves !== null) {
+      if (this._nativeRangeStyled && this._nativeRangeId !== null) {
+        operations.push({
+          kind: "updateStyle",
+          targetId: this._nativeRangeId,
+          owner: owner._textDocumentOwner,
+          ...style,
+        })
+      }
+      for (const leaf of this._manualStyledLeaves) {
+        if (leaf.rangeId === null) continue
+        operations.push({
+          kind: "updateStyle",
+          targetId: leaf.rangeId,
+          owner: owner._textDocumentOwner,
+          ...this.mergeStyledLeafStyle(leaf.style, style),
+        })
+      }
+    } else if (this._nativeRangeId !== null) {
       operations.push({
         kind: "updateStyle",
         targetId: this._nativeRangeId,
@@ -1631,6 +1877,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (this._localStyleId !== undefined && this._localSyntaxStyle && this.ancestorsVisible()) {
       styles.add(this._localSyntaxStyle)
     }
+    if (this._manualStyledSyntaxStyle && this.ancestorsVisible()) styles.add(this._manualStyledSyntaxStyle)
     for (const child of this.getTextChildren()) child.collectRegisteredSyntaxStyles(styles)
   }
 
@@ -1676,7 +1923,9 @@ export class TextRenderable extends TextBufferRenderable {
 
   private resetNativeRanges(): void {
     this._nativeRangeId = null
+    this._nativeRangeStyled = true
     for (const identity of this._rawTextIdentities) if (identity) identity.rangeId = null
+    for (const leaf of this._manualStyledLeaves ?? []) leaf.rangeId = null
     for (const child of this.getTextChildren()) child.resetNativeRanges()
     this._textDocumentOwner = 0
     this._pendingDocumentRoots.clear()
@@ -1686,22 +1935,31 @@ export class TextRenderable extends TextBufferRenderable {
     this._textDocumentPending = true
   }
 
-  private captureNativeRanges(): Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }> {
-    const result: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }> = [
-      { node: this, id: this._nativeRangeId, rawIds: this._rawTextIdentities.map((value) => value?.rangeId ?? null) },
+  private captureNativeRanges(): NativeRangeSnapshot[] {
+    const result: NativeRangeSnapshot[] = [
+      {
+        node: this,
+        id: this._nativeRangeId,
+        styled: this._nativeRangeStyled,
+        rawIds: this._rawTextIdentities.map((value) => value?.rangeId ?? null),
+        styledLeafIds: this._manualStyledLeaves?.map((leaf) => leaf.rangeId) ?? [],
+      },
     ]
     for (const child of this.getTextChildren()) result.push(...child.captureNativeRanges())
     return result
   }
 
-  private restoreNativeRanges(
-    snapshot: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }>,
-  ): void {
+  private restoreNativeRanges(snapshot: NativeRangeSnapshot[]): void {
     for (const entry of snapshot) {
       entry.node._nativeRangeId = entry.id
+      entry.node._nativeRangeStyled = entry.styled
       for (let index = 0; index < entry.rawIds.length; index++) {
         const identity = entry.node._rawTextIdentities[index]
         if (identity) identity.rangeId = entry.rawIds[index] ?? null
+      }
+      for (let index = 0; index < entry.styledLeafIds.length; index++) {
+        const leaf = entry.node._manualStyledLeaves?.[index]
+        if (leaf) leaf.rangeId = entry.styledLeafIds[index] ?? null
       }
     }
   }
@@ -1712,6 +1970,8 @@ export class TextRenderable extends TextBufferRenderable {
       if (identity?.rangeId !== null && identity?.rangeId !== undefined)
         this._pendingRemovedRangeIds.add(identity.rangeId)
     }
+    for (const leaf of root._manualStyledLeaves ?? [])
+      if (leaf.rangeId !== null) this._pendingRemovedRangeIds.add(leaf.rangeId)
     for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
   }
 
@@ -1830,6 +2090,38 @@ export class TextRenderable extends TextBufferRenderable {
       visited.add(current)
       current = isTextRenderable(current.parent) ? current.parent : null
     }
+  }
+
+  private queueManualStyledLeafRemovals(node: TextRenderable): void {
+    for (const leaf of node._manualStyledLeaves ?? []) {
+      if (leaf.rangeId !== null) this._pendingRemovedRangeIds.add(leaf.rangeId)
+    }
+  }
+
+  private mergeStyledLeafStyle(local: TextStyle, parent: TextStyle): TextStyle {
+    const parentRegistered = parent.styleId === undefined ? undefined : parent.styleSource?.getStyleById(parent.styleId)
+    const localRegistered = local.styleId === undefined ? undefined : local.styleSource?.getStyleById(local.styleId)
+    const parentFg = parent.fg ?? parentRegistered?.fg
+    const parentBg = parent.bg ?? parentRegistered?.bg
+    const parentAttributes = parent.attributes | (parentRegistered?.attributes ?? 0)
+    const effective: TextStyle = {
+      fg: local.fg ?? localRegistered?.fg ?? parentFg,
+      bg: local.bg ?? localRegistered?.bg ?? parentBg,
+      attributes: local.attributes | (localRegistered?.attributes ?? 0) | parentAttributes,
+      link: local.link ?? parent.link,
+    }
+    if (
+      localRegistered &&
+      local.styleId !== undefined &&
+      local.styleSource &&
+      effective.link === undefined &&
+      effective.attributes === localRegistered.attributes &&
+      (effective.fg === localRegistered.fg || effective.fg?.equals(localRegistered.fg)) &&
+      (effective.bg === localRegistered.bg || effective.bg?.equals(localRegistered.bg))
+    ) {
+      return { fg: undefined, bg: undefined, attributes: 0, styleId: local.styleId, styleSource: local.styleSource }
+    }
+    return effective
   }
 
   private gatherOwnContent(): TextChunk[] {

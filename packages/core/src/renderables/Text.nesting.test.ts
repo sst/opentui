@@ -1266,22 +1266,23 @@ describe("nested TextRenderable", () => {
     expect(current.isDestroyed).toBe(true)
   }, 15_000)
 
-  test("cleans up parent-owned StyledText children on replacement and destroy", () => {
+  test("keeps manual StyledText leaves private and releases them on replacement and destroy", () => {
     const text = new TextRenderable(renderer, {
       content: new StyledText([
         { __isChunk: true, text: "one" },
         { __isChunk: true, text: "two", attributes: TextAttributes.BOLD },
       ]),
     })
-    const generated = text.getTextChildren()
+    const leaves = (text as any)._manualStyledLeaves
 
+    expect(text.getTextChildren()).toEqual([])
     text.content = "replacement"
-    expect(generated.every((child) => child.isDestroyed)).toBe(true)
+    expect((text as any)._manualStyledLeaves).toBeNull()
 
     text.content = new StyledText([{ __isChunk: true, text: "three" }])
-    const finalGenerated = text.getTextChildren()[0]!
+    expect((text as any)._manualStyledLeaves).not.toBe(leaves)
     text.destroy()
-    expect(finalGenerated.isDestroyed).toBe(true)
+    expect((text as any)._manualStyledLeaves).toBeNull()
   })
 
   test("preserves StyledText identity and refreshes when the same object is assigned again", () => {
@@ -1461,7 +1462,7 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("converts StyledText into canonical styled children", () => {
+  test("stores StyledText as canonical private styled leaves", () => {
     const text = new TextRenderable(renderer, {
       content: new StyledText([
         { __isChunk: true, text: "red", fg: RGBA.fromHex("#ff0000") },
@@ -1470,9 +1471,39 @@ describe("nested TextRenderable", () => {
     })
     renderer.root.add(text)
 
-    expect(text.children).toHaveLength(2)
-    expect(text.children.every((child) => child instanceof TextRenderable)).toBe(true)
+    expect(text.children).toEqual([])
+    expect(text.getTextChildren()).toEqual([])
     expect(text.chunks.map((chunk) => chunk.text)).toEqual(["red", " bold"])
+  })
+
+  test("does not allocate TextRenderables or Yoga nodes per manual StyledText chunk", () => {
+    const chunks = Array.from({ length: 1_000 }, (_, index) => ({
+      __isChunk: true as const,
+      text: `${index}`,
+      attributes: index === 1 ? TextAttributes.BOLD : 0,
+    }))
+    const before = TextRenderable.getDebugMetrics()
+    const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
+    const afterCreate = TextRenderable.getDebugMetrics()
+    const leaves = (text as any)._manualStyledLeaves
+
+    expect(afterCreate.textRenderableAllocations - before.textRenderableAllocations).toBe(1)
+    expect(afterCreate.yogaNodeAllocations - before.yogaNodeAllocations).toBe(1)
+    expect(afterCreate.styledLeafAllocations - before.styledLeafAllocations).toBe(1_000)
+    expect(afterCreate.documentChunks - before.documentChunks).toBe(1_000)
+    expect(afterCreate.documentRanges - before.documentRanges).toBe(2)
+    expect(afterCreate.documentTreeWalks - before.documentTreeWalks).toBe(1)
+    expect(text.children).toEqual([])
+
+    text.content = new StyledText(chunks.map((chunk) => ({ ...chunk, text: `next-${chunk.text}` })))
+    const afterReplace = TextRenderable.getDebugMetrics()
+    expect((text as any)._manualStyledLeaves[0]).toBe(leaves[0])
+    expect(afterReplace.styledLeafAllocations).toBe(afterCreate.styledLeafAllocations)
+    expect(afterReplace.documentOperations - afterCreate.documentOperations).toBe(1)
+    expect(afterReplace.documentChunks - afterCreate.documentChunks).toBe(1_000)
+    expect(afterReplace.documentRanges - afterCreate.documentRanges).toBe(2)
+    expect(afterReplace.documentTreeWalks - afterCreate.documentTreeWalks).toBe(1)
+    text.destroy()
   })
 
   test("preserves authoritative registered style IDs through canonical text ranges", async () => {
@@ -1489,7 +1520,7 @@ describe("nested TextRenderable", () => {
 
       const highlights = (text as any).textBuffer.getLineHighlights(0)
       expect(highlights.some((highlight) => highlight.styleId === keywordId && highlight.start === 0)).toBe(true)
-      expect(text.getTextChildren()[0]!.chunks[0]!.styleId).toBe(keywordId)
+      expect(text.chunks[0]!.styleId).toBe(keywordId)
     } finally {
       syntaxStyle.destroy()
     }
@@ -1633,7 +1664,7 @@ describe("nested TextRenderable", () => {
     const target = new TextRenderable(renderer, {
       content: new StyledText([{ __isChunk: true, text: "old" }]),
     })
-    const oldGenerated = target.getTextChildren()[0]!
+    const oldContent = target.content
     source.add(first)
     source.add(second)
 
@@ -1644,8 +1675,8 @@ describe("nested TextRenderable", () => {
       expect(() => {
         target.children = [first, second]
       }).toThrow("injected adoption failure")
-      expect(target.getTextChildren()).toEqual([oldGenerated])
-      expect(oldGenerated.isDestroyed).toBe(false)
+      expect(target.getTextChildren()).toEqual([])
+      expect(target.content).toBe(oldContent)
       expect(source.getTextChildren()).toEqual([first, second])
       expect(first.parent).toBe(source)
       expect(second.parent).toBe(source)
@@ -1656,25 +1687,19 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("destroys generated replacement children when adoption fails", () => {
+  test("rejects invalid private styled leaves without changing content or allocating renderables", () => {
     const text = new TextRenderable(renderer, { content: "old" })
-    const before = new Set(Renderable.renderablesByNumber.keys())
-    const originalDetach = (TextRenderable.prototype as any).detachTextDocumentState
-    const detach = spyOn(TextRenderable.prototype as any, "detachTextDocumentState").mockImplementation(function () {
-      if (this !== text && this.parent === null) throw new Error("injected generated adoption failure")
-      return originalDetach.call(this)
-    })
+    const before = TextRenderable.getDebugMetrics()
     try {
       expect(() => {
-        text.content = new StyledText([
-          { __isChunk: true, text: "new-a" },
-          { __isChunk: true, text: "new-b", attributes: TextAttributes.BOLD },
-        ])
-      }).toThrow("injected generated adoption failure")
+        text.content = new StyledText([{ __isChunk: true, text: "new-a", styleId: 999, styleSource: undefined }])
+      }).toThrow("Registered text styles require both styleId and styleSource")
       expect(text.plainText).toBe("old")
-      expect(new Set(Renderable.renderablesByNumber.keys())).toEqual(before)
+      const after = TextRenderable.getDebugMetrics()
+      expect(after.textRenderableAllocations).toBe(before.textRenderableAllocations)
+      expect(after.yogaNodeAllocations).toBe(before.yogaNodeAllocations)
+      expect(after.styledLeafAllocations).toBe(before.styledLeafAllocations)
     } finally {
-      detach.mockRestore()
       text.destroy()
     }
   })
