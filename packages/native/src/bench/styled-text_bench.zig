@@ -376,60 +376,6 @@ fn benchSetStyledTextOperations(
         }
     }
 
-    {
-        const line_100_name = "paired line-local projection: line 100 of 10000 (min/avg/max)";
-        const line_10000_name = "paired line-local projection: line 10000 of 10000 (min/avg/max)";
-        if (bench_utils.matchesBenchFilter(line_100_name, bench_filter) or bench_utils.matchesBenchFilter(line_10000_name, bench_filter)) {
-            var document: std.ArrayList(u8) = .empty;
-            defer document.deinit(allocator);
-            for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
-
-            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
-            defer tb.deinit();
-            try tb.setText(document.items);
-            var line_100_id: u64 = 0;
-            var line_10000_id: u64 = 0;
-            for (0..10000) |line_index| {
-                const start: u32 = @intCast(line_index * 17);
-                const id = try tb.createStyleRange(2, start, start + 8, 1, 1);
-                if (line_index == 99) line_100_id = id;
-                if (line_index == 9999) line_10000_id = id;
-            }
-
-            var line_100_stats: BenchStats = .{};
-            var line_10000_stats: BenchStats = .{};
-            for (0..iterations) |iteration| {
-                const style_id: u32 = if (iteration & 1 == 0) 1 else 2;
-                _ = try tb.updateStyleRangeStyle(line_100_id, style_id);
-                var timer = bench_utils.BenchTimer.start(io);
-                std.mem.doNotOptimizeAway(tb.getLineSpans(99));
-                line_100_stats.record(timer.read());
-                _ = try tb.updateStyleRangeStyle(line_10000_id, style_id);
-                timer = bench_utils.BenchTimer.start(io);
-                std.mem.doNotOptimizeAway(tb.getLineSpans(9999));
-                line_10000_stats.record(timer.read());
-            }
-            if (bench_utils.matchesBenchFilter(line_100_name, bench_filter)) try results.append(allocator, .{
-                .name = line_100_name,
-                .min_ns = line_100_stats.min_ns,
-                .avg_ns = line_100_stats.avg(),
-                .max_ns = line_100_stats.max_ns,
-                .total_ns = line_100_stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-            if (bench_utils.matchesBenchFilter(line_10000_name, bench_filter)) try results.append(allocator, .{
-                .name = line_10000_name,
-                .min_ns = line_10000_stats.min_ns,
-                .avg_ns = line_10000_stats.avg(),
-                .max_ns = line_10000_stats.max_ns,
-                .total_ns = line_10000_stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-        }
-    }
-
     return results.toOwnedSlice(allocator);
 }
 

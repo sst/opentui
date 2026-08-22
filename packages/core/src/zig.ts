@@ -42,7 +42,6 @@ import { env, registerEnvVar } from "./lib/env.js"
 import {
   StyledChunkStruct,
   DocumentStyledChunkStruct,
-  AnnotationStyleStruct,
   DocumentRangeInputStruct,
   DocumentRangeStruct,
   DocumentOperationStruct,
@@ -199,6 +198,49 @@ function unpackTextSpliceResult(out: Uint32Array): TextSpliceResult {
     },
     oldExtent: { rows: result.oldExtentRows, columns: result.oldExtentColumns },
     newExtent: { rows: result.newExtentRows, columns: result.newExtentColumns },
+  }
+}
+
+function packDocumentOperations(operations: DocumentOperation[]) {
+  const chunks: DocumentStyledChunk[] = []
+  const ranges: DocumentRangeInput[] = []
+  const packedOperations = DocumentOperationStruct.packList(
+    operations.map((operation) => {
+      const chunkStart = chunks.length
+      const rangeStart = ranges.length
+      chunks.push(...(operation.chunks ?? []))
+      ranges.push(...(operation.ranges ?? []))
+      return {
+        ...operation,
+        kind:
+          operation.kind === "replace"
+            ? 0
+            : operation.kind === "updateStyle"
+              ? 1
+              : operation.kind === "move"
+                ? 2
+                : operation.kind === "remove"
+                  ? 3
+                  : 4,
+        targetMode: operation.targetMode === "before" ? 1 : operation.targetMode === "after" ? 2 : 0,
+        targetId: operation.targetId ?? 0n,
+        anchorId: operation.anchorId ?? 0n,
+        useTarget: operation.targetId === undefined ? 0 : 1,
+        before: operation.kind === "move" ? (operation.before !== false ? 1 : 0) : operation.before ? 1 : 0,
+        chunkStart,
+        chunkCount: operation.chunks?.length ?? 0,
+        rangeStart,
+        rangeCount: operation.ranges?.length ?? 0,
+      }
+    }),
+  )
+  return {
+    packedOperations,
+    packedChunks: chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks),
+    packedRanges: ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges),
+    chunks,
+    ranges,
+    ids: new BigUint64Array(ranges.length),
   }
 }
 export type EditBufferHandle = NativeHandle<"edit_buffer">
@@ -1162,26 +1204,6 @@ function getOpenTUILib(libPath?: string) {
         "ptr",
         "u32",
       ],
-      returns: "u32",
-    },
-    textBufferCreateStyleRange: {
-      args: ["u32", "u32", "u32", "u32", "buffer", "u32", "buffer"],
-      returns: "u32",
-    },
-    textBufferUpdateStyleRange: {
-      args: ["u32", "u64", "u32", "u32"],
-      returns: "u32",
-    },
-    textBufferUpdateStyleRangeStyle: {
-      args: ["u32", "u64", "buffer"],
-      returns: "u32",
-    },
-    textBufferRemoveStyleRange: {
-      args: ["u32", "u64"],
-      returns: "u32",
-    },
-    textBufferClearStyleOwner: {
-      args: ["u32", "u32", "buffer"],
       returns: "u32",
     },
     textBufferGetAnnotationEpoch: {
@@ -2959,18 +2981,6 @@ export interface RenderLib extends AudioEngineLib {
     secondBuffer: TextBufferHandle,
     secondOperations: DocumentOperation[],
   ) => { firstIds: bigint[]; secondIds: bigint[] }
-  textBufferCreateStyleRange: (
-    buffer: TextBufferHandle,
-    owner: number,
-    startByte: number,
-    endByte: number,
-    style: DocumentStyle,
-    priority: number,
-  ) => bigint
-  textBufferUpdateStyleRange: (buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number) => void
-  textBufferUpdateStyleRangeStyle: (buffer: TextBufferHandle, id: bigint, style: DocumentStyle) => void
-  textBufferRemoveStyleRange: (buffer: TextBufferHandle, id: bigint) => boolean
-  textBufferClearStyleOwner: (buffer: TextBufferHandle, owner: number) => number
   textBufferGetAnnotationEpoch: (buffer: TextBufferHandle) => bigint
   textBufferGetContentEpoch: (buffer: TextBufferHandle) => bigint
   textBufferSetDefaultFg: (buffer: TextBufferHandle, fg: RGBA | null) => void
@@ -5246,56 +5256,22 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferApplyDocumentOperations(buffer: TextBufferHandle, operations: DocumentOperation[]): bigint[] {
     if (operations.length === 0) return []
-    const chunks: DocumentStyledChunk[] = []
-    const ranges: DocumentRangeInput[] = []
-    const packedOperations = DocumentOperationStruct.packList(
-      operations.map((operation) => {
-        const chunkStart = chunks.length
-        const rangeStart = ranges.length
-        chunks.push(...(operation.chunks ?? []))
-        ranges.push(...(operation.ranges ?? []))
-        return {
-          ...operation,
-          kind:
-            operation.kind === "replace"
-              ? 0
-              : operation.kind === "updateStyle"
-                ? 1
-                : operation.kind === "move"
-                  ? 2
-                  : operation.kind === "remove"
-                    ? 3
-                    : 4,
-          targetMode: operation.targetMode === "before" ? 1 : operation.targetMode === "after" ? 2 : 0,
-          targetId: operation.targetId ?? 0n,
-          anchorId: operation.anchorId ?? 0n,
-          useTarget: operation.targetId === undefined ? 0 : 1,
-          before: operation.kind === "move" ? (operation.before !== false ? 1 : 0) : operation.before ? 1 : 0,
-          chunkStart,
-          chunkCount: operation.chunks?.length ?? 0,
-          rangeStart,
-          rangeCount: operation.ranges?.length ?? 0,
-        }
-      }),
-    )
-    const packedChunks = chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks)
-    const packedRanges = ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges)
-    const ids = new BigUint64Array(ranges.length)
+    const batch = packDocumentOperations(operations)
     checkTextDocumentStatus(
       this.opentui.symbols.textBufferApplyDocumentOperations(
         buffer,
-        packedOperations,
+        batch.packedOperations,
         operations.length,
-        packedChunks,
-        chunks.length,
-        packedRanges,
-        ranges.length,
-        viewOrNull(ids),
-        ids.length,
+        batch.packedChunks,
+        batch.chunks.length,
+        batch.packedRanges,
+        batch.ranges.length,
+        viewOrNull(batch.ids),
+        batch.ids.length,
       ),
       "applyDocumentOperations",
     )
-    return Array.from(ids)
+    return Array.from(batch.ids)
   }
 
   public textBufferApplyTwoDocumentOperations(
@@ -5304,50 +5280,8 @@ class FFIRenderLib implements RenderLib {
     secondBuffer: TextBufferHandle,
     secondOperations: DocumentOperation[],
   ): { firstIds: bigint[]; secondIds: bigint[] } {
-    const packBatch = (operations: DocumentOperation[]) => {
-      const chunks: DocumentStyledChunk[] = []
-      const ranges: DocumentRangeInput[] = []
-      const packedOperations = DocumentOperationStruct.packList(
-        operations.map((operation) => {
-          const chunkStart = chunks.length
-          const rangeStart = ranges.length
-          chunks.push(...(operation.chunks ?? []))
-          ranges.push(...(operation.ranges ?? []))
-          return {
-            ...operation,
-            kind:
-              operation.kind === "replace"
-                ? 0
-                : operation.kind === "updateStyle"
-                  ? 1
-                  : operation.kind === "move"
-                    ? 2
-                    : operation.kind === "remove"
-                      ? 3
-                      : 4,
-            targetMode: operation.targetMode === "before" ? 1 : operation.targetMode === "after" ? 2 : 0,
-            targetId: operation.targetId ?? 0n,
-            anchorId: operation.anchorId ?? 0n,
-            useTarget: operation.targetId === undefined ? 0 : 1,
-            before: operation.kind === "move" ? (operation.before !== false ? 1 : 0) : operation.before ? 1 : 0,
-            chunkStart,
-            chunkCount: operation.chunks?.length ?? 0,
-            rangeStart,
-            rangeCount: operation.ranges?.length ?? 0,
-          }
-        }),
-      )
-      return {
-        packedOperations,
-        packedChunks: chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks),
-        packedRanges: ranges.length === 0 ? null : DocumentRangeInputStruct.packList(ranges),
-        chunks,
-        ranges,
-        ids: new BigUint64Array(ranges.length),
-      }
-    }
-    const first = packBatch(firstOperations)
-    const second = packBatch(secondOperations)
+    const first = packDocumentOperations(firstOperations)
+    const second = packDocumentOperations(secondOperations)
     checkTextDocumentStatus(
       this.opentui.symbols.textBufferApplyTwoDocumentOperations(
         firstBuffer,
@@ -5372,58 +5306,6 @@ class FFIRenderLib implements RenderLib {
       "applyTwoDocumentOperations",
     )
     return { firstIds: Array.from(first.ids), secondIds: Array.from(second.ids) }
-  }
-
-  public textBufferCreateStyleRange(
-    buffer: TextBufferHandle,
-    owner: number,
-    startByte: number,
-    endByte: number,
-    style: DocumentStyle,
-    priority: number,
-  ): bigint {
-    const packedStyle = new Uint8Array(AnnotationStyleStruct.pack(style))
-    const outId = new BigUint64Array(1)
-    const status = this.opentui.symbols.textBufferCreateStyleRange(
-      buffer,
-      owner,
-      startByte,
-      endByte,
-      packedStyle,
-      priority,
-      outId,
-    )
-    checkTextDocumentStatus(status, "createStyleRange")
-    return outId[0]
-  }
-
-  public textBufferUpdateStyleRange(buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number): void {
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferUpdateStyleRange(buffer, id, startByte, endByte),
-      "updateStyleRange",
-    )
-  }
-
-  public textBufferUpdateStyleRangeStyle(buffer: TextBufferHandle, id: bigint, style: DocumentStyle): void {
-    const packedStyle = new Uint8Array(AnnotationStyleStruct.pack(style))
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferUpdateStyleRangeStyle(buffer, id, packedStyle),
-      "updateStyleRangeStyle",
-    )
-  }
-
-  public textBufferRemoveStyleRange(buffer: TextBufferHandle, id: bigint): boolean {
-    return checkTextDocumentStatus(
-      this.opentui.symbols.textBufferRemoveStyleRange(buffer, id),
-      "removeStyleRange",
-      true,
-    )
-  }
-
-  public textBufferClearStyleOwner(buffer: TextBufferHandle, owner: number): number {
-    const removed = new Uint32Array(1)
-    checkTextDocumentStatus(this.opentui.symbols.textBufferClearStyleOwner(buffer, owner, removed), "clearStyleOwner")
-    return removed[0]
   }
 
   public textBufferGetAnnotationEpoch(buffer: TextBufferHandle): bigint {

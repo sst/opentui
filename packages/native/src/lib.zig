@@ -3168,17 +3168,6 @@ pub const ExternalStyledChunk32 = extern struct {
     link_len: u32,
 };
 
-pub const ExternalAnnotationStyle = extern struct {
-    fg_ptr: ?[*]const u16,
-    bg_ptr: ?[*]const u16,
-    attributes: u32,
-    style_id: u32 = 0,
-    style_kind: u32 = 0,
-    syntax_style_handle: NativeHandle = INVALID_HANDLE,
-    link_ptr: ?[*]const u8,
-    link_len: u32,
-};
-
 pub const ExternalDocumentRangeInput = extern struct {
     id: u64,
     remove: u32,
@@ -3255,9 +3244,6 @@ comptime {
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "style_kind") == 40);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "syntax_style_handle") == 44);
     std.debug.assert(@offsetOf(ExternalStyledChunk32, "link_ptr") == 48);
-    std.debug.assert(@sizeOf(ExternalAnnotationStyle) == 48);
-    std.debug.assert(@offsetOf(ExternalAnnotationStyle, "style_kind") == 24);
-    std.debug.assert(@offsetOf(ExternalAnnotationStyle, "syntax_style_handle") == 28);
     std.debug.assert(@sizeOf(ExternalDocumentRangeInput) == 80);
     std.debug.assert(@offsetOf(ExternalDocumentRangeInput, "style_kind") == 48);
     std.debug.assert(@offsetOf(ExternalDocumentRangeInput, "syntax_style_handle") == 52);
@@ -3322,11 +3308,6 @@ fn validExternalStyledChunk(chunk: ExternalStyledChunk32) bool {
     return (chunk.text_len == 0 or chunk.text_ptr != null) and
         (chunk.link_len == 0 or chunk.link_ptr != null) and
         externalStyleSource(chunk.style_kind, chunk.style_id, chunk.syntax_style_handle, chunk.link_ptr, chunk.link_len) != null;
-}
-
-fn validAnnotationStyle(style: ExternalAnnotationStyle) bool {
-    return (style.link_len == 0 or style.link_ptr != null) and
-        externalStyleSource(style.style_kind, style.style_id, style.syntax_style_handle, style.link_ptr, style.link_len) != null;
 }
 
 fn externalDocumentStyleIsDefault(
@@ -3404,22 +3385,6 @@ fn validExternalDocumentOperation(operation: ExternalDocumentOperation) bool {
         .clear_owner => operation.target_mode == 0 and operation.target_id == 0 and operation.anchor_id == 0 and
             operation.use_target == 0 and operation.before == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
             operation.chunk_count == 0 and operation.range_count == 0 and default_style,
-    };
-}
-
-fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk {
-    const source = externalStyleSource(style.style_kind, style.style_id, style.syntax_style_handle, style.link_ptr, style.link_len).?;
-    return .{
-        .text_ptr = "".ptr,
-        .text_len = 0,
-        .fg_ptr = style.fg_ptr,
-        .bg_ptr = style.bg_ptr,
-        .attributes = style.attributes,
-        .style_id = style.style_id,
-        .style_kind = source.kind,
-        .syntax_style = source.source,
-        .link_ptr = style.link_ptr,
-        .link_len = style.link_len,
     };
 }
 
@@ -3559,14 +3524,11 @@ fn validateDocumentBatch(
         expected_chunk_start != external_chunks.len or expected_range_start != external_ranges.len) return error.InvalidArgument;
 }
 
-fn decodeDocumentBatch(
+fn decodeValidatedDocumentBatch(
     external_operations: []const ExternalDocumentOperation,
     external_chunks: []const ExternalStyledChunk32,
     external_ranges: []const ExternalDocumentRangeInput,
-    out_id_count: u32,
 ) DecodeDocumentBatchError!DecodedDocumentBatch {
-    try validateDocumentBatch(external_operations, external_chunks, external_ranges, out_id_count);
-
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return error.OutOfMemory;
     errdefer globalAllocator.free(chunks);
     for (external_chunks, 0..) |chunk, index| chunks[index] = externalStyledChunk(chunk).?;
@@ -3656,7 +3618,8 @@ export fn textBufferApplyDocumentOperations(
     const external_operations = if (operation_count == 0) &[_]ExternalDocumentOperation{} else operations_ptr.?[0..operation_count];
     const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
     const external_ranges = if (range_count == 0) &[_]ExternalDocumentRangeInput{} else ranges_ptr.?[0..range_count];
-    var batch = decodeDocumentBatch(external_operations, external_chunks, external_ranges, out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    validateDocumentBatch(external_operations, external_chunks, external_ranges, out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    var batch = decodeValidatedDocumentBatch(external_operations, external_chunks, external_ranges) catch |err| return decodeDocumentBatchStatus(err);
     defer batch.deinit();
     var empty_ids: [0]u64 = .{};
     const ids = if (out_id_count == 0) empty_ids[0..] else out_ids.?[0..out_id_count];
@@ -3705,9 +3668,9 @@ export fn textBufferApplyTwoDocumentOperations(
 
     validateDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges, first_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
     validateDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges, second_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
-    var first_batch = decodeDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges, first_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    var first_batch = decodeValidatedDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges) catch |err| return decodeDocumentBatchStatus(err);
     defer first_batch.deinit();
-    var second_batch = decodeDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges, second_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    var second_batch = decodeValidatedDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges) catch |err| return decodeDocumentBatchStatus(err);
     defer second_batch.deinit();
 
     var empty_first_ids: [0]u64 = .{};
@@ -3715,51 +3678,6 @@ export fn textBufferApplyTwoDocumentOperations(
     const first_ids = if (first_out_id_count == 0) empty_first_ids[0..] else first_out_ids.?[0..first_out_id_count];
     const second_ids = if (second_out_id_count == 0) empty_second_ids[0..] else second_out_ids.?[0..second_out_id_count];
     text_buffer.applyTwoDocumentOperations(first, first_batch.operations, first_ids, second, second_batch.operations, second_ids) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(TextDocumentStatus.ok);
-}
-
-export fn textBufferCreateStyleRange(
-    tb_handle: NativeHandle,
-    owner: u32,
-    start_byte: u32,
-    end_byte: u32,
-    style_ptr: ?*const ExternalAnnotationStyle,
-    priority: u32,
-    out_id: ?*u64,
-) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const style = style_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
-    const output = out_id orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
-    if (!validAnnotationStyle(style.*)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    if (priority > std.math.maxInt(u8)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    output.* = object_ptr.createStyleValueRange(owner, start_byte, end_byte, annotationStyleChunk(style.*), @intCast(priority)) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(TextDocumentStatus.ok);
-}
-
-export fn textBufferUpdateStyleRange(tb_handle: NativeHandle, id: u64, start_byte: u32, end_byte: u32) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const found = object_ptr.updateStyleRange(id, start_byte, end_byte) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
-}
-
-export fn textBufferUpdateStyleRangeStyle(tb_handle: NativeHandle, id: u64, style_ptr: ?*const ExternalAnnotationStyle) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const style = style_ptr orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
-    if (!validAnnotationStyle(style.*)) return @intFromEnum(TextDocumentStatus.invalid_argument);
-    const found = object_ptr.updateStyleRangeStyleValue(id, annotationStyleChunk(style.*)) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
-}
-
-export fn textBufferRemoveStyleRange(tb_handle: NativeHandle, id: u64) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const found = object_ptr.removeStyleRange(id) catch |err| return textDocumentErrorStatus(err);
-    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
-}
-
-export fn textBufferClearStyleOwner(tb_handle: NativeHandle, owner: u32, out_removed: ?*u32) u32 {
-    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
-    const output = out_removed orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
-    output.* = object_ptr.clearStyleOwner(owner) catch |err| return textDocumentErrorStatus(err);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
@@ -3904,17 +3822,6 @@ test "text document FFI rejects null pointer length and output combinations" {
         1,
         null,
     ));
-    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferCreateStyleRange(
-        handle,
-        1,
-        0,
-        0,
-        null,
-        1,
-        null,
-    ));
-    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferUpdateStyleRangeStyle(handle, 1, null));
-    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferClearStyleOwner(handle, 1, null));
     try std.testing.expect(textBufferGetLineHighlightsPtr(handle, 0, null) == null);
     textBufferFreeLineHighlights(null, 1);
     textBufferSetStyledText(handle, null, 1);
@@ -3938,23 +3845,6 @@ test "text document FFI rejects null pointer length and output combinations" {
         textBufferSetStyledText(handle, &chunks, 1);
     }
 
-    const invalid_style: ExternalAnnotationStyle = .{
-        .fg_ptr = null,
-        .bg_ptr = null,
-        .attributes = 0,
-        .link_ptr = null,
-        .link_len = 1,
-    };
-    var id: u64 = 0;
-    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferCreateStyleRange(
-        handle,
-        1,
-        0,
-        0,
-        &invalid_style,
-        1,
-        &id,
-    ));
 }
 
 test "text document FFI rejects invalid registered style discriminants and ownership" {

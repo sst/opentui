@@ -221,44 +221,6 @@ export class TextBuffer {
     return { ids: result.firstIds, otherIds: result.secondIds }
   }
 
-  public createStyleRange(
-    owner: number,
-    startByte: number,
-    endByte: number,
-    style: DocumentStyle,
-    priority: number = 1,
-  ): bigint {
-    this.guard()
-    return this.lib.textBufferCreateStyleRange(
-      this.bufferPtr,
-      owner,
-      startByte,
-      endByte,
-      this.withStyleSource(style),
-      priority,
-    )
-  }
-
-  public updateStyleRange(id: bigint, startByte: number, endByte: number): void {
-    this.guard()
-    this.lib.textBufferUpdateStyleRange(this.bufferPtr, id, startByte, endByte)
-  }
-
-  public updateStyleRangeStyle(id: bigint, style: DocumentStyle): void {
-    this.guard()
-    this.lib.textBufferUpdateStyleRangeStyle(this.bufferPtr, id, this.withStyleSource(style))
-  }
-
-  public removeStyleRange(id: bigint): boolean {
-    this.guard()
-    return this.lib.textBufferRemoveStyleRange(this.bufferPtr, id)
-  }
-
-  public clearStyleOwner(owner: number): number {
-    this.guard()
-    return this.lib.textBufferClearStyleOwner(this.bufferPtr, owner)
-  }
-
   public get annotationEpoch(): bigint {
     this.guard()
     return this.lib.textBufferGetAnnotationEpoch(this.bufferPtr)

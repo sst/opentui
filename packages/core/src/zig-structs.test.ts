@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import {
-  AnnotationStyleStruct,
-  DocumentOperationStruct,
-  DocumentRangeInputStruct,
-  DocumentStyledChunkStruct,
-} from "./zig-structs.js"
+import { DocumentOperationStruct, DocumentRangeInputStruct, DocumentStyledChunkStruct } from "./zig-structs.js"
 
 describe("document transaction ABI", () => {
   test("matches native sizes and style discriminator offsets", () => {
@@ -12,10 +7,6 @@ describe("document transaction ABI", () => {
     expect(DocumentStyledChunkStruct.layoutByName.get("styleKind")?.offset).toBe(40)
     expect(DocumentStyledChunkStruct.layoutByName.get("syntaxStyle")?.offset).toBe(44)
     expect(DocumentStyledChunkStruct.layoutByName.get("link")?.offset).toBe(48)
-
-    expect(AnnotationStyleStruct.size).toBe(48)
-    expect(AnnotationStyleStruct.layoutByName.get("styleKind")?.offset).toBe(24)
-    expect(AnnotationStyleStruct.layoutByName.get("syntaxStyle")?.offset).toBe(28)
 
     expect(DocumentRangeInputStruct.size).toBe(80)
     expect(DocumentRangeInputStruct.layoutByName.get("styleKind")?.offset).toBe(48)

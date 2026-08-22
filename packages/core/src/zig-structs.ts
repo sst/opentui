@@ -98,28 +98,6 @@ export const DocumentStyledChunkStruct = defineStruct(
   },
 )
 
-export const AnnotationStyleStruct = defineStruct(
-  [
-    ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
-    ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
-    ["attributes", "u32", { default: 0 }],
-    ["styleId", "u32", { default: 0 }],
-    ["styleKind", "u32", { default: 0 }],
-    ["syntaxStyle", "u32", { default: 0 }],
-    ["link", "char*", { default: "" }],
-    ["link_len", "u32", { lengthOf: "link" }],
-  ],
-  {
-    mapValue: (style: Omit<StyledChunkInput, "text">): Omit<StyledChunkInput, "text"> => ({
-      ...style,
-      styleKind: typeof style.styleId === "number" ? 1 : 0,
-      fg: normalizeColorValue(style.fg ?? null)?.rgba ?? null,
-      bg: normalizeColorValue(style.bg ?? null)?.rgba ?? null,
-      link: typeof style.link === "object" && style.link ? style.link.url : style.link,
-    }),
-  },
-)
-
 export const DocumentRangeInputStruct = defineStruct(
   [
     ["id", "u64", { default: 0n }],

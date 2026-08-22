@@ -89,16 +89,6 @@ describe("TextBuffer", () => {
       expect(result.insertedLength).toBe(5)
       expect(result.newEnd).toBe(6)
 
-      const contentEpoch = buffer.annotationEpoch
-      const id = buffer.createStyleRange(23, 0, 1, { attributes: 2 })
-      expect(typeof id).toBe("bigint")
-      expect(buffer.annotationEpoch).toBeGreaterThan(contentEpoch)
-      buffer.updateStyleRange(id, 1, 2)
-      buffer.updateStyleRangeStyle(id, { attributes: 4 })
-      expect(buffer.removeStyleRange(id)).toBe(true)
-      expect(buffer.removeStyleRange(id)).toBe(false)
-      expect(buffer.clearStyleOwner(17)).toBe(2)
-
       buffer.setSyntaxStyle(null)
       syntaxStyle.destroy()
     })

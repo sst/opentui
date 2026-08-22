@@ -159,6 +159,77 @@ describe("nested TextRenderable", () => {
     expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
   })
 
+  test("publishes only changed manual StyledText leaf styles in one batch", async () => {
+    const text = new TextRenderable(renderer, {
+      content: new StyledText([
+        { __isChunk: true, text: "first" },
+        { __isChunk: true, text: " second" },
+        { __isChunk: true, text: " third" },
+      ]),
+    })
+    renderer.root.add(text)
+    await renderOnce()
+    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
+    const contentEpoch = (text as any).textBuffer.contentEpoch
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      text.content = new StyledText([
+        { __isChunk: true, text: "first", attributes: TextAttributes.BOLD },
+        { __isChunk: true, text: " second" },
+        { __isChunk: true, text: " third" },
+      ])
+      text.content = new StyledText([
+        { __isChunk: true, text: "first", attributes: TextAttributes.UNDERLINE },
+        { __isChunk: true, text: " second" },
+        { __isChunk: true, text: " third", fg: RGBA.fromHex("#00ff00") },
+      ])
+      await renderOnce()
+
+      expect(apply).toHaveBeenCalledTimes(1)
+      const operations = apply.mock.calls[0]![0]
+      expect(operations).toHaveLength(2)
+      expect(operations.map((operation) => operation.kind)).toEqual(["updateStyle", "updateStyle"])
+      expect(operations.map((operation) => operation.targetId)).toEqual([ids[0], ids[2]])
+      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
+      expect((text as any).textBuffer.contentEpoch).toBe(contentEpoch)
+      expect(findSpan(captureSpans().lines[0]!.spans, "first")!.attributes & TextAttributes.UNDERLINE).toBeTruthy()
+      expect(findSpan(captureSpans().lines[0]!.spans, "third")!.fg.toInts()).toEqual(RGBA.fromHex("#00ff00").toInts())
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
+  test("falls back atomically for combined manual text and style changes", async () => {
+    const text = new TextRenderable(renderer, {
+      content: new StyledText([
+        { __isChunk: true, text: "alpha" },
+        { __isChunk: true, text: " beta" },
+      ]),
+    })
+    renderer.root.add(text)
+    await renderOnce()
+    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
+    const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
+    try {
+      text.content = new StyledText([
+        { __isChunk: true, text: "ALPHA", attributes: TextAttributes.BOLD },
+        { __isChunk: true, text: " beta" },
+      ])
+      await renderOnce()
+
+      expect(apply).toHaveBeenCalledTimes(1)
+      const operations = apply.mock.calls[0]![0]
+      expect(operations.map((operation) => operation.kind)).toEqual(["replace"])
+      expect(operations[0]).toMatchObject({ targetId: (text as any)._nativeRangeId })
+      expect(operations[0]!.before).toBeUndefined()
+      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
+      expect(text.plainText).toBe("ALPHA beta")
+      expect(findSpan(captureSpans().lines[0]!.spans, "ALPHA")!.attributes & TextAttributes.BOLD).toBeTruthy()
+    } finally {
+      apply.mockRestore()
+    }
+  })
+
   test("reorders children within one document", async () => {
     const root = new TextRenderable(renderer, {})
     const first = new TextRenderable(renderer, { content: "A" })

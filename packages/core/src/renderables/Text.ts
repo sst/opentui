@@ -41,6 +41,7 @@ type TextLeaf = {
   text: string
   style: TextStyle | null
   rangeId: bigint | null
+  styleDirty?: boolean
 }
 
 type NativeRangeSnapshot = {
@@ -194,6 +195,7 @@ export class TextRenderable extends TextBufferRenderable {
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
   private _manualTextOnly = false
+  private _manualStyleDiffOnly = false
   private _publicTextOnly = false
   private _manualStyledSyntaxStyle: SyntaxStyle | null = null
   private _lastCommittedLineInfoFrame: number = -1
@@ -1227,7 +1229,10 @@ export class TextRenderable extends TextBufferRenderable {
     const styles = new Map<string | number, TextStyle>()
     const previousLeaves = this._manualStyledText === null ? null : this._leaves
     const nextLeaves = new Array<TextLeaf>(content.chunks.length)
-    let textOnly = previousLeaves !== null && previousLeaves.length === content.chunks.length
+    const stableLeaves = previousLeaves !== null && previousLeaves.length === content.chunks.length
+    let unchangedText = stableLeaves
+    let changedTextPayloadEligible = true
+    let hasStyleChanges = false
     let syntaxStyle: SyntaxStyle | null = null
     for (const chunk of content.chunks) {
       if ((chunk.styleId === undefined) !== (chunk.styleSource === undefined)) {
@@ -1251,12 +1256,16 @@ export class TextRenderable extends TextBufferRenderable {
       const style = this.internStyledLeafStyle(chunk, styles)
       const leaf = previousLeaves?.[index]
       if (leaf) {
-        textOnly &&=
-          leaf.rangeId !== null &&
-          leaf.text.length === chunk.text.length &&
-          /^[\x20-\x7e]+$/.test(leaf.text) &&
-          /^[\x20-\x7e]+$/.test(chunk.text) &&
-          textStylesEqual(leaf.style!, style)
+        const styleChanged = !textStylesEqual(leaf.style!, style)
+        if (leaf.text !== chunk.text) {
+          changedTextPayloadEligible &&=
+            leaf.text.length === chunk.text.length &&
+            /^[\x20-\x7e]+$/.test(leaf.text) &&
+            /^[\x20-\x7e]+$/.test(chunk.text)
+        }
+        unchangedText &&= leaf.rangeId !== null && leaf.text === chunk.text
+        leaf.styleDirty ||= styleChanged
+        hasStyleChanges ||= styleChanged
         leaf.text = chunk.text
         leaf.style = style
         nextLeaves[index] = leaf
@@ -1271,6 +1280,15 @@ export class TextRenderable extends TextBufferRenderable {
         if (owner && id !== null) owner._pendingRemovedRangeIds.add(id)
       }
     }
+    const payloadOnly =
+      stableLeaves &&
+      !unchangedText &&
+      !hasStyleChanges &&
+      changedTextPayloadEligible &&
+      previousLeaves.every((leaf, index) => {
+        const text = content.chunks[index]!.text
+        return leaf!.rangeId !== null && /^[\x20-\x7e]+$/.test(text)
+      })
 
     const hadPublicContent = this._children.length > 0 || this._pendingChildOrder !== null
     if (hadPublicContent) textDocumentMutationDepth += 1
@@ -1278,11 +1296,13 @@ export class TextRenderable extends TextBufferRenderable {
       if (hadPublicContent) this.children = []
       this._leaves = nextLeaves
       this._manualStyledText = content
-      this._manualTextOnly = textOnly
+      this._manualTextOnly = payloadOnly
       this._manualStyledSyntaxStyle = syntaxStyle
-      this._textDocumentPending = true
+      this._textDocumentPending = !unchangedText
+      if (hasStyleChanges && unchangedText) this.invalidateManualStyleDiff(requestRender)
       if (requestRender) {
-        this.invalidateTextDocument()
+        if (!unchangedText) this.invalidateTextDocument()
+        else if (!hasStyleChanges) this.requestRender()
         if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
       }
     } finally {
@@ -1476,7 +1496,7 @@ export class TextRenderable extends TextBufferRenderable {
       replacementPlans.length === 1 &&
       this._pendingNativeMoves.length === 0 &&
       this._pendingRemovedRangeIds.size === 0 &&
-      this._pendingStyleRoots.size === 0
+      [...this._pendingStyleRoots].every((root) => root._manualStyleDiffOnly)
     for (const plan of replacementPlans)
       this.collectNativeSubtreeOperation(plan.roots, operations, assignments, payloadOnlyBatch)
     for (const move of this._pendingNativeMoves) {
@@ -1506,7 +1526,7 @@ export class TextRenderable extends TextBufferRenderable {
     }
     if (this._pendingStyleRoots.size > 0) {
       for (const root of this._pendingStyleRoots)
-        root.collectNativeStyleOperations(this, root.resolvedParentStyle(), operations)
+        root.collectNativeStyleOperations(this, root.resolvedParentStyle(), operations, root._manualStyleDiffOnly)
     }
     const syntaxStyles = new Set<SyntaxStyle>()
     this.collectRegisteredSyntaxStyles(syntaxStyles)
@@ -1523,6 +1543,9 @@ export class TextRenderable extends TextBufferRenderable {
   private commitPreparedTextDocumentFlush(prepared: PreparedTextDocumentFlush, ids: bigint[]): void {
     const { assignments, contentChanged, layoutChanged } = prepared
     ids.forEach((id, index) => assignments[index]!(id))
+    for (const root of new Set([...this._pendingDocumentRoots, ...this._pendingStyleRoots])) {
+      root.clearCommittedManualStyleFlags()
+    }
     this._pendingDocumentRoots.clear()
     this._pendingStyleRoots.clear()
     this._pendingNativeMoves.splice(0)
@@ -1727,6 +1750,7 @@ export class TextRenderable extends TextBufferRenderable {
       this.requestRender()
       return
     }
+    this._manualStyleDiffOnly = false
     owner._pendingStyleRoots.add(this)
     owner._textDocumentPending = true
     if (!owner.parent) owner.flushTextDocument()
@@ -1737,11 +1761,12 @@ export class TextRenderable extends TextBufferRenderable {
     owner: TextRenderable,
     parentStyle: TextStyle,
     operations: DocumentOperation[],
+    changedManualLeavesOnly: boolean = false,
   ): void {
     const style = this.mergeStyles(parentStyle)
     if (this._manualStyledText !== null) {
       for (const leaf of this._leaves) {
-        if (leaf!.rangeId === null) continue
+        if (leaf!.rangeId === null || (changedManualLeavesOnly && !leaf!.styleDirty)) continue
         operations.push({
           kind: "updateStyle",
           targetId: leaf!.rangeId,
@@ -1774,6 +1799,23 @@ export class TextRenderable extends TextBufferRenderable {
       }
     }
     for (const child of this.getTextChildren()) child.collectNativeStyleOperations(owner, style, operations)
+  }
+
+  private invalidateManualStyleDiff(requestRender: boolean): void {
+    const owner = this.getDocumentOwner()
+    if (owner) {
+      this._manualStyleDiffOnly = true
+      owner._pendingStyleRoots.add(this)
+      owner._textDocumentPending = true
+      if (!owner.parent) owner.flushTextDocument()
+    }
+    if (requestRender) this.requestRender()
+  }
+
+  private clearCommittedManualStyleFlags(): void {
+    this._manualStyleDiffOnly = false
+    for (const leaf of this._leaves) if (leaf) leaf.styleDirty = false
+    for (const child of this.getTextChildren()) child.clearCommittedManualStyleFlags()
   }
 
   private collectRegisteredSyntaxStyles(styles: Set<SyntaxStyle>): void {

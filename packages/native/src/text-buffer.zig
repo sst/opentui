@@ -222,10 +222,6 @@ pub const UnifiedTextBuffer = struct {
     highlight_batch_depth: u32,
     dirty_span_lines: std.AutoHashMap(usize, void),
 
-    styled_text_mem_id: ?u8,
-    styled_buffer: ?[]u8,
-    styled_capacity: usize,
-
     // Immutable blocks owned by committed Rope roots. A block is never replaced
     // while a root can reference it; unreachable blocks are swept after commit.
     owned_backing_ids: [255]bool,
@@ -408,9 +404,6 @@ pub const UnifiedTextBuffer = struct {
             .internal_highlight_count = 0,
             .highlight_batch_depth = 0,
             .dirty_span_lines = dirty_span_lines,
-            .styled_text_mem_id = null,
-            .styled_buffer = null,
-            .styled_capacity = 0,
             .owned_backing_ids = [_]bool{false} ** 255,
             .storage_compaction_requested = false,
             .edit_storage_guard_depth = 0,
@@ -457,11 +450,6 @@ pub const UnifiedTextBuffer = struct {
 
         // Free dirty span lines hashmap
         self.dirty_span_lines.deinit();
-
-        // Free persistent styled text buffer
-        if (self.styled_buffer) |buf| {
-            self.global_allocator.free(buf);
-        }
 
         if (self.link_tracker) |*tracker| {
             tracker.deinit();
@@ -1153,14 +1141,6 @@ pub const UnifiedTextBuffer = struct {
         self.dirty_span_lines.clearRetainingCapacity();
         self.highlight_batch_depth = 0;
 
-        // Free persistent styled text buffer
-        if (self.styled_buffer) |buf| {
-            self.global_allocator.free(buf);
-        }
-        self.styled_buffer = null;
-        self.styled_text_mem_id = null;
-        self.styled_capacity = 0;
-
         self.owned_backing_ids = [_]bool{false} ** 255;
         self.storage_compaction_requested = false;
         self.edit_storage_guard_depth = 0;
@@ -1467,10 +1447,6 @@ pub const UnifiedTextBuffer = struct {
         self.annotation_epoch +%= 1;
         self.dirty_span_lines.clearRetainingCapacity();
         self.highlight_batch_depth = 0;
-        if (self.styled_buffer) |buffer| self.global_allocator.free(buffer);
-        self.styled_buffer = null;
-        self.styled_text_mem_id = null;
-        self.styled_capacity = 0;
         self.mem_registry.clear();
         self.owned_backing_ids = [_]bool{false} ** 255;
         self.storage_compaction_requested = false;
@@ -2496,18 +2472,6 @@ pub const UnifiedTextBuffer = struct {
         return self.createStyleRange(owner, start_byte, end_byte, style_id, priority);
     }
 
-    pub fn updateStyleRange(self: *Self, id: u64, start_byte: u32, end_byte: u32) TextBufferError!bool {
-        if (start_byte > end_byte or end_byte > self.getByteSize()) return TextBufferError.InvalidByteOffset;
-        _ = try self.normalizedByteOffsetToLocation(start_byte);
-        _ = try self.normalizedByteOffsetToLocation(end_byte);
-        const changed = self.annotations.updateRange(id, .{
-            .start_byte = start_byte,
-            .end_byte = end_byte,
-        }) catch return TextBufferError.InvalidDimensions;
-        if (changed) self.markPaintDirty();
-        return changed;
-    }
-
     pub fn getDocumentRange(self: *Self, id: u64) ?DocumentRange {
         const annotation = self.annotations.get(id) orelse return null;
         if (annotation.payload.kind_flags & document_range_kind == 0 or annotation.mark != .range) return null;
@@ -2534,25 +2498,6 @@ pub const UnifiedTextBuffer = struct {
         defer self.global_allocator.free(text);
         if (self.copyNormalizedByteRange(range.start_byte, range.end_byte, text) != length) return TextBufferError.InvalidByteOffset;
         return self.measureText(text);
-    }
-
-    pub fn updateStyleRangeStyle(self: *Self, id: u64, style_id: u32) TextBufferError!bool {
-        const changed = self.annotations.updateStyle(id, style_id) catch return TextBufferError.InvalidDimensions;
-        if (changed) self.markPaintDirty();
-        return changed;
-    }
-
-    pub fn updateStyleRangeStyleValue(self: *Self, id: u64, style_value: StyledChunk) TextBufferError!bool {
-        const old = self.annotations.get(id) orelse return false;
-        const style_id = try self.acquireInternalStyle(style_value);
-        errdefer self.releaseInternalStyle(style_id);
-        const changed = try self.updateStyleRangeStyle(id, style_id);
-        if (changed) {
-            self.releaseInternalStyle(old.payload.style_id);
-        } else {
-            self.releaseInternalStyle(style_id);
-        }
-        return changed;
     }
 
     pub fn removeStyleRange(self: *Self, id: u64) TextBufferError!bool {
