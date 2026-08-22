@@ -56,8 +56,12 @@ pub const SelectionRange = struct {
     end: u32,
 };
 
-/// Ghostty-style boundary codepoints, without NUL. A run of these is a word.
-/// Space and tab are included so a double-click on whitespace selects the run.
+/// Ghostty-style boundaries for double-click selection. NUL is omitted because
+/// OpenTUI text buffers do not use it for unwritten terminal cells.
+/// Keep this policy separate from `utf8.findWrapBreaks`: wrap and editor motion
+/// split on `/`, `-`, and CJK/ASCII transitions, but selection does not.
+/// Selection groups consecutive graphemes by this class, so space and tab runs
+/// are selectable instead of mapping to an adjacent word.
 const default_word_boundaries = [_]u21{
     ' ',
     '\t',

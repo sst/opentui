@@ -2901,10 +2901,10 @@ export fn editorViewGetSelection(view_handle: NativeHandle) u64 {
     return object_ptr.text_buffer_view.packSelectionInfo();
 }
 
-export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool, behavior: u8) bool {
+export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: u8, followCursor: u8, behavior: u8) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
-    object_ptr.setSelectionFollowCursor(followCursor);
-    return object_ptr.setLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor, selectionBehavior(behavior));
+    object_ptr.setSelectionFollowCursor(followCursor == 1);
+    return object_ptr.setLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor == 1, selectionBehavior(behavior));
 }
 
 export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
@@ -2912,10 +2912,10 @@ export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor
     object_ptr.updateSelection(end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
-export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool, behavior: u8) bool {
+export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: u8, followCursor: u8, behavior: u8) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
-    object_ptr.setSelectionFollowCursor(followCursor);
-    return object_ptr.updateLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor, selectionBehavior(behavior));
+    object_ptr.setSelectionFollowCursor(followCursor == 1);
+    return object_ptr.updateLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor == 1, selectionBehavior(behavior));
 }
 
 export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {

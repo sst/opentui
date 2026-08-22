@@ -1428,7 +1428,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool", "u8"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8", "u8", "u8"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -1436,7 +1436,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool", "u8"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8", "u8", "u8"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
