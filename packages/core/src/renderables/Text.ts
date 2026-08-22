@@ -623,6 +623,29 @@ export class TextRenderable extends TextBufferRenderable {
   public add(obj: TextRenderable | StyledText | string, index?: number): number {
     if (typeof obj === "string" || isTextRenderable(obj)) {
       let insertIndex = Math.max(0, Math.min(index ?? this._children.length, this._children.length))
+      if (
+        isTextRenderable(obj) &&
+        obj.parent === this &&
+        this._children.includes(obj) &&
+        this._children.every(isTextRenderable) &&
+        this.getDocumentOwner()
+      ) {
+        const currentIndex = this._children.indexOf(obj)
+        if (currentIndex < insertIndex) insertIndex -= 1
+        if (currentIndex === insertIndex) return insertIndex
+        const previous = this._children as TextRenderable[]
+        const next = [...previous]
+        next.splice(currentIndex, 1)
+        next.splice(insertIndex, 0, obj)
+        this._children = next
+        this._rawTextIdentities.splice(0, this._rawTextIdentities.length, ...next.map(() => null))
+        this._manualStyledText = null
+        const owner = this.getDocumentOwner()!
+        owner.queueNativeChildMoves(previous, next)
+        owner.yogaNode.markDirty()
+        this.requestRender()
+        return insertIndex
+      }
       const nextChildren = [...this._children]
       if (isTextRenderable(obj) && obj.parent === this) {
         const currentIndex = nextChildren.indexOf(obj)
