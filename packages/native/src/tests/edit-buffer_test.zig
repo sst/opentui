@@ -1582,6 +1582,59 @@ test "EditBuffer - replaceText allows undo" {
     try std.testing.expectEqualStrings("Initial", buffer[0..len]);
 }
 
+test "EditBuffer - configured history has exact depth and trims redo at runtime" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    try std.testing.expectEqual(@as(?usize, EditBuffer.default_max_undo_depth), eb.getMaxUndoDepth());
+    eb.setMaxUndoDepth(3);
+    for ("abcde") |char| try eb.insertText(&.{char});
+
+    var text: [16]u8 = undefined;
+    for (0..3) |_| _ = try eb.undo();
+    try std.testing.expect(!eb.canUndo());
+    var len = eb.getText(&text);
+    try std.testing.expectEqualStrings("ab", text[0..len]);
+
+    eb.setMaxUndoDepth(1);
+    _ = try eb.redo();
+    try std.testing.expect(!eb.canRedo());
+    len = eb.getText(&text);
+    try std.testing.expectEqualStrings("abc", text[0..len]);
+
+    eb.setMaxUndoDepth(0);
+    try eb.insertText("x");
+    try std.testing.expect(!eb.canUndo());
+    eb.setMaxUndoDepth(null);
+    try std.testing.expectEqual(@as(?usize, null), eb.getMaxUndoDepth());
+}
+
+test "EditBuffer - default bounded history keeps sustained same-length edits bounded" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    var line = [_]u8{'a'} ** 1024;
+    try eb.setText(&line);
+    for (0..500) |index| {
+        line[index % line.len] = if (line[index % line.len] == 'a') 'b' else 'a';
+        try eb.replaceText(&line);
+    }
+    try std.testing.expectEqual(EditBuffer.default_max_undo_depth, eb.tb.rope().undoDepth());
+    try std.testing.expect(eb.tb.getBackingStoreCapacity() <= 4 * EditBuffer.default_max_undo_depth * line.len);
+
+    eb.clearHistory();
+    try std.testing.expect(eb.tb.getBackingStoreBytes() <= line.len);
+    try std.testing.expect(!eb.canUndo());
+}
+
 test "EditBuffer - setText clears all history" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

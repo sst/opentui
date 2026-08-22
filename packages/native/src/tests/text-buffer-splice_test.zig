@@ -772,7 +772,7 @@ test "document transactions compact Rope generations while preserving stable ran
     try std.testing.expectEqual(tracked.allocations, tracked.deallocations);
 }
 
-test "Rope compaction defers for EditBuffer history then reclaims after history clear" {
+test "Rope compaction rebuilds retained history and reclaims backing storage after clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -787,11 +787,13 @@ test "Rope compaction defers for EditBuffer history then reclaims after history 
         try tb.rope().store_undo(replacement);
         _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), replacement);
     }
-    try std.testing.expect(tb.getRopeTransactionArenaCount() > TextBuffer.rope_compaction_arena_limit);
+    try std.testing.expect(tb.getRopeTransactionArenaCount() < TextBuffer.rope_compaction_arena_limit);
     _ = try tb.rope().undo("current");
     try expectText(tb, "34");
 
     tb.rope().clear_history();
+    tb.requestStorageCompaction();
+    try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), "compacted");
     try expectText(tb, "compacted");
     try std.testing.expect(tb.getRopeTransactionArenaCount() <= 2);

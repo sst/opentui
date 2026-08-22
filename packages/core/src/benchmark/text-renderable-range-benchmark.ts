@@ -15,8 +15,16 @@ if (!Number.isInteger(rounds) || rounds < 1) throw new Error("TEXT_RANGE_ROUNDS 
 type BufferMemory = {
   peakArenaCount: number
   peakArenaBytes: number
+  peakTotalArenaBytes: number
+  peakBackingStoreBytes: number
+  peakBackingStoreCapacity: number
+  peakHistoryRetainedBytes: number
   endLiveArenaCount: number
   endLiveArenaBytes: number
+  endTotalArenaBytes: number
+  endBackingStoreBytes: number
+  endBackingStoreCapacity: number
+  endHistoryRetainedBytes: number
 }
 type LiveMemory = {
   range: BufferMemory
@@ -37,8 +45,15 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
     (root as unknown as { textBuffer: { getDebugMetrics(): TextBufferDebugMetrics } }).textBuffer
   const start = lib.getAllocatorStats()
   let peakActiveGrowth = 0
-  let rangePeak = { transactionArenaCount: 0, transactionArenaBytes: 0 }
-  let replacementPeak = { transactionArenaCount: 0, transactionArenaBytes: 0 }
+  let rangePeak = {
+    transactionArenaCount: 0,
+    transactionArenaBytes: 0,
+    arenaBytes: 0,
+    backingStoreBytes: 0,
+    backingStoreCapacity: 0,
+    historyRetainedBytes: 0,
+  }
+  let replacementPeak = { ...rangePeak }
   const sample = () => {
     const allocations = lib.getAllocatorStats()
     const range = textBuffer(rangeRoot).getDebugMetrics()
@@ -52,6 +67,20 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
       replacementPeak.transactionArenaCount = replacement.transactionArenaCount
     if (replacement.transactionArenaBytes > replacementPeak.transactionArenaBytes)
       replacementPeak.transactionArenaBytes = replacement.transactionArenaBytes
+    rangePeak.arenaBytes = Math.max(rangePeak.arenaBytes, range.arenaBytes)
+    rangePeak.backingStoreBytes = Math.max(rangePeak.backingStoreBytes, range.backingStoreBytes)
+    rangePeak.backingStoreCapacity = Math.max(rangePeak.backingStoreCapacity, range.backingStoreCapacity)
+    rangePeak.historyRetainedBytes = Math.max(rangePeak.historyRetainedBytes, range.historyRetainedBytes)
+    replacementPeak.arenaBytes = Math.max(replacementPeak.arenaBytes, replacement.arenaBytes)
+    replacementPeak.backingStoreBytes = Math.max(replacementPeak.backingStoreBytes, replacement.backingStoreBytes)
+    replacementPeak.backingStoreCapacity = Math.max(
+      replacementPeak.backingStoreCapacity,
+      replacement.backingStoreCapacity,
+    )
+    replacementPeak.historyRetainedBytes = Math.max(
+      replacementPeak.historyRetainedBytes,
+      replacement.historyRetainedBytes,
+    )
   }
   sample()
   return {
@@ -67,14 +96,30 @@ function trackLiveMemory(rangeRoot: TextRenderable, replacementRoot: TextRendera
           range: {
             peakArenaCount: rangePeak.transactionArenaCount,
             peakArenaBytes: rangePeak.transactionArenaBytes,
+            peakTotalArenaBytes: rangePeak.arenaBytes,
+            peakBackingStoreBytes: rangePeak.backingStoreBytes,
+            peakBackingStoreCapacity: rangePeak.backingStoreCapacity,
+            peakHistoryRetainedBytes: rangePeak.historyRetainedBytes,
             endLiveArenaCount: rangeEnd.transactionArenaCount,
             endLiveArenaBytes: rangeEnd.transactionArenaBytes,
+            endTotalArenaBytes: rangeEnd.arenaBytes,
+            endBackingStoreBytes: rangeEnd.backingStoreBytes,
+            endBackingStoreCapacity: rangeEnd.backingStoreCapacity,
+            endHistoryRetainedBytes: rangeEnd.historyRetainedBytes,
           },
           replacement: {
             peakArenaCount: replacementPeak.transactionArenaCount,
             peakArenaBytes: replacementPeak.transactionArenaBytes,
+            peakTotalArenaBytes: replacementPeak.arenaBytes,
+            peakBackingStoreBytes: replacementPeak.backingStoreBytes,
+            peakBackingStoreCapacity: replacementPeak.backingStoreCapacity,
+            peakHistoryRetainedBytes: replacementPeak.historyRetainedBytes,
             endLiveArenaCount: replacementEnd.transactionArenaCount,
             endLiveArenaBytes: replacementEnd.transactionArenaBytes,
+            endTotalArenaBytes: replacementEnd.arenaBytes,
+            endBackingStoreBytes: replacementEnd.backingStoreBytes,
+            endBackingStoreCapacity: replacementEnd.backingStoreCapacity,
+            endHistoryRetainedBytes: replacementEnd.historyRetainedBytes,
           },
           activeAllocations: {
             start: start.activeAllocations,
@@ -289,6 +334,18 @@ const summarize = (samples: Sample[]) => ({
     rangePeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.range.peakArenaBytes)),
     replacementPeakArenaCount: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaCount)),
     replacementPeakArenaBytes: Math.max(...samples.map((sample) => sample.memory.replacement.peakArenaBytes)),
+    rangePeakBackingStoreBytes: Math.max(...samples.map((sample) => sample.memory.range.peakBackingStoreBytes)),
+    rangePeakBackingStoreCapacity: Math.max(...samples.map((sample) => sample.memory.range.peakBackingStoreCapacity)),
+    rangePeakHistoryRetainedBytes: Math.max(...samples.map((sample) => sample.memory.range.peakHistoryRetainedBytes)),
+    replacementPeakBackingStoreBytes: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peakBackingStoreBytes),
+    ),
+    replacementPeakBackingStoreCapacity: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peakBackingStoreCapacity),
+    ),
+    replacementPeakHistoryRetainedBytes: Math.max(
+      ...samples.map((sample) => sample.memory.replacement.peakHistoryRetainedBytes),
+    ),
     peakActiveAllocationGrowth: Math.max(...samples.map((sample) => sample.memory.activeAllocations.peakGrowth)),
   },
 })

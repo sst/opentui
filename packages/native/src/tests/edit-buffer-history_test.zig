@@ -61,7 +61,20 @@ fn exerciseFailedHistoryEdit(operation: FailedEdit, fail_offset: ?usize) !usize 
 
     const edit = runEdit(eb, operation);
     if (fail_offset != null) {
-        try std.testing.expectError(error.OutOfMemory, edit);
+        var failed = false;
+        edit catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            failed = true;
+        };
+        if (!failed) {
+            // setText publishes before best-effort post-clear compaction. Failure
+            // of that cleanup allocation must not roll back the semantic edit.
+            try std.testing.expectEqual(FailedEdit.set, operation);
+            try expectText(eb, "replacement");
+            try std.testing.expect(!eb.canUndo());
+            try std.testing.expect(!eb.canRedo());
+            return failing.alloc_index - before_alloc;
+        }
         try expectText(eb, "abc");
         try std.testing.expectEqual(before_cursor, eb.getPrimaryCursor());
         try std.testing.expect(eb.getTextBuffer().rope().root == before_root);

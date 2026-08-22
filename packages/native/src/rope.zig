@@ -559,6 +559,99 @@ pub fn Rope(comptime T: type) type {
             return self;
         }
 
+        pub const CloneItemFn = *const fn (ctx: ?*anyopaque, item: *const T) anyerror!T;
+
+        /// Clone every root retained by the Rope, including undo/redo branches.
+        /// Node identity and sharing are preserved within the clone.
+        pub fn cloneRetained(
+            self: *const Self,
+            allocator: Allocator,
+            temporary_allocator: Allocator,
+            ctx: ?*anyopaque,
+            clone_item: CloneItemFn,
+        ) !Self {
+            var nodes = std.AutoHashMap(*const Node, *const Node).init(temporary_allocator);
+            defer nodes.deinit();
+            var histories = std.AutoHashMap(*const UndoNode, *UndoNode).init(temporary_allocator);
+            defer histories.deinit();
+
+            const Cloner = struct {
+                allocator: Allocator,
+                nodes: *std.AutoHashMap(*const Node, *const Node),
+                histories: *std.AutoHashMap(*const UndoNode, *UndoNode),
+                ctx: ?*anyopaque,
+                clone_item: CloneItemFn,
+
+                fn node(cloner: *@This(), source: *const Node) !*const Node {
+                    if (cloner.nodes.get(source)) |existing| return existing;
+                    const target = try cloner.allocator.create(Node);
+                    try cloner.nodes.put(source, target);
+                    target.* = switch (source.*) {
+                        .leaf => |leaf| .{ .leaf = .{
+                            .data = try cloner.clone_item(cloner.ctx, &leaf.data),
+                            .is_sentinel = leaf.is_sentinel,
+                        } },
+                        .branch => |tree_branch| .{ .branch = .{
+                            .left = try cloner.node(tree_branch.left),
+                            .right = try cloner.node(tree_branch.right),
+                            .left_metrics = tree_branch.left_metrics,
+                            .total_metrics = tree_branch.total_metrics,
+                        } },
+                    };
+                    return target;
+                }
+
+                fn branch(cloner: *@This(), source: ?*UndoBranch) anyerror!?*UndoBranch {
+                    const value = source orelse return null;
+                    const target = try cloner.allocator.create(UndoBranch);
+                    target.* = .{
+                        .redo = try cloner.history(value.redo),
+                        .next = try cloner.branch(value.next),
+                    };
+                    return target;
+                }
+
+                fn history(cloner: *@This(), source: *const UndoNode) anyerror!*UndoNode {
+                    if (cloner.histories.get(source)) |existing| return existing;
+                    const target = try cloner.allocator.create(UndoNode);
+                    try cloner.histories.put(source, target);
+                    target.* = .{
+                        .root = try cloner.node(source.root),
+                        .next = null,
+                        .branches = null,
+                        .meta = try cloner.allocator.dupe(u8, source.meta),
+                    };
+                    target.next = if (source.next) |next| try cloner.history(next) else null;
+                    target.branches = try cloner.branch(source.branches);
+                    return target;
+                }
+
+                fn optionalHistory(cloner: *@This(), source: ?*UndoNode) !?*UndoNode {
+                    return if (source) |value| try cloner.history(value) else null;
+                }
+            };
+
+            var cloner: Cloner = .{
+                .allocator = allocator,
+                .nodes = &nodes,
+                .histories = &histories,
+                .ctx = ctx,
+                .clone_item = clone_item,
+            };
+            return .{
+                .root = try cloner.node(self.root),
+                .allocator = allocator,
+                .empty_leaf = try cloner.node(self.empty_leaf),
+                .undo_history = try cloner.optionalHistory(self.undo_history),
+                .redo_history = try cloner.optionalHistory(self.redo_history),
+                .curr_history = try cloner.optionalHistory(self.curr_history),
+                .config = self.config,
+                .undo_depth = self.undo_depth,
+                .version = self.version,
+                .marker_cache = MarkerCache.init(allocator),
+            };
+        }
+
         pub fn from_item(allocator: Allocator, data: T) !Self {
             return from_itemWithConfig(allocator, data, .{});
         }
@@ -1209,15 +1302,10 @@ pub fn Rope(comptime T: type) type {
                 self.allocator.free(@constCast(undo_node.meta));
                 self.allocator.destroy(undo_node);
             }
-            const branch = if (self.redo_history) |redo_node| blk: {
-                const value = try self.allocator.create(UndoBranch);
-                value.* = .{ .redo = redo_node, .next = null };
-                break :blk value;
-            } else null;
             return .{
                 .owner = self,
                 .undo_node = undo_node,
-                .branch = branch,
+                .branch = null,
                 .expected_undo = self.undo_history,
                 .expected_redo = self.redo_history,
                 .expected_current = self.curr_history,
@@ -1231,11 +1319,7 @@ pub fn Rope(comptime T: type) type {
             std.debug.assert(self.curr_history == prepared.expected_current);
             self.push_undo(prepared.undo_node);
             self.curr_history = null;
-            if (prepared.branch) |branch| {
-                branch.next = prepared.undo_node.branches;
-                prepared.undo_node.branches = branch;
-                self.redo_history = null;
-            }
+            self.redo_history = null;
             prepared.committed = true;
         }
 
@@ -1271,23 +1355,64 @@ pub fn Rope(comptime T: type) type {
         }
 
         fn trimUndoHistory(self: *Self, max_depth: usize) void {
+            if (max_depth == 0) {
+                self.undo_history = null;
+                self.undo_depth = 0;
+                return;
+            }
             var current = self.undo_history;
             var depth_count: usize = 0;
-            var prev: ?*UndoNode = null;
 
             while (current) |node| {
                 depth_count += 1;
-                if (depth_count >= max_depth) {
-                    // Cut off the rest of the history
-                    if (prev) |p| {
-                        p.next = null;
-                    }
+                if (depth_count == max_depth) {
+                    node.next = null;
                     self.undo_depth = max_depth;
                     return;
                 }
-                prev = node;
                 current = node.next;
             }
+            self.undo_depth = depth_count;
+        }
+
+        pub fn setMaxUndoDepth(self: *Self, max_depth: ?usize) void {
+            self.config.max_undo_depth = max_depth;
+            if (max_depth) |depth| {
+                if (depth == 0) {
+                    self.clear_history();
+                } else {
+                    if (self.undo_depth > depth) self.trimUndoHistory(depth);
+                    self.trimRedoHistory(depth);
+                }
+            }
+        }
+
+        fn trimRedoHistory(self: *Self, max_depth: usize) void {
+            var current = self.redo_history;
+            var depth: usize = 0;
+            while (current) |node| {
+                depth += 1;
+                if (depth == max_depth) {
+                    node.next = null;
+                    return;
+                }
+                current = node.next;
+            }
+        }
+
+        pub fn undoDepth(self: *const Self) usize {
+            return self.undo_depth;
+        }
+
+        pub fn redoDepth(self: *const Self) usize {
+            var current = self.redo_history;
+            var depth: usize = 0;
+            while (current) |node| : (current = node.next) depth += 1;
+            return depth;
+        }
+
+        pub fn getMaxUndoDepth(self: *const Self) ?usize {
+            return self.config.max_undo_depth;
         }
 
         fn push_redo(self: *Self, undo_node: *UndoNode) void {

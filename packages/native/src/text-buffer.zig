@@ -231,6 +231,7 @@ pub const UnifiedTextBuffer = struct {
     splice_mem_id: ?u8,
     splice_buffer: ?[]u8,
     splice_len: usize,
+    storage_compaction_requested: bool,
 
     tab_width: u8,
 
@@ -378,6 +379,7 @@ pub const UnifiedTextBuffer = struct {
             .splice_mem_id = null,
             .splice_buffer = null,
             .splice_len = 0,
+            .storage_compaction_requested = false,
             .tab_width = 2,
             .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
             .byte_splitter = .{
@@ -1138,6 +1140,7 @@ pub const UnifiedTextBuffer = struct {
         self.splice_mem_id = null;
         self.splice_buffer = null;
         self.splice_len = 0;
+        self.storage_compaction_requested = false;
 
         self.releaseRopeTransactionArenas();
 
@@ -1447,6 +1450,7 @@ pub const UnifiedTextBuffer = struct {
         self.splice_mem_id = null;
         self.splice_buffer = null;
         self.splice_len = 0;
+        self.storage_compaction_requested = false;
         self.releaseRopeTransactionArenas();
         self.markAllViewsDirty();
     }
@@ -1504,26 +1508,43 @@ pub const UnifiedTextBuffer = struct {
         return total;
     }
 
+    pub fn getBackingStoreBytes(self: *const Self) usize {
+        return self.splice_len;
+    }
+
+    pub fn getBackingStoreCapacity(self: *const Self) usize {
+        return if (self.splice_buffer) |buffer| buffer.len else 0;
+    }
+
+    const CompactStorageContext = struct {
+        owner: *const Self,
+        mem_id: u8,
+        storage: std.ArrayListUnmanaged(u8) = .empty,
+
+        fn cloneSegment(ctx_ptr: ?*anyopaque, source: *const Segment) anyerror!Segment {
+            const ctx = @as(*CompactStorageContext, @ptrCast(@alignCast(ctx_ptr.?)));
+            return switch (source.*) {
+                .text => |chunk| blk: {
+                    const bytes = chunk.getBytes(&ctx.owner.mem_registry);
+                    const start = ctx.storage.items.len;
+                    try ctx.storage.appendSlice(ctx.owner.global_allocator, bytes);
+                    const end = ctx.storage.items.len;
+                    if (end > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+                    break :blk .{ .text = ctx.owner.createChunkFromBytes(
+                        ctx.mem_id,
+                        @intCast(start),
+                        @intCast(end),
+                        bytes,
+                    ) };
+                },
+                else => source.*,
+            };
+        }
+    };
+
     fn compactRopeTransactionArenasIfNeeded(self: *Self) TextBufferError!void {
         const arena_bytes = self.getRopeTransactionArenaBytes();
-        if (self.rope_transaction_arenas.items.len < rope_compaction_arena_limit and arena_bytes < rope_compaction_byte_limit) return;
-
-        // EditBuffer owns Rope/annotation history as a pair. Those checkpoints
-        // retain old roots, so defer compaction until the caller clears history.
-        // Document transactions never create checkpoints themselves.
-        if (self._rope.has_history()) return;
-
-        const segments = self._rope.to_array(self.global_allocator) catch return TextBufferError.OutOfMemory;
-        defer self.global_allocator.free(segments);
-        for (segments) |*segment| switch (segment.*) {
-            .text => |*chunk| {
-                // Lazy caches use the buffer arena and are identity-independent.
-                // Recompute them from the unchanged memory registry on demand.
-                chunk.graphemes = null;
-                chunk.wrap_offsets = null;
-            },
-            else => {},
-        };
+        if (!self.storage_compaction_requested and self.rope_transaction_arenas.items.len < rope_compaction_arena_limit and arena_bytes < rope_compaction_byte_limit) return;
 
         const compacted_arena = self.global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
         var compacted_owned = true;
@@ -1531,17 +1552,52 @@ pub const UnifiedTextBuffer = struct {
         compacted_arena.* = std.heap.ArenaAllocator.init(self.global_allocator);
         defer if (compacted_owned) compacted_arena.deinit();
 
-        var compacted = UnifiedRope.initWithConfig(compacted_arena.allocator(), self._rope.config) catch return TextBufferError.OutOfMemory;
-        compacted.setSegments(segments) catch return TextBufferError.OutOfMemory;
-        compacted.version = self._rope.version;
+        const mem_id = self.splice_mem_id orelse self.mem_registry.nextId() orelse return TextBufferError.OutOfMemory;
+        var storage_context: CompactStorageContext = .{ .owner = self, .mem_id = mem_id };
+        defer storage_context.storage.deinit(self.global_allocator);
+        const compacted = self._rope.cloneRetained(
+            compacted_arena.allocator(),
+            self.global_allocator,
+            @ptrCast(&storage_context),
+            CompactStorageContext.cloneSegment,
+        ) catch |err| switch (err) {
+            error.InvalidDimensions => return TextBufferError.InvalidDimensions,
+            else => return TextBufferError.OutOfMemory,
+        };
+        const compacted_storage = storage_context.storage.toOwnedSlice(self.global_allocator) catch return TextBufferError.OutOfMemory;
+        var storage_owned = true;
+        defer if (storage_owned) self.global_allocator.free(compacted_storage);
+        if (self.splice_mem_id == null) self.mem_registry.prepareRegister() catch return TextBufferError.OutOfMemory;
+        try self.rope_transaction_arenas.ensureUnusedCapacity(self.global_allocator, 1);
 
         // Views cache pointers to Rope-owned TextChunks. Invalidate them even
         // when a later semantic preparation fails; epochs remain unchanged.
         self.markViewCachesDirty();
+        if (self.splice_mem_id) |id| {
+            self.mem_registry.replace(id, compacted_storage, true) catch unreachable;
+        } else {
+            const registered = self.mem_registry.register(compacted_storage, true) catch unreachable;
+            std.debug.assert(registered == mem_id);
+            self.splice_mem_id = registered;
+        }
+        self.splice_buffer = compacted_storage;
+        self.splice_len = compacted_storage.len;
+        storage_owned = false;
+
         self.releaseRopeTransactionArenas();
         self._rope = compacted;
         self.rope_transaction_arenas.appendAssumeCapacity(compacted_arena);
+        self.storage_compaction_requested = false;
         compacted_owned = false;
+    }
+
+    pub fn requestStorageCompaction(self: *Self) void {
+        self.storage_compaction_requested = true;
+        self.compactRopeTransactionArenasIfNeeded() catch {};
+    }
+
+    pub fn prepareEditStorage(self: *Self) TextBufferError!void {
+        try self.compactRopeTransactionArenasIfNeeded();
     }
 
     fn releaseRopeTransactionArenas(self: *Self) void {
@@ -2470,7 +2526,7 @@ pub const UnifiedTextBuffer = struct {
         owner: *Self,
         annotations: TextAnnotations,
         transaction_arena: *std.heap.ArenaAllocator,
-        rope_root: UnifiedRope.PreparedRoot,
+        rope: UnifiedRope,
         staged_storage: ?[]u8,
         staged_mem_id: ?u8,
         storage_used: usize,
@@ -2513,7 +2569,7 @@ pub const UnifiedTextBuffer = struct {
                     owner.splice_len = self.storage_used;
                     self.staged_storage = null;
                 }
-                owner._rope.commitPreparedRoot(self.rope_root);
+                owner._rope = self.rope;
                 owner.rope_transaction_arenas.appendAssumeCapacity(self.transaction_arena);
             } else {
                 self.transaction_arena.deinit();
@@ -2615,37 +2671,49 @@ pub const UnifiedTextBuffer = struct {
         var candidate_registry = self.mem_registry.cloneBorrowed(self.global_allocator) catch return TextBufferError.OutOfMemory;
         defer candidate_registry.deinit();
 
-        const existing_storage_len = if (self.splice_buffer != null) self.splice_len else 0;
         const maximum_document_bytes = std.math.add(usize, self.getByteSize(), replacement_bytes) catch return TextBufferError.InvalidDimensions;
         const context_bytes = std.math.mul(usize, maximum_document_bytes, content_operation_count) catch return TextBufferError.InvalidDimensions;
-        const required_storage = std.math.add(usize, existing_storage_len, std.math.add(usize, replacement_bytes, context_bytes) catch return TextBufferError.InvalidDimensions) catch return TextBufferError.InvalidDimensions;
-        if (required_storage > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
-        const storage_capacity = @max(@as(usize, 4096), required_storage);
-        const staged_storage = if (content_operation_count != 0)
-            self.global_allocator.alloc(u8, storage_capacity) catch return TextBufferError.OutOfMemory
-        else
-            null;
-        var storage_owned = staged_storage != null;
-        defer if (storage_owned) self.global_allocator.free(staged_storage.?);
-        if (staged_storage) |storage| {
-            if (existing_storage_len != 0) @memcpy(storage[0..existing_storage_len], self.splice_buffer.?[0..existing_storage_len]);
-        }
-        var storage_used = existing_storage_len;
         const staged_mem_id: ?u8 = if (content_operation_count == 0)
             null
-        else if (self.splice_mem_id) |id| blk: {
-            candidate_registry.replace(id, staged_storage.?, false) catch return TextBufferError.InvalidMemId;
-            break :blk id;
-        } else blk: {
-            const id = candidate_registry.register(staged_storage.?, false) catch return TextBufferError.OutOfMemory;
-            break :blk id;
-        };
+        else self.splice_mem_id orelse candidate_registry.nextId() orelse return TextBufferError.OutOfMemory;
         if (content_operation_count != 0 and self.splice_mem_id == null) self.mem_registry.prepareRegister() catch return TextBufferError.OutOfMemory;
 
         var candidate_buffer = self.*;
         candidate_buffer.mem_registry = candidate_registry;
-        candidate_buffer._rope = self._rope;
-        candidate_buffer._rope.allocator = transaction_arena.allocator();
+        var staged_storage: ?[]u8 = null;
+        var storage_owned = false;
+        defer if (storage_owned) self.global_allocator.free(staged_storage.?);
+        var storage_used: usize = 0;
+        if (content_operation_count != 0) {
+            var storage_context: CompactStorageContext = .{ .owner = self, .mem_id = staged_mem_id.? };
+            defer storage_context.storage.deinit(self.global_allocator);
+            candidate_buffer._rope = self._rope.cloneRetained(
+                transaction_arena.allocator(),
+                self.global_allocator,
+                @ptrCast(&storage_context),
+                CompactStorageContext.cloneSegment,
+            ) catch |err| switch (err) {
+                error.InvalidDimensions => return TextBufferError.InvalidDimensions,
+                else => return TextBufferError.OutOfMemory,
+            };
+            storage_used = storage_context.storage.items.len;
+            const additional_storage = std.math.add(usize, replacement_bytes, context_bytes) catch return TextBufferError.InvalidDimensions;
+            const required_storage = std.math.add(usize, storage_used, additional_storage) catch return TextBufferError.InvalidDimensions;
+            if (required_storage > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+            staged_storage = self.global_allocator.alloc(u8, @max(@as(usize, 4096), required_storage)) catch return TextBufferError.OutOfMemory;
+            storage_owned = true;
+            @memcpy(staged_storage.?[0..storage_used], storage_context.storage.items);
+            if (self.splice_mem_id) |id| {
+                candidate_buffer.mem_registry.replace(id, staged_storage.?, false) catch return TextBufferError.InvalidMemId;
+            } else {
+                const id = candidate_buffer.mem_registry.register(staged_storage.?, false) catch return TextBufferError.OutOfMemory;
+                std.debug.assert(id == staged_mem_id.?);
+            }
+            candidate_registry = candidate_buffer.mem_registry;
+        } else {
+            candidate_buffer._rope = self._rope;
+            candidate_buffer._rope.allocator = transaction_arena.allocator();
+        }
         candidate_buffer.byte_splitter.ctx = &candidate_buffer;
         candidate_buffer.segment_splitter.ctx = &candidate_buffer;
 
@@ -2955,13 +3023,6 @@ pub const UnifiedTextBuffer = struct {
         }
         var style_switch_releases: usize = 0;
         if (next_syntax_style != self.syntax_style) {
-            var final_annotations = candidate_annotations.iterator();
-            while (final_annotations.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-                if (annotation.payload.style_id == 0 or annotation.payload.style_id >= internal_style_base) continue;
-                if (self.annotations.get(annotation.id())) |current| {
-                    if (current.payload.style_id == annotation.payload.style_id) return TextBufferError.InvalidDimensions;
-                }
-            }
             for (self.internal_style_slots.items) |slot| style_switch_releases += @intFromBool(slot.resolved_syntax_style != null and slot.link_id != 0);
         }
         const prepared_link_releases = std.math.add(usize, released_styles.items.len, style_switch_releases) catch return TextBufferError.InvalidDimensions;
@@ -2984,7 +3045,7 @@ pub const UnifiedTextBuffer = struct {
             .owner = self,
             .annotations = candidate_annotations,
             .transaction_arena = transaction_arena,
-            .rope_root = .{ .root = candidate_buffer._rope.root },
+            .rope = candidate_buffer._rope,
             .staged_storage = staged_storage,
             .staged_mem_id = staged_mem_id,
             .storage_used = storage_used,
@@ -3264,13 +3325,10 @@ pub const UnifiedTextBuffer = struct {
         errdefer candidate_arena.deinit();
         var candidate_rope = UnifiedRope.init(candidate_arena.allocator()) catch return TextBufferError.OutOfMemory;
         candidate_rope.setSegments(segments) catch return TextBufferError.OutOfMemory;
-        const old_arena = self.arena;
-        self.arena = candidate_arena;
-        self.allocator = candidate_arena.allocator();
+        try self.rope_transaction_arenas.ensureUnusedCapacity(self.global_allocator, 1);
         self._rope = candidate_rope;
         self.releaseRopeTransactionArenas();
-        old_arena.deinit();
-        self.global_allocator.destroy(old_arena);
+        self.rope_transaction_arenas.appendAssumeCapacity(candidate_arena);
     }
 
     /// Load text from a file path (relative to cwd)

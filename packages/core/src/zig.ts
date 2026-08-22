@@ -148,6 +148,10 @@ export type DocumentRange = {
 export type TextBufferDebugMetrics = {
   transactionArenaCount: number
   transactionArenaBytes: number
+  arenaBytes: number
+  backingStoreBytes: number
+  backingStoreCapacity: number
+  historyRetainedBytes: number
 }
 
 export type DocumentOperation = DocumentStyle & {
@@ -1550,6 +1554,14 @@ function getOpenTUILib(libPath?: string) {
     editBufferClearHistory: {
       args: ["u32"],
       returns: "void",
+    },
+    editBufferSetMaxUndoDepth: {
+      args: ["u32", "u32"],
+      returns: "bool",
+    },
+    editBufferGetMaxUndoDepth: {
+      args: ["u32"],
+      returns: "u32",
     },
     editBufferClear: {
       args: ["u32"],
@@ -3108,6 +3120,8 @@ export interface RenderLib extends AudioEngineLib {
   editBufferCanUndo: (buffer: EditBufferHandle) => boolean
   editBufferCanRedo: (buffer: EditBufferHandle) => boolean
   editBufferClearHistory: (buffer: EditBufferHandle) => void
+  editBufferSetMaxUndoDepth: (buffer: EditBufferHandle, maxDepth: number | null) => void
+  editBufferGetMaxUndoDepth: (buffer: EditBufferHandle) => number | null
   editBufferClear: (buffer: EditBufferHandle) => void
   editBufferGetNextWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
@@ -5091,13 +5105,17 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferGetDebugMetrics(buffer: Pointer): TextBufferDebugMetrics {
-    const metrics = new BigUint64Array(2)
+    const metrics = new BigUint64Array(6)
     if (!this.opentui.symbols.textBufferGetDebugMetrics(buffer, metrics)) {
       throw new Error("Failed to read TextBuffer debug metrics")
     }
     return {
       transactionArenaCount: toNumber(metrics[0]),
       transactionArenaBytes: toSafeByteCount(metrics[1], "TextBuffer transaction arena bytes"),
+      arenaBytes: toSafeByteCount(metrics[2], "TextBuffer arena bytes"),
+      backingStoreBytes: toSafeByteCount(metrics[3], "TextBuffer backing-store bytes"),
+      backingStoreCapacity: toSafeByteCount(metrics[4], "TextBuffer backing-store capacity"),
+      historyRetainedBytes: toSafeByteCount(metrics[5], "TextBuffer history-retained bytes"),
     }
   }
 
@@ -6139,6 +6157,20 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferClearHistory(buffer: Pointer): void {
     this.opentui.symbols.editBufferClearHistory(buffer)
+  }
+
+  public editBufferSetMaxUndoDepth(buffer: Pointer, maxDepth: number | null): void {
+    if (maxDepth !== null && (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth >= 0xffffffff)) {
+      throw new RangeError("maxUndoDepth must be a non-negative u32 or null")
+    }
+    if (!this.opentui.symbols.editBufferSetMaxUndoDepth(buffer, maxDepth ?? 0xffffffff)) {
+      throw new Error("Failed to set EditBuffer max undo depth")
+    }
+  }
+
+  public editBufferGetMaxUndoDepth(buffer: Pointer): number | null {
+    const depth = this.opentui.symbols.editBufferGetMaxUndoDepth(buffer)
+    return depth === 0xffffffff ? null : depth
   }
 
   public editBufferClear(buffer: Pointer): void {

@@ -1271,6 +1271,33 @@ describe("EditBuffer History Management", () => {
   })
 
   describe("replaceText with history", () => {
+    it("uses the documented bounded default and supports runtime limits", () => {
+      expect(buffer.maxUndoDepth).toBe(EditBuffer.DEFAULT_MAX_UNDO_DEPTH)
+      buffer.setMaxUndoDepth(3)
+      for (const value of ["1", "2", "3", "4", "5"]) buffer.replaceText(value)
+      expect([buffer.undo(), buffer.undo(), buffer.undo()]).toHaveLength(3)
+      expect(buffer.getText()).toBe("2")
+      expect(buffer.undo()).toBeNull()
+
+      buffer.setMaxUndoDepth(0)
+      buffer.replaceText("zero")
+      expect(buffer.canUndo()).toBe(false)
+      buffer.setMaxUndoDepth(null)
+      expect(buffer.maxUndoDepth).toBeNull()
+    })
+
+    it("does not exhaust registry IDs during sustained replacements", () => {
+      for (let index = 0; index < 300; index++) buffer.replaceText(`value-${index.toString().padStart(3, "0")}`)
+      expect(buffer.getText()).toBe("value-299")
+      expect(buffer.canUndo()).toBe(true)
+      const retained = buffer.getDebugMetrics()
+      expect(retained.backingStoreCapacity).toBeLessThan(64 * 1024)
+      expect(retained.arenaBytes).toBeGreaterThanOrEqual(retained.transactionArenaBytes)
+      buffer.clearHistory()
+      const cleared = buffer.getDebugMetrics()
+      expect(cleared.backingStoreBytes).toBeLessThanOrEqual("value-299".length)
+    })
+
     it("should create undo history when using replaceText", () => {
       buffer.replaceText("Initial text")
       expect(buffer.canUndo()).toBe(true)

@@ -89,56 +89,12 @@ const PreparedEditHistory = struct {
     }
 };
 
-const AddBuffer = struct {
-    mem_id: u8,
-    ptr: [*]u8,
-    len: usize,
-    cap: usize,
-    allocator: Allocator,
-
-    fn init(allocator: Allocator, text_buffer: *UnifiedTextBuffer, initial_cap: usize) !AddBuffer {
-        const mem = try allocator.alloc(u8, initial_cap);
-        const mem_id = try text_buffer.registerMemBuffer(mem, true);
-
-        return .{
-            .mem_id = mem_id,
-            .ptr = mem.ptr,
-            .len = 0,
-            .cap = mem.len,
-            .allocator = allocator,
-        };
-    }
-
-    fn ensureCapacity(self: *AddBuffer, text_buffer: *UnifiedTextBuffer, need: usize) !void {
-        if (self.len + need <= self.cap) return;
-
-        // TODO: Create a new buffer, register the new buffer and use the new mem_id for subsequent inserts
-        const new_cap = @max(self.cap * 2, self.len + need);
-        const new_mem = try self.allocator.alloc(u8, new_cap);
-        const new_mem_id = try text_buffer.registerMemBuffer(new_mem, true);
-        self.mem_id = new_mem_id;
-        self.ptr = new_mem.ptr;
-        self.len = 0;
-        self.cap = new_mem.len;
-    }
-
-    fn append(self: *AddBuffer, bytes: []const u8) struct { mem_id: u8, start: u32, end: u32 } {
-        std.debug.assert(self.len + bytes.len <= self.cap);
-        const start: u32 = @intCast(self.len);
-
-        const dest_slice = self.ptr[0..self.cap];
-        @memcpy(dest_slice[self.len .. self.len + bytes.len], bytes);
-
-        self.len += bytes.len;
-        const end: u32 = @intCast(self.len);
-        return .{ .mem_id = self.mem_id, .start = start, .end = end };
-    }
-};
-
 pub const EditBuffer = struct {
+    /// Matches the long-standing Rope history stress convention while keeping
+    /// product buffers bounded. Unlimited history remains an explicit opt-in.
+    pub const default_max_undo_depth: usize = 100;
     id: u16,
     tb: *UnifiedTextBuffer,
-    add_buffer: AddBuffer,
     cursors: std.ArrayListUnmanaged(Cursor),
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
@@ -158,9 +114,7 @@ pub const EditBuffer = struct {
 
         const text_buffer = try UnifiedTextBuffer.init(allocator, pool, link_pool, width_method);
         errdefer text_buffer.deinit();
-
-        const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);
-        errdefer {}
+        text_buffer.rope().setMaxUndoDepth(default_max_undo_depth);
 
         var cursors: std.ArrayListUnmanaged(Cursor) = .empty;
         errdefer cursors.deinit(allocator);
@@ -173,7 +127,6 @@ pub const EditBuffer = struct {
         self.* = .{
             .id = buffer_id,
             .tb = text_buffer,
-            .add_buffer = add_buffer,
             .cursors = cursors,
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
@@ -189,7 +142,6 @@ pub const EditBuffer = struct {
         const allocator = self.allocator;
         defer allocator.destroy(self);
 
-        // Registry owns all AddBuffer memory, don't free it manually
         self.events.deinit();
         self.clearAnnotationHistory(&self.annotation_undo);
         self.clearAnnotationHistory(&self.annotation_redo);
@@ -251,10 +203,6 @@ pub const EditBuffer = struct {
     pub fn setCursorByOffset(self: *EditBuffer, offset: u32) !void {
         const coords = iter_mod.offsetToCoords(self.tb.rope(), offset) orelse iter_mod.Coords{ .row = 0, .col = 0 };
         try self.setCursor(coords.row, coords.col);
-    }
-
-    fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
-        try self.add_buffer.ensureCapacity(self.tb, need);
     }
 
     fn preparePrimaryCursor(self: *EditBuffer) !void {
@@ -461,22 +409,20 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("cursor-changed");
     }
 
-    /// Set text and completely reset the buffer state (clears history, resets add_buffer)
+    /// Set text and completely reset the buffer state.
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
         try self.preparePrimaryCursor();
         _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
         self.clearHistory();
-        self.add_buffer.len = 0;
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
     }
 
-    /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
+    /// Set text from memory ID and completely reset the buffer state.
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
         try self.preparePrimaryCursor();
         try self.tb.setTextFromMemId(mem_id);
         self.clearHistory();
-        self.add_buffer.len = 0;
         try self.setCursor(0, 0);
 
         self.emitNativeEvent("content-changed");
@@ -593,6 +539,7 @@ pub const EditBuffer = struct {
     }
 
     fn prepareAutoStoreUndo(self: *EditBuffer) !PreparedEditHistory {
+        try self.tb.prepareEditStorage();
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
         try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
@@ -607,6 +554,7 @@ pub const EditBuffer = struct {
         self.tb.rope().commit_store_undo(&prepared.rope);
         self.annotation_undo.appendAssumeCapacity(prepared.annotations);
         self.clearAnnotationHistory(&self.annotation_redo);
+        self.trimAnnotationHistory(&self.annotation_undo, self.tb.rope().undoDepth());
         prepared.committed = true;
     }
 
@@ -644,6 +592,7 @@ pub const EditBuffer = struct {
         const next_meta = try self.tb.rope().redo();
         const next_annotations = self.annotation_redo.pop().?;
         self.annotation_undo.appendAssumeCapacity(current_annotations);
+        self.trimAnnotationHistory(&self.annotation_undo, self.tb.rope().undoDepth());
         self.tb.restoreAnnotationCheckpoint(next_annotations);
 
         const restored = try self.restoreCursorFromMeta(next_meta);
@@ -672,11 +621,30 @@ pub const EditBuffer = struct {
         self.tb.rope().clear_history();
         self.clearAnnotationHistory(&self.annotation_undo);
         self.clearAnnotationHistory(&self.annotation_redo);
+        self.tb.requestStorageCompaction();
+    }
+
+    pub fn setMaxUndoDepth(self: *EditBuffer, max_depth: ?usize) void {
+        self.tb.rope().setMaxUndoDepth(max_depth);
+        self.trimAnnotationHistory(&self.annotation_undo, self.tb.rope().undoDepth());
+        self.trimAnnotationHistory(&self.annotation_redo, self.tb.rope().redoDepth());
+        self.tb.requestStorageCompaction();
+    }
+
+    pub fn getMaxUndoDepth(self: *const EditBuffer) ?usize {
+        return self.tb.rope().getMaxUndoDepth();
     }
 
     fn clearAnnotationHistory(self: *EditBuffer, history: *std.ArrayListUnmanaged(TextAnnotations)) void {
         for (history.items) |*checkpoint| self.tb.releaseAnnotationCheckpoint(checkpoint);
         history.clearRetainingCapacity();
+    }
+
+    fn trimAnnotationHistory(self: *EditBuffer, history: *std.ArrayListUnmanaged(TextAnnotations), retained: usize) void {
+        const removed = history.items.len - @min(history.items.len, retained);
+        for (history.items[0..removed]) |*checkpoint| self.tb.releaseAnnotationCheckpoint(checkpoint);
+        if (removed != 0) std.mem.copyForwards(TextAnnotations, history.items[0..], history.items[removed..]);
+        history.shrinkRetainingCapacity(history.items.len - removed);
     }
 
     pub fn clear(self: *EditBuffer) !void {

@@ -2128,6 +2128,10 @@ export fn textBufferGetDebugMetrics(tb_handle: NativeHandle, out_metrics: ?*Exte
     output.* = .{
         .rope_transaction_arena_count = @intCast(object_ptr.getRopeTransactionArenaCount()),
         .rope_transaction_arena_bytes = @intCast(object_ptr.getRopeTransactionArenaBytes()),
+        .arena_bytes = @intCast(object_ptr.getArenaAllocatedBytes()),
+        .backing_store_bytes = @intCast(object_ptr.getBackingStoreBytes()),
+        .backing_store_capacity = @intCast(object_ptr.getBackingStoreCapacity()),
+        .history_retained_bytes = @intCast(object_ptr.getBackingStoreBytes() -| object_ptr.getByteSize()),
     };
     return true;
 }
@@ -2750,6 +2754,17 @@ export fn editBufferClearHistory(edit_handle: NativeHandle) void {
     object_ptr.clearHistory();
 }
 
+export fn editBufferSetMaxUndoDepth(edit_handle: NativeHandle, max_depth: u32) bool {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return false;
+    object_ptr.setMaxUndoDepth(if (max_depth == std.math.maxInt(u32)) null else max_depth);
+    return true;
+}
+
+export fn editBufferGetMaxUndoDepth(edit_handle: NativeHandle) u32 {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    return if (object_ptr.getMaxUndoDepth()) |depth| @intCast(depth) else std.math.maxInt(u32);
+}
+
 export fn editBufferClear(edit_handle: NativeHandle) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     object_ptr.clear() catch {};
@@ -3228,6 +3243,10 @@ pub const ExternalTextSpliceResult = extern struct {
 pub const ExternalTextBufferDebugMetrics = extern struct {
     rope_transaction_arena_count: u64,
     rope_transaction_arena_bytes: u64,
+    arena_bytes: u64,
+    backing_store_bytes: u64,
+    backing_store_capacity: u64,
+    history_retained_bytes: u64,
 };
 
 comptime {
@@ -3245,7 +3264,7 @@ comptime {
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "style_kind") == 88);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "syntax_style_handle") == 92);
     std.debug.assert(@offsetOf(ExternalDocumentOperation, "link_ptr") == 96);
-    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 16);
+    std.debug.assert(@sizeOf(ExternalTextBufferDebugMetrics) == 48);
 }
 
 const TextDocumentStatus = enum(u32) {
@@ -3369,7 +3388,8 @@ fn validExternalDocumentOperation(operation: ExternalDocumentOperation) bool {
     return switch (kind) {
         .replace => operation.target_mode <= 2 and operation.before == 0 and default_style and
             (operation.use_target != 0 or (operation.target_id == 0 and operation.anchor_id == 0 and operation.target_mode == 0)) and
-            (operation.anchor_id == 0 or (operation.use_target != 0 and operation.target_mode == 0)),
+            (operation.anchor_id == 0 or (operation.use_target != 0 and operation.target_mode == 0)) and
+            (operation.use_target == 0 or (operation.start_byte == 0 and operation.end_byte == 0)),
         .update_style => operation.target_mode == 0 and operation.target_id != 0 and operation.anchor_id == 0 and
             operation.use_target != 0 and operation.before == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
             operation.chunk_count == 0 and operation.range_count == 0 and
@@ -3585,12 +3605,12 @@ const DecodedDocumentBatch = struct {
 
 const DecodeDocumentBatchError = error{ InvalidArgument, OutOfMemory };
 
-fn decodeDocumentBatch(
+fn validateDocumentBatch(
     external_operations: []const ExternalDocumentOperation,
     external_chunks: []const ExternalStyledChunk32,
     external_ranges: []const ExternalDocumentRangeInput,
     out_id_count: u32,
-) DecodeDocumentBatchError!DecodedDocumentBatch {
+) DecodeDocumentBatchError!void {
     for (external_chunks) |chunk| if (!validExternalStyledChunk(chunk)) return error.InvalidArgument;
     for (external_ranges) |range| if (!validExternalDocumentRange(range)) return error.InvalidArgument;
     var expected_ids: usize = 0;
@@ -3620,6 +3640,15 @@ fn decodeDocumentBatch(
     }
     if (expected_ids != out_id_count or external_operations.len == 0 or
         expected_chunk_start != external_chunks.len or expected_range_start != external_ranges.len) return error.InvalidArgument;
+}
+
+fn decodeDocumentBatch(
+    external_operations: []const ExternalDocumentOperation,
+    external_chunks: []const ExternalStyledChunk32,
+    external_ranges: []const ExternalDocumentRangeInput,
+    out_id_count: u32,
+) DecodeDocumentBatchError!DecodedDocumentBatch {
+    try validateDocumentBatch(external_operations, external_chunks, external_ranges, out_id_count);
 
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return error.OutOfMemory;
     errdefer globalAllocator.free(chunks);
@@ -3757,6 +3786,8 @@ export fn textBufferApplyTwoDocumentOperations(
     const second_external_chunks = if (second_chunk_count == 0) &[_]ExternalStyledChunk32{} else second_chunks_ptr.?[0..second_chunk_count];
     const second_external_ranges = if (second_range_count == 0) &[_]ExternalDocumentRangeInput{} else second_ranges_ptr.?[0..second_range_count];
 
+    validateDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges, first_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
+    validateDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges, second_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
     var first_batch = decodeDocumentBatch(first_external_operations, first_external_chunks, first_external_ranges, first_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
     defer first_batch.deinit();
     var second_batch = decodeDocumentBatch(second_external_operations, second_external_chunks, second_external_ranges, second_out_id_count) catch |err| return decodeDocumentBatchStatus(err);
@@ -4387,6 +4418,16 @@ test "document descriptor tags reject every forbidden field" {
     var replace_target_without_tag = replace;
     replace_target_without_tag.target_id = 1;
     try std.testing.expect(!validExternalDocumentOperation(replace_target_without_tag));
+    var targeted_replace = default_operation;
+    targeted_replace.kind = @intFromEnum(text_buffer.DocumentOperationKind.replace);
+    targeted_replace.target_id = 1;
+    targeted_replace.use_target = 1;
+    try std.testing.expect(validExternalDocumentOperation(targeted_replace));
+    inline for (.{ "start_byte", "end_byte" }) |field| {
+        var invalid = targeted_replace;
+        @field(invalid, field) = 1;
+        try std.testing.expect(!validExternalDocumentOperation(invalid));
+    }
 
     const default_range: ExternalDocumentRangeInput = .{
         .id = 0,

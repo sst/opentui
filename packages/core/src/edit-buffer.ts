@@ -4,6 +4,7 @@ import {
   type LogicalCursor,
   type RenderLib,
   type TextBufferHandle,
+  type TextBufferDebugMetrics,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import { RGBA } from "./lib/RGBA.js"
@@ -17,6 +18,8 @@ export type { LogicalCursor }
  * incremental editing, and grapheme-aware operations.
  */
 export class EditBuffer extends EventEmitter {
+  /** Product default. Pass null to setMaxUndoDepth only for explicit unlimited history. */
+  public static readonly DEFAULT_MAX_UNDO_DEPTH = 100
   private static registry = new Map<number, EditBuffer>()
   private static nativeEventsSubscribed = false
 
@@ -25,7 +28,6 @@ export class EditBuffer extends EventEmitter {
   private textBufferPtr: TextBufferHandle
   public readonly id: number
   private _destroyed: boolean = false
-  private _textBytes: Uint8Array[] = []
   private _singleTextBytes: Uint8Array | null = null
   private _singleTextMemId: number | null = null
   private _syntaxStyle?: SyntaxStyle
@@ -111,9 +113,7 @@ export class EditBuffer extends EventEmitter {
   public replaceText(text: string): void {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
-    this._textBytes.push(textBytes)
-    const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
-    this.lib.editBufferReplaceTextFromMem(this.bufferPtr, memId)
+    this.lib.editBufferReplaceText(this.bufferPtr, textBytes)
   }
 
   /**
@@ -338,6 +338,21 @@ export class EditBuffer extends EventEmitter {
   public clearHistory(): void {
     this.guard()
     this.lib.editBufferClearHistory(this.bufferPtr)
+  }
+
+  public setMaxUndoDepth(maxDepth: number | null): void {
+    this.guard()
+    this.lib.editBufferSetMaxUndoDepth(this.bufferPtr, maxDepth)
+  }
+
+  public get maxUndoDepth(): number | null {
+    this.guard()
+    return this.lib.editBufferGetMaxUndoDepth(this.bufferPtr)
+  }
+
+  public getDebugMetrics(): TextBufferDebugMetrics {
+    this.guard()
+    return this.lib.textBufferGetDebugMetrics(this.textBufferPtr)
   }
 
   public setDefaultFg(fg: RGBA | null): void {
