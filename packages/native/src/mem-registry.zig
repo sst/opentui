@@ -111,6 +111,23 @@ pub const MemRegistry = struct {
         self.free_slots.appendAssumeCapacity(id);
     }
 
+    pub fn prepareUnregister(self: *MemRegistry, id: u8) MemRegistryError!void {
+        if (id >= self.buffers.items.len or !self.buffers.items[id].active) return MemRegistryError.InvalidMemId;
+        try self.free_slots.ensureUnusedCapacity(self.allocator, 1);
+    }
+
+    pub fn prepareFreeSlot(self: *MemRegistry) MemRegistryError!void {
+        try self.free_slots.ensureUnusedCapacity(self.allocator, 1);
+    }
+
+    pub fn commitPreparedUnregister(self: *MemRegistry, id: u8) void {
+        const buf = &self.buffers.items[id];
+        std.debug.assert(buf.active);
+        if (buf.owned) self.allocator.free(buf.data);
+        buf.* = .{ .data = &[_]u8{}, .owned = false, .active = false };
+        self.free_slots.appendAssumeCapacity(id);
+    }
+
     pub fn clear(self: *MemRegistry) void {
         for (self.buffers.items) |mem_buf| {
             if (mem_buf.active and mem_buf.owned) {

@@ -98,6 +98,17 @@ pub const SyntaxStyle = struct {
         return self.putStyle(name, definition);
     }
 
+    /// Registers an immutable, unnamed definition. These IDs are suitable for
+    /// document annotations because later updates to a named style cannot alter
+    /// a surviving range's appearance.
+    pub fn registerAnonymousStyleDefinition(self: *SyntaxStyle, definition: StyleDefinition) SyntaxStyleError!u32 {
+        if (self.next_id == std.math.maxInt(u32)) return SyntaxStyleError.OutOfMemory;
+        const id = self.next_id;
+        try self.id_to_style.put(self.allocator, id, definition);
+        self.next_id += 1;
+        return id;
+    }
+
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {
         return self.id_to_style.get(id);
     }

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
+var next_seed = std.atomic.Value(u64).init(0x6d61726b74726565);
 
 /// An edit-following mark index over UTF-8 byte positions.
 ///
@@ -58,6 +59,32 @@ pub const MarkTree = struct {
         covered_range_ids: []u64,
     };
 
+    pub const PreparedSplice = struct {
+        old_end: u32,
+        new_end: u32,
+        affected_ids: []u64,
+        covered_range_ids: []u64,
+    };
+
+    pub const PreparedRanges = struct {
+        owner: *Self,
+        nodes: []*Node,
+        next_priority_state: u64,
+        committed: bool = false,
+
+        pub fn idAt(self: *const PreparedRanges, index: usize) u64 {
+            return self.nodes[index].mark.id();
+        }
+
+        pub fn deinit(self: *PreparedRanges) void {
+            if (!self.committed) {
+                for (self.nodes) |node| self.owner.allocator.destroy(node);
+            }
+            self.owner.allocator.free(self.nodes);
+            self.* = undefined;
+        }
+    };
+
     pub const IntegrityError = error{
         BadRootParent,
         BadParent,
@@ -88,10 +115,9 @@ pub const MarkTree = struct {
     generation: u64 = 0,
     active_visits: usize = 0,
 
-    /// Uses a process-random seed so callers cannot select a pathological
-    /// treap shape through IDs or byte positions.
+    /// Uses a process-unique seed so independent trees do not share priorities.
     pub fn init(allocator: Allocator) Self {
-        return initWithSeed(allocator, std.crypto.random.int(u64));
+        return initWithSeed(allocator, next_seed.fetchAdd(0x9e3779b97f4a7c15, .monotonic));
     }
 
     /// Deterministic construction for tests and reproducible benchmarks.
@@ -126,6 +152,49 @@ pub const MarkTree = struct {
         try self.addMark(.{ .range = rangeFromInput(id, input) });
         self.finishMutation();
         return id;
+    }
+
+    pub fn prepareAddRanges(self: *Self, inputs: []const RangeInput) !PreparedRanges {
+        try self.checkCanMutate();
+        if (inputs.len > std.math.maxInt(u64) - self.generation) return error.GenerationExhausted;
+        const count_u64 = std.math.cast(u64, inputs.len) orelse return error.IdExhausted;
+        if (self.next_id == 0 or count_u64 > std.math.maxInt(u64) - self.next_id) return error.IdExhausted;
+        const additional_count = std.math.cast(u32, inputs.len) orelse return error.IdExhausted;
+        try self.ids.ensureUnusedCapacity(additional_count);
+
+        const nodes = try self.allocator.alloc(*Node, inputs.len);
+        errdefer self.allocator.free(nodes);
+        var initialized: usize = 0;
+        errdefer for (nodes[0..initialized]) |node| self.allocator.destroy(node);
+
+        var priority_state = self.priority_state;
+        for (inputs, 0..) |input, index| {
+            const node = try self.allocator.create(Node);
+            const id = self.next_id + @as(u64, @intCast(index));
+            node.* = .{
+                .mark = .{ .range = rangeFromInput(id, input) },
+                .priority = nextPriorityValue(&priority_state),
+                .max_byte = @max(input.start_byte, input.end_byte),
+                .max_overlap_end_byte = if (input.start_byte < input.end_byte) input.end_byte else 0,
+            };
+            nodes[index] = node;
+            initialized += 1;
+        }
+        return .{ .owner = self, .nodes = nodes, .next_priority_state = priority_state };
+    }
+
+    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed);
+        for (prepared.nodes) |node| {
+            self.ids.putAssumeCapacity(node.mark.id(), node);
+            self.root = insert(self.root, node);
+            if (self.root) |root| root.parent = null;
+        }
+        self.next_id += @intCast(prepared.nodes.len);
+        self.len += prepared.nodes.len;
+        self.priority_state = prepared.next_priority_state;
+        self.generation += @intCast(prepared.nodes.len);
+        prepared.committed = true;
     }
 
     pub fn addPoint(self: *Self, input: PointInput) !u64 {
@@ -227,6 +296,25 @@ pub const MarkTree = struct {
         affected_buffer: []u64,
         covered_buffer: []u64,
     ) !SpliceReport {
+        const prepared = try self.prepareSpliceWithReport(start_byte, old_len, new_len, affected_buffer, covered_buffer);
+        self.commitPreparedSplice(start_byte, old_len, new_len, prepared);
+        return .{
+            .affected_ids = prepared.affected_ids,
+            .covered_range_ids = prepared.covered_range_ids,
+        };
+    }
+
+    /// Performs every fallible splice check and fills lifecycle reports without
+    /// changing the tree. The returned slices borrow the caller's buffers until
+    /// commit.
+    pub fn prepareSpliceWithReport(
+        self: *Self,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        affected_buffer: []u64,
+        covered_buffer: []u64,
+    ) !PreparedSplice {
         try self.checkCanMutate();
         const ends = try self.preflightSplice(start_byte, old_len, new_len);
         const counts = countDeletion(self.root, start_byte, ends.old_end, old_len, 0);
@@ -236,28 +324,36 @@ pub const MarkTree = struct {
         const affected_output = affected_buffer[0..counts.affected];
         const covered_output = covered_buffer[0..counts.covered];
         if (slicesOverlap(affected_output, covered_output)) return error.ReportBuffersOverlap;
-        if (old_len == 0 and new_len == 0) {
-            return .{ .affected_ids = affected_output, .covered_range_ids = covered_output };
-        }
 
         var affected_len: usize = 0;
         var covered_len: usize = 0;
-        fillDeletion(
-            self.root,
-            start_byte,
-            ends.old_end,
-            old_len,
-            affected_buffer,
-            covered_buffer,
-            &affected_len,
-            &covered_len,
-        );
-        self.spliceUnchecked(start_byte, ends.old_end, ends.new_end);
-        self.finishMutation();
+        if (old_len != 0) {
+            fillDeletion(
+                self.root,
+                start_byte,
+                ends.old_end,
+                old_len,
+                affected_buffer,
+                covered_buffer,
+                &affected_len,
+                &covered_len,
+            );
+        }
         return .{
+            .old_end = ends.old_end,
+            .new_end = ends.new_end,
             .affected_ids = affected_buffer[0..affected_len],
             .covered_range_ids = covered_buffer[0..covered_len],
         };
+    }
+
+    /// Publishes a splice previously prepared against the current tree. No
+    /// allocation or error is possible between the position update and the
+    /// generation change.
+    pub fn commitPreparedSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32, prepared: PreparedSplice) void {
+        if (old_len == 0 and new_len == 0) return;
+        self.spliceUnchecked(start_byte, prepared.old_end, prepared.new_end);
+        self.finishMutation();
     }
 
     /// Moves `[start_byte, start_byte + len)` to `destination_byte`, where the
@@ -401,8 +497,12 @@ pub const MarkTree = struct {
     }
 
     fn nextPriority(self: *Self) u64 {
-        self.priority_state +%= 0x9e3779b97f4a7c15;
-        var value = self.priority_state;
+        return nextPriorityValue(&self.priority_state);
+    }
+
+    fn nextPriorityValue(state: *u64) u64 {
+        state.* +%= 0x9e3779b97f4a7c15;
+        var value = state.*;
         value = (value ^ (value >> 30)) *% 0xbf58476d1ce4e5b9;
         value = (value ^ (value >> 27)) *% 0x94d049bb133111eb;
         return value ^ (value >> 31);

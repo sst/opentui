@@ -56,6 +56,43 @@ pub const TextAnnotations = struct {
         CountMismatch,
     };
 
+    pub const PreparedSplice = struct {
+        owner: *Self,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        tree_splice: MarkTree.PreparedSplice,
+        affected_storage: []u64,
+        covered_storage: []u64,
+        delete_storage: []u64,
+        delete_ids: []u64,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedSplice) void {
+            self.owner.allocator.free(self.affected_storage);
+            self.owner.allocator.free(self.covered_storage);
+            self.owner.allocator.free(self.delete_storage);
+            self.* = undefined;
+        }
+    };
+
+    pub const PreparedRanges = struct {
+        owner: *Self,
+        tree_ranges: MarkTree.PreparedRanges,
+        payloads: []Payload,
+        committed: bool = false,
+
+        pub fn idAt(self: *const PreparedRanges, index: usize) u64 {
+            return self.tree_ranges.idAt(index);
+        }
+
+        pub fn deinit(self: *PreparedRanges) void {
+            self.tree_ranges.deinit();
+            self.owner.allocator.free(self.payloads);
+            self.* = undefined;
+        }
+    };
+
     allocator: Allocator,
     tree: MarkTree,
     payloads: std.AutoHashMap(u64, Payload),
@@ -111,6 +148,34 @@ pub const TextAnnotations = struct {
         self.payloads.putAssumeCapacity(id, payloadFromInput(payload, self.next_sequence));
         self.finishAdd();
         return id;
+    }
+
+    pub fn prepareAddRanges(self: *Self, inputs: []const RangeInput, payload_inputs: []const PayloadInput) !PreparedRanges {
+        if (inputs.len != payload_inputs.len) return error.CountMismatch;
+        try self.checkCanMutate(inputs.len);
+        const count_u64 = std.math.cast(u64, inputs.len) orelse return error.SequenceExhausted;
+        if (self.next_sequence == 0 or count_u64 > std.math.maxInt(u64) - self.next_sequence) return error.SequenceExhausted;
+        const additional_count = std.math.cast(u32, inputs.len) orelse return error.SequenceExhausted;
+        try self.payloads.ensureUnusedCapacity(additional_count);
+        var tree_ranges = try self.tree.prepareAddRanges(inputs);
+        errdefer tree_ranges.deinit();
+        const payloads = try self.allocator.alloc(Payload, inputs.len);
+        errdefer self.allocator.free(payloads);
+        for (payload_inputs, 0..) |payload, index| {
+            payloads[index] = payloadFromInput(payload, self.next_sequence + @as(u64, @intCast(index)));
+        }
+        return .{ .owner = self, .tree_ranges = tree_ranges, .payloads = payloads };
+    }
+
+    pub fn commitPreparedRanges(self: *Self, prepared: *PreparedRanges) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed);
+        self.tree.commitPreparedRanges(&prepared.tree_ranges);
+        for (prepared.payloads, 0..) |payload, index| {
+            self.payloads.putAssumeCapacity(prepared.idAt(index), payload);
+        }
+        self.next_sequence += @intCast(prepared.payloads.len);
+        if (prepared.payloads.len != 0) self.finishMutation();
+        prepared.committed = true;
     }
 
     pub fn addPoint(self: *Self, input: PointInput, payload: PayloadInput) !u64 {
@@ -207,47 +272,70 @@ pub const TextAnnotations = struct {
     }
 
     pub fn splice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !void {
+        var prepared = try self.prepareSplice(start_byte, old_len, new_len);
+        defer prepared.deinit();
+        self.commitPreparedSplice(&prepared);
+    }
+
+    pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
         try self.checkCanMutate(0);
         const scratch_len = if (old_len == 0) 0 else self.count();
-        try self.affected_scratch.resize(self.allocator, scratch_len);
-        try self.covered_scratch.resize(self.allocator, scratch_len);
-        var deleted_count: usize = 0;
-        defer self.finishScratchUse(deleted_count != 0);
+        const affected = try self.allocator.alloc(u64, scratch_len);
+        errdefer self.allocator.free(affected);
+        const covered = try self.allocator.alloc(u64, scratch_len);
+        errdefer self.allocator.free(covered);
+        const delete_ids = try self.allocator.alloc(u64, scratch_len);
+        errdefer self.allocator.free(delete_ids);
+
         const generation_budget = if (old_len == 0 and new_len == 0)
             0
         else
             std.math.add(usize, self.count(), 1) catch return error.GenerationExhausted;
         try self.checkTreeGenerations(generation_budget);
+        const tree_splice = try self.tree.prepareSpliceWithReport(start_byte, old_len, new_len, affected, covered);
 
-        const tree_generation = self.tree.generation;
-        const report = try self.tree.spliceWithReport(
-            start_byte,
-            old_len,
-            new_len,
-            self.affected_scratch.items,
-            self.covered_scratch.items,
-        );
-
-        sortIds(report.affected_ids);
-        sortIds(report.covered_range_ids);
+        sortIds(tree_splice.affected_ids);
+        sortIds(tree_splice.covered_range_ids);
         var covered_index: usize = 0;
-        for (report.affected_ids) |id| {
-            while (covered_index < report.covered_range_ids.len and report.covered_range_ids[covered_index] < id) {
+        var delete_count: usize = 0;
+        for (tree_splice.affected_ids) |id| {
+            while (covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] < id) {
                 covered_index += 1;
             }
-            const covered = covered_index < report.covered_range_ids.len and report.covered_range_ids[covered_index] == id;
-            if (covered) covered_index += 1;
+            const is_covered = covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] == id;
+            if (is_covered) covered_index += 1;
             const payload = self.payloads.get(id).?;
             const should_delete = payload.splice_policy == .invalidate or
-                (payload.splice_policy == .delete_when_covered and covered);
+                (payload.splice_policy == .delete_when_covered and is_covered);
             if (should_delete) {
-                const removed = try self.tree.remove(id);
-                std.debug.assert(removed);
-                _ = self.payloads.remove(id);
-                deleted_count += 1;
+                delete_ids[delete_count] = id;
+                delete_count += 1;
             }
         }
-        if (self.tree.generation != tree_generation) self.finishMutation();
+        return .{
+            .owner = self,
+            .start_byte = start_byte,
+            .old_len = old_len,
+            .new_len = new_len,
+            .tree_splice = tree_splice,
+            .affected_storage = affected,
+            .covered_storage = covered,
+            .delete_storage = delete_ids,
+            .delete_ids = delete_ids[0..delete_count],
+        };
+    }
+
+    pub fn commitPreparedSplice(self: *Self, prepared: *PreparedSplice) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed);
+        const before = self.tree.generation;
+        self.tree.commitPreparedSplice(prepared.start_byte, prepared.old_len, prepared.new_len, prepared.tree_splice);
+        for (prepared.delete_ids) |id| {
+            const removed = self.tree.remove(id) catch unreachable;
+            std.debug.assert(removed);
+            _ = self.payloads.remove(id);
+        }
+        if (self.tree.generation != before) self.finishMutation();
+        prepared.committed = true;
     }
 
     pub fn moveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !void {
