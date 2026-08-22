@@ -129,8 +129,8 @@ describe("nested TextRenderable", () => {
     renderer.root.add(root)
   })
 
-  test("commits one canonical snapshot for batched nested text and style changes", async () => {
-    const setStyledText = spyOn(TextBuffer.prototype, "setStyledText")
+  test("commits one range-local replacement for batched nested text and style changes", async () => {
+    const replaceDocumentRange = spyOn(TextBuffer.prototype, "replaceDocumentRange")
     try {
       const root = new TextRenderable(renderer, {})
       const child = new TextRenderable(renderer, { content: "before" })
@@ -138,17 +138,61 @@ describe("nested TextRenderable", () => {
       renderer.root.add(root)
       await renderOnce()
 
-      const callsBeforeUpdate = setStyledText.mock.calls.length
+      const callsBeforeUpdate = replaceDocumentRange.mock.calls.length
+      const rangeId = (child as any)._nativeRangeId
       child.content = "after"
       child.fg = "#00ff00"
       child.attributes = TextAttributes.BOLD
 
-      expect(setStyledText.mock.calls.length).toBe(callsBeforeUpdate)
+      expect(replaceDocumentRange.mock.calls.length).toBe(callsBeforeUpdate)
       await renderOnce()
-      expect(setStyledText.mock.calls.length).toBe(callsBeforeUpdate + 1)
+      expect(replaceDocumentRange.mock.calls.length).toBe(callsBeforeUpdate + 1)
+      expect((child as any)._nativeRangeId).toBe(rangeId)
       expect(root.plainText).toBe("after")
     } finally {
-      setStyledText.mockRestore()
+      replaceDocumentRange.mockRestore()
+    }
+  })
+
+  test("style-only updates preserve content epoch and range identity", async () => {
+    const root = new TextRenderable(renderer, {})
+    const child = new TextRenderable(renderer, { content: "stable" })
+    root.add(child)
+    renderer.root.add(root)
+    await renderOnce()
+
+    const rangeId = (child as any)._nativeRangeId
+    const contentEpoch = (root as any).textBuffer.contentEpoch
+    const annotationEpoch = (root as any).textBuffer.annotationEpoch
+    child.fg = "#00ff00"
+    child.link = { url: "https://example.com" }
+    await renderOnce()
+
+    expect((child as any)._nativeRangeId).toBe(rangeId)
+    expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
+    expect((root as any).textBuffer.annotationEpoch).toBeGreaterThan(annotationEpoch)
+  })
+
+  test("same-document reorder uses native move and preserves range IDs", async () => {
+    const root = new TextRenderable(renderer, {})
+    const first = new TextRenderable(renderer, { content: "A" })
+    const second = new TextRenderable(renderer, { content: "B" })
+    const third = new TextRenderable(renderer, { content: "C" })
+    root.children = [first, second, third]
+    renderer.root.add(root)
+    await renderOnce()
+    const ids = [first, second, third].map((child) => (child as any)._nativeRangeId)
+    const move = spyOn(TextBuffer.prototype, "moveDocumentRange")
+    const replace = spyOn(TextBuffer.prototype, "replaceDocumentRange")
+    try {
+      root.children = [third, first, second]
+      expect(move).toHaveBeenCalled()
+      expect(replace).not.toHaveBeenCalled()
+      expect(root.plainText).toBe("CAB")
+      expect([first, second, third].map((child) => (child as any)._nativeRangeId)).toEqual(ids)
+    } finally {
+      replace.mockRestore()
+      move.mockRestore()
     }
   })
 
@@ -512,20 +556,20 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("cleans all constructor resources when the initial snapshot fails", () => {
+  test("cleans all constructor resources when initial range creation fails", () => {
     const before = new Set(Renderable.renderablesByNumber.keys())
     const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
     const destroyView = spyOn(TextBufferView.prototype, "destroy")
-    const setStyledText = spyOn(TextBuffer.prototype, "setStyledText").mockImplementationOnce(() => {
-      throw new Error("injected snapshot failure")
+    const replaceDocumentRange = spyOn(TextBuffer.prototype, "replaceDocumentRange").mockImplementationOnce(() => {
+      throw new Error("injected range failure")
     })
     try {
-      expect(() => new TextRenderable(renderer, { content: "failure" })).toThrow("injected snapshot failure")
+      expect(() => new TextRenderable(renderer, { content: "failure" })).toThrow("injected range failure")
       expect(destroyView).toHaveBeenCalled()
       expect(destroyBuffer).toHaveBeenCalled()
       expect(new Set(Renderable.renderablesByNumber.keys())).toEqual(before)
     } finally {
-      setStyledText.mockRestore()
+      replaceDocumentRange.mockRestore()
       destroyView.mockRestore()
       destroyBuffer.mockRestore()
     }
@@ -558,7 +602,7 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("keeps detached aliases backend-free until measurement", () => {
+  test("keeps detached aliases backend-free for local text getters", () => {
     const createBuffer = spyOn(TextBuffer, "create")
     const createNative = spyOn(resolveRenderLib(), "createNativeRenderable")
     const text = new TextRenderable({ content: "detached" })
@@ -567,7 +611,7 @@ describe("nested TextRenderable", () => {
       expect(createBuffer).not.toHaveBeenCalled()
       expect(createNative).not.toHaveBeenCalled()
       expect(text.plainText).toBe("detached")
-      expect(createBuffer).toHaveBeenCalledTimes(1)
+      expect(createBuffer).not.toHaveBeenCalled()
       expect(createNative).not.toHaveBeenCalled()
       expect(() => text.focus()).not.toThrow()
     } finally {
@@ -577,23 +621,18 @@ describe("nested TextRenderable", () => {
     }
   })
 
-  test("destroys temporary views and buffers independently while preserving the primary error", () => {
+  test("does not allocate temporary native text state for detached getters", () => {
     const text = new TextRenderable({ content: "detached" })
-    const getPlainText = spyOn(TextBuffer.prototype, "getPlainText").mockImplementationOnce(() => {
-      throw new Error("primary measurement failure")
-    })
-    const destroyView = spyOn(TextBufferView.prototype, "destroy").mockImplementationOnce(() => {
-      throw new Error("view cleanup failure")
-    })
-    const destroyBuffer = spyOn(TextBuffer.prototype, "destroy")
+    const createBuffer = spyOn(TextBuffer, "create")
+    const createView = spyOn(TextBufferView, "create")
     try {
-      expect(() => text.plainText).toThrow("primary measurement failure")
-      expect(destroyView).toHaveBeenCalledTimes(1)
-      expect(destroyBuffer).toHaveBeenCalledTimes(1)
+      expect(text.plainText).toBe("detached")
+      expect(text.textLength).toBe(8)
+      expect(createBuffer).not.toHaveBeenCalled()
+      expect(createView).not.toHaveBeenCalled()
     } finally {
-      destroyBuffer.mockRestore()
-      destroyView.mockRestore()
-      getPlainText.mockRestore()
+      createView.mockRestore()
+      createBuffer.mockRestore()
       text.destroy()
     }
   })

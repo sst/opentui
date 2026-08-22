@@ -3,12 +3,12 @@ import { BaseRenderable, type Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
-import { TextBuffer } from "../text-buffer.js"
-import { TextBufferView } from "../text-buffer-view.js"
 import { parseColor, RGBA } from "../lib/RGBA.js"
 import type { Selection } from "../lib/selection.js"
 import { type RenderContext } from "../types.js"
 import type { LineInfo } from "../zig.js"
+import type { DocumentRangeInput } from "../zig.js"
+import stringWidth from "string-width"
 import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
 
@@ -25,6 +25,12 @@ export type TextStyle = {
 }
 
 const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRenderable")
+let nextTextDocumentOwner = 1
+
+type RawTextIdentity = {
+  value: string
+  rangeId: bigint | null
+}
 
 export function isTextRenderable(obj: any): obj is TextRenderable {
   return obj?.[BrandedTextRenderable] === true
@@ -77,17 +83,48 @@ function isRenderContext(value: RenderContext | TextOptions): value is RenderCon
   return typeof (value as RenderContext).requestRender === "function"
 }
 
+function measureLine(line: string): number {
+  let width = 0
+  for (const [index, part] of line.split("\t").entries()) {
+    if (index !== 0) width += 4 - (width % 4)
+    width += stringWidth(part)
+  }
+  return width
+}
+
+function measureTextLength(text: string): number {
+  return text.split("\n").reduce((total, line) => total + measureLine(line), 0)
+}
+
+function localLineInfo(text: string): LineInfo {
+  const lines = text.split("\n")
+  const widths = lines.map(measureLine)
+  return {
+    lineStartCols: lines.map(() => 0),
+    lineWidthCols: widths,
+    lineSources: lines.map((_, index) => index),
+    lineWraps: lines.map(() => 0),
+    lineWidthColsMax: Math.max(0, ...widths),
+  }
+}
+
 export class TextRenderable extends TextBufferRenderable {
   get [BrandedTextRenderable](): true {
     return true
   }
 
   private _children: (string | TextRenderable)[] = []
+  private _rawTextIdentities: (RawTextIdentity | null)[] = []
   private _localFg?: RGBA
   private _localBg?: RGBA
   private _localAttributes: number = 0
   private _link?: { url: string }
-  private _textDocumentDirty: boolean = true
+  private _textDocumentPending: boolean = true
+  private _nativeRangeId: bigint | null = null
+  private _textDocumentOwner = 0
+  private readonly _pendingDocumentRoots = new Set<TextRenderable>()
+  private readonly _pendingStyleRoots = new Set<TextRenderable>()
+  private readonly _pendingRemovedRangeIds = new Set<bigint>()
   private _textDocumentRole: "owner" | "promotable" | "inline" = "inline"
   private readonly _ownedChildren = new Set<TextRenderable>()
   private _manualStyledText: StyledText | null = null
@@ -117,7 +154,7 @@ export class TextRenderable extends TextBufferRenderable {
       this._link = options.link
 
       if (options.content !== undefined) this.replaceContent(options.content, false)
-      if (this.hasTextDocumentState) this.commitTextDocumentSnapshot()
+      if (this.hasTextDocumentState) this.flushTextDocument()
     } catch (error) {
       try {
         this.destroy()
@@ -143,6 +180,21 @@ export class TextRenderable extends TextBufferRenderable {
     }
 
     const previousChildren = [...this._children]
+    const documentOwnerBefore = this.getDocumentOwner()
+    const isPureNativeReorder =
+      previousChildren.length === nextChildren.length &&
+      previousChildren.every(isTextRenderable) &&
+      nextChildren.every(isTextRenderable) &&
+      previousChildren.every((child) => nextChildren.includes(child)) &&
+      documentOwnerBefore !== null
+    if (isPureNativeReorder) documentOwnerBefore.flushTextDocument()
+    const previousRawTextIdentities = [...this._rawTextIdentities]
+    const nextRawTextIdentities = nextChildren.map((child, index) => {
+      if (typeof child !== "string") return null
+      const previous = previousChildren[index]
+      const identity = previousRawTextIdentities[index]
+      return typeof previous === "string" && identity ? identity : { value: child, rangeId: null }
+    })
     const previousOwnedChildren = new Set(this._ownedChildren)
     const parentSnapshots = new Map<
       TextRenderable,
@@ -151,6 +203,8 @@ export class TextRenderable extends TextBufferRenderable {
         ownedChildren: Set<TextRenderable>
         manualStyledText: StyledText | null
         dirty: boolean
+        rawTextIdentities: (RawTextIdentity | null)[]
+        pendingRemovedRangeIds: Set<bigint>
       }
     >()
     const snapshotParent = (parent: TextRenderable): void => {
@@ -159,7 +213,9 @@ export class TextRenderable extends TextBufferRenderable {
         children: [...parent._children],
         ownedChildren: new Set(parent._ownedChildren),
         manualStyledText: parent._manualStyledText,
-        dirty: parent._textDocumentDirty,
+        dirty: parent._textDocumentPending,
+        rawTextIdentities: [...parent._rawTextIdentities],
+        pendingRemovedRangeIds: new Set(parent._pendingRemovedRangeIds),
       })
     }
     snapshotParent(this)
@@ -171,6 +227,7 @@ export class TextRenderable extends TextBufferRenderable {
         context: RenderContext
         hadDocumentState: boolean
         layoutIndex: number
+        nativeRanges: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }>
       }
     >()
     const snapshotChild = (child: TextRenderable): void => {
@@ -182,6 +239,7 @@ export class TextRenderable extends TextBufferRenderable {
         context: child.ctx,
         hadDocumentState: child.hasTextDocumentState,
         layoutIndex: parent && !isTextRenderable(parent) ? parent.getChildren().indexOf(child) : -1,
+        nativeRanges: child.captureNativeRanges(),
       })
     }
     for (const child of seenChildren) snapshotChild(child)
@@ -195,7 +253,10 @@ export class TextRenderable extends TextBufferRenderable {
         parent._ownedChildren.clear()
         for (const child of snapshot.ownedChildren) parent._ownedChildren.add(child)
         parent._manualStyledText = snapshot.manualStyledText
-        parent._textDocumentDirty = snapshot.dirty
+        parent._textDocumentPending = snapshot.dirty
+        parent._rawTextIdentities = [...snapshot.rawTextIdentities]
+        parent._pendingRemovedRangeIds.clear()
+        for (const id of snapshot.pendingRemovedRangeIds) parent._pendingRemovedRangeIds.add(id)
         for (const child of parent.getTextChildren()) child.parent = parent
       }
       for (const [child, snapshot] of childSnapshots) {
@@ -208,8 +269,13 @@ export class TextRenderable extends TextBufferRenderable {
         }
         try {
           child.adoptTextContext(snapshot.context)
-          if (snapshot.hadDocumentState && !child.hasTextDocumentState) child.attachTextDocumentState()
+          if (snapshot.hadDocumentState && !child.hasTextDocumentState) {
+            child.attachTextDocumentState()
+            child.resetNativeRanges()
+            child.flushTextDocument()
+          }
           if (!snapshot.hadDocumentState && child.hasTextDocumentState) child.detachTextDocumentState()
+          child.restoreNativeRanges(snapshot.nativeRanges)
         } catch {}
       }
     }
@@ -217,20 +283,36 @@ export class TextRenderable extends TextBufferRenderable {
     try {
       for (const child of seenChildren) {
         const parent = child.parent
+        const sourceOwner = child.getDocumentOwner()
         if (isTextRenderable(parent) && parent !== this) {
           const index = parent._children.indexOf(child)
-          if (index !== -1) parent._children.splice(index, 1)
+          if (index !== -1) {
+            parent._children.splice(index, 1)
+            parent._rawTextIdentities.splice(index, 1)
+          }
           parent._ownedChildren.delete(child)
           child.parent = null
         } else if (parent && parent !== this) {
           parent.remove(child)
         }
+        const hadDocumentState = child.hasTextDocumentState
         child.detachTextDocumentState()
+        const targetOwner = this.getDocumentOwner()
+        if (hadDocumentState || (sourceOwner && targetOwner && sourceOwner !== targetOwner)) {
+          if (!hadDocumentState) sourceOwner?.queueNativeRangeRemoval(child)
+          child.resetNativeRanges()
+        }
         child.adoptTextContext(this._ctx)
         child.parent = this
       }
 
       this._children = nextChildren
+      this._rawTextIdentities = nextRawTextIdentities
+      for (let index = 0; index < this._children.length; index++) {
+        const child = this._children[index]
+        const identity = this._rawTextIdentities[index]
+        if (typeof child === "string" && identity) identity.value = child
+      }
       this._ownedChildren.clear()
       for (const child of previousOwnedChildren) {
         if (seenChildren.has(child)) this._ownedChildren.add(child)
@@ -238,10 +320,12 @@ export class TextRenderable extends TextBufferRenderable {
 
       for (const child of previousChildren) {
         if (!isTextRenderable(child) || seenChildren.has(child) || child.parent !== this) continue
+        documentOwnerBefore?.queueNativeRangeRemoval(child)
         child.parent = null
         if (!previousOwnedChildren.has(child) && child._textDocumentRole === "owner") {
           child.attachTextDocumentState()
-          child.commitTextDocumentSnapshot()
+          child.resetNativeRanges()
+          child.flushTextDocument()
         }
       }
     } catch (error) {
@@ -250,10 +334,17 @@ export class TextRenderable extends TextBufferRenderable {
     }
 
     this._manualStyledText = null
+    if (isPureNativeReorder)
+      documentOwnerBefore!.moveNativeChildren(previousChildren as TextRenderable[], nextChildren as TextRenderable[])
     for (const parent of parentSnapshots.keys()) {
       if (parent !== this) parent.invalidateTextDocument()
     }
-    this.invalidateTextDocument()
+    if (isPureNativeReorder) {
+      documentOwnerBefore!.yogaNode.markDirty()
+      this.requestRender()
+    } else {
+      this.invalidateTextDocument()
+    }
 
     const destroyErrors: unknown[] = []
     for (const child of previousOwnedChildren) {
@@ -285,19 +376,23 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public get plainText(): string {
-    if (this.hasTextDocumentState && !isTextRenderable(this.parent)) {
-      if (this._textDocumentDirty) this.commitTextDocumentSnapshot()
-      return super.plainText
+    if (isTextRenderable(this.parent) && !this.ancestorsVisible()) return this.detachedPlainText()
+    const owner = this.getDocumentOwner()
+    if (owner) {
+      owner.flushTextDocument()
+      if (this._nativeRangeId !== null) return owner.textBuffer.getDocumentRangeText(this._nativeRangeId) ?? ""
     }
-    return this.measureOwnContent().plainText
+    return this.detachedPlainText()
   }
 
   public get textLength(): number {
-    if (this.hasTextDocumentState && !isTextRenderable(this.parent)) {
-      if (this._textDocumentDirty) this.commitTextDocumentSnapshot()
-      return super.textLength
+    if (isTextRenderable(this.parent) && !this.ancestorsVisible()) return measureTextLength(this.detachedPlainText())
+    const owner = this.getDocumentOwner()
+    if (owner) {
+      owner.flushTextDocument()
+      if (this._nativeRangeId !== null) return owner.textBuffer.measureDocumentRange(this._nativeRangeId)
     }
-    return this.measureOwnContent().textLength
+    return measureTextLength(this.detachedPlainText())
   }
 
   public override get wrapMode(): "none" | "char" | "word" {
@@ -317,7 +412,7 @@ export class TextRenderable extends TextBufferRenderable {
       owner.commitIfDirty()
       return owner === this ? super.lineInfo : owner.lineInfo
     }
-    return this.measureOwnContent().lineInfo
+    return localLineInfo(this.detachedPlainText())
   }
 
   public override get lineCount(): number {
@@ -326,7 +421,7 @@ export class TextRenderable extends TextBufferRenderable {
       owner.commitIfDirty()
       return owner === this ? super.lineCount : owner.lineCount
     }
-    return this.measureOwnContent().lineCount
+    return this.detachedPlainText().split("\n").length
   }
 
   public override get virtualLineCount(): number {
@@ -335,7 +430,7 @@ export class TextRenderable extends TextBufferRenderable {
       owner.commitIfDirty()
       return owner === this ? super.virtualLineCount : owner.virtualLineCount
     }
-    return this.measureOwnContent().virtualLineCount
+    return this.detachedPlainText().split("\n").length
   }
 
   public override get scrollY(): number {
@@ -424,7 +519,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (this._localFg === next) return
     this._localFg = next
     this._defaultFg = next ?? this._defaultOptions.fg
-    this.invalidateTextDocument()
+    this.invalidateTextStyles()
   }
 
   public get bg(): RGBA | undefined {
@@ -436,7 +531,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (this._localBg === next) return
     this._localBg = next
     this._defaultBg = next ?? this._defaultOptions.bg
-    this.invalidateTextDocument()
+    this.invalidateTextStyles()
   }
 
   public get attributes(): number {
@@ -447,7 +542,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (this._localAttributes === value) return
     this._localAttributes = value
     this._defaultAttributes = value
-    this.invalidateTextDocument()
+    this.invalidateTextStyles()
   }
 
   public get link(): { url: string } | undefined {
@@ -457,7 +552,7 @@ export class TextRenderable extends TextBufferRenderable {
   public set link(value: { url: string } | undefined) {
     if (this._link === value) return
     this._link = value
-    this.invalidateTextDocument()
+    this.invalidateTextStyles()
   }
 
   public requestRender(): void {
@@ -553,6 +648,7 @@ export class TextRenderable extends TextBufferRenderable {
     }
 
     this._children.splice(childIndex, 1)
+    this._rawTextIdentities.splice(childIndex, 1)
     this.detachTextChild(child, this._ownedChildren.has(child))
     this._manualStyledText = null
     this.invalidateTextDocument()
@@ -623,11 +719,11 @@ export class TextRenderable extends TextBufferRenderable {
 
   public onLifecyclePass = (): void => {
     this.refreshFirstLineOffsetClaim()
-    if (!isTextRenderable(this.parent) && this._textDocumentDirty) this.commitTextDocumentSnapshot()
+    if (!isTextRenderable(this.parent) && this._textDocumentPending) this.flushTextDocument()
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
-    if (!isTextRenderable(this.parent) && this._textDocumentDirty) queueMicrotask(() => this._ctx.requestRender())
+    if (!isTextRenderable(this.parent) && this._textDocumentPending) queueMicrotask(() => this._ctx.requestRender())
     super.render(buffer, deltaTime)
   }
 
@@ -661,6 +757,7 @@ export class TextRenderable extends TextBufferRenderable {
     if (this.isDestroyed) return
     const children = this.getTextChildren()
     this._children.splice(0)
+    this._rawTextIdentities.splice(0)
     let destroyError: unknown
     for (const child of children.reverse()) {
       try {
@@ -690,7 +787,8 @@ export class TextRenderable extends TextBufferRenderable {
     const options = (hasContext ? maybeOptions : textOrOptions) as Partial<TextOptions>
     const node = hasContext ? new TextRenderable(ctx, options, false) : new TextRenderable(options)
     node._children.push(text)
-    node._textDocumentDirty = true
+    node._rawTextIdentities.push({ value: text, rangeId: null })
+    node._textDocumentPending = true
     return node
   }
 
@@ -708,7 +806,7 @@ export class TextRenderable extends TextBufferRenderable {
     const node = hasContext ? new TextRenderable(ctx, options, false) : new TextRenderable(options)
     try {
       node.children = nodes
-      node._textDocumentDirty = true
+      node._textDocumentPending = true
       return node
     } catch (error) {
       try {
@@ -745,10 +843,10 @@ export class TextRenderable extends TextBufferRenderable {
 
     this._manualStyledText = typeof content === "string" ? null : content
     for (const child of styledChildren) this._ownedChildren.add(child)
-    this._textDocumentDirty = true
+    this._textDocumentPending = true
     if (requestRender) {
       this.invalidateTextDocument()
-      if (this.hasTextDocumentState && this.lastLocalSelection) this.commitTextDocumentSnapshot()
+      if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
     }
   }
 
@@ -767,6 +865,7 @@ export class TextRenderable extends TextBufferRenderable {
           false,
         )
         child._children.push(chunk.text)
+        child._rawTextIdentities.push({ value: chunk.text, rangeId: null })
         children.push(child)
       }
       return children
@@ -784,6 +883,7 @@ export class TextRenderable extends TextBufferRenderable {
         const currentIndex = this._children.indexOf(child)
         if (currentIndex !== -1) {
           this._children.splice(currentIndex, 1)
+          this._rawTextIdentities.splice(currentIndex, 1)
           if (currentIndex < insertIndex) insertIndex -= 1
         }
       } else if (child.parent) {
@@ -796,6 +896,7 @@ export class TextRenderable extends TextBufferRenderable {
     }
 
     this._children.splice(insertIndex, 0, child)
+    this._rawTextIdentities.splice(insertIndex, 0, typeof child === "string" ? { value: child, rangeId: null } : null)
     return insertIndex
   }
 
@@ -810,7 +911,8 @@ export class TextRenderable extends TextBufferRenderable {
       child.destroyRecursively()
     } else if (restoreDocumentState && child._textDocumentRole === "owner") {
       child.attachTextDocumentState()
-      child.commitTextDocumentSnapshot()
+      child.resetNativeRanges()
+      child.flushTextDocument()
     }
   }
 
@@ -820,33 +922,238 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private invalidateTextDocument(): void {
-    this._textDocumentDirty = true
-    if (isTextRenderable(this.parent)) {
-      this.parent.invalidateTextDocument()
-      return
+    const owner = this.getDocumentOwner()
+    if (owner) {
+      owner._textDocumentPending = true
+      owner._pendingDocumentRoots.add(this)
+      if (!owner.parent) owner.flushTextDocument()
     }
-
-    if (!this.parent && this.hasTextDocumentState) this.commitTextDocumentSnapshot()
     this.requestRender()
   }
 
-  // This is the only document backend seam. Replace it with incremental native
-  // range operations after the canonical tree migration lands.
-  private commitTextDocumentSnapshot(): void {
+  private flushTextDocument(): void {
     if (!this.hasTextDocumentState || isTextRenderable(this.parent)) return
-    const chunks = this.gatherWithInheritedStyle().map((chunk) => {
-      if (chunk.fg || chunk.bg || chunk.attributes || chunk.link) return chunk
-      return { __isChunk: true as const, text: chunk.text }
-    })
+    if (this._textDocumentOwner === 0) this._textDocumentOwner = nextTextDocumentOwner++
+    if (nextTextDocumentOwner === 0xffffffff) nextTextDocumentOwner = 1
+
+    const pending = this._nativeRangeId === null ? [this] : [...this._pendingDocumentRoots]
+    const roots = pending.filter(
+      (candidate) => !pending.some((other) => other !== candidate && candidate.isTextDescendantOf(other)),
+    )
+    const contentChanged = roots.length > 0
+    this.textBuffer.beginDocumentBatch()
+    try {
+      roots.forEach((root, index) =>
+        this.reconcileNativeSubtree(root, index === roots.length - 1 ? [...this._pendingRemovedRangeIds] : []),
+      )
+      this._pendingDocumentRoots.clear()
+      if (this._pendingStyleRoots.size > 0) {
+        for (const root of this._pendingStyleRoots) root.updateNativeStyles(this, root.resolvedParentStyle())
+        this._pendingStyleRoots.clear()
+      }
+    } finally {
+      this.textBuffer.endDocumentBatch()
+    }
+    if (roots.length === 0) {
+      for (const id of this._pendingRemovedRangeIds) this.textBuffer.removeStyleRange(id)
+    }
+    this._pendingRemovedRangeIds.clear()
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-    this.textBuffer.setStyledText(new StyledText(chunks))
-    this.refreshLocalSelection()
-    this.yogaNode.markDirty()
-    this._textDocumentDirty = false
-    this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
-    this.emit("line-info-change")
+    this._textDocumentPending = false
+    if (contentChanged) {
+      this.refreshLocalSelection()
+      this.yogaNode.markDirty()
+      this._lastCommittedLineInfoFrame = this._ctx.frameId ?? -1
+      this.emit("line-info-change")
+    }
+  }
+
+  private reconcileNativeSubtree(root: TextRenderable, removeIds: bigint[] = []): void {
+    const chunks: Array<{ text: string }> = []
+    const ranges: DocumentRangeInput[] = []
+    const assignments: Array<(id: bigint) => void> = []
+    const inherited = root.resolvedParentStyle()
+    const visible = root === this ? true : root.ancestorsVisible()
+    this.collectNativeDocument(root, inherited, this.textDepth(root), visible, chunks, ranges, assignments)
+    for (const id of removeIds) {
+      ranges.push({ id, remove: true, startChunk: 0, endChunk: 0, styled: false })
+      assignments.push(() => {})
+    }
+    const targetId = root._nativeRangeId
+    const result = this.textBuffer.replaceDocumentRange(
+      targetId,
+      "replace",
+      0,
+      targetId === null ? this.textBuffer.byteSize : 0,
+      chunks,
+      this._textDocumentOwner,
+      ranges,
+    )
+    result.ids.forEach((id, index) => assignments[index]!(id))
+  }
+
+  private collectNativeDocument(
+    node: TextRenderable,
+    parentStyle: TextStyle,
+    depth: number,
+    visible: boolean,
+    chunks: Array<{ text: string }>,
+    ranges: DocumentRangeInput[],
+    assignments: Array<(id: bigint) => void>,
+  ): void {
+    const style = node.mergeStyles(parentStyle)
+    const start = chunks.length
+    const nodeRangeIndex = ranges.length
+    ranges.push({
+      id: node._nativeRangeId ?? undefined,
+      startChunk: start,
+      endChunk: start,
+      ...style,
+      styled: true,
+      priority: Math.min(255, depth + 1),
+    })
+    assignments.push((id) => (node._nativeRangeId = id))
+
+    for (let index = 0; index < node._children.length; index++) {
+      const child = node._children[index]!
+      if (typeof child === "string") {
+        let identity = node._rawTextIdentities[index]
+        if (!identity) {
+          identity = { value: child, rangeId: null }
+          node._rawTextIdentities[index] = identity
+        }
+        const leafStart = chunks.length
+        if (visible) chunks.push({ text: child })
+        ranges.push({
+          id: identity.rangeId ?? undefined,
+          startChunk: leafStart,
+          endChunk: chunks.length,
+          styled: false,
+        })
+        assignments.push((id) => (identity!.rangeId = id))
+      } else {
+        this.collectNativeDocument(child, style, depth + 1, visible && child.visible, chunks, ranges, assignments)
+      }
+    }
+    ranges[nodeRangeIndex]!.endChunk = chunks.length
+  }
+
+  private invalidateTextStyles(): void {
+    const owner = this.getDocumentOwner()
+    if (!owner) {
+      this.requestRender()
+      return
+    }
+    owner._pendingStyleRoots.add(this)
+    owner._textDocumentPending = true
+    if (!owner.parent) owner.flushTextDocument()
+    this.requestRender()
+  }
+
+  private updateNativeStyles(owner: TextRenderable, parentStyle: TextStyle): void {
+    const style = this.mergeStyles(parentStyle)
+    if (this._nativeRangeId !== null) owner.textBuffer.updateStyleRangeStyle(this._nativeRangeId, style)
+    for (const child of this.getTextChildren()) child.updateNativeStyles(owner, style)
+  }
+
+  private resolvedParentStyle(): TextStyle {
+    const ancestors: TextRenderable[] = []
+    let parent = this.parent
+    while (isTextRenderable(parent)) {
+      ancestors.push(parent)
+      parent = parent.parent
+    }
+    let style: TextStyle = { fg: undefined, bg: undefined, attributes: 0 }
+    for (let index = ancestors.length - 1; index >= 0; index--) style = ancestors[index]!.mergeStyles(style)
+    return style
+  }
+
+  private ancestorsVisible(): boolean {
+    let current: TextRenderable | null = this
+    while (current) {
+      if (!current.visible) return false
+      current = isTextRenderable(current.parent) ? current.parent : null
+    }
+    return true
+  }
+
+  private textDepth(node: TextRenderable): number {
+    let depth = 0
+    let current = node.parent
+    while (isTextRenderable(current)) {
+      depth++
+      current = current.parent
+    }
+    return depth
+  }
+
+  private isTextDescendantOf(ancestor: TextRenderable): boolean {
+    let current = this.parent
+    while (isTextRenderable(current)) {
+      if (current === ancestor) return true
+      current = current.parent
+    }
+    return false
+  }
+
+  private resetNativeRanges(): void {
+    this._nativeRangeId = null
+    for (const identity of this._rawTextIdentities) if (identity) identity.rangeId = null
+    for (const child of this.getTextChildren()) child.resetNativeRanges()
+    this._textDocumentOwner = 0
+    this._pendingDocumentRoots.clear()
+    this._pendingStyleRoots.clear()
+    this._pendingDocumentRoots.add(this)
+    this._textDocumentPending = true
+  }
+
+  private captureNativeRanges(): Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }> {
+    const result: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }> = [
+      { node: this, id: this._nativeRangeId, rawIds: this._rawTextIdentities.map((value) => value?.rangeId ?? null) },
+    ]
+    for (const child of this.getTextChildren()) result.push(...child.captureNativeRanges())
+    return result
+  }
+
+  private restoreNativeRanges(
+    snapshot: Array<{ node: TextRenderable; id: bigint | null; rawIds: Array<bigint | null> }>,
+  ): void {
+    for (const entry of snapshot) {
+      entry.node._nativeRangeId = entry.id
+      for (let index = 0; index < entry.rawIds.length; index++) {
+        const identity = entry.node._rawTextIdentities[index]
+        if (identity) identity.rangeId = entry.rawIds[index] ?? null
+      }
+    }
+  }
+
+  private queueNativeRangeRemoval(root: TextRenderable): void {
+    if (root._nativeRangeId !== null) this._pendingRemovedRangeIds.add(root._nativeRangeId)
+    for (const identity of root._rawTextIdentities) {
+      if (identity?.rangeId !== null && identity?.rangeId !== undefined)
+        this._pendingRemovedRangeIds.add(identity.rangeId)
+    }
+    for (const child of root.getTextChildren()) this.queueNativeRangeRemoval(child)
+  }
+
+  private moveNativeChildren(previous: TextRenderable[], next: TextRenderable[]): void {
+    const order = [...previous]
+    for (let index = 0; index < next.length; index++) {
+      const desired = next[index]!
+      const currentIndex = order.indexOf(desired)
+      if (currentIndex === index) continue
+      const anchor = order[index]!
+      if (desired._nativeRangeId === null || anchor._nativeRangeId === null) {
+        this._pendingDocumentRoots.add(desired.parent as TextRenderable)
+        this._textDocumentPending = true
+        return
+      }
+      this.textBuffer.moveDocumentRange(desired._nativeRangeId, anchor._nativeRangeId, true)
+      order.splice(currentIndex, 1)
+      order.splice(index, 0, desired)
+    }
   }
 
   protected override emitLineInfoChange(): void {
@@ -883,7 +1190,7 @@ export class TextRenderable extends TextBufferRenderable {
 
   public override onLayoutAttached(): void {
     try {
-      if (this._textDocumentDirty) this.commitTextDocumentSnapshot()
+      if (this._textDocumentPending) this.flushTextDocument()
       this._layoutPromotionPending = false
     } catch (error) {
       if (this._layoutPromotionPending) {
@@ -923,7 +1230,10 @@ export class TextRenderable extends TextBufferRenderable {
       return
     }
     const index = parent._children.indexOf(child)
-    if (index !== -1) parent._children.splice(index, 1)
+    if (index !== -1) {
+      parent._children.splice(index, 1)
+      parent._rawTextIdentities.splice(index, 1)
+    }
     parent.detachTextChild(child, false, false)
     parent.invalidateTextDocument()
   }
@@ -931,6 +1241,7 @@ export class TextRenderable extends TextBufferRenderable {
   private clearChildren(requestRender: boolean): void {
     const previousChildren = [...this._children]
     this._children.splice(0)
+    this._rawTextIdentities.splice(0)
     for (const child of previousChildren.reverse()) {
       if (isTextRenderable(child) && child.parent === this) {
         this.detachTextChild(child, this._ownedChildren.has(child))
@@ -956,58 +1267,13 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private commitIfDirty(): void {
-    if (this._textDocumentDirty) this.commitTextDocumentSnapshot()
+    if (this._textDocumentPending) this.flushTextDocument()
   }
 
-  // Temporary range-free measurement seam. Once native text ranges expose child
-  // ranges, nested getters can use their outer document without this short-lived buffer.
-  private measureOwnContent(): {
-    plainText: string
-    textLength: number
-    lineInfo: LineInfo
-    lineCount: number
-    virtualLineCount: number
-  } {
-    const buffer = TextBuffer.create(this._ctx.widthMethod)
-    let view: TextBufferView | null = null
-    let result:
-      | {
-          plainText: string
-          textLength: number
-          lineInfo: LineInfo
-          lineCount: number
-          virtualLineCount: number
-        }
-      | undefined
-    let primaryError: unknown
-    try {
-      buffer.setStyledText(new StyledText(this.gatherOwnContent()))
-      view = TextBufferView.create(buffer)
-      view.setWrapMode(this._wrapMode)
-      if (this._wrapMode !== "none" && this.width > 0) view.setWrapWidth(this.width)
-      result = {
-        plainText: buffer.getPlainText(),
-        textLength: buffer.length,
-        lineInfo: view.logicalLineInfo,
-        lineCount: buffer.getLineCount(),
-        virtualLineCount: view.getVirtualLineCount(),
-      }
-    } catch (error) {
-      primaryError = error
-    }
-    let cleanupError: unknown
-    try {
-      view?.destroy()
-    } catch (error) {
-      cleanupError = error
-    }
-    try {
-      buffer.destroy()
-    } catch (error) {
-      cleanupError ??= error
-    }
-    if (primaryError) throw primaryError
-    if (cleanupError) throw cleanupError
-    return result!
+  private detachedPlainText(): string {
+    return this.gatherOwnContent()
+      .map((chunk) => chunk.text)
+      .join("")
+      .replace(/\r\n/g, "\n")
   }
 }
