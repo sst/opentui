@@ -288,6 +288,80 @@ fn benchSetStyledTextOperations(
         }
     }
 
+    {
+        const name = "replaceStyledRangeBytes - local update in 10000 lines";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var document: std.ArrayList(u8) = .empty;
+            defer document.deinit(allocator);
+            for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
+
+            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
+            defer tb.deinit();
+            const style = try SyntaxStyle.init(allocator);
+            defer style.deinit();
+            tb.setSyntaxStyle(style);
+            try tb.setText(document.items);
+            const replacement = "WXYZ";
+            const chunks = [_]StyledChunk{.{
+                .text_ptr = replacement.ptr,
+                .text_len = replacement.len,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 1,
+            }};
+            const start: u32 = @intCast(document.items.len / 2);
+            var stats: BenchStats = .{};
+            for (0..iterations) |_| {
+                const timer = bench_utils.BenchTimer.start(io);
+                _ = try tb.replaceStyledRangeBytes(start, start + @as(u32, @intCast(replacement.len)), &chunks, 1);
+                stats.record(timer.read());
+            }
+            try results.append(allocator, .{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+        }
+    }
+
+    {
+        const name = "annotation projection - one line from 10000-line document";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var document: std.ArrayList(u8) = .empty;
+            defer document.deinit(allocator);
+            for (0..10000) |_| try document.appendSlice(allocator, "0123456789abcdef\n");
+
+            const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
+            defer tb.deinit();
+            try tb.setText(document.items);
+            for (0..10000) |line_index| {
+                const start: u32 = @intCast(line_index * 17);
+                _ = try tb.createStyleRange(2, start, start + 8, 1, 1);
+            }
+
+            var stats: BenchStats = .{};
+            for (0..iterations) |iteration| {
+                const line_index = iteration % 10000;
+                const timer = bench_utils.BenchTimer.start(io);
+                std.mem.doNotOptimizeAway(tb.getLineSpans(line_index));
+                stats.record(timer.read());
+            }
+            try results.append(allocator, .{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+        }
+    }
+
     return results.toOwnedSlice(allocator);
 }
 

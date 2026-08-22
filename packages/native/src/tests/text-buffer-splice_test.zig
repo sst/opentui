@@ -295,7 +295,7 @@ test "TextChunk width and splice coordinates exceed 65535 columns" {
     try std.testing.expectEqual(@as(u32, 70002), tb.getByteSize());
 }
 
-test "splice clears internal styles but leaves external highlights caller-owned" {
+test "splice moves internal styles and leaves external highlights caller-owned" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -320,8 +320,40 @@ test "splice clears internal styles but leaves external highlights caller-owned"
     try std.testing.expectEqual(@as(u32, 2), tb.getHighlightCount());
 
     _ = try tb.replaceNormalizedBytes(0, 1, "S");
-    try std.testing.expectEqual(@as(u32, 1), tb.getHighlightCount());
-    try std.testing.expectEqual(@as(u16, 77), tb.getLineHighlights(0)[0].hl_ref);
+    try std.testing.expectEqual(@as(u32, 2), tb.getHighlightCount());
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(u16, 77), highlights[0].hl_ref);
+    try std.testing.expect(highlights[1].internal);
+}
+
+test "annotation-only edits preserve layout epoch and project requested Unicode lines lazily" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("aa\n界🙂\nzero");
+    const content_epoch = tb.getContentEpoch();
+    const annotation_epoch = tb.getAnnotationEpoch();
+
+    const id = try tb.createStyleRange(41, 3, 10, 77, 3);
+    try std.testing.expectEqual(content_epoch, tb.getContentEpoch());
+    try std.testing.expect(tb.getAnnotationEpoch() > annotation_epoch);
+    try std.testing.expectEqual(@as(usize, 0), tb.line_projection_epochs.items.len);
+
+    const highlights = tb.getLineHighlights(1);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 0), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 4), highlights[0].col_end);
+    try std.testing.expectEqual(@as(u64, 0), tb.line_projection_epochs.items[0]);
+    try std.testing.expectEqual(tb.projection_epoch, tb.line_projection_epochs.items[1]);
+
+    _ = try tb.replaceNormalizedBytes(0, 0, "X");
+    const moved = tb.textAnnotations().get(id).?.mark.range;
+    try std.testing.expectEqual(@as(u32, 4), moved.start_byte);
+    try std.testing.expectEqual(@as(u32, 11), moved.end_byte);
 }
 
 test "splice no-op is stable and EditBuffer cursor remains caller-owned" {

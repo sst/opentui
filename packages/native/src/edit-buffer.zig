@@ -245,6 +245,7 @@ pub const EditBuffer = struct {
         try self.ensureAddCapacity(bytes.len);
 
         const insert_offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
+        const insert_byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = cursor.row, .col = cursor.col }, .before) catch return EditBufferError.InvalidCursor;
 
         const chunk_ref = self.add_buffer.append(bytes);
         const base_mem_id = chunk_ref.mem_id;
@@ -267,9 +268,23 @@ pub const EditBuffer = struct {
             }
         }
 
+        const inserted_bytes = blk: {
+            var normalized_len: u32 = @intCast(bytes.len);
+            var index: usize = 0;
+            while (index + 1 < bytes.len) : (index += 1) {
+                if (bytes[index] == '\r' and bytes[index + 1] == '\n') {
+                    normalized_len -= 1;
+                    index += 1;
+                }
+            }
+            break :blk normalized_len;
+        };
+        var prepared_annotations = try self.tb.textAnnotations().prepareSplice(insert_byte, 0, inserted_bytes);
+        defer prepared_annotations.deinit();
         if (result.segments.items.len > 0) {
             try self.tb.rope().insertSliceByWeight(insert_offset, result.segments.items, self.tb.segmentSplitter());
         }
+        self.tb.textAnnotations().commitPreparedSplice(&prepared_annotations);
         if (num_breaks > 0) {
             const new_row = cursor.row + @as(u32, @intCast(num_breaks));
             const new_col = width_after_last_break;
@@ -310,12 +325,17 @@ pub const EditBuffer = struct {
 
         try self.autoStoreUndo();
 
-        const start_offset = iter_mod.coordsToOffset(self.tb.rope(), start.row, start.col) orelse return EditBufferError.InvalidCursor;
-        const end_offset = iter_mod.coordsToOffset(self.tb.rope(), end.row, end.col) orelse return EditBufferError.InvalidCursor;
+        const start_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = start.row, .col = start.col }, .before) catch return EditBufferError.InvalidCursor;
+        const end_offset = self.tb.displayPointToNormalizedByteOffset(.{ .row = end.row, .col = end.col }, .after) catch return EditBufferError.InvalidCursor;
 
         if (start_offset >= end_offset) return;
 
-        try self.tb.rope().deleteRangeByWeight(start_offset, end_offset, self.tb.segmentSplitter());
+        var prepared_annotations = try self.tb.textAnnotations().prepareSplice(start_offset, end_offset - start_offset, 0);
+        defer prepared_annotations.deinit();
+        const start_weight = iter_mod.coordsToOffset(self.tb.rope(), start.row, start.col) orelse return EditBufferError.InvalidCursor;
+        const end_weight = iter_mod.coordsToOffset(self.tb.rope(), end.row, end.col) orelse return EditBufferError.InvalidCursor;
+        try self.tb.rope().deleteRangeByWeight(start_weight, end_weight, self.tb.segmentSplitter());
+        self.tb.textAnnotations().commitPreparedSplice(&prepared_annotations);
 
         self.tb.markViewsDirty();
 
