@@ -471,9 +471,9 @@ test "document replacement creates stable normalized ranges and structural moves
     };
     var ids: [ranges.len]u64 = undefined;
     _ = try tb.replaceDocumentRange(null, .replace, 0, 0, &chunks, 77, &ranges, &ids);
-    try expectText(tb, "A\n界Z");
+    try expectText(tb, "A\n\n界Z");
     try std.testing.expectEqual(@as(u32, 2), tb.getDocumentRange(ids[2]).?.start_byte);
-    try std.testing.expectEqual(@as(u32, 5), tb.getDocumentRange(ids[2]).?.end_byte);
+    try std.testing.expectEqual(@as(u32, 6), tb.getDocumentRange(ids[2]).?.end_byte);
 
     const before_edit_epoch = tb.getContentEpoch();
     const replacement = [_]text_buffer.StyledChunk{.{
@@ -632,6 +632,125 @@ test "document operation batch resolves shifted stable IDs and publishes once" {
 test "document range transaction rolls back every allocation failure" {
     const allocations = try exerciseDocumentRangeTransactionFailure(null);
     for (0..allocations) |offset| _ = try exerciseDocumentRangeTransactionFailure(offset);
+}
+
+test "zero-length document moves are exact no-ops among co-located ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const empty_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = "A".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "".ptr, .text_len = 0, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = "B".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    const ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 3, .style = empty_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 1, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 2 },
+        .{ .start_chunk = 1, .end_chunk = 1, .style = empty_style, .styled = true, .priority = 3 },
+        .{ .start_chunk = 1, .end_chunk = 1, .style = empty_style, .styled = false, .priority = 4 },
+    };
+    var ids: [ranges.len]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 55,
+        .chunks = &chunks,
+        .ranges = &ranges,
+    }}, &ids);
+
+    const root_before = tb.rope().root;
+    const content_epoch = tb.getContentEpoch();
+    const annotation_epoch = tb.getAnnotationEpoch();
+    var before: [3]TextAnnotations.Annotation = undefined;
+    for (ids[1..], 0..) |id, index| before[index] = tb.textAnnotations().get(id).?;
+    var no_ids: [0]u64 = .{};
+    try tb.applyDocumentOperations(&.{
+        .{ .kind = .move, .target_id = ids[1], .anchor_id = ids[3], .owner = 55, .before = false },
+        .{ .kind = .move, .target_id = ids[2], .anchor_id = ids[2], .owner = 55, .before = true },
+        .{ .kind = .move, .target_id = ids[3], .anchor_id = ids[1], .owner = 55, .before = true },
+    }, &no_ids);
+
+    try expectText(tb, "AB");
+    try std.testing.expect(tb.rope().root == root_before);
+    try std.testing.expectEqual(content_epoch, tb.getContentEpoch());
+    try std.testing.expectEqual(annotation_epoch, tb.getAnnotationEpoch());
+    for (ids[1..], 0..) |id, index| try std.testing.expectEqualDeep(before[index], tb.textAnnotations().get(id).?);
+}
+
+test "document operation candidate releases every intermediate style and link" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const style = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const urls = [_][]const u8{ "https://a.test", "https://b.test", "https://c.test" };
+    var values: [3]text_buffer.StyledChunk = undefined;
+    for (&values, urls, 0..) |*value, url, index| value.* = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = @intCast(index + 1),
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const text = [_]text_buffer.StyledChunk{.{
+        .text_ptr = "x".ptr,
+        .text_len = 1,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    const initial_ranges = [_]text_buffer.DocumentRangeInput{.{
+        .start_chunk = 0,
+        .end_chunk = 1,
+        .style = values[0],
+        .styled = true,
+        .priority = 1,
+    }};
+    var ids: [1]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 66,
+        .chunks = &text,
+        .ranges = &initial_ranges,
+    }}, &ids);
+
+    var no_ids: [0]u64 = .{};
+    try tb.applyDocumentOperations(&.{
+        .{ .kind = .update_style, .target_id = ids[0], .owner = 66, .style = values[1] },
+        .{ .kind = .update_style, .target_id = ids[0], .owner = 66, .style = values[2] },
+    }, &no_ids);
+    var live_refs: u32 = 0;
+    for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
+    try std.testing.expectEqual(@as(u32, 1), live_refs);
+    _ = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), style.getAnonymousStyleCount());
+    try std.testing.expectEqual(@as(u64, 1), link_pool.getLiveSlotCount());
+
+    try tb.applyDocumentOperations(&.{.{ .kind = .clear_owner, .owner = 66 }}, &no_ids);
+    live_refs = 0;
+    for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
+    try std.testing.expectEqual(@as(u32, 0), live_refs);
+    try std.testing.expectEqual(@as(usize, 0), style.getAnonymousStyleCount());
+    try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
 test "splice backing survives undo roots and reset releases it" {

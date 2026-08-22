@@ -943,7 +943,19 @@ export class TextRenderable extends TextBufferRenderable {
     if (this._textDocumentOwner === 0) this._textDocumentOwner = nextTextDocumentOwner++
     if (nextTextDocumentOwner === 0xffffffff) nextTextDocumentOwner = 1
 
-    const pending = this._nativeRangeId === null ? [this] : [...this._pendingDocumentRoots]
+    const pending = [
+      ...new Set(
+        (this._nativeRangeId === null ? [this] : [...this._pendingDocumentRoots]).map((candidate) => {
+          let root = candidate
+          while (root._nativeRangeId !== null) {
+            const range = this.textBuffer.getDocumentRange(root._nativeRangeId)
+            if (!range || range.startByte !== range.endByte || !isTextRenderable(root.parent)) break
+            root = root.parent
+          }
+          return root
+        }),
+      ),
+    ]
     const roots = pending.filter(
       (candidate) => !pending.some((other) => other !== candidate && candidate.isTextDescendantOf(other)),
     )
@@ -1215,7 +1227,16 @@ export class TextRenderable extends TextBufferRenderable {
       reverseOrder.splice(currentIndex, 1)
       reverseOrder.splice(index, 0, desired)
     }
-    this._pendingNativeMoves.push(...(forward.length <= reverse.length ? forward : reverse))
+    const moves = forward.length <= reverse.length ? forward : reverse
+    const hasEmptySource = moves.some((move) => {
+      if (move.source._nativeRangeId === null) return true
+      const range = this.textBuffer.getDocumentRange(move.source._nativeRangeId)
+      return !range || range.startByte === range.endByte
+    })
+    if (hasEmptySource) {
+      return
+    }
+    this._pendingNativeMoves.push(...moves)
     if (this._pendingNativeMoves.length > 0) this._textDocumentPending = true
   }
 
@@ -1335,8 +1356,7 @@ export class TextRenderable extends TextBufferRenderable {
 
   private detachedPlainText(): string {
     return this.gatherOwnContent()
-      .map((chunk) => chunk.text)
+      .map((chunk) => chunk.text.replace(/\r\n?/g, "\n"))
       .join("")
-      .replace(/\r\n/g, "\n")
   }
 }

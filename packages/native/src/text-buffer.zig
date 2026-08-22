@@ -2273,6 +2273,34 @@ pub const UnifiedTextBuffer = struct {
         return slot.resolved_style_id;
     }
 
+    /// Normalizes every structural chunk independently. In particular, a CR at
+    /// the end of one child and an LF at the start of the next child remain two
+    /// line breaks, while CRLF inside one child remains one line break.
+    fn normalizeStyledChunks(
+        chunks: []const StyledChunk,
+        output: []u8,
+        boundaries: []u32,
+    ) TextBufferError!usize {
+        if (boundaries.len != chunks.len + 1) return TextBufferError.InvalidDimensions;
+        boundaries[0] = 0;
+        var output_offset: usize = 0;
+        for (chunks, 0..) |chunk, chunk_index| {
+            var previous_was_cr = false;
+            for (chunk.text_ptr[0..chunk.text_len]) |byte| {
+                if (byte == '\n' and previous_was_cr) {
+                    previous_was_cr = false;
+                    continue;
+                }
+                if (output_offset >= output.len) return TextBufferError.InvalidDimensions;
+                output[output_offset] = if (byte == '\r') '\n' else byte;
+                output_offset += 1;
+                previous_was_cr = byte == '\r';
+            }
+            boundaries[chunk_index + 1] = std.math.cast(u32, output_offset) orelse return TextBufferError.InvalidDimensions;
+        }
+        return output_offset;
+    }
+
     pub fn replaceStyledRangeBytes(
         self: *Self,
         start_byte: u32,
@@ -2298,23 +2326,10 @@ pub const UnifiedTextBuffer = struct {
         var styles_committed = false;
         defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
 
-        // Calculate every chunk boundary in one streaming normalization pass.
-        // A CRLF split between adjacent chunks still occupies one document byte.
         const normalized_boundaries = self.global_allocator.alloc(u32, chunks.len + 1) catch return TextBufferError.OutOfMemory;
         defer self.global_allocator.free(normalized_boundaries);
-        normalized_boundaries[0] = 0;
-        var normalized_offset: u32 = 0;
-        var raw_offset: usize = 0;
-        var previous_was_cr = false;
-        for (chunks, 0..) |chunk, chunk_index| {
-            const chunk_end = raw_offset + chunk.text_len;
-            while (raw_offset < chunk_end) : (raw_offset += 1) {
-                const byte = replacement[raw_offset];
-                if (!(byte == '\n' and previous_was_cr)) normalized_offset = std.math.add(u32, normalized_offset, 1) catch return TextBufferError.InvalidDimensions;
-                previous_was_cr = byte == '\r';
-            }
-            normalized_boundaries[chunk_index + 1] = normalized_offset;
-        }
+        const normalized_len = try normalizeStyledChunks(chunks, replacement, normalized_boundaries);
+        const normalized_offset: u32 = @intCast(normalized_len);
 
         var candidate = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
@@ -2371,7 +2386,7 @@ pub const UnifiedTextBuffer = struct {
             };
         }
 
-        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement, &candidate);
+        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate);
         candidate_owned = false;
         styles_committed = true;
         return result;
@@ -2460,8 +2475,10 @@ pub const UnifiedTextBuffer = struct {
         defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
         var released_styles: std.ArrayListUnmanaged(u32) = .empty;
         defer released_styles.deinit(self.global_allocator);
-        try acquired_styles.ensureTotalCapacity(self.global_allocator, output_count + operations.len);
-        try released_styles.ensureTotalCapacity(self.global_allocator, self.annotations.count());
+        const maximum_acquired_styles = std.math.add(usize, output_count + operations.len, self.annotations.count()) catch return TextBufferError.InvalidDimensions;
+        try acquired_styles.ensureTotalCapacity(self.global_allocator, maximum_acquired_styles);
+        const maximum_released_styles = std.math.add(usize, self.annotations.count(), maximum_acquired_styles) catch return TextBufferError.InvalidDimensions;
+        try released_styles.ensureTotalCapacity(self.global_allocator, maximum_released_styles);
         const created_ids = self.global_allocator.alloc(u64, out_ids.len) catch return TextBufferError.OutOfMemory;
         defer self.global_allocator.free(created_ids);
         var output_index: usize = 0;
@@ -2506,24 +2523,13 @@ pub const UnifiedTextBuffer = struct {
                     var total_raw: usize = 0;
                     for (operation.chunks) |chunk| total_raw = std.math.add(usize, total_raw, chunk.text_len) catch return TextBufferError.InvalidDimensions;
                     const raw_start = storage_used;
-                    const raw_end = std.math.add(usize, raw_start, total_raw) catch return TextBufferError.InvalidDimensions;
-                    if (raw_end > staged_storage.?.len) return TextBufferError.InvalidDimensions;
-                    var raw_offset = raw_start;
+                    const raw_capacity_end = std.math.add(usize, raw_start, total_raw) catch return TextBufferError.InvalidDimensions;
+                    if (raw_capacity_end > staged_storage.?.len) return TextBufferError.InvalidDimensions;
                     const boundaries = self.global_allocator.alloc(u32, operation.chunks.len + 1) catch return TextBufferError.OutOfMemory;
                     defer self.global_allocator.free(boundaries);
-                    boundaries[0] = 0;
-                    var normalized_offset: u32 = 0;
-                    var previous_was_cr = false;
-                    for (operation.chunks, 0..) |chunk, chunk_index| {
-                        if (chunk.text_len != 0) @memcpy(staged_storage.?[raw_offset .. raw_offset + chunk.text_len], chunk.text_ptr[0..chunk.text_len]);
-                        const chunk_end = raw_offset + chunk.text_len;
-                        while (raw_offset < chunk_end) : (raw_offset += 1) {
-                            const byte = staged_storage.?[raw_offset];
-                            if (!(byte == '\n' and previous_was_cr)) normalized_offset = std.math.add(u32, normalized_offset, 1) catch return TextBufferError.InvalidDimensions;
-                            previous_was_cr = byte == '\r';
-                        }
-                        boundaries[chunk_index + 1] = normalized_offset;
-                    }
+                    const normalized_len = try normalizeStyledChunks(operation.chunks, staged_storage.?[raw_start..raw_capacity_end], boundaries);
+                    const normalized_offset: u32 = @intCast(normalized_len);
+                    const raw_end = raw_start + normalized_len;
                     storage_used = raw_end;
 
                     const start_location = try candidate_buffer.normalizedByteOffsetToLocation(start);
@@ -2679,6 +2685,7 @@ pub const UnifiedTextBuffer = struct {
                     const source_start = @min(source.start_byte, source.end_byte);
                     const source_end = @max(source.start_byte, source.end_byte);
                     const len = source_end - source_start;
+                    if (len == 0 or operation.target_id == operation.anchor_id) continue;
                     const desired = if (operation.before) @min(anchor.start_byte, anchor.end_byte) else @max(anchor.start_byte, anchor.end_byte);
                     if (desired < source_start or desired > source_end) {
                         const destination = if (desired > source_end) desired - len else desired;
@@ -2731,21 +2738,28 @@ pub const UnifiedTextBuffer = struct {
             }
         }
 
-        // Splices can create retained fragments. Their style ownership is the
-        // only candidate reference not already acquired by an explicit op.
+        // Reconcile ownership against the final candidate rather than the
+        // operation log. Intermediate replace/style/remove combinations may
+        // acquire styles that do not survive publication, while splices may
+        // create retained fragments without an explicit acquisition.
+        const acquisition_used = self.global_allocator.alloc(bool, acquired_styles.items.len) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(acquisition_used);
+        @memset(acquisition_used, false);
         var candidate_iterator = candidate_annotations.iterator();
         while (candidate_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            if (self.annotations.get(annotation.id()) != null) continue;
-            var explicitly_created = false;
-            for (created_ids) |id| {
-                if (id == annotation.id()) {
-                    explicitly_created = true;
+            const current = self.annotations.get(annotation.id());
+            if (current != null and current.?.payload.style_id == annotation.payload.style_id) continue;
+            var found_acquisition = false;
+            for (acquired_styles.items, 0..) |style_id, index| {
+                if (!acquisition_used[index] and style_id == annotation.payload.style_id) {
+                    acquisition_used[index] = true;
+                    found_acquisition = true;
                     break;
                 }
             }
-            if (!explicitly_created) {
+            if (!found_acquisition) {
                 try self.retainInternalStyle(annotation.payload.style_id);
-                try acquired_styles.append(self.global_allocator, annotation.payload.style_id);
+                acquired_styles.appendAssumeCapacity(annotation.payload.style_id);
             }
         }
         var current_iterator = self.annotations.iterator();
@@ -2754,6 +2768,9 @@ pub const UnifiedTextBuffer = struct {
             if (next == null or next.?.payload.style_id != annotation.payload.style_id) {
                 try released_styles.append(self.global_allocator, annotation.payload.style_id);
             }
+        }
+        for (acquired_styles.items[0..acquisition_used.len], acquisition_used) |style_id, used| {
+            if (!used) try released_styles.append(self.global_allocator, style_id);
         }
 
         // No fallible work follows this point.
@@ -2830,20 +2847,8 @@ pub const UnifiedTextBuffer = struct {
         defer self.global_allocator.free(replacement);
         const boundaries = self.global_allocator.alloc(u32, chunks.len + 1) catch return TextBufferError.OutOfMemory;
         defer self.global_allocator.free(boundaries);
-        boundaries[0] = 0;
-        var normalized_offset: u32 = 0;
-        var raw_offset: usize = 0;
-        var previous_was_cr = false;
-        for (chunks, 0..) |chunk, chunk_index| {
-            if (chunk.text_len != 0) @memcpy(replacement[raw_offset .. raw_offset + chunk.text_len], chunk.text_ptr[0..chunk.text_len]);
-            const chunk_end = raw_offset + chunk.text_len;
-            while (raw_offset < chunk_end) : (raw_offset += 1) {
-                const byte = replacement[raw_offset];
-                if (!(byte == '\n' and previous_was_cr)) normalized_offset = std.math.add(u32, normalized_offset, 1) catch return TextBufferError.InvalidDimensions;
-                previous_was_cr = byte == '\r';
-            }
-            boundaries[chunk_index + 1] = normalized_offset;
-        }
+        const normalized_len = try normalizeStyledChunks(chunks, replacement, boundaries);
+        const normalized_offset: u32 = @intCast(normalized_len);
 
         var candidate = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
@@ -2950,7 +2955,7 @@ pub const UnifiedTextBuffer = struct {
             }
         }
 
-        const result = try self.replaceNormalizedBytesWithAnnotations(start, end, replacement, &candidate);
+        const result = try self.replaceNormalizedBytesWithAnnotations(start, end, replacement[0..normalized_len], &candidate);
         candidate_owned = false;
         styles_committed = true;
         for (replaced_styles.items) |style_id| self.releaseInternalStyle(style_id);
@@ -2963,6 +2968,7 @@ pub const UnifiedTextBuffer = struct {
         const anchor = self.getDocumentRange(anchor_id) orelse return TextBufferError.InvalidIndex;
         if (source.owner != anchor.owner or source.start_byte > source.end_byte) return TextBufferError.InvalidIndex;
         const len = source.end_byte - source.start_byte;
+        if (len == 0 or source_id == anchor_id) return false;
         const desired = if (before) anchor.start_byte else anchor.end_byte;
         if (desired >= source.start_byte and desired <= source.end_byte) return false;
         const destination = if (desired > source.end_byte) desired - len else desired;

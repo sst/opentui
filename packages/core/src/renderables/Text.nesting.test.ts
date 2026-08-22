@@ -200,6 +200,50 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("reorders empty and coextensive subtrees without moving text or changing IDs", async () => {
+    const root = new TextRenderable(renderer, {})
+    const first = new TextRenderable(renderer, { content: "" })
+    const nested = new TextRenderable(renderer, {})
+    const nestedPoint = new TextRenderable(renderer, { content: "" })
+    nested.add(nestedPoint)
+    const last = new TextRenderable(renderer, { content: "" })
+    root.children = [first, nested, last]
+    renderer.root.add(root)
+    await renderOnce()
+
+    const nodes = [root, first, nested, nestedPoint, last]
+    const ids = nodes.map((node) => (node as any)._nativeRangeId)
+    const contentEpoch = (root as any).textBuffer.contentEpoch
+    for (let iteration = 0; iteration < 4; iteration++) {
+      root.children = iteration % 2 === 0 ? [last, first, nested] : [nested, last, first]
+      await renderOnce()
+      expect(root.plainText).toBe("")
+      expect(nodes.map((node) => (node as any)._nativeRangeId)).toEqual(ids)
+    }
+    expect((root as any).textBuffer.contentEpoch).toBe(contentEpoch)
+    expect(root.getTextChildren()).toEqual([nested, last, first])
+    expect(nested.getTextChildren()).toEqual([nestedPoint])
+  })
+
+  test("normalizes CRLF independently at structural child boundaries", async () => {
+    const root = new TextRenderable(renderer, {})
+    const carriageReturn = new TextRenderable(renderer, { content: "\r" })
+    const lineFeed = new TextRenderable(renderer, { content: "\nC" })
+    root.children = [carriageReturn, lineFeed]
+    renderer.root.add(root)
+    await renderOnce()
+
+    expect(root.plainText).toBe("\n\nC")
+    expect(carriageReturn.plainText).toBe("\n")
+    expect(lineFeed.plainText).toBe("\nC")
+
+    lineFeed.content = "\nD"
+    await renderOnce()
+    expect(root.plainText).toBe("\n\nD")
+    expect(carriageReturn.plainText).toBe("\n")
+    expect(lineFeed.plainText).toBe("\nD")
+  })
+
   test("preserves CRLF, wide characters, tabs, and nested visibility", async () => {
     const root = new TextRenderable(renderer, { wrapMode: "none" })
     const child = new TextRenderable(renderer, { content: "A\r\n界\tB" })
