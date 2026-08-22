@@ -45,6 +45,11 @@ import {
   DocumentRangeInputStruct,
   DocumentRangeStruct,
   DocumentOperationStruct,
+  AnnotationOperationStruct,
+  AnnotationQueryStruct,
+  AnnotationRecordStruct,
+  AnnotationBatchResultStruct,
+  DisplayPointStruct,
   TextSpliceResultStruct,
   HighlightStruct,
   LogicalCursorStruct,
@@ -158,6 +163,75 @@ export type DocumentOperation = DocumentStyle & {
   ranges?: DocumentRangeInput[]
 }
 
+export const TEXT_ANNOTATION_KIND_STYLE = 1 << 0
+export const TEXT_ANNOTATION_KIND_VIRTUAL = 1 << 2
+
+export type TextAnnotationGravity = "left" | "right"
+export type TextAnnotationSplicePolicy = "retain" | "invalidate" | "deleteWhenCovered"
+
+export type TextAnnotationPayload = {
+  namespace: number
+  styleId?: number
+  clientToken?: bigint
+  priority?: number
+  internal?: boolean
+  kindFlags?: number
+  splicePolicy?: TextAnnotationSplicePolicy
+}
+
+export type TextAnnotationOperation =
+  | (TextAnnotationPayload & {
+      kind: "addRange"
+      startByte: number
+      endByte: number
+      startGravity?: TextAnnotationGravity
+      endGravity?: TextAnnotationGravity
+    })
+  | (TextAnnotationPayload & { kind: "addPoint"; byte: number; gravity?: TextAnnotationGravity })
+  | {
+      kind: "updateRange"
+      id: bigint
+      startByte: number
+      endByte: number
+      startGravity?: TextAnnotationGravity
+      endGravity?: TextAnnotationGravity
+    }
+  | { kind: "updatePoint"; id: bigint; byte: number; gravity?: TextAnnotationGravity }
+  | (TextAnnotationPayload & { kind: "updatePayload"; id: bigint })
+  | { kind: "remove"; id: bigint }
+  | { kind: "clearNamespace"; namespace: number }
+
+export type TextAnnotationQuery =
+  | { kind: "byId"; id: bigint }
+  | { kind: "all" }
+  | { kind: "namespace"; namespace: number }
+  | { kind: "kindMask"; kindMask: number }
+  | { kind: "overlap"; startByte: number; endByte: number }
+  | { kind: "containingByte"; byte: number }
+  | { kind: "startsAt"; byte: number }
+  | { kind: "pointsAt"; byte: number }
+
+export type TextAnnotation = TextAnnotationPayload & {
+  id: bigint
+  clientToken: bigint
+  sequence: bigint
+  kind: "range" | "point"
+  startByte: number
+  endByte: number
+  pointGravity?: TextAnnotationGravity
+  startGravity?: TextAnnotationGravity
+  endGravity?: TextAnnotationGravity
+  styleId: number
+  priority: number
+  internal: boolean
+  kindFlags: number
+  splicePolicy: TextAnnotationSplicePolicy
+}
+
+export type TextAnnotationBatchResult = { createdIds: bigint[]; deletedIds: bigint[] }
+export type TextBoundaryAffinity = "before" | "after"
+export type TextDisplayPoint = { row: number; col: number; exact: boolean }
+
 export type TextSpliceResult = {
   oldRange: { start: number; end: number }
   insertedLength: number
@@ -178,8 +252,143 @@ function checkTextDocumentStatus(status: number, operation: string, allowNotFoun
   if (status === 0) return true
   if (status === 4 && allowNotFound) return false
   const reason =
-    status === 1 ? "invalid handle" : status === 2 ? "invalid argument" : status === 3 ? "out of memory" : "not found"
+    status === 1
+      ? "invalid handle"
+      : status === 2
+        ? "invalid argument"
+        : status === 3
+          ? "out of memory"
+          : status === 4
+            ? "not found"
+            : "output buffer is too small"
   throw new Error(`${operation} failed: ${reason}`)
+}
+
+function annotationGravity(gravity: TextAnnotationGravity | undefined, fallback: TextAnnotationGravity): number {
+  return (gravity ?? fallback) === "right" ? 1 : 0
+}
+
+function annotationSplicePolicy(policy: TextAnnotationSplicePolicy | undefined): number {
+  return policy === "invalidate" ? 1 : policy === "deleteWhenCovered" ? 2 : 0
+}
+
+function annotationPayload(payload: Partial<TextAnnotationPayload>) {
+  return {
+    namespace: payload.namespace ?? 0,
+    styleId: payload.styleId ?? 0,
+    clientToken: payload.clientToken ?? 0n,
+    priority: payload.priority ?? 0,
+    internal: payload.internal ? 1 : 0,
+    kindFlags: payload.kindFlags ?? 0,
+    splicePolicy: annotationSplicePolicy(payload.splicePolicy),
+  }
+}
+
+function packAnnotationOperations(operations: TextAnnotationOperation[]): Uint8Array {
+  return new Uint8Array(
+    AnnotationOperationStruct.packList(
+      operations.map((operation) => {
+        switch (operation.kind) {
+          case "addRange":
+            return {
+              kind: 0,
+              ...annotationPayload(operation),
+              startByte: operation.startByte,
+              endByte: operation.endByte,
+              startGravity: annotationGravity(operation.startGravity, "right"),
+              endGravity: annotationGravity(operation.endGravity, "left"),
+            }
+          case "addPoint":
+            return {
+              kind: 1,
+              ...annotationPayload(operation),
+              startByte: operation.byte,
+              startGravity: annotationGravity(operation.gravity, "right"),
+            }
+          case "updateRange":
+            return {
+              kind: 2,
+              id: operation.id,
+              startByte: operation.startByte,
+              endByte: operation.endByte,
+              startGravity: annotationGravity(operation.startGravity, "right"),
+              endGravity: annotationGravity(operation.endGravity, "left"),
+            }
+          case "updatePoint":
+            return {
+              kind: 3,
+              id: operation.id,
+              startByte: operation.byte,
+              startGravity: annotationGravity(operation.gravity, "right"),
+            }
+          case "updatePayload":
+            return { kind: 4, id: operation.id, ...annotationPayload(operation) }
+          case "remove":
+            return { kind: 5, id: operation.id }
+          case "clearNamespace":
+            return { kind: 6, namespace: operation.namespace }
+        }
+      }),
+    ),
+  )
+}
+
+function packAnnotationQuery(query: TextAnnotationQuery): Uint8Array {
+  let packed: ArrayBuffer
+  switch (query.kind) {
+    case "byId":
+      packed = AnnotationQueryStruct.pack({ mode: 0, id: query.id })
+      break
+    case "all":
+      packed = AnnotationQueryStruct.pack({ mode: 1 })
+      break
+    case "namespace":
+      packed = AnnotationQueryStruct.pack({ mode: 2, namespace: query.namespace })
+      break
+    case "kindMask":
+      packed = AnnotationQueryStruct.pack({ mode: 3, kindMask: query.kindMask })
+      break
+    case "overlap":
+      packed = AnnotationQueryStruct.pack({ mode: 4, startByte: query.startByte, endByte: query.endByte })
+      break
+    case "containingByte":
+      packed = AnnotationQueryStruct.pack({ mode: 5, byte: query.byte })
+      break
+    case "startsAt":
+      packed = AnnotationQueryStruct.pack({ mode: 6, byte: query.byte })
+      break
+    case "pointsAt":
+      packed = AnnotationQueryStruct.pack({ mode: 7, byte: query.byte })
+      break
+  }
+  return new Uint8Array(packed)
+}
+
+function unpackAnnotation(record: Record<string, number | bigint>): TextAnnotation {
+  const gravity = (value: number | bigint): TextAnnotationGravity => (value === 0 ? "left" : "right")
+  const splicePolicy =
+    record.splicePolicy === 1 ? "invalidate" : record.splicePolicy === 2 ? "deleteWhenCovered" : "retain"
+  const result: TextAnnotation = {
+    id: record.id as bigint,
+    clientToken: record.clientToken as bigint,
+    sequence: record.sequence as bigint,
+    kind: record.kind === 1 ? "range" : "point",
+    startByte: record.startByte as number,
+    endByte: record.endByte as number,
+    namespace: record.namespace as number,
+    styleId: record.styleId as number,
+    priority: record.priority as number,
+    internal: record.internal !== 0,
+    kindFlags: record.kindFlags as number,
+    splicePolicy,
+  }
+  if (result.kind === "range") {
+    result.startGravity = gravity(record.startGravity)
+    result.endGravity = gravity(record.endGravity)
+  } else {
+    result.pointGravity = gravity(record.pointGravity)
+  }
+  return result
 }
 
 function unpackTextSpliceResult(out: Uint32Array): TextSpliceResult {
@@ -1162,6 +1371,22 @@ function getOpenTUILib(libPath?: string) {
     textBufferSetStyledText: {
       args: ["u32", "ptr", "u32"],
       returns: "void",
+    },
+    textBufferApplyAnnotationOperations: {
+      args: ["u32", "ptr", "u32", "ptr", "u32", "ptr", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferQueryAnnotations: {
+      args: ["u32", "buffer", "ptr", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferDisplayPointToNormalizedByte: {
+      args: ["u32", "u32", "u32", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferNormalizedByteToDisplayPoint: {
+      args: ["u32", "u32", "u32", "buffer"],
+      returns: "u32",
     },
     textBufferReplaceStyledRangeBytes: {
       args: ["u32", "u32", "u32", "ptr", "u32", "u32", "buffer"],
@@ -2964,6 +3189,22 @@ export interface RenderLib extends AudioEngineLib {
     buffer: TextBufferHandle,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ) => void
+  textBufferApplyAnnotationOperations: (
+    buffer: TextBufferHandle,
+    operations: TextAnnotationOperation[],
+  ) => TextAnnotationBatchResult
+  textBufferQueryAnnotations: (buffer: TextBufferHandle, query: TextAnnotationQuery) => TextAnnotation[]
+  textBufferDisplayPointToNormalizedByte: (
+    buffer: TextBufferHandle,
+    row: number,
+    col: number,
+    affinity: TextBoundaryAffinity,
+  ) => number
+  textBufferNormalizedByteToDisplayPoint: (
+    buffer: TextBufferHandle,
+    byte: number,
+    affinity: TextBoundaryAffinity,
+  ) => TextDisplayPoint
   textBufferReplaceStyledRangeBytes: (
     buffer: TextBufferHandle,
     startByte: number,
@@ -5191,6 +5432,99 @@ class FFIRenderLib implements RenderLib {
   ): void {
     const chunksBuffer = chunks.length === 0 ? null : StyledChunkStruct.packList(chunks)
     this.opentui.symbols.textBufferSetStyledText(buffer, chunksBuffer, chunks.length)
+  }
+
+  private textBufferAnnotationCount(buffer: TextBufferHandle): number {
+    const count = new Uint32Array(1)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferQueryAnnotations(buffer, packAnnotationQuery({ kind: "all" }), null, 0, count),
+      "queryAnnotations",
+    )
+    return count[0]
+  }
+
+  public textBufferApplyAnnotationOperations(
+    buffer: TextBufferHandle,
+    operations: TextAnnotationOperation[],
+  ): TextAnnotationBatchResult {
+    const createdCount = operations.reduce(
+      (count, operation) => count + (operation.kind === "addRange" || operation.kind === "addPoint" ? 1 : 0),
+      0,
+    )
+    const deletedCapacity = this.textBufferAnnotationCount(buffer) + createdCount
+    toSafeFFIU32Length(deletedCapacity, "Annotation deletion output")
+    const packed = operations.length === 0 ? null : packAnnotationOperations(operations)
+    const created = new BigUint64Array(createdCount)
+    const deleted = new BigUint64Array(deletedCapacity)
+    const result = new Uint32Array(AnnotationBatchResultStruct.size / Uint32Array.BYTES_PER_ELEMENT)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferApplyAnnotationOperations(
+        buffer,
+        packed,
+        operations.length,
+        viewOrNull(created),
+        created.length,
+        viewOrNull(deleted),
+        deleted.length,
+        result,
+      ),
+      "applyAnnotationOperations",
+    )
+    return {
+      createdIds: Array.from(created.subarray(0, result[0])),
+      deletedIds: Array.from(deleted.subarray(0, result[1])),
+    }
+  }
+
+  public textBufferQueryAnnotations(buffer: TextBufferHandle, query: TextAnnotationQuery): TextAnnotation[] {
+    const packed = packAnnotationQuery(query)
+    const count = new Uint32Array(1)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferQueryAnnotations(buffer, packed, null, 0, count),
+      "queryAnnotations",
+    )
+    if (count[0] === 0) return []
+    const records = new Uint8Array(count[0] * AnnotationRecordStruct.size)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferQueryAnnotations(buffer, packed, records, count[0], count),
+      "queryAnnotations",
+    )
+    return AnnotationRecordStruct.unpackList(records.buffer, count[0]).map((record) =>
+      unpackAnnotation(record as Record<string, number | bigint>),
+    )
+  }
+
+  public textBufferDisplayPointToNormalizedByte(
+    buffer: TextBufferHandle,
+    row: number,
+    col: number,
+    affinity: TextBoundaryAffinity,
+  ): number {
+    const output = new Uint32Array(1)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferDisplayPointToNormalizedByte(
+        buffer,
+        row,
+        col,
+        affinity === "after" ? 1 : 0,
+        output,
+      ),
+      "displayPointToNormalizedByte",
+    )
+    return output[0]
+  }
+
+  public textBufferNormalizedByteToDisplayPoint(
+    buffer: TextBufferHandle,
+    byte: number,
+    affinity: TextBoundaryAffinity,
+  ): TextDisplayPoint {
+    const output = new Uint32Array(DisplayPointStruct.size / Uint32Array.BYTES_PER_ELEMENT)
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferNormalizedByteToDisplayPoint(buffer, byte, affinity === "after" ? 1 : 0, output),
+      "normalizedByteToDisplayPoint",
+    )
+    return { row: output[0], col: output[1], exact: output[2] !== 0 }
   }
 
   public textBufferReplaceStyledRangeBytes(

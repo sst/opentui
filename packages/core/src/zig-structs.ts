@@ -185,6 +185,62 @@ export const DocumentOperationStruct = defineStruct(
   },
 )
 
+export const AnnotationOperationStruct = defineStruct([
+  ["kind", "u32"],
+  ["internal", "u32", { default: 0 }],
+  ["id", "u64", { default: 0n }],
+  ["clientToken", "u64", { default: 0n }],
+  ["startByte", "u32", { default: 0 }],
+  ["endByte", "u32", { default: 0 }],
+  ["namespace", "u32", { default: 0 }],
+  ["styleId", "u32", { default: 0 }],
+  ["kindFlags", "u32", { default: 0 }],
+  ["priority", "u32", { default: 0 }],
+  ["startGravity", "u32", { default: 0 }],
+  ["endGravity", "u32", { default: 0 }],
+  ["splicePolicy", "u32", { default: 0 }],
+  ["reserved", "u32", { default: 0 }],
+])
+
+export const AnnotationQueryStruct = defineStruct([
+  ["mode", "u32"],
+  ["kindMask", "u32", { default: 0 }],
+  ["id", "u64", { default: 0n }],
+  ["namespace", "u32", { default: 0 }],
+  ["startByte", "u32", { default: 0 }],
+  ["endByte", "u32", { default: 0 }],
+  ["byte", "u32", { default: 0 }],
+])
+
+export const AnnotationRecordStruct = defineStruct([
+  ["id", "u64"],
+  ["clientToken", "u64"],
+  ["sequence", "u64"],
+  ["startByte", "u32"],
+  ["endByte", "u32"],
+  ["namespace", "u32"],
+  ["styleId", "u32"],
+  ["kindFlags", "u32"],
+  ["kind", "u32"],
+  ["pointGravity", "u32"],
+  ["startGravity", "u32"],
+  ["endGravity", "u32"],
+  ["priority", "u32"],
+  ["splicePolicy", "u32"],
+  ["internal", "u32"],
+])
+
+export const AnnotationBatchResultStruct = defineStruct([
+  ["createdCount", "u32"],
+  ["deletedCount", "u32"],
+])
+
+export const DisplayPointStruct = defineStruct([
+  ["row", "u32"],
+  ["col", "u32"],
+  ["exact", "u32"],
+])
+
 export const TextSpliceResultStruct = defineStruct([
   ["oldStart", "u32"],
   ["oldEnd", "u32"],

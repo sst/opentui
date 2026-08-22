@@ -1,5 +1,29 @@
 import { describe, expect, test } from "bun:test"
-import { DocumentOperationStruct, DocumentRangeInputStruct, DocumentStyledChunkStruct } from "./zig-structs.js"
+import {
+  AnnotationBatchResultStruct,
+  AnnotationOperationStruct,
+  AnnotationQueryStruct,
+  AnnotationRecordStruct,
+  DisplayPointStruct,
+  DocumentOperationStruct,
+  DocumentRangeInputStruct,
+  DocumentStyledChunkStruct,
+} from "./zig-structs.js"
+
+describe("annotation ABI", () => {
+  test("matches native fixed-width sizes and offsets", () => {
+    expect(AnnotationOperationStruct.size).toBe(64)
+    expect(AnnotationOperationStruct.layoutByName.get("id")?.offset).toBe(8)
+    expect(AnnotationOperationStruct.layoutByName.get("clientToken")?.offset).toBe(16)
+    expect(AnnotationQueryStruct.size).toBe(32)
+    expect(AnnotationQueryStruct.layoutByName.get("id")?.offset).toBe(8)
+    expect(AnnotationRecordStruct.size).toBe(72)
+    expect(AnnotationRecordStruct.layoutByName.get("sequence")?.offset).toBe(16)
+    expect(AnnotationRecordStruct.layoutByName.get("kindFlags")?.offset).toBe(40)
+    expect(AnnotationBatchResultStruct.size).toBe(8)
+    expect(DisplayPointStruct.size).toBe(12)
+  })
+})
 
 describe("document transaction ABI", () => {
   test("matches native sizes and style discriminator offsets", () => {

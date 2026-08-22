@@ -10,6 +10,12 @@ import {
   type RenderLib,
   type TextBufferHandle,
   type TextSpliceResult,
+  type TextAnnotation,
+  type TextAnnotationBatchResult,
+  type TextAnnotationOperation,
+  type TextAnnotationQuery,
+  type TextBoundaryAffinity,
+  type TextDisplayPoint,
 } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import type { SyntaxStyle } from "./syntax-style.js"
@@ -186,6 +192,27 @@ export class TextBuffer {
     this._lineInfo = undefined
     if (styleSource) this._syntaxStyle = styleSource
     return ids
+  }
+
+  public applyAnnotationOperations(operations: TextAnnotationOperation[]): TextAnnotationBatchResult {
+    this.guard()
+    return this.lib.textBufferApplyAnnotationOperations(this.bufferPtr, operations)
+  }
+
+  /** Results are ordered by lower normalized byte, then native ID. */
+  public queryAnnotations(query: TextAnnotationQuery = { kind: "all" }): TextAnnotation[] {
+    this.guard()
+    return this.lib.textBufferQueryAnnotations(this.bufferPtr, query)
+  }
+
+  public displayPointToNormalizedByte(row: number, col: number, affinity: TextBoundaryAffinity): number {
+    this.guard()
+    return this.lib.textBufferDisplayPointToNormalizedByte(this.bufferPtr, row, col, affinity)
+  }
+
+  public normalizedByteToDisplayPoint(byte: number, affinity: TextBoundaryAffinity): TextDisplayPoint {
+    this.guard()
+    return this.lib.textBufferNormalizedByteToDisplayPoint(this.bufferPtr, byte, affinity)
   }
 
   public applyTwoDocumentOperations(

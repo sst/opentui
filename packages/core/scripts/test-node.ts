@@ -179,6 +179,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/yoga-setters.test.js",
   ".node-test/src/tests/wrap-resize-perf.test.js",
   ".node-test/src/text-buffer.test.js",
+  ".node-test/src/text-buffer-annotations.test.js",
   ".node-test/src/text-buffer-view.test.js",
 ]
 
