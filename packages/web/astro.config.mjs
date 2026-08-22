@@ -70,7 +70,10 @@ export default defineConfig({
   integrations: [
     mdx(),
     sitemap({
-      filter: (page) => new URL(page).pathname !== "/404/",
+      filter: (page) => {
+        const path = new URL(page).pathname
+        return path !== "/404/" && !path.startsWith("/lab/")
+      },
     }),
   ],
   site: "https://opentui.com",
