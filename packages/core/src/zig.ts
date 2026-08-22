@@ -40,6 +40,9 @@ import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import {
   StyledChunkStruct,
+  DocumentStyledChunkStruct,
+  AnnotationStyleStruct,
+  TextSpliceResultStruct,
   HighlightStruct,
   LogicalCursorStruct,
   VisualCursorStruct,
@@ -112,6 +115,39 @@ export type RendererHandle = NativeHandle<"renderer">
 export type OptimizedBufferHandle = NativeHandle<"optimized_buffer">
 export type TextBufferHandle = NativeHandle<"text_buffer">
 export type TextBufferViewHandle = NativeHandle<"text_buffer_view">
+
+export type DocumentStyle = {
+  fg?: RGBA | null
+  bg?: RGBA | null
+  attributes?: number
+  link?: { url: string } | string | null
+}
+
+export type DocumentStyledChunk = DocumentStyle & { text: string }
+
+export type TextSpliceResult = {
+  oldRange: { start: number; end: number }
+  insertedLength: number
+  newEnd: number
+  oldDisplay: {
+    start: { row: number; col: number; exact: boolean }
+    end: { row: number; col: number; exact: boolean }
+  }
+  newDisplay: {
+    start: { row: number; col: number; exact: boolean }
+    end: { row: number; col: number; exact: boolean }
+  }
+  oldExtent: { rows: number; columns: number }
+  newExtent: { rows: number; columns: number }
+}
+
+function checkTextDocumentStatus(status: number, operation: string, allowNotFound = false): boolean {
+  if (status === 0) return true
+  if (status === 4 && allowNotFound) return false
+  const reason =
+    status === 1 ? "invalid handle" : status === 2 ? "invalid argument" : status === 3 ? "out of memory" : "not found"
+  throw new Error(`${operation} failed: ${reason}`)
+}
 export type EditBufferHandle = NativeHandle<"edit_buffer">
 export type EditorViewHandle = NativeHandle<"editor_view">
 export type SyntaxStyleHandle = NativeHandle<"syntax_style">
@@ -1032,6 +1068,46 @@ function getOpenTUILib(libPath?: string) {
     textBufferSetStyledText: {
       args: ["u32", "ptr", "u32"],
       returns: "void",
+    },
+    textBufferReplaceStyledRangeBytes: {
+      args: ["u32", "u32", "u32", "ptr", "u32", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferCreateStyleRange: {
+      args: ["u32", "u32", "u32", "u32", "buffer", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferUpdateStyleRange: {
+      args: ["u32", "u64", "u32", "u32"],
+      returns: "u32",
+    },
+    textBufferMoveStyleRange: {
+      args: ["u32", "u64", "u32", "u32"],
+      returns: "u32",
+    },
+    textBufferUpdateStyleRangeStyle: {
+      args: ["u32", "u64", "buffer"],
+      returns: "u32",
+    },
+    textBufferRemoveStyleRange: {
+      args: ["u32", "u64"],
+      returns: "u32",
+    },
+    textBufferClearStyleOwner: {
+      args: ["u32", "u32", "buffer"],
+      returns: "u32",
+    },
+    textBufferGetAnnotationEpoch: {
+      args: ["u32"],
+      returns: "u64",
+    },
+    textBufferBeginStyleBatch: {
+      args: ["u32"],
+      returns: "u32",
+    },
+    textBufferEndStyleBatch: {
+      args: ["u32"],
+      returns: "u32",
     },
     textBufferGetLineCount: {
       args: ["u32"],
@@ -2752,6 +2828,29 @@ export interface RenderLib extends AudioEngineLib {
     buffer: TextBufferHandle,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ) => void
+  textBufferReplaceStyledRangeBytes: (
+    buffer: TextBufferHandle,
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+  ) => TextSpliceResult
+  textBufferCreateStyleRange: (
+    buffer: TextBufferHandle,
+    owner: number,
+    startByte: number,
+    endByte: number,
+    style: DocumentStyle,
+    priority: number,
+  ) => bigint
+  textBufferUpdateStyleRange: (buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number) => void
+  textBufferMoveStyleRange: (buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number) => void
+  textBufferUpdateStyleRangeStyle: (buffer: TextBufferHandle, id: bigint, style: DocumentStyle) => void
+  textBufferRemoveStyleRange: (buffer: TextBufferHandle, id: bigint) => boolean
+  textBufferClearStyleOwner: (buffer: TextBufferHandle, owner: number) => number
+  textBufferGetAnnotationEpoch: (buffer: TextBufferHandle) => bigint
+  textBufferBeginStyleBatch: (buffer: TextBufferHandle) => void
+  textBufferEndStyleBatch: (buffer: TextBufferHandle) => void
   textBufferSetDefaultFg: (buffer: TextBufferHandle, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: TextBufferHandle, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: TextBufferHandle, attributes: number | null) => void
@@ -4944,13 +5043,116 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
-    if (chunks.length === 0) {
-      this.textBufferClear(buffer)
-      return
-    }
-
-    const chunksBuffer = StyledChunkStruct.packList(chunks)
+    const chunksBuffer = chunks.length === 0 ? null : StyledChunkStruct.packList(chunks)
     this.opentui.symbols.textBufferSetStyledText(buffer, chunksBuffer, chunks.length)
+  }
+
+  public textBufferReplaceStyledRangeBytes(
+    buffer: TextBufferHandle,
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+  ): TextSpliceResult {
+    const packedChunks = chunks.length === 0 ? null : DocumentStyledChunkStruct.packList(chunks)
+    const out = new Uint32Array(TextSpliceResultStruct.size / Uint32Array.BYTES_PER_ELEMENT)
+    const status = this.opentui.symbols.textBufferReplaceStyledRangeBytes(
+      buffer,
+      startByte,
+      endByte,
+      packedChunks,
+      chunks.length,
+      owner,
+      out,
+    )
+    checkTextDocumentStatus(status, "replaceStyledRangeBytes")
+    const result = TextSpliceResultStruct.unpack(out.buffer) as Record<string, number>
+    return {
+      oldRange: { start: result.oldStart, end: result.oldEnd },
+      insertedLength: result.insertedLen,
+      newEnd: result.newEnd,
+      oldDisplay: {
+        start: { row: result.oldStartRow, col: result.oldStartCol, exact: result.oldStartExact !== 0 },
+        end: { row: result.oldEndRow, col: result.oldEndCol, exact: result.oldEndExact !== 0 },
+      },
+      newDisplay: {
+        start: { row: result.newStartRow, col: result.newStartCol, exact: result.newStartExact !== 0 },
+        end: { row: result.newEndRow, col: result.newEndCol, exact: result.newEndExact !== 0 },
+      },
+      oldExtent: { rows: result.oldExtentRows, columns: result.oldExtentColumns },
+      newExtent: { rows: result.newExtentRows, columns: result.newExtentColumns },
+    }
+  }
+
+  public textBufferCreateStyleRange(
+    buffer: TextBufferHandle,
+    owner: number,
+    startByte: number,
+    endByte: number,
+    style: DocumentStyle,
+    priority: number,
+  ): bigint {
+    const packedStyle = new Uint8Array(AnnotationStyleStruct.pack(style))
+    const outId = new BigUint64Array(1)
+    const status = this.opentui.symbols.textBufferCreateStyleRange(
+      buffer,
+      owner,
+      startByte,
+      endByte,
+      packedStyle,
+      priority,
+      outId,
+    )
+    checkTextDocumentStatus(status, "createStyleRange")
+    return outId[0]
+  }
+
+  public textBufferUpdateStyleRange(buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number): void {
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferUpdateStyleRange(buffer, id, startByte, endByte),
+      "updateStyleRange",
+    )
+  }
+
+  public textBufferMoveStyleRange(buffer: TextBufferHandle, id: bigint, startByte: number, endByte: number): void {
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferMoveStyleRange(buffer, id, startByte, endByte),
+      "moveStyleRange",
+    )
+  }
+
+  public textBufferUpdateStyleRangeStyle(buffer: TextBufferHandle, id: bigint, style: DocumentStyle): void {
+    const packedStyle = new Uint8Array(AnnotationStyleStruct.pack(style))
+    checkTextDocumentStatus(
+      this.opentui.symbols.textBufferUpdateStyleRangeStyle(buffer, id, packedStyle),
+      "updateStyleRangeStyle",
+    )
+  }
+
+  public textBufferRemoveStyleRange(buffer: TextBufferHandle, id: bigint): boolean {
+    return checkTextDocumentStatus(
+      this.opentui.symbols.textBufferRemoveStyleRange(buffer, id),
+      "removeStyleRange",
+      true,
+    )
+  }
+
+  public textBufferClearStyleOwner(buffer: TextBufferHandle, owner: number): number {
+    const removed = new Uint32Array(1)
+    checkTextDocumentStatus(this.opentui.symbols.textBufferClearStyleOwner(buffer, owner, removed), "clearStyleOwner")
+    return removed[0]
+  }
+
+  public textBufferGetAnnotationEpoch(buffer: TextBufferHandle): bigint {
+    return this.opentui.symbols.textBufferGetAnnotationEpoch(buffer)
+  }
+
+  public textBufferBeginStyleBatch(buffer: TextBufferHandle): void {
+    checkTextDocumentStatus(this.opentui.symbols.textBufferBeginStyleBatch(buffer), "beginStyleBatch")
+  }
+
+  public textBufferEndStyleBatch(buffer: TextBufferHandle): void {
+    checkTextDocumentStatus(this.opentui.symbols.textBufferEndStyleBatch(buffer), "endStyleBatch")
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {

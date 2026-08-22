@@ -1,6 +1,14 @@
 import type { StyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
-import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferHandle } from "./zig.js"
+import {
+  resolveRenderLib,
+  type DocumentStyle,
+  type DocumentStyledChunk,
+  type LineInfo,
+  type RenderLib,
+  type TextBufferHandle,
+  type TextSpliceResult,
+} from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import type { SyntaxStyle } from "./syntax-style.js"
 
@@ -90,6 +98,71 @@ export class TextBuffer {
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
+  }
+
+  public replaceStyledRangeBytes(
+    startByte: number,
+    endByte: number,
+    chunks: DocumentStyledChunk[],
+    owner: number,
+  ): TextSpliceResult {
+    this.guard()
+    const result = this.lib.textBufferReplaceStyledRangeBytes(this.bufferPtr, startByte, endByte, chunks, owner)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    return result
+  }
+
+  public createStyleRange(
+    owner: number,
+    startByte: number,
+    endByte: number,
+    style: DocumentStyle,
+    priority: number = 1,
+  ): bigint {
+    this.guard()
+    return this.lib.textBufferCreateStyleRange(this.bufferPtr, owner, startByte, endByte, style, priority)
+  }
+
+  public updateStyleRange(id: bigint, startByte: number, endByte: number): void {
+    this.guard()
+    this.lib.textBufferUpdateStyleRange(this.bufferPtr, id, startByte, endByte)
+  }
+
+  public moveStyleRange(id: bigint, startByte: number, endByte: number): void {
+    this.guard()
+    this.lib.textBufferMoveStyleRange(this.bufferPtr, id, startByte, endByte)
+  }
+
+  public updateStyleRangeStyle(id: bigint, style: DocumentStyle): void {
+    this.guard()
+    this.lib.textBufferUpdateStyleRangeStyle(this.bufferPtr, id, style)
+  }
+
+  public removeStyleRange(id: bigint): boolean {
+    this.guard()
+    return this.lib.textBufferRemoveStyleRange(this.bufferPtr, id)
+  }
+
+  public clearStyleOwner(owner: number): number {
+    this.guard()
+    return this.lib.textBufferClearStyleOwner(this.bufferPtr, owner)
+  }
+
+  public get annotationEpoch(): bigint {
+    this.guard()
+    return this.lib.textBufferGetAnnotationEpoch(this.bufferPtr)
+  }
+
+  public beginStyleBatch(): void {
+    this.guard()
+    this.lib.textBufferBeginStyleBatch(this.bufferPtr)
+  }
+
+  public endStyleBatch(): void {
+    this.guard()
+    this.lib.textBufferEndStyleBatch(this.bufferPtr)
   }
 
   public setDefaultFg(fg: RGBA | null): void {

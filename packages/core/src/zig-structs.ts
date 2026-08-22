@@ -66,6 +66,67 @@ export const StyledChunkStruct = defineStruct(
   },
 )
 
+export const DocumentStyledChunkStruct = defineStruct(
+  [
+    ["text", "char*"],
+    ["text_len", "u32", { lengthOf: "text" }],
+    ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["attributes", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u32", { lengthOf: "link" }],
+  ],
+  {
+    mapValue: (chunk: StyledChunkInput): StyledChunkInput => ({
+      ...chunk,
+      fg: normalizeColorValue(chunk.fg ?? null)?.rgba ?? null,
+      bg: normalizeColorValue(chunk.bg ?? null)?.rgba ?? null,
+      link: typeof chunk.link === "object" && chunk.link ? chunk.link.url : chunk.link,
+    }),
+  },
+)
+
+export const AnnotationStyleStruct = defineStruct(
+  [
+    ["fg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["bg", "pointer", { optional: true, packTransform: rgbaPackTransform, unpackTransform: rgbaUnpackTransform }],
+    ["attributes", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u32", { lengthOf: "link" }],
+  ],
+  {
+    mapValue: (style: Omit<StyledChunkInput, "text">): Omit<StyledChunkInput, "text"> => ({
+      ...style,
+      fg: normalizeColorValue(style.fg ?? null)?.rgba ?? null,
+      bg: normalizeColorValue(style.bg ?? null)?.rgba ?? null,
+      link: typeof style.link === "object" && style.link ? style.link.url : style.link,
+    }),
+  },
+)
+
+export const TextSpliceResultStruct = defineStruct([
+  ["oldStart", "u32"],
+  ["oldEnd", "u32"],
+  ["insertedLen", "u32"],
+  ["newEnd", "u32"],
+  ["oldStartRow", "u32"],
+  ["oldStartCol", "u32"],
+  ["oldStartExact", "u32"],
+  ["oldEndRow", "u32"],
+  ["oldEndCol", "u32"],
+  ["oldEndExact", "u32"],
+  ["newStartRow", "u32"],
+  ["newStartCol", "u32"],
+  ["newStartExact", "u32"],
+  ["newEndRow", "u32"],
+  ["newEndCol", "u32"],
+  ["newEndExact", "u32"],
+  ["oldExtentRows", "u32"],
+  ["oldExtentColumns", "u32"],
+  ["newExtentRows", "u32"],
+  ["newExtentColumns", "u32"],
+])
+
 export const HighlightStruct = defineStruct([
   ["start", "u32"],
   ["end", "u32"],

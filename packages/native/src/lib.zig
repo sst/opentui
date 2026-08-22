@@ -2209,8 +2209,7 @@ export fn textBufferSetStyledText(
     chunkCount: u32,
 ) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
-    if (chunkCount == 0) return;
-    const chunks = chunksPtr.?[0..@as(usize, chunkCount)];
+    const chunks = if (chunkCount == 0) &[_]text_buffer.StyledChunk{} else chunksPtr.?[0..@as(usize, chunkCount)];
     object_ptr.setStyledText(chunks) catch {};
 }
 
@@ -3105,6 +3104,190 @@ pub const ExternalHighlight = extern struct {
     priority: u8,
     hl_ref: u16,
 };
+
+pub const ExternalStyledChunk32 = extern struct {
+    text_ptr: ?[*]const u8,
+    text_len: u32,
+    fg_ptr: ?[*]const u16,
+    bg_ptr: ?[*]const u16,
+    attributes: u32,
+    link_ptr: ?[*]const u8,
+    link_len: u32,
+};
+
+pub const ExternalAnnotationStyle = extern struct {
+    fg_ptr: ?[*]const u16,
+    bg_ptr: ?[*]const u16,
+    attributes: u32,
+    link_ptr: ?[*]const u8,
+    link_len: u32,
+};
+
+pub const ExternalTextSpliceResult = extern struct {
+    old_start: u32,
+    old_end: u32,
+    inserted_len: u32,
+    new_end: u32,
+    old_start_row: u32,
+    old_start_col: u32,
+    old_start_exact: u32,
+    old_end_row: u32,
+    old_end_col: u32,
+    old_end_exact: u32,
+    new_start_row: u32,
+    new_start_col: u32,
+    new_start_exact: u32,
+    new_end_row: u32,
+    new_end_col: u32,
+    new_end_exact: u32,
+    old_extent_rows: u32,
+    old_extent_columns: u32,
+    new_extent_rows: u32,
+    new_extent_columns: u32,
+};
+
+const TextDocumentStatus = enum(u32) {
+    ok = 0,
+    invalid_handle = 1,
+    invalid_argument = 2,
+    out_of_memory = 3,
+    not_found = 4,
+};
+
+fn textDocumentErrorStatus(err: anyerror) u32 {
+    return @intFromEnum(switch (err) {
+        error.OutOfMemory => TextDocumentStatus.out_of_memory,
+        else => TextDocumentStatus.invalid_argument,
+    });
+}
+
+fn externalStyledChunk(chunk: ExternalStyledChunk32) text_buffer.StyledChunk {
+    return .{
+        .text_ptr = chunk.text_ptr orelse "".ptr,
+        .text_len = chunk.text_len,
+        .fg_ptr = chunk.fg_ptr,
+        .bg_ptr = chunk.bg_ptr,
+        .attributes = chunk.attributes,
+        .link_ptr = chunk.link_ptr,
+        .link_len = chunk.link_len,
+    };
+}
+
+fn annotationStyleChunk(style: ExternalAnnotationStyle) text_buffer.StyledChunk {
+    return .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = style.fg_ptr,
+        .bg_ptr = style.bg_ptr,
+        .attributes = style.attributes,
+        .link_ptr = style.link_ptr,
+        .link_len = style.link_len,
+    };
+}
+
+fn writeExternalSplice(out: *ExternalTextSpliceResult, result: text_buffer.SpliceResult) void {
+    out.* = .{
+        .old_start = result.old_range.start,
+        .old_end = result.old_range.end,
+        .inserted_len = result.inserted_len,
+        .new_end = result.new_end,
+        .old_start_row = result.old_display.start.point.row,
+        .old_start_col = result.old_display.start.point.col,
+        .old_start_exact = @intFromBool(result.old_display.start.exact),
+        .old_end_row = result.old_display.end.point.row,
+        .old_end_col = result.old_display.end.point.col,
+        .old_end_exact = @intFromBool(result.old_display.end.exact),
+        .new_start_row = result.new_display.start.point.row,
+        .new_start_col = result.new_display.start.point.col,
+        .new_start_exact = @intFromBool(result.new_display.start.exact),
+        .new_end_row = result.new_display.end.point.row,
+        .new_end_col = result.new_display.end.point.col,
+        .new_end_exact = @intFromBool(result.new_display.end.exact),
+        .old_extent_rows = result.old_extent.rows,
+        .old_extent_columns = result.old_extent.columns,
+        .new_extent_rows = result.new_extent.rows,
+        .new_extent_columns = result.new_extent.columns,
+    };
+}
+
+export fn textBufferReplaceStyledRangeBytes(
+    tb_handle: NativeHandle,
+    start_byte: u32,
+    end_byte: u32,
+    chunks_ptr: ?[*]const ExternalStyledChunk32,
+    chunk_count: u32,
+    owner: u32,
+    out_result: *ExternalTextSpliceResult,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
+    const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+    defer globalAllocator.free(chunks);
+    for (external_chunks, 0..) |chunk, index| chunks[index] = externalStyledChunk(chunk);
+    const result = object_ptr.replaceStyledRangeBytes(start_byte, end_byte, chunks, owner) catch |err| return textDocumentErrorStatus(err);
+    writeExternalSplice(out_result, result);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferCreateStyleRange(
+    tb_handle: NativeHandle,
+    owner: u32,
+    start_byte: u32,
+    end_byte: u32,
+    style_ptr: *const ExternalAnnotationStyle,
+    priority: u32,
+    out_id: *u64,
+) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (priority > std.math.maxInt(u8)) return @intFromEnum(TextDocumentStatus.invalid_argument);
+    out_id.* = object_ptr.createStyleValueRange(owner, start_byte, end_byte, annotationStyleChunk(style_ptr.*), @intCast(priority)) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferUpdateStyleRange(tb_handle: NativeHandle, id: u64, start_byte: u32, end_byte: u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const found = object_ptr.updateStyleRange(id, start_byte, end_byte) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
+}
+
+export fn textBufferMoveStyleRange(tb_handle: NativeHandle, id: u64, start_byte: u32, end_byte: u32) u32 {
+    return textBufferUpdateStyleRange(tb_handle, id, start_byte, end_byte);
+}
+
+export fn textBufferUpdateStyleRangeStyle(tb_handle: NativeHandle, id: u64, style_ptr: *const ExternalAnnotationStyle) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const found = object_ptr.updateStyleRangeStyleValue(id, annotationStyleChunk(style_ptr.*)) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
+}
+
+export fn textBufferRemoveStyleRange(tb_handle: NativeHandle, id: u64) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    const found = object_ptr.removeStyleRange(id) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(if (found) TextDocumentStatus.ok else TextDocumentStatus.not_found);
+}
+
+export fn textBufferClearStyleOwner(tb_handle: NativeHandle, owner: u32, out_removed: *u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    out_removed.* = object_ptr.clearStyleOwner(owner) catch |err| return textDocumentErrorStatus(err);
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferGetAnnotationEpoch(tb_handle: NativeHandle) u64 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getAnnotationEpoch();
+}
+
+export fn textBufferBeginStyleBatch(tb_handle: NativeHandle) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    object_ptr.beginStyleBatch();
+    return @intFromEnum(TextDocumentStatus.ok);
+}
+
+export fn textBufferEndStyleBatch(tb_handle: NativeHandle) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    object_ptr.endStyleBatch();
+    return @intFromEnum(TextDocumentStatus.ok);
+}
 
 pub const ExternalLogicalCursor = extern struct {
     row: u32,

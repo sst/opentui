@@ -68,6 +68,42 @@ describe("TextBuffer", () => {
     })
   })
 
+  describe("incremental styled document APIs", () => {
+    it("replaces normalized bytes and manages bigint style range IDs", () => {
+      const syntaxStyle = SyntaxStyle.create()
+      buffer.setSyntaxStyle(syntaxStyle)
+      buffer.setText("ab界\n🙂z")
+
+      const result = buffer.replaceStyledRangeBytes(
+        1,
+        2,
+        [
+          { text: "X", attributes: 1 },
+          { text: "中\r\n", fg: RGBA.fromInts(255, 0, 0, 255) },
+        ],
+        17,
+      )
+
+      expect(buffer.getPlainText()).toBe("aX中\n界\n🙂z")
+      expect(result.oldRange).toEqual({ start: 1, end: 2 })
+      expect(result.insertedLength).toBe(5)
+      expect(result.newEnd).toBe(6)
+
+      const contentEpoch = buffer.annotationEpoch
+      const id = buffer.createStyleRange(23, 0, 1, { attributes: 2 })
+      expect(typeof id).toBe("bigint")
+      expect(buffer.annotationEpoch).toBeGreaterThan(contentEpoch)
+      buffer.moveStyleRange(id, 1, 2)
+      buffer.updateStyleRangeStyle(id, { attributes: 4 })
+      expect(buffer.removeStyleRange(id)).toBe(true)
+      expect(buffer.removeStyleRange(id)).toBe(false)
+      expect(buffer.clearStyleOwner(17)).toBe(2)
+
+      buffer.setSyntaxStyle(null)
+      syntaxStyle.destroy()
+    })
+  })
+
   describe("getPlainText", () => {
     it("should return empty string for empty buffer", () => {
       const emptyText = stringToStyledText("")
