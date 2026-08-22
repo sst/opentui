@@ -6,6 +6,7 @@ import {
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
+  TextRenderable,
   TextareaRenderable,
 } from "@opentui/core"
 import type { Instance, Props, Type } from "../types/host.js"
@@ -88,6 +89,13 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
     case "style":
       setStyle(instance, propValue, oldPropValue)
       break
+    case "href":
+      if (instance instanceof TextRenderable) instance.link = propValue == null ? undefined : { url: propValue }
+      break
+    case "styleId":
+    case "styleSource":
+      // Registered style props are applied as one pair by setTextRegisteredStyle.
+      break
     case "children":
       // Skip children handling - React reconciler handles this automatically
       break
@@ -97,7 +105,13 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
   }
 }
 
+function setTextRegisteredStyle(instance: Instance, props: Props): void {
+  if (!(instance instanceof TextRenderable)) return
+  instance.setRegisteredStyle(props.styleId, props.styleSource)
+}
+
 export function setInitialProperties(instance: Instance, type: Type, props: Props) {
+  setTextRegisteredStyle(instance, props)
   for (const propKey in props) {
     if (!props.hasOwnProperty(propKey)) {
       continue
@@ -113,6 +127,9 @@ export function setInitialProperties(instance: Instance, type: Type, props: Prop
 }
 
 export function updateProperties(instance: Instance, type: Type, oldProps: Props, newProps: Props) {
+  if (oldProps.styleId !== newProps.styleId || oldProps.styleSource !== newProps.styleSource) {
+    setTextRegisteredStyle(instance, newProps)
+  }
   for (const propKey in oldProps) {
     const oldProp = oldProps[propKey]
     if (oldProps.hasOwnProperty(propKey) && oldProp != null && !newProps.hasOwnProperty(propKey)) {

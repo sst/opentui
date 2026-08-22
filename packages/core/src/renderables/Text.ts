@@ -134,6 +134,7 @@ export class TextRenderable extends TextBufferRenderable {
   private _link?: { url: string }
   private _localStyleId?: number
   private _localSyntaxStyle?: SyntaxStyle
+  private _pendingRegisteredStyle?: { styleId?: number; styleSource?: SyntaxStyle }
   private _textDocumentPending: boolean = true
   private _nativeRangeId: bigint | null = null
   private _textDocumentOwner = 0
@@ -168,11 +169,10 @@ export class TextRenderable extends TextBufferRenderable {
       this._localBg = options.bg ? parseColor(options.bg) : undefined
       this._localAttributes = options.attributes ?? 0
       this._link = options.link
-      this._localStyleId = options.styleId
-      this._localSyntaxStyle = options.styleSource
-      if ((this._localStyleId === undefined) !== (this._localSyntaxStyle === undefined)) {
-        throw new Error("Registered text styles require both styleId and syntaxStyle")
+      if ((options.styleId === undefined) !== (options.styleSource === undefined)) {
+        throw new Error("Registered text styles require both styleId and styleSource")
       }
+      this.assignRegisteredStyle(options.styleId, options.styleSource)
 
       if (options.content !== undefined) this.replaceContent(options.content, false)
       if (this.hasTextDocumentState) this.flushTextDocument()
@@ -615,6 +615,72 @@ export class TextRenderable extends TextBufferRenderable {
     this.invalidateTextStyles()
   }
 
+  public get styleId(): number | undefined {
+    return this._pendingRegisteredStyle ? this._pendingRegisteredStyle.styleId : this._localStyleId
+  }
+
+  public set styleId(value: number | undefined) {
+    this.stageRegisteredStyle(
+      value,
+      this._pendingRegisteredStyle ? this._pendingRegisteredStyle.styleSource : this._localSyntaxStyle,
+    )
+  }
+
+  public get styleSource(): SyntaxStyle | undefined {
+    return this._pendingRegisteredStyle ? this._pendingRegisteredStyle.styleSource : this._localSyntaxStyle
+  }
+
+  public set styleSource(value: SyntaxStyle | undefined) {
+    this.stageRegisteredStyle(
+      this._pendingRegisteredStyle ? this._pendingRegisteredStyle.styleId : this._localStyleId,
+      value,
+    )
+  }
+
+  public setRegisteredStyle(styleId: number | undefined, styleSource: SyntaxStyle | undefined): void {
+    this._pendingRegisteredStyle = undefined
+    if (this.assignRegisteredStyle(styleId, styleSource)) this.invalidateTextStyles()
+  }
+
+  private stageRegisteredStyle(styleId: number | undefined, styleSource: SyntaxStyle | undefined): void {
+    this._pendingRegisteredStyle = { styleId, styleSource }
+    const owner = this.getDocumentOwner()
+    if (owner) {
+      owner._pendingStyleRoots.add(this)
+      owner._textDocumentPending = true
+    }
+    this.requestRender()
+  }
+
+  private commitPendingRegisteredStyles(): void {
+    if (this._pendingRegisteredStyle) {
+      const pending = this._pendingRegisteredStyle
+      this._pendingRegisteredStyle = undefined
+      this.assignRegisteredStyle(pending.styleId, pending.styleSource)
+    }
+    for (const child of this.getTextChildren()) child.commitPendingRegisteredStyles()
+  }
+
+  private assignRegisteredStyle(styleId: number | undefined, styleSource: SyntaxStyle | undefined): boolean {
+    if (styleId === undefined || styleSource === undefined) {
+      if (styleId !== undefined || styleSource !== undefined) {
+        if (this._localStyleId === undefined && this._localSyntaxStyle === undefined) return false
+      }
+      const changed = this._localStyleId !== undefined || this._localSyntaxStyle !== undefined
+      this._localStyleId = undefined
+      this._localSyntaxStyle = undefined
+      return changed
+    }
+
+    if (!Number.isInteger(styleId) || styleId <= 0 || !styleSource.getStyleById(styleId)) {
+      throw new Error(`Unknown registered text style ID ${styleId}`)
+    }
+    if (this._localStyleId === styleId && this._localSyntaxStyle === styleSource) return false
+    this._localStyleId = styleId
+    this._localSyntaxStyle = styleSource
+    return true
+  }
+
   public requestRender(): void {
     this.markDirty()
     this._ctx.requestRender()
@@ -837,6 +903,11 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public onLifecyclePass = (): void => {
+    if (this._pendingRegisteredStyle) {
+      const pending = this._pendingRegisteredStyle
+      this._pendingRegisteredStyle = undefined
+      if (this.assignRegisteredStyle(pending.styleId, pending.styleSource)) this.invalidateTextStyles()
+    }
     this.refreshFirstLineOffsetClaim()
     if (!isTextRenderable(this.parent) && this._textDocumentPending) this.flushTextDocument()
   }
@@ -1070,6 +1141,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private prepareTextDocumentFlush(): PreparedTextDocumentFlush {
+    this.commitPendingRegisteredStyles()
     if (this._textDocumentOwner === 0) this._textDocumentOwner = nextTextDocumentOwner++
     if (nextTextDocumentOwner === 0xffffffff) nextTextDocumentOwner = 1
 

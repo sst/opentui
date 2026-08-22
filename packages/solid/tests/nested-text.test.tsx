@@ -1,4 +1,4 @@
-import { TextAttributes, type TextRenderable } from "@opentui/core"
+import { SyntaxStyle, TextAttributes, type TextRenderable } from "@opentui/core"
 import { afterEach, describe, expect, test } from "bun:test"
 import { createSignal, For } from "solid-js"
 import { testRender } from "../index.js"
@@ -89,6 +89,41 @@ describe("Solid nested text", () => {
     span = setup.captureSpans().lines[0]!.spans.find((candidate) => candidate.text.includes("status"))!
     expect(span.attributes & TextAttributes.BOLD).toBeFalsy()
     expect(span.fg.toInts()).not.toEqual([255, 0, 0, 255])
+  })
+
+  test("batches registered styleId and styleSource updates in one lifecycle pass", async () => {
+    const first = SyntaxStyle.fromStyles({ token: { fg: "#ff0000" } })
+    const second = SyntaxStyle.fromStyles({ token: { fg: "#00ff00", bold: true } })
+    const [mode, setMode] = createSignal<0 | 1 | 2>(0)
+    let span: TextRenderable | undefined
+
+    setup = await testRender(
+      () => (
+        <text>
+          <span
+            ref={(value) => (span = value)}
+            styleId={mode() === 0 ? first.getStyleId("token")! : mode() === 1 ? second.getStyleId("token")! : undefined}
+            styleSource={mode() === 0 ? first : second}
+          >
+            token
+          </span>
+        </text>
+      ),
+      { width: 20, height: 2 },
+    )
+    await setup.renderOnce()
+    expect(span?.styleSource).toBe(first)
+    expect(setup.captureSpans().lines[0]!.spans[0]!.fg.toInts()).toEqual([255, 0, 0, 255])
+
+    setMode(1)
+    await setup.renderOnce()
+    expect(span?.styleSource).toBe(second)
+    expect(setup.captureSpans().lines[0]!.spans[0]!.fg.toInts()).toEqual([0, 255, 0, 255])
+
+    setMode(2)
+    await setup.renderOnce()
+    expect(span?.styleId).toBeUndefined()
+    expect(span?.styleSource).toBeUndefined()
   })
 
   test("promotes only layout text while nested refs delegate functional APIs", async () => {

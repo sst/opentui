@@ -235,7 +235,7 @@ export const {
 
     if (node instanceof TextNode || node instanceof SpanRenderable) {
       if (name === "href") {
-        node.link = { url: value }
+        node.link = value == null ? undefined : { url: value }
         return
       }
 
@@ -250,6 +250,16 @@ export const {
       if (name === "attributes") {
         const intrinsicAttributes = node instanceof SpanRenderable ? node.intrinsicAttributes : 0
         node.attributes = intrinsicAttributes | (value ?? 0)
+        return
+      }
+
+      if (name === "styleId") {
+        node.styleId = value ?? undefined
+        return
+      }
+
+      if (name === "styleSource") {
+        node.styleSource = value ?? undefined
         return
       }
 

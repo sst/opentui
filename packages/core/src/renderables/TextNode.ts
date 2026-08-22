@@ -1,6 +1,7 @@
 import type { BaseRenderableOptions } from "../Renderable.js"
 import type { RGBA } from "../lib/RGBA.js"
 import type { RenderContext } from "../types.js"
+import type { SyntaxStyle } from "../syntax-style.js"
 import { TextRenderable, isTextRenderable } from "./Text.js"
 
 export interface TextNodeOptions extends BaseRenderableOptions {
@@ -8,6 +9,8 @@ export interface TextNodeOptions extends BaseRenderableOptions {
   bg?: string | RGBA
   attributes?: number
   link?: { url: string }
+  styleId?: number
+  styleSource?: SyntaxStyle
 }
 
 export { TextRenderable as TextNodeRenderable, isTextRenderable as isTextNodeRenderable }

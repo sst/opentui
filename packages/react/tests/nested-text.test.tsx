@@ -1,4 +1,4 @@
-import { TextAttributes, type TextRenderable } from "@opentui/core"
+import { SyntaxStyle, TextAttributes, type TextRenderable } from "@opentui/core"
 import { afterEach, describe, expect, test } from "bun:test"
 import { act, useState } from "react"
 import { testRender } from "../src/test-utils.js"
@@ -110,5 +110,45 @@ describe("React nested text", () => {
     act(() => setOuterVisible(false))
     await setup.renderOnce()
     expect(outer!.plainText).toBe("prefix ")
+  })
+
+  test("applies registered text props atomically across updates and removal", async () => {
+    const first = SyntaxStyle.fromStyles({ token: { fg: "#ff0000", bold: true } })
+    const second = SyntaxStyle.fromStyles({ token: { fg: "#00ff00", underline: true } })
+    const firstId = first.getStyleId("token")!
+    const secondId = second.getStyleId("token")!
+    let update!: (value: 0 | 1 | 2) => void
+    let span: TextRenderable | null = null
+
+    function App() {
+      const [mode, setMode] = useState<0 | 1 | 2>(0)
+      update = setMode
+      return (
+        <text>
+          <span
+            ref={(value) => (span = value)}
+            styleId={mode === 0 ? firstId : mode === 1 ? secondId : undefined}
+            styleSource={mode === 0 ? first : second}
+          >
+            token
+          </span>
+        </text>
+      )
+    }
+
+    setup = await testRender(<App />, { width: 20, height: 2 })
+    await setup.renderOnce()
+    expect(span?.styleId).toBe(firstId)
+    expect(setup.captureSpans().lines[0]!.spans[0]!.fg.toInts()).toEqual([255, 0, 0, 255])
+
+    act(() => update(1))
+    await setup.renderOnce()
+    expect(span?.styleSource).toBe(second)
+    expect(setup.captureSpans().lines[0]!.spans[0]!.fg.toInts()).toEqual([0, 255, 0, 255])
+
+    act(() => update(2))
+    await setup.renderOnce()
+    expect(span?.styleId).toBeUndefined()
+    expect(span?.styleSource).toBeUndefined()
   })
 })
