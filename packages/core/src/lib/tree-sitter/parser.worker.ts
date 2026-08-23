@@ -99,7 +99,7 @@ interface ReusableParserState {
   }
 }
 
-class ParserWorker {
+export class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeAliases: Map<string, string> = new Map()
@@ -107,6 +107,8 @@ class ParserWorker {
   private filetypeParserPromises: Map<string, Promise<FiletypeParser | undefined>> = new Map()
   private reusableParsers: Map<string, ReusableParserState> = new Map()
   private reusableParserPromises: Map<string, Promise<ReusableParserState | undefined>> = new Map()
+  private ownedParsers = new Set<Parser>()
+  private ownedQueries = new Set<Query>()
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
   private dataPath: string | undefined
@@ -199,7 +201,7 @@ class ParserWorker {
 
     const reusableParser = this.reusableParsers.get(filetype)
     if (reusableParser) {
-      reusableParser.parser.delete()
+      this.deleteParser(reusableParser.parser)
       this.reusableParsers.delete(filetype)
     }
 
@@ -216,6 +218,8 @@ class ParserWorker {
       }
     | undefined
   > {
+    let highlightsQuery: Query | undefined
+    let injectionsQuery: Query | undefined
     try {
       const highlightQueryContent = await this.fetchQueries(filetypeParser.queries.highlights, filetypeParser.filetype)
       if (!highlightQueryContent) {
@@ -223,7 +227,8 @@ class ParserWorker {
         return undefined
       }
 
-      const highlightsQuery = new Query(language, highlightQueryContent)
+      highlightsQuery = new Query(language, highlightQueryContent)
+      this.ownedQueries.add(highlightsQuery)
       const result: { highlights: Query; injections?: Query } = {
         highlights: highlightsQuery,
       }
@@ -234,12 +239,16 @@ class ParserWorker {
           filetypeParser.filetype,
         )
         if (injectionQueryContent) {
-          result.injections = new Query(language, injectionQueryContent)
+          injectionsQuery = new Query(language, injectionQueryContent)
+          this.ownedQueries.add(injectionsQuery)
+          result.injections = injectionsQuery
         }
       }
 
       return result
     } catch (error) {
+      if (injectionsQuery) this.deleteQuery(injectionsQuery)
+      if (highlightsQuery) this.deleteQuery(highlightsQuery)
       console.error("Error creating queries for", filetypeParser.filetype, filetypeParser.queries)
       console.error(error)
       return undefined
@@ -356,7 +365,7 @@ class ParserWorker {
       return undefined
     }
 
-    const parser = new Parser()
+    const parser = this.createParser()
     parser.setLanguage(filetypeParser.language)
 
     const reusableState: ReusableParserState = {
@@ -366,6 +375,22 @@ class ParserWorker {
     }
 
     return reusableState
+  }
+
+  private createParser(): Parser {
+    const parser = new Parser()
+    this.ownedParsers.add(parser)
+    return parser
+  }
+
+  private deleteParser(parser: Parser): void {
+    if (!this.ownedParsers.delete(parser)) return
+    parser.delete()
+  }
+
+  private deleteQuery(query: Query): void {
+    if (!this.ownedQueries.delete(query)) return
+    query.delete()
   }
 
   async handleInitializeParser(
@@ -388,10 +413,11 @@ class ParserWorker {
       return
     }
 
-    const parser = new Parser()
+    const parser = this.createParser()
     parser.setLanguage(filetypeParser.language)
     const tree = parser.parse(content)
     if (!tree) {
+      this.deleteParser(parser)
       postWorkerMessage({
         type: "PARSER_INIT_RESPONSE",
         bufferId,
@@ -548,42 +574,44 @@ class ParserWorker {
           const tree = parser.parse(injectionContent)
 
           if (tree) {
-            metrics.queriedByteCount += new TextEncoder().encode(injectionContent).length
-            const matches = injectedParser.queries.highlights.captures(tree.rootNode)
+            try {
+              metrics.queriedByteCount += new TextEncoder().encode(injectionContent).length
+              const matches = injectedParser.queries.highlights.captures(tree.rootNode)
 
-            // Create new QueryCapture objects with offset positions
-            for (const match of matches) {
-              // Calculate offset positions by creating a new capture with adjusted node properties
-              // Store the injected query reference so we can look up properties correctly
-              const offsetCapture: QueryCapture & { _injectedQuery?: Query } = {
-                name: match.name,
-                patternIndex: match.patternIndex,
-                _injectedQuery: injectedParser.queries.highlights, // Store the correct query reference
-                node: {
-                  ...match.node,
-                  startPosition: {
-                    row: match.node.startPosition.row + injectionNode.startPosition.row,
-                    column:
-                      match.node.startPosition.row === 0
-                        ? match.node.startPosition.column + injectionNode.startPosition.column
-                        : match.node.startPosition.column,
-                  },
-                  endPosition: {
-                    row: match.node.endPosition.row + injectionNode.startPosition.row,
-                    column:
-                      match.node.endPosition.row === 0
-                        ? match.node.endPosition.column + injectionNode.startPosition.column
-                        : match.node.endPosition.column,
-                  },
-                  startIndex: match.node.startIndex + injectionNode.startIndex,
-                  endIndex: match.node.endIndex + injectionNode.startIndex,
-                } as any, // Cast to any since we're creating a pseudo-node
+              // Create new QueryCapture objects with offset positions
+              for (const match of matches) {
+                // Calculate offset positions by creating a new capture with adjusted node properties
+                // Store the injected query reference so we can look up properties correctly
+                const offsetCapture: QueryCapture & { _injectedQuery?: Query } = {
+                  name: match.name,
+                  patternIndex: match.patternIndex,
+                  _injectedQuery: injectedParser.queries.highlights, // Store the correct query reference
+                  node: {
+                    ...match.node,
+                    startPosition: {
+                      row: match.node.startPosition.row + injectionNode.startPosition.row,
+                      column:
+                        match.node.startPosition.row === 0
+                          ? match.node.startPosition.column + injectionNode.startPosition.column
+                          : match.node.startPosition.column,
+                    },
+                    endPosition: {
+                      row: match.node.endPosition.row + injectionNode.startPosition.row,
+                      column:
+                        match.node.endPosition.row === 0
+                          ? match.node.endPosition.column + injectionNode.startPosition.column
+                          : match.node.endPosition.column,
+                    },
+                    startIndex: match.node.startIndex + injectionNode.startIndex,
+                    endIndex: match.node.endIndex + injectionNode.startIndex,
+                  } as any, // Cast to any since we're creating a pseudo-node
+                }
+
+                injectionMatches.push(offsetCapture)
               }
-
-              injectionMatches.push(offsetCapture)
+            } finally {
+              tree.delete()
             }
-
-            tree.delete()
           }
         } catch (error) {
           console.error(`Error processing injection for language ${language}:`, error)
@@ -860,6 +888,7 @@ class ParserWorker {
       const patternProperties = matchQuery?.setProperties?.[match.patternIndex]
       const conceal = patternProperties?.conceal ?? match.setProperties?.conceal
       const concealLines = patternProperties?.conceal_lines ?? match.setProperties?.conceal_lines
+      const priority = patternProperties?.priority ?? match.setProperties?.priority
       const meta: HighlightMeta = {}
       if (isInjection && injectionLang) {
         meta.isInjection = true
@@ -868,6 +897,7 @@ class ParserWorker {
       if (containsInjection) meta.containsInjection = true
       if (conceal !== undefined) meta.conceal = conceal
       if (concealLines !== undefined) meta.concealLines = concealLines
+      if (priority !== undefined) meta.priority = priority
 
       return {
         startIndex: node.startIndex,
@@ -882,7 +912,7 @@ class ParserWorker {
   private dedupeHighlights(highlights: InternalHighlight[]): InternalHighlight[] {
     const unique = new Map<string, InternalHighlight>()
     for (const highlight of highlights) {
-      const key = `${highlight.patternIndex}:${highlight.group}:${highlight.startIndex}:${highlight.endIndex}`
+      const key = JSON.stringify([highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta ?? null])
       unique.set(key, highlight)
     }
     return Array.from(unique.values()).sort(
@@ -970,7 +1000,7 @@ class ParserWorker {
         (highlight): HighlightRange => ({
           ...toByteRange(highlight),
           group: highlight.group,
-          ...(highlight.meta ? { meta: highlight.meta } : {}),
+          meta: highlight.meta,
         }),
       ),
       replacementRanges: byteReplacementRanges,
@@ -985,63 +1015,11 @@ class ParserWorker {
     matches: QueryCapture[],
     injectionRanges: Map<string, Array<{ start: number; end: number }>>,
   ): SimpleHighlight[] {
-    const highlights: SimpleHighlight[] = []
-
-    const flatInjectionRanges: Array<{ start: number; end: number; lang: string }> = []
-    for (const [lang, ranges] of injectionRanges.entries()) {
-      for (const range of ranges) {
-        flatInjectionRanges.push({ ...range, lang })
-      }
-    }
-
-    for (const match of matches) {
-      const node = match.node
-
-      let isInjection = false
-      let injectionLang: string | undefined
-      let containsInjection = false
-      for (const injRange of flatInjectionRanges) {
-        if (node.startIndex >= injRange.start && node.endIndex <= injRange.end) {
-          isInjection = true
-          injectionLang = injRange.lang
-          break
-        } else if (node.startIndex <= injRange.start && node.endIndex >= injRange.end) {
-          containsInjection = true
-          break
-        }
-      }
-
-      const matchQuery = (match as any)._injectedQuery
-      const patternProperties = matchQuery?.setProperties?.[match.patternIndex]
-
-      const concealValue = patternProperties?.conceal ?? match.setProperties?.conceal
-      const concealLines = patternProperties?.conceal_lines ?? match.setProperties?.conceal_lines
-
-      const meta: any = {}
-      if (isInjection && injectionLang) {
-        meta.isInjection = true
-        meta.injectionLang = injectionLang
-      }
-      if (containsInjection) {
-        meta.containsInjection = true
-      }
-      if (concealValue !== undefined) {
-        meta.conceal = concealValue
-      }
-      if (concealLines !== undefined) {
-        meta.concealLines = concealLines
-      }
-
-      if (Object.keys(meta).length > 0) {
-        highlights.push([node.startIndex, node.endIndex, match.name, meta])
-      } else {
-        highlights.push([node.startIndex, node.endIndex, match.name])
-      }
-    }
-
-    highlights.sort((a, b) => a[0] - b[0])
-
-    return highlights
+    return this.dedupeHighlights(this.getInternalHighlights(matches, injectionRanges)).map((highlight) =>
+      highlight.meta
+        ? [highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta]
+        : [highlight.startIndex, highlight.endIndex, highlight.group],
+    )
   }
 
   async handleResetBuffer(
@@ -1102,10 +1080,9 @@ class ParserWorker {
       return
     }
 
-    parserState.tree.delete()
-    parserState.parser.delete()
-
     this.bufferParsers.delete(bufferId)
+    parserState.tree.delete()
+    this.deleteParser(parserState.parser)
   }
 
   async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
@@ -1192,20 +1169,41 @@ class ParserWorker {
     const { rm } = await import("fs/promises")
 
     try {
+      await this.disposeResources()
       const treeSitterPath = path.join(this.dataPath, "tree-sitter")
 
       await rm(treeSitterPath, { recursive: true, force: true })
 
       await mkdir(path.join(treeSitterPath, "languages"), { recursive: true })
       await mkdir(path.join(treeSitterPath, "queries"), { recursive: true })
-
-      this.filetypeParsers.clear()
-      this.filetypeParserPromises.clear()
-      this.reusableParsers.clear()
-      this.reusableParserPromises.clear()
     } catch (error) {
       throw new Error(`Failed to clear cache: ${error}`)
     }
+  }
+
+  private async disposeResources(): Promise<void> {
+    await Promise.allSettled([...this.filetypeParserPromises.values(), ...this.reusableParserPromises.values()])
+
+    const parserStates = Array.from(this.bufferParsers.values())
+    this.bufferParsers.clear()
+    for (const parserState of parserStates) parserState.tree.delete()
+
+    const parsers = Array.from(this.ownedParsers)
+    this.ownedParsers.clear()
+    for (const parser of parsers) parser.delete()
+
+    const queries = Array.from(this.ownedQueries)
+    this.ownedQueries.clear()
+    for (const query of queries) query.delete()
+
+    this.filetypeParsers.clear()
+    this.filetypeParserPromises.clear()
+    this.reusableParsers.clear()
+    this.reusableParserPromises.clear()
+  }
+
+  async dispose(): Promise<void> {
+    await this.disposeResources()
   }
 }
 
@@ -1234,7 +1232,7 @@ if (isWorkerRuntime) {
   console.error = (...args) => logMessage("error", ...args)
   console.warn = (...args) => logMessage("warn", ...args)
 
-  setWorkerMessageHandler<TreeSitterWorkerRequest>(async (event: WorkerMessageEvent<TreeSitterWorkerRequest>) => {
+  const handleWorkerMessage = async (event: WorkerMessageEvent<TreeSitterWorkerRequest>) => {
     const message = event.data
     const messageType = String((event.data as { type?: unknown }).type ?? "unknown")
     const queuedBufferId =
@@ -1390,6 +1388,7 @@ if (isWorkerRuntime) {
 
         case "CLEAR_CACHE":
           try {
+            await Promise.all(bufferQueues.values())
             await worker.clearCache()
             postWorkerMessage({
               type: "CLEAR_CACHE_RESPONSE",
@@ -1402,6 +1401,15 @@ if (isWorkerRuntime) {
               error: error instanceof Error ? error.message : String(error),
             } satisfies TreeSitterWorkerResponse)
           }
+          break
+
+        case "DISPOSE_WORKER":
+          await Promise.all(bufferQueues.values())
+          await worker.dispose()
+          postWorkerMessage({
+            type: "WORKER_DISPOSED",
+            messageId: message.messageId,
+          } satisfies TreeSitterWorkerResponse)
           break
 
         default:
@@ -1423,5 +1431,11 @@ if (isWorkerRuntime) {
         bufferQueues.delete(queuedBufferId)
       }
     }
+  }
+  let workerQueue = Promise.resolve()
+  setWorkerMessageHandler<TreeSitterWorkerRequest>((event) => {
+    const operation = workerQueue.then(() => handleWorkerMessage(event))
+    workerQueue = operation.catch(() => {})
+    return operation
   })
 }

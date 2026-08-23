@@ -253,6 +253,34 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
   }
 
+  private requestWorkerDisposal(worker: TreeSitterWorkerHandle): Promise<void> {
+    const messageId = `dispose_worker_${this.messageIdCounter++}`
+    return new Promise<void>((resolve, reject) => {
+      // Graceful WASM cleanup must not prevent mandatory worker termination if the worker stops responding.
+      const timeout = setTimeout(() => {
+        this.messageCallbacks.delete(messageId)
+        resolve()
+      }, 2000)
+      this.messageCallbacks.set(messageId, {
+        resolve: () => {
+          clearTimeout(timeout)
+          resolve()
+        },
+        reject: (error) => {
+          clearTimeout(timeout)
+          reject(error)
+        },
+      })
+      try {
+        worker.postMessage({ type: "DISPOSE_WORKER", messageId })
+      } catch (error) {
+        clearTimeout(timeout)
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+  }
+
   // NOTE: Unused, but useful for debugging and testing
   private async handleReset() {
     this.buffers.clear()
@@ -555,6 +583,15 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         return
       }
 
+      case "WORKER_DISPOSED": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback.resolve(true)
+        }
+        return
+      }
+
       case "WARNING": {
         this.emitWarning(message.warning, message.bufferId)
         return
@@ -785,6 +822,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       rejectDestroy = reject
     })
     this.destroyPromise = destroyPromise
+    const shouldDisposeWorker = this.initialized && this.worker !== undefined
 
     const destroyError = new Error("Client destroyed during initialization")
     this.lifecycleGeneration++
@@ -809,22 +847,25 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.utf8Indexes.clear()
     this.buffers.clear()
 
-    void this.stopWorker().then(
-      () => {
-        this.workerTerminationFailed = false
-        if (this.destroyPromise === destroyPromise) {
-          this.destroyPromise = undefined
-        }
-        resolveDestroy()
-      },
-      (error) => {
-        this.workerTerminationFailed = true
-        if (this.destroyPromise === destroyPromise) {
-          this.destroyPromise = undefined
-        }
-        rejectDestroy(error)
-      },
-    )
+    const workerDisposal = shouldDisposeWorker ? this.requestWorkerDisposal(this.worker!) : Promise.resolve()
+    void workerDisposal
+      .then(() => this.stopWorker())
+      .then(
+        () => {
+          this.workerTerminationFailed = false
+          if (this.destroyPromise === destroyPromise) {
+            this.destroyPromise = undefined
+          }
+          resolveDestroy()
+        },
+        (error) => {
+          this.workerTerminationFailed = true
+          if (this.destroyPromise === destroyPromise) {
+            this.destroyPromise = undefined
+          }
+          rejectDestroy(error)
+        },
+      )
     return destroyPromise
   }
 
@@ -903,6 +944,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     return new Promise<void>((resolve, reject) => {
       this.messageCallbacks.set(messageId, {
         resolve: (response: any) => {
+          this.editQueues.clear()
+          this.utf8Indexes.clear()
+          this.buffers.clear()
+          this.debouncer.clear()
           if (response.error) {
             reject(new Error(response.error))
           } else {

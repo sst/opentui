@@ -23,6 +23,7 @@ export interface HighlightMeta {
   containsInjection?: boolean
   conceal?: string | null // Value from (#set! conceal "...") predicate
   concealLines?: string | null // Value from (#set! conceal_lines "...") predicate - indicates the whole line should be concealed
+  priority?: string | null
 }
 
 export type SimpleHighlight = [number, number, string, HighlightMeta?]
@@ -85,6 +86,7 @@ export type TreeSitterWorkerRequest =
   | { type: "ONESHOT_HIGHLIGHT"; content: string; filetype: string; messageId: string }
   | { type: "UPDATE_DATA_PATH"; dataPath: string; messageId: string }
   | { type: "CLEAR_CACHE"; messageId: string }
+  | { type: "DISPOSE_WORKER"; messageId: string }
 
 export type TreeSitterWorkerResponse =
   | { type: "INIT_RESPONSE"; error?: string }
@@ -110,6 +112,7 @@ export type TreeSitterWorkerResponse =
     }
   | { type: "UPDATE_DATA_PATH_RESPONSE"; messageId: string; error?: string }
   | { type: "CLEAR_CACHE_RESPONSE"; messageId: string; error?: string }
+  | { type: "WORKER_DISPOSED"; messageId: string }
   | { type: "WARNING"; bufferId?: number; warning: string }
   | { type: "ERROR"; bufferId?: number; messageId?: string; error: string }
   | { type: "WORKER_LOG"; logType: TreeSitterWorkerLogType; data: unknown[] }

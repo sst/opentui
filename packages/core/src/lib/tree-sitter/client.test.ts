@@ -11,6 +11,7 @@ import { destroyTreeSitterClient, getTreeSitterClient } from "./index.js"
 import { getParsers } from "./default-parsers.js"
 import type { HighlightResponse, TreeSitterEdit, TreeSitterWorkerRequest, Utf8EditChange } from "./types.js"
 import { createTreeSitterEdit, Utf8ContentIndex } from "./utf8-index.js"
+import { ParserWorker } from "./parser.worker.js"
 
 function pointAt(content: string, index: number): { row: number; column: number } {
   const before = content.slice(0, index).split("\n")
@@ -86,6 +87,67 @@ function uniqueHighlights(highlights: Array<{ startIndex: number; endIndex: numb
     ).values(),
   ).sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex || a.group.localeCompare(b.group))
 }
+
+function publicHighlightKey(highlight: {
+  startIndex: number
+  endIndex: number
+  group: string
+  meta?: unknown
+}): string {
+  return JSON.stringify([highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta])
+}
+
+test("deduplicates captures by public semantics without collapsing distinct metadata", () => {
+  const worker = new ParserWorker() as unknown as {
+    dedupeHighlights: (
+      highlights: Array<{
+        startIndex: number
+        endIndex: number
+        group: string
+        patternIndex: number
+        meta?: { priority?: string; conceal?: string | null }
+      }>,
+    ) => unknown[]
+  }
+  const highlights = worker.dedupeHighlights([
+    { startIndex: 2, endIndex: 5, group: "punctuation", patternIndex: 1 },
+    { startIndex: 2, endIndex: 5, group: "punctuation", patternIndex: 7 },
+    { startIndex: 2, endIndex: 5, group: "punctuation", patternIndex: 8, meta: { priority: "90" } },
+    { startIndex: 2, endIndex: 5, group: "punctuation", patternIndex: 9, meta: { conceal: "" } },
+    { startIndex: 2, endIndex: 5, group: "punctuation", patternIndex: 10, meta: { conceal: null } },
+  ])
+
+  expect(highlights).toHaveLength(4)
+})
+
+test("deletes every owned parser and query exactly once across shared states", async () => {
+  const deleted = { parser: 0, query: 0, tree: 0 }
+  const parser = { delete: () => deleted.parser++ }
+  const reusableParser = { delete: () => deleted.parser++ }
+  const query = { delete: () => deleted.query++ }
+  const injectionQuery = { delete: () => deleted.query++ }
+  const tree = { delete: () => deleted.tree++ }
+  const worker = new ParserWorker() as unknown as {
+    ownedParsers: Set<typeof parser>
+    ownedQueries: Set<typeof query>
+    bufferParsers: Map<number, { tree: typeof tree }>
+    filetypeParsers: Map<string, unknown>
+    reusableParsers: Map<string, unknown>
+    dispose: () => Promise<void>
+  }
+  worker.ownedParsers = new Set([parser, reusableParser])
+  worker.ownedQueries = new Set([query, injectionQuery])
+  worker.bufferParsers = new Map([[1, { tree }]])
+  worker.filetypeParsers = new Map([["typescript", { queries: { highlights: query, injections: injectionQuery } }]])
+  worker.reusableParsers = new Map([
+    ["typescript", { parser: reusableParser, queries: { highlights: query, injections: injectionQuery } }],
+  ])
+
+  await worker.dispose()
+  await worker.dispose()
+
+  expect(deleted).toEqual({ parser: 2, query: 2, tree: 1 })
+})
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient
@@ -388,6 +450,39 @@ describe("TreeSitterClient", () => {
     expect(response.queriedByteCount).toBe(0)
   })
 
+  test("does not emit duplicate visible captures after replacing emoji with CJK punctuation", async () => {
+    await client.initialize()
+    const initial = "const value = `😀`;"
+    await client.createBuffer(1, initial, "typescript")
+    const start = initial.indexOf("😀")
+    const update = utf8ReplacementEdit(initial, start, start + "😀".length, "。")
+    const responsePromise = nextHighlightResponse(client, 2)
+
+    await client.updateBufferUtf8(1, [update.edit], update.content, 2)
+    const response = await responsePromise
+    const keys = response.highlights.map(publicHighlightKey)
+
+    expect(keys).toEqual([...new Set(keys)])
+  })
+
+  test("uses the same capture object shape for initial and one-shot snapshots", async () => {
+    await client.initialize()
+    const content = "const value = 1;"
+    const initialResponse = nextHighlightResponse(client, 1)
+    await client.createBuffer(1, content, "typescript")
+    const incremental = await initialResponse
+    const full = await client.highlightOnce(content, "typescript")
+    const fullObjects = (full.highlights ?? []).map(([startIndex, endIndex, group, meta]) => ({
+      startIndex,
+      endIndex,
+      group,
+      meta,
+    }))
+
+    expect(incremental.highlights).toEqual(fullObjects)
+    expect(incremental.highlights.every((highlight) => Object.hasOwn(highlight, "meta"))).toBe(true)
+  })
+
   test("reports actual partial query coverage for the local JavaScript query", async () => {
     await client.initialize()
     const initial = Array.from({ length: 300 }, (_, index) => `const value${index} = ${index};`).join("\n")
@@ -436,7 +531,7 @@ describe("TreeSitterClient", () => {
     let sawPartial = false
     let sawFull = false
 
-    for (let version = 2; version <= 31; version++) {
+    for (let version = 2; version <= 301; version++) {
       const targets = ["😀", "é", "漢字", "界", "ä", "🧑🏽‍💻", "文"].flatMap((target) => {
         const indices: Array<{ start: number; end: number }> = []
         for (let from = 0; ; ) {
@@ -456,6 +551,8 @@ describe("TreeSitterClient", () => {
       content = update.content
       sawPartial ||= response.queryKind === "partial"
       sawFull ||= response.queryKind === "full"
+      const responseKeys = response.highlights.map(publicHighlightKey)
+      expect(responseKeys).toEqual([...new Set(responseKeys)])
 
       const delta = update.edit.newEndIndex - update.edit.oldEndIndex
       cache = cache.map((highlight) => ({
@@ -488,7 +585,7 @@ describe("TreeSitterClient", () => {
 
     expect(sawPartial).toBe(true)
     expect(sawFull).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   test("counts every full-query pass for injection highlighting", async () => {
     await client.initialize()
@@ -726,6 +823,34 @@ describe("TreeSitterClient", () => {
     expect(client.isInitialized()).toBe(false)
     expect(client.getAllBuffers()).toHaveLength(0)
   })
+
+  test("keeps repeated real parser lifecycles bounded", async () => {
+    await client.destroy()
+    const collect = () => (globalThis as typeof globalThis & { gc?: () => void }).gc?.()
+
+    const runLifecycle = async (round: number) => {
+      client = new TreeSitterClient({ dataPath })
+      await client.initialize()
+      const content = `const value${round} = \`😀 漢字\`;`
+      expect((await client.highlightOnce(content, "typescript")).highlights?.length).toBeGreaterThan(0)
+      await client.createBuffer(round, content, "typescript")
+      if (round % 2 === 0) {
+        await client.clearCache()
+        expect(client.getAllBuffers()).toEqual([])
+        expect((await client.highlightOnce(content, "typescript")).highlights?.length).toBeGreaterThan(0)
+      }
+      await client.destroy()
+      await client.destroy()
+    }
+
+    await runLifecycle(0)
+    collect()
+    const baseline = process.memoryUsage().rss
+    for (let round = 1; round <= 5; round++) await runLifecycle(round)
+    collect()
+
+    expect(process.memoryUsage().rss - baseline).toBeLessThan(128 * 1024 * 1024)
+  }, 30_000)
 
   test("should perform one-shot highlighting", async () => {
     await client.initialize()
