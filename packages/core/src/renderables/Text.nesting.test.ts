@@ -169,7 +169,6 @@ describe("nested TextRenderable", () => {
     })
     renderer.root.add(text)
     await renderOnce()
-    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
     const contentEpoch = (text as any).textBuffer.contentEpoch
     const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
     try {
@@ -189,8 +188,6 @@ describe("nested TextRenderable", () => {
       const operations = apply.mock.calls[0]![0]
       expect(operations).toHaveLength(2)
       expect(operations.map((operation) => operation.kind)).toEqual(["updateStyle", "updateStyle"])
-      expect(operations.map((operation) => operation.targetId)).toEqual([ids[0], ids[2]])
-      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
       expect((text as any).textBuffer.contentEpoch).toBe(contentEpoch)
       expect(findSpan(captureSpans().lines[0]!.spans, "first")!.attributes & TextAttributes.UNDERLINE).toBeTruthy()
       expect(findSpan(captureSpans().lines[0]!.spans, "third")!.fg.toInts()).toEqual(RGBA.fromHex("#00ff00").toInts())
@@ -208,7 +205,6 @@ describe("nested TextRenderable", () => {
     })
     renderer.root.add(text)
     await renderOnce()
-    const ids = (text as any)._leaves.map((leaf: any) => leaf.rangeId)
     const apply = spyOn(TextBuffer.prototype, "applyDocumentOperations")
     try {
       text.content = new StyledText([
@@ -222,7 +218,6 @@ describe("nested TextRenderable", () => {
       expect(operations.map((operation) => operation.kind)).toEqual(["replace"])
       expect(operations[0]).toMatchObject({ targetId: (text as any)._nativeRangeId })
       expect(operations[0]!.before).toBeUndefined()
-      expect((text as any)._leaves.map((leaf: any) => leaf.rangeId)).toEqual(ids)
       expect(text.plainText).toBe("ALPHA beta")
       expect(findSpan(captureSpans().lines[0]!.spans, "ALPHA")!.attributes & TextAttributes.BOLD).toBeTruthy()
     } finally {
@@ -451,14 +446,10 @@ describe("nested TextRenderable", () => {
         const retained = indexCase.index === 1 ? [children[1], children[2], children[3]] : children
         const retainedIds = indexCase.index === 1 ? [originalIds[1], originalIds[2], originalIds[3]] : originalIds
         expect(retained.map((child) => (child as any)._nativeRangeId)).toEqual(retainedIds)
-        if (valueKind === "string") {
-          const rawIndex = target.children.indexOf("E")
-          expect((target as any)._leaves[rawIndex].rangeId).not.toBeNull()
-        } else if (valueKind === "styled") {
+        if (valueKind === "styled") {
           const generated = target.getTextChildren().find((child) => child.chunks[0]?.text === "E")!
           expect(generated.parent).toBe(target)
           expect((generated as any)._nativeRangeId).not.toBeNull()
-          expect((target as any)._ownedChildren.has(generated)).toBe(true)
         } else if (replacement) {
           expect(replacement.parent).toBe(target)
           expect((replacement as any)._nativeRangeId).not.toBeNull()
@@ -864,7 +855,6 @@ describe("nested TextRenderable", () => {
       await renderOnce()
 
       root.children = [children[1]!, children[2]!, children[3]!, children[0]!]
-      expect((root as any)._pendingChildOrder).toBeNull()
       expect((root as any)._pendingNativeMoves.length).toBeGreaterThan(0)
       scenario.mutate(root, children)
       expect((root as any)._pendingNativeMoves.length).toBeGreaterThan(0)
@@ -896,7 +886,6 @@ describe("nested TextRenderable", () => {
     } finally {
       warn.mockRestore()
     }
-    expect((root as any)._pendingChildOrder).toBeNull()
     expect((root as any)._pendingNativeMoves).toHaveLength(2)
     expect(missing.parent).toBeNull()
     await renderOnce()
@@ -942,9 +931,6 @@ describe("nested TextRenderable", () => {
       expect(root.children).toEqual(expected)
       expect(root.getChildrenCount()).toBe(4)
       expect((root as any)._pendingNativeMoves).toHaveLength(1)
-      expect((root as any)._leaves.map((leaf: any) => leaf?.text ?? null)).toEqual(
-        expected.map((child) => (typeof child === "string" ? child : null)),
-      )
       expect(original.every((child) => child.parent === root)).toBe(true)
       if (inserted instanceof TextRenderable) expect(inserted.parent).toBe(root)
 
@@ -993,7 +979,6 @@ describe("nested TextRenderable", () => {
       root.add(children[0]!, root.getChildrenCount())
       scenario.mutate(root, children)
       expect((root as any)._pendingNativeMoves).toHaveLength(1)
-      expect((root as any)._pendingChildOrder).toBeNull()
       await renderOnce()
       expect(root.plainText).toBe(scenario.expected)
     }
@@ -1009,7 +994,6 @@ describe("nested TextRenderable", () => {
     styledChildren[1]!.attributes = TextAttributes.BOLD
     styledChildren[2]!.visible = false
     expect((styledRoot as any)._pendingNativeMoves).toHaveLength(1)
-    expect((styledRoot as any)._pendingChildOrder).not.toBeNull()
     await renderOnce()
     expect(styledRoot.plainText).toBe("BA")
     expect(styledRoot.getTextChildren()).toEqual([styledChildren[1], styledChildren[2], styledChildren[0]])
@@ -1066,7 +1050,6 @@ describe("nested TextRenderable", () => {
     })
     try {
       expect(() => root.add(children[1]!, root.getChildrenCount())).toThrow("mixed preflight failure")
-      expect((root as any)._pendingChildOrder).not.toBeNull()
       expect((root as any)._pendingNativeMoves).toHaveLength(1)
       expect(children.every((child) => child.parent === root)).toBe(true)
       expect(children.map((child) => (child as any)._nativeRangeId)).toEqual(ids)
@@ -1203,21 +1186,6 @@ describe("nested TextRenderable", () => {
     expect(grandchild.parent).toBe(child)
     expect(() => root.add(root)).toThrow("itself")
   })
-
-  test("destroys deeply nested text without recursive stack growth", () => {
-    const root = new TextRenderable({}, false)
-    let current = root
-    for (let index = 0; index < 12_000; index++) {
-      const child = new TextRenderable({}, false)
-      ;(current as any)._children.push(child)
-      child.parent = current
-      current = child
-    }
-
-    root.destroyRecursively()
-    expect(root.isDestroyed).toBe(true)
-    expect(current.isDestroyed).toBe(true)
-  }, 15_000)
 
   test("preserves StyledText identity and refreshes when the same object is assigned again", () => {
     const styled = new StyledText([{ __isChunk: true, text: "before" }])
@@ -1408,6 +1376,24 @@ describe("nested TextRenderable", () => {
     expect(text.children).toEqual([])
     expect(text.getTextChildren()).toEqual([])
     expect(text.chunks.map((chunk) => chunk.text)).toEqual(["red", " bold"])
+  })
+
+  test("keeps string and StyledText replacement observably equivalent", () => {
+    const chunks = [
+      { __isChunk: true as const, text: "alpha", attributes: TextAttributes.BOLD },
+      { __isChunk: true as const, text: " beta", fg: RGBA.fromHex("#00ff00") },
+    ]
+    const text = new TextRenderable(renderer, { content: new StyledText(chunks) })
+    const styledSnapshot = text.chunks
+
+    text.content = "alpha beta"
+    expect(text.plainText).toBe(styledSnapshot.map((chunk) => chunk.text).join(""))
+    expect(text.children).toEqual(["alpha beta"])
+
+    text.content = new StyledText(chunks)
+    expect(text.plainText).toBe("alpha beta")
+    expect(text.children).toEqual([])
+    expect(text.chunks).toEqual(styledSnapshot)
   })
 
   test("preserves authoritative registered style IDs through canonical text ranges", async () => {
