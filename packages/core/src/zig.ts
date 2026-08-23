@@ -541,7 +541,7 @@ function getOpenTUILib(libPath?: string) {
     // native code decide whether this call is a standalone commit or part of a
     // larger batched frame envelope.
     commitSplitFooterSnapshot: {
-      args: ["u32", "u32", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
+      args: ["u32", "u32", "u32", "u8", "u32"],
       returns: "u64",
     },
     getNextBuffer: {
@@ -567,7 +567,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool", "u8", "buffer", "u32"],
+      args: ["u32", "u32", "u8", "u8", "buffer", "u32"],
       returns: "u32",
     },
     destroyOptimizedBuffer: {
@@ -702,7 +702,7 @@ function getOpenTUILib(libPath?: string) {
 
     // Debug overlay
     setDebugOverlay: {
-      args: ["u32", "bool", "u8"],
+      args: ["u32", "u8", "u8"],
       returns: "void",
     },
 
@@ -1978,7 +1978,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioEnableTap: {
-      args: ["u32", "bool", "u32"],
+      args: ["u32", "u8", "u32"],
       returns: "i32",
     },
     audioReadTap: {
@@ -4250,18 +4250,15 @@ class FFIRenderLib implements RenderLib {
     beginFrame: boolean = true,
     finalizeFrame: boolean = true,
   ): NativeRenderOperationResult {
+    const flags =
+      ffiBool(startOnNewLine) |
+      (ffiBool(trailingNewline) << 1) |
+      (ffiBool(force) << 2) |
+      (ffiBool(beginFrame) << 3) |
+      (ffiBool(finalizeFrame) << 4)
+
     return this.unpackRenderOperationResult(
-      this.opentui.symbols.commitSplitFooterSnapshot(
-        renderer,
-        snapshot.ptr,
-        rowColumns,
-        ffiBool(startOnNewLine),
-        ffiBool(trailingNewline),
-        pinnedRenderOffset,
-        ffiBool(force),
-        ffiBool(beginFrame),
-        ffiBool(finalizeFrame),
-      ),
+      this.opentui.symbols.commitSplitFooterSnapshot(renderer, snapshot.ptr, rowColumns, flags, pinnedRenderOffset),
     )
   }
 
