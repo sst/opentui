@@ -1698,6 +1698,144 @@ describe("nested TextRenderable", () => {
     }
   })
 
+  test("publishes direct styled content when committed public-child cleanup fails", async () => {
+    const text = new TextRenderable(renderer, {})
+    text.add(new StyledText([{ __isChunk: true, text: "old" }]))
+    const oldChild = text.getTextChildren()[0]!
+    renderer.root.add(text)
+    await renderOnce()
+
+    const replacement = new StyledText([
+      { __isChunk: true, text: "new", attributes: TextAttributes.BOLD },
+      { __isChunk: true, text: " content", fg: RGBA.fromHex("#00ff00") },
+    ])
+    const destroyOld = oldChild.destroyRecursively.bind(oldChild)
+    oldChild.destroyRecursively = () => {
+      destroyOld()
+      throw new Error("injected direct cleanup failure")
+    }
+    const listener = mock(() => {})
+    text.on("line-info-change", listener)
+    const request = spyOn(text, "requestRender")
+    try {
+      expect(() => {
+        text.content = replacement
+      }).toThrow("injected direct cleanup failure")
+
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(text.content).toBe(replacement)
+      expect(text.children).toEqual([])
+      expect((text as any)._entries.map((run: any) => run.text)).toEqual(["new", " content"])
+      expect((text as any)._entries.every((run: any) => run.rangeId === null)).toBe(true)
+      expect((text as any)._textDocumentPending).toBe(true)
+      expect((text as any)._pendingDocumentRoots).toContain(text)
+      expect(text.isDirty).toBe(true)
+      expect(oldChild.isDestroyed).toBe(true)
+      expect(listener).not.toHaveBeenCalled()
+
+      await renderOnce()
+      expect(text.plainText).toBe("new content")
+      expect((text as any)._entries.every((run: any) => run.rangeId !== null)).toBe(true)
+      expect((text as any)._textDocumentPending).toBe(false)
+      expect(listener).toHaveBeenCalledTimes(1)
+    } finally {
+      request.mockRestore()
+      text.destroyRecursively()
+    }
+  })
+
+  test("rolls back direct styled content without scheduling when public-child attachment fails", async () => {
+    const text = new TextRenderable(renderer, {})
+    const first = new TextRenderable(renderer, { content: "first" })
+    const second = new TextRenderable(renderer, { content: "second" })
+    text.children = [first, second]
+    renderer.root.add(text)
+    await renderOnce()
+
+    const pendingBefore = {
+      documentPending: (text as any)._textDocumentPending,
+      documentRoots: [...((text as any)._pendingDocumentRoots as Set<TextRenderable>)],
+      styleRoots: [...((text as any)._pendingStyleRoots as Set<TextRenderable>)],
+      removedRangeIds: [...((text as any)._pendingRemovedRangeIds as Set<bigint>)],
+      nativeMoves: [...((text as any)._pendingNativeMoves as unknown[])],
+    }
+    const attach = spyOn(second as any, "attachTextDocumentState").mockImplementationOnce(() => {
+      throw new Error("injected direct attachment failure")
+    })
+    const listener = mock(() => {})
+    text.on("line-info-change", listener)
+    const request = spyOn(text, "requestRender")
+    try {
+      expect(() => {
+        text.content = new StyledText([{ __isChunk: true, text: "replacement" }])
+      }).toThrow("injected direct attachment failure")
+
+      expect(request).not.toHaveBeenCalled()
+      expect(text.children).toEqual([first, second])
+      expect(first.parent).toBe(text)
+      expect(second.parent).toBe(text)
+      expect((text as any)._styledText).toBeNull()
+      expect(text.isDirty).toBe(false)
+      expect({
+        documentPending: (text as any)._textDocumentPending,
+        documentRoots: [...((text as any)._pendingDocumentRoots as Set<TextRenderable>)],
+        styleRoots: [...((text as any)._pendingStyleRoots as Set<TextRenderable>)],
+        removedRangeIds: [...((text as any)._pendingRemovedRangeIds as Set<bigint>)],
+        nativeMoves: [...((text as any)._pendingNativeMoves as unknown[])],
+      }).toEqual(pendingBefore)
+      expect(text.plainText).toBe("firstsecond")
+      expect(listener).not.toHaveBeenCalled()
+    } finally {
+      request.mockRestore()
+      attach.mockRestore()
+      text.destroyRecursively()
+    }
+  })
+
+  test("rolls back direct styled content dirty and pending state when public scheduling fails", async () => {
+    const text = new TextRenderable(renderer, { content: "old" })
+    renderer.root.add(text)
+    await renderOnce()
+
+    const entries = [...((text as any)._entries as unknown[])]
+    const pendingBefore = {
+      documentPending: (text as any)._textDocumentPending,
+      documentRoots: [...((text as any)._pendingDocumentRoots as Set<TextRenderable>)],
+      styleRoots: [...((text as any)._pendingStyleRoots as Set<TextRenderable>)],
+      removedRangeIds: [...((text as any)._pendingRemovedRangeIds as Set<bigint>)],
+      nativeMoves: [...((text as any)._pendingNativeMoves as unknown[])],
+    }
+    const request = spyOn(text, "requestRender").mockImplementationOnce(() => {
+      ;(text as any)._dirty = true
+      throw new Error("injected direct scheduling failure")
+    })
+    const listener = mock(() => {})
+    text.on("line-info-change", listener)
+    try {
+      expect(() => {
+        text.content = new StyledText([{ __isChunk: true, text: "replacement" }])
+      }).toThrow("injected direct scheduling failure")
+
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(text.children).toEqual(["old"])
+      expect((text as any)._entries).toEqual(entries)
+      expect((text as any)._styledText).toBeNull()
+      expect(text.isDirty).toBe(false)
+      expect({
+        documentPending: (text as any)._textDocumentPending,
+        documentRoots: [...((text as any)._pendingDocumentRoots as Set<TextRenderable>)],
+        styleRoots: [...((text as any)._pendingStyleRoots as Set<TextRenderable>)],
+        removedRangeIds: [...((text as any)._pendingRemovedRangeIds as Set<bigint>)],
+        nativeMoves: [...((text as any)._pendingNativeMoves as unknown[])],
+      }).toEqual(pendingBefore)
+      expect(text.plainText).toBe("old")
+      expect(listener).not.toHaveBeenCalled()
+    } finally {
+      request.mockRestore()
+      text.destroyRecursively()
+    }
+  })
+
   test("reuses one normalized style object for repeated styled chunks", () => {
     const color = RGBA.fromHex("#ff0000")
     const link = { url: "https://example.test/repeated" }

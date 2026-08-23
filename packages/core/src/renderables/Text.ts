@@ -842,7 +842,6 @@ export class TextRenderable extends TextBufferRenderable {
       const children = this.styledTextToChildren(obj)
       const currentChildren = this.children
       const insertIndex = Math.max(0, Math.min(index ?? currentChildren.length, currentChildren.length))
-      const firstIndex = insertIndex
       try {
         const nextChildren = [...currentChildren]
         nextChildren.splice(insertIndex, 0, ...children)
@@ -857,7 +856,7 @@ export class TextRenderable extends TextBufferRenderable {
         }
         throw error
       }
-      return firstIndex
+      return insertIndex
     }
 
     throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
@@ -1150,7 +1149,6 @@ export class TextRenderable extends TextBufferRenderable {
     const nextChildren: (string | TextRenderable)[] = content === "" ? [] : [content]
     this.children = nextChildren
 
-    this._styledText = null
     this._textDocumentPending = true
     if (requestRender) {
       this.invalidateTextDocument()
@@ -1253,8 +1251,9 @@ export class TextRenderable extends TextBufferRenderable {
         return run.rangeId !== null && /^[\x20-\x7e]+$/.test(text)
       })
 
+    const hadPublicContent = this._styledText === null && this._entries.length > 0
     const dirtyBeforeScheduling = this._dirty
-    if (requestRender) {
+    if (requestRender && !hadPublicContent) {
       try {
         this.requestRender()
       } catch (error) {
@@ -1263,11 +1262,19 @@ export class TextRenderable extends TextBufferRenderable {
       }
     }
 
-    const hadPublicContent = this._styledText === null && this._entries.length > 0
+    let cleanupError: unknown
+    let cleanupFailed = false
     if (hadPublicContent) textDocumentMutationDepth += 1
     try {
-      if (hadPublicContent) this.children = []
-      const nextRuns = plannedRuns
+      if (hadPublicContent) {
+        try {
+          this.children = []
+        } catch (error) {
+          if (this._styledText !== null || this._entries.length !== 0) throw error
+          cleanupError = error
+          cleanupFailed = true
+        }
+      }
       if (previousRuns) {
         const owner = this.getDocumentOwner()
         for (let index = 0; index < previousRuns.length; index++) {
@@ -1277,13 +1284,13 @@ export class TextRenderable extends TextBufferRenderable {
             previous.text = planned.text
             previous.style = planned.style
             previous.styleDirty = planned.styleDirty
-            nextRuns[index] = previous
+            plannedRuns[index] = previous
           } else if (owner && previous.rangeId !== null) {
             owner._pendingRemovedRangeIds.add(previous.rangeId)
           }
         }
       }
-      this._entries = nextRuns
+      this._entries = plannedRuns
       this._styledText = content
       this._manualTextOnly = payloadOnly
       this._textDocumentPending = !unchangedText
@@ -1300,6 +1307,7 @@ export class TextRenderable extends TextBufferRenderable {
         }
       }
     }
+    if (cleanupFailed) throw cleanupError
   }
 
   private styledTextToChildren(styledText: StyledText): TextRenderable[] {
