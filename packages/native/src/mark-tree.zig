@@ -79,6 +79,22 @@ pub const MarkTree = struct {
         counts: SpliceReportCounts,
     };
 
+    pub const PreparedMove = struct {
+        owner: *Self,
+        start_byte: u32,
+        end_byte: u32,
+        len: u32,
+        destination_byte: u32,
+        affected_ids: []u64,
+        source_generation: u64,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedMove) void {
+            self.owner.allocator.free(self.affected_ids);
+            self.* = undefined;
+        }
+    };
+
     pub const PreparedHistoryRestore = struct {
         owner: *Self,
         splice: PreparedSplice,
@@ -564,38 +580,63 @@ pub const MarkTree = struct {
         self.finishMutation();
     }
 
+    /// Prepares an affected-only move. The spatial index restricts work to marks
+    /// with an endpoint in, or a range crossing, the source/destination window.
+    pub fn prepareMoveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !PreparedMove {
+        try self.checkCanMutate();
+        const end_byte = std.math.add(u32, start_byte, len) catch return error.PositionOverflow;
+        _ = std.math.add(u32, destination_byte, len) catch return error.PositionOverflow;
+        const affected_start = @min(start_byte, destination_byte);
+        const affected_end = @max(end_byte, destination_byte + len);
+        const affected_count = if (len == 0 or destination_byte == start_byte)
+            0
+        else
+            countIntersecting(self.root, affected_start, affected_end);
+        const affected_ids = try self.allocator.alloc(u64, affected_count);
+        errdefer self.allocator.free(affected_ids);
+        var index: usize = 0;
+        if (affected_count != 0) fillIntersecting(self.root, affected_start, affected_end, affected_ids, &index);
+        std.debug.assert(index == affected_count);
+        for (affected_ids) |id| {
+            const mark = self.get(id).?;
+            _ = try movedMark(mark, start_byte, end_byte, len, destination_byte);
+        }
+        return .{
+            .owner = self,
+            .start_byte = start_byte,
+            .end_byte = end_byte,
+            .len = len,
+            .destination_byte = destination_byte,
+            .affected_ids = affected_ids,
+            .source_generation = self.generation,
+        };
+    }
+
+    pub fn commitPreparedMove(self: *Self, prepared: *PreparedMove) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed and prepared.source_generation == self.generation);
+        for (prepared.affected_ids) |id| {
+            const node = self.ids.get(id).?;
+            materialize(node);
+            const replacement = movedMark(
+                node.mark,
+                prepared.start_byte,
+                prepared.end_byte,
+                prepared.len,
+                prepared.destination_byte,
+            ) catch unreachable;
+            if (!std.meta.eql(node.mark, replacement)) self.reindexNode(node, replacement) catch unreachable;
+        }
+        if (prepared.affected_ids.len != 0) self.finishMutation();
+        prepared.committed = true;
+    }
+
     /// Moves `[start_byte, start_byte + len)` to `destination_byte`, where the
     /// destination is measured after removing the source. Endpoints inside the
     /// moved text retain their relative offsets, IDs, kinds, and gravities.
     pub fn moveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !void {
-        try self.checkCanMutate();
-        const end_byte = std.math.add(u32, start_byte, len) catch return error.PositionOverflow;
-        _ = std.math.add(u32, destination_byte, len) catch return error.PositionOverflow;
-        if (len == 0 or destination_byte == start_byte) return;
-
-        // Preflight every transformed endpoint and reserve rebuild storage before
-        // changing any mark. The sorted Cartesian rebuild below is infallible.
-        var id_iterator = self.ids.iterator();
-        while (id_iterator.next()) |entry| {
-            const node = entry.value_ptr.*;
-            materialize(node);
-            _ = try movedMark(node.mark, start_byte, end_byte, len, destination_byte);
-        }
-        const nodes = try self.allocator.alloc(*Node, self.len);
-        defer self.allocator.free(nodes);
-
-        id_iterator = self.ids.iterator();
-        var node_index: usize = 0;
-        while (id_iterator.next()) |entry| : (node_index += 1) {
-            const node = entry.value_ptr.*;
-            node.mark = movedMark(node.mark, start_byte, end_byte, len, destination_byte) catch unreachable;
-            resetDetached(node);
-            nodes[node_index] = node;
-        }
-        std.debug.assert(node_index == nodes.len);
-        std.mem.sort(*Node, nodes, {}, movedNodeLessThan);
-        self.root = rebuildSortedNodes(nodes);
-        self.finishMutation();
+        var prepared = try self.prepareMoveRegion(start_byte, len, destination_byte);
+        defer prepared.deinit();
+        self.commitPreparedMove(&prepared);
     }
 
     /// Replaces every mark value while retaining IDs, priorities, and nodes.
@@ -1184,6 +1225,28 @@ pub const MarkTree = struct {
 
     fn movedNodeLessThan(_: void, left: *Node, right: *Node) bool {
         return keyLess(lowerByte(left.mark), left.mark.id(), lowerByte(right.mark), right.mark.id());
+    }
+
+    fn countIntersecting(maybe_node: ?*Node, start_byte: u32, end_byte: u32) usize {
+        const node = maybe_node orelse return 0;
+        if (node.max_byte < start_byte) return 0;
+        push(node);
+        var result = countIntersecting(node.left, start_byte, end_byte);
+        if (lowerByte(node.mark) <= end_byte and upperByte(node.mark) >= start_byte) result += 1;
+        if (lowerByte(node.mark) <= end_byte) result += countIntersecting(node.right, start_byte, end_byte);
+        return result;
+    }
+
+    fn fillIntersecting(maybe_node: ?*Node, start_byte: u32, end_byte: u32, output: []u64, index: *usize) void {
+        const node = maybe_node orelse return;
+        if (node.max_byte < start_byte) return;
+        push(node);
+        fillIntersecting(node.left, start_byte, end_byte, output, index);
+        if (lowerByte(node.mark) <= end_byte and upperByte(node.mark) >= start_byte) {
+            output[index.*] = node.mark.id();
+            index.* += 1;
+        }
+        if (lowerByte(node.mark) <= end_byte) fillIntersecting(node.right, start_byte, end_byte, output, index);
     }
 
     /// Build the unique treap for sorted keys and existing priorities in linear

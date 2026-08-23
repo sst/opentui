@@ -4100,64 +4100,73 @@ pub const UnifiedTextBuffer = struct {
                     annotations_changed = true;
                 },
                 .move => {
-                    var run_end = operation_index + 1;
-                    while (run_end < operations.len and operations[run_end].kind == .move) : (run_end += 1) {}
+                    const source_annotation = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
+                    const anchor_annotation = candidate_annotations.get(operation.anchor_id) orelse return TextBufferError.InvalidIndex;
+                    if (source_annotation.mark != .range or anchor_annotation.mark != .range or
+                        source_annotation.payload.namespace != operation.owner or anchor_annotation.payload.namespace != operation.owner)
+                    {
+                        return TextBufferError.InvalidIndex;
+                    }
+                    const source = source_annotation.mark.range;
+                    const anchor = anchor_annotation.mark.range;
+                    const source_start = @min(source.start_byte, source.end_byte);
+                    const source_end = @max(source.start_byte, source.end_byte);
+                    const len = source_end - source_start;
+                    if (len == 0 or operation.target_id == operation.anchor_id) continue;
+                    const desired = if (operation.before) @min(anchor.start_byte, anchor.end_byte) else @max(anchor.start_byte, anchor.end_byte);
+                    if (desired >= source_start and desired <= source_end) continue;
+                    const destination = if (desired > source_end) desired - len else desired;
+                    const affected_start = @min(source_start, desired);
+                    const affected_end = @max(source_end, desired);
 
-                    const annotation_snapshot = self.global_allocator.alloc(TextAnnotations.Annotation, candidate_annotations.count()) catch return TextBufferError.OutOfMemory;
-                    defer self.global_allocator.free(annotation_snapshot);
-                    var annotation_indices = std.AutoHashMap(u64, usize).init(self.global_allocator);
-                    defer annotation_indices.deinit();
-                    try annotation_indices.ensureTotalCapacity(@intCast(annotation_snapshot.len));
-                    var snapshot_iterator = candidate_annotations.iterator();
-                    var snapshot_index: usize = 0;
-                    while (snapshot_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| : (snapshot_index += 1) {
-                        annotation_snapshot[snapshot_index] = annotation;
-                        annotation_indices.putAssumeCapacity(annotation.id(), snapshot_index);
-                    }
-                    std.debug.assert(snapshot_index == annotation_snapshot.len);
+                    const EnclosingRange = struct {
+                        id: u64,
+                        input: TextAnnotations.RangeInput,
+                    };
+                    const EnclosingContext = struct {
+                        allocator: Allocator,
+                        output: *std.ArrayListUnmanaged(EnclosingRange),
+                        target_id: u64,
+                        affected_start: u32,
+                        affected_end: u32,
 
-                    var moved = false;
-                    for (operations[operation_index..run_end]) |move_operation| {
-                        const source_annotation = annotation_snapshot[annotation_indices.get(move_operation.target_id) orelse return TextBufferError.InvalidIndex];
-                        const anchor_annotation = annotation_snapshot[annotation_indices.get(move_operation.anchor_id) orelse return TextBufferError.InvalidIndex];
-                        if (source_annotation.mark != .range or anchor_annotation.mark != .range or source_annotation.payload.namespace != move_operation.owner or anchor_annotation.payload.namespace != move_operation.owner) return TextBufferError.InvalidIndex;
-                        const source = source_annotation.mark.range;
-                        const anchor = anchor_annotation.mark.range;
-                        const source_start = @min(source.start_byte, source.end_byte);
-                        const source_end = @max(source.start_byte, source.end_byte);
-                        const len = source_end - source_start;
-                        if (len == 0 or move_operation.target_id == move_operation.anchor_id) continue;
-                        const desired = if (move_operation.before) @min(anchor.start_byte, anchor.end_byte) else @max(anchor.start_byte, anchor.end_byte);
-                        if (desired >= source_start and desired <= source_end) continue;
-                        const destination = if (desired > source_end) desired - len else desired;
-                        const affected_start = @min(source_start, desired);
-                        const affected_end = @max(source_end, desired);
-                        TextAnnotations.transformMoveSnapshot(
-                            annotation_snapshot,
-                            move_operation.target_id,
-                            source_start,
-                            len,
-                            destination,
-                            affected_start,
-                            affected_end,
-                            document_range_kind,
-                        ) catch return TextBufferError.InvalidDimensions;
-                        const prepared = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
-                            error.OutOfMemory => return TextBufferError.OutOfMemory,
-                            error.OutOfBounds => return TextBufferError.InvalidByteOffset,
-                        };
-                        candidate_buffer._rope.commitPreparedRoot(prepared);
-                        moved = true;
+                        fn visit(ctx: *@This(), annotation: TextAnnotations.Annotation) !void {
+                            if (annotation.id() == ctx.target_id or annotation.payload.kind_flags & document_range_kind == 0 or annotation.mark != .range) return;
+                            const range = annotation.mark.range;
+                            if (range.start_byte > ctx.affected_start or range.end_byte < ctx.affected_end) return;
+                            try ctx.output.append(ctx.allocator, .{ .id = annotation.id(), .input = .{
+                                .start_byte = range.start_byte,
+                                .end_byte = range.end_byte,
+                                .start_gravity = range.start_gravity,
+                                .end_gravity = range.end_gravity,
+                            } });
+                        }
+                    };
+                    var enclosing_ranges: std.ArrayListUnmanaged(EnclosingRange) = .empty;
+                    defer enclosing_ranges.deinit(self.global_allocator);
+                    var enclosing_context: EnclosingContext = .{
+                        .allocator = self.global_allocator,
+                        .output = &enclosing_ranges,
+                        .target_id = operation.target_id,
+                        .affected_start = affected_start,
+                        .affected_end = affected_end,
+                    };
+                    candidate_annotations.visitOverlapping(affected_start, affected_end, &enclosing_context, EnclosingContext.visit) catch return TextBufferError.OutOfMemory;
+
+                    candidate_annotations.moveRegion(source_start, len, destination) catch |err| switch (err) {
+                        error.OutOfMemory => return TextBufferError.OutOfMemory,
+                        else => return TextBufferError.InvalidDimensions,
+                    };
+                    for (enclosing_ranges.items) |enclosing| {
+                        if (!(candidate_annotations.updateRange(enclosing.id, enclosing.input) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
                     }
-                    if (moved) {
-                        candidate_annotations.replaceSnapshotMarks(annotation_snapshot) catch |err| switch (err) {
-                            error.OutOfMemory => return TextBufferError.OutOfMemory,
-                            else => return TextBufferError.InvalidDimensions,
-                        };
-                        content_changed = true;
-                        annotations_changed = true;
-                    }
-                    operation_index = run_end - 1;
+                    const prepared = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
+                        error.OutOfMemory => return TextBufferError.OutOfMemory,
+                        error.OutOfBounds => return TextBufferError.InvalidByteOffset,
+                    };
+                    candidate_buffer._rope.commitPreparedRoot(prepared);
+                    content_changed = true;
+                    annotations_changed = true;
                 },
                 .remove => {
                     const existing = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
