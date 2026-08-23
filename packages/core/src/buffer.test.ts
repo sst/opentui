@@ -14,6 +14,18 @@ describe("OptimizedBuffer", () => {
     buffer.destroy()
   })
 
+  it("preserves u32 attributes across per-cell FFI calls", () => {
+    const fg = RGBA.fromInts(255, 255, 255)
+    const bg = RGBA.fromInts(0, 0, 0)
+    const attributes = [0x8000_00ff, 0x4000_01fe, 0x2000_02fd]
+
+    buffer.setCell(0, 0, "S", fg, bg, attributes[0])
+    buffer.setCellWithAlphaBlending(1, 0, "A", fg, bg, attributes[1])
+    buffer.drawChar("D".codePointAt(0)!, 2, 0, fg, bg, attributes[2])
+
+    expect([...buffer.buffers.attributes.slice(0, attributes.length)]).toEqual(attributes)
+  })
+
   it("draws images as reserved cells with resolved fallback glyphs", () => {
     const image = NativeImage.fromRgba(
       Uint8Array.of(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255),

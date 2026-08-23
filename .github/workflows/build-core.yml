@@ -90,7 +90,6 @@ jobs:
           bun-version: 1.3.14
 
       - name: Setup Node
-        if: runner.os == 'Linux'
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -140,7 +139,6 @@ jobs:
           bun run test:js
 
       - name: Run Node TypeScript tests
-        if: runner.os == 'Linux'
         working-directory: packages/core
         run: bun run test:js:node
 
