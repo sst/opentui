@@ -6,7 +6,7 @@ const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
 const TextAnnotations = @import("text-annotations.zig").TextAnnotations;
-const AnnotationEditDelta = TextAnnotations.AnnotationEditDelta;
+const DocumentTransactionJournal = tb.DocumentTransactionJournal;
 
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
@@ -14,7 +14,6 @@ const event_bus = @import("event-bus.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
-const TextRope = seg_mod.UnifiedRope;
 
 var global_edit_buffer_id: u16 = 0;
 
@@ -79,21 +78,21 @@ const CursorMeta = struct {
 };
 
 const PreparedEditHistory = struct {
-    delta: ?AnnotationEditDelta = null,
-    rope: ?TextRope.PreparedUndo = null,
+    journal: ?*DocumentTransactionJournal = null,
+    rope: ?UnifiedTextBuffer.PreparedHistoryStore = null,
     storage_prepared: bool = false,
     committed: bool = false,
 
     fn deinit(self: *PreparedEditHistory, edit_buffer: *EditBuffer) void {
-        if (!self.committed) if (self.delta) |*delta| edit_buffer.tb.releaseAnnotationDelta(delta);
+        if (!self.committed) if (self.journal) |journal| journal.destroy();
         if (self.rope) |*rope| rope.deinit();
         if (self.storage_prepared) edit_buffer.tb.finishEditStorage();
         self.* = undefined;
     }
 
-    fn replace(self: *PreparedEditHistory, edit_buffer: *EditBuffer, start: u32, end: u32, bytes: []const u8) !tb.SpliceResult {
+    fn replace(self: *PreparedEditHistory, edit_buffer: *EditBuffer, start: u32, end: u32, bytes: []const u8, clear_annotations: bool) !tb.SpliceResult {
         return if (self.rope != null)
-            edit_buffer.tb.replaceNormalizedBytesForEditWithHistory(start, end, bytes, &self.delta)
+            edit_buffer.tb.replaceNormalizedBytesForEditWithHistory(start, end, bytes, &self.journal.?.annotation_splice, clear_annotations)
         else
             edit_buffer.tb.replaceNormalizedBytesForEdit(start, end, bytes);
     }
@@ -109,8 +108,6 @@ pub const EditBuffer = struct {
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
     event_sink: ?*event_bus.EventSink,
-    edit_undo: std.ArrayListUnmanaged(AnnotationEditDelta),
-    edit_redo: std.ArrayListUnmanaged(AnnotationEditDelta),
     annotation_cursor_policy_references: u32,
     annotation_cursor_policy_selections: u32,
 
@@ -126,7 +123,7 @@ pub const EditBuffer = struct {
 
         const text_buffer = try UnifiedTextBuffer.init(allocator, pool, link_pool, width_method);
         errdefer text_buffer.deinit();
-        text_buffer.rope().setMaxUndoDepth(default_max_undo_depth);
+        text_buffer.setMaxUndoDepth(default_max_undo_depth);
 
         var cursors: std.ArrayListUnmanaged(Cursor) = .empty;
         errdefer cursors.deinit(allocator);
@@ -143,8 +140,6 @@ pub const EditBuffer = struct {
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
             .event_sink = event_sink,
-            .edit_undo = .empty,
-            .edit_redo = .empty,
             .annotation_cursor_policy_references = 0,
             .annotation_cursor_policy_selections = 0,
         };
@@ -157,10 +152,7 @@ pub const EditBuffer = struct {
         defer allocator.destroy(self);
 
         self.events.deinit();
-        self.clearAnnotationHistory(&self.edit_undo);
-        self.clearAnnotationHistory(&self.edit_redo);
-        self.edit_undo.deinit(self.allocator);
-        self.edit_redo.deinit(self.allocator);
+        self.tb.clearHistory();
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.* = undefined;
@@ -349,7 +341,7 @@ pub const EditBuffer = struct {
         if (!std.unicode.utf8ValidateSlice(bytes)) return tb.TextBufferError.InvalidUtf8;
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        const result = try history.replace(self, insert_byte, insert_byte, bytes);
+        const result = try history.replace(self, insert_byte, insert_byte, bytes, false);
         self.commitAutoStoreUndo(&history);
         const point = result.new_display.end.point;
         const new_offset = iter_mod.coordsToOffset(self.tb.rope(), point.row, point.col) orelse 0;
@@ -384,7 +376,7 @@ pub const EditBuffer = struct {
 
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try history.replace(self, start_offset, end_offset, "");
+        _ = try history.replace(self, start_offset, end_offset, "", false);
         self.commitAutoStoreUndo(&history);
 
         if (self.cursors.items.len > 0) {
@@ -593,8 +585,7 @@ pub const EditBuffer = struct {
         try self.preparePrimaryCursor();
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try history.replace(self, 0, self.tb.getByteSize(), text);
-        if (history.delta) |*delta| self.tb.clearAnnotationDeltaAfter(delta);
+        _ = try history.replace(self, 0, self.tb.getByteSize(), text, true);
         self.tb.clearAnnotations();
         self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
@@ -608,8 +599,7 @@ pub const EditBuffer = struct {
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
         const text = self.tb.memRegistry().get(mem_id).?;
-        _ = try history.replace(self, 0, self.tb.getByteSize(), text);
-        if (history.delta) |*delta| self.tb.clearAnnotationDeltaAfter(delta);
+        _ = try history.replace(self, 0, self.tb.getByteSize(), text, true);
         self.tb.clearAnnotations();
         self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
@@ -703,15 +693,16 @@ pub const EditBuffer = struct {
     }
 
     fn prepareAutoStoreUndo(self: *EditBuffer) !PreparedEditHistory {
-        if (self.tb.rope().getMaxUndoDepth() == 0) return .{};
+        if (self.tb.getMaxUndoDepth() == 0) return .{};
         try self.tb.prepareEditStorage();
         errdefer self.tb.finishEditStorage();
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
-        try self.edit_undo.ensureUnusedCapacity(self.allocator, 1);
-        var prepared_rope = try self.tb.rope().prepare_store_undo(meta);
+        const journal = try DocumentTransactionJournal.create(self.tb);
+        errdefer journal.destroy();
+        var prepared_rope = try self.tb.prepareHistoryStore(meta);
         errdefer prepared_rope.deinit();
-        return .{ .rope = prepared_rope, .storage_prepared = true };
+        return .{ .journal = journal, .rope = prepared_rope, .storage_prepared = true };
     }
 
     fn commitAutoStoreUndo(self: *EditBuffer, prepared: *PreparedEditHistory) void {
@@ -719,28 +710,23 @@ pub const EditBuffer = struct {
             prepared.committed = true;
             return;
         }
-        self.tb.rope().commit_store_undo(&prepared.rope.?);
-        self.edit_undo.appendAssumeCapacity(prepared.delta.?);
-        prepared.delta = null;
-        self.clearAnnotationHistory(&self.edit_redo);
-        self.trimAnnotationHistory(&self.edit_undo, self.tb.rope().undoDepth());
+        self.tb.commitHistoryStore(&prepared.rope.?, prepared.journal.?);
+        prepared.journal = null;
         prepared.committed = true;
     }
 
     pub fn undo(self: *EditBuffer) ![]const u8 {
-        if (self.edit_undo.items.len == 0) return error.Stop;
+        const journal = self.tb.undoJournal() orelse return error.Stop;
         try self.preparePrimaryCursor();
-        try self.edit_redo.ensureUnusedCapacity(self.allocator, 1);
-        const delta = &self.edit_undo.items[self.edit_undo.items.len - 1];
+        const delta = &journal.annotation_splice.?;
         var prepared_annotations = try self.tb.prepareAnnotationDeltaApply(delta, .before);
         defer prepared_annotations.deinit();
         var current_meta_buffer: [64]u8 = undefined;
         const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
-        var prepared_rope = try self.tb.rope().prepareUndo(current_meta);
+        var prepared_rope = try self.tb.prepareHistoryUndo(current_meta);
         defer prepared_rope.deinit();
-        const prev_meta = self.tb.rope().commitUndo(&prepared_rope);
+        const prev_meta = self.tb.commitHistoryUndo(&prepared_rope);
         self.tb.commitAnnotationDeltaApply(&prepared_annotations);
-        self.edit_redo.appendAssumeCapacity(self.edit_undo.pop().?);
 
         const restored = try self.restoreCursorFromMeta(prev_meta);
 
@@ -757,16 +743,13 @@ pub const EditBuffer = struct {
     }
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
-        if (self.edit_redo.items.len == 0) return error.Stop;
+        const journal = self.tb.currentJournal() orelse return error.Stop;
         try self.preparePrimaryCursor();
-        try self.edit_undo.ensureUnusedCapacity(self.allocator, 1);
-        const delta = &self.edit_redo.items[self.edit_redo.items.len - 1];
+        const delta = &journal.annotation_splice.?;
         var prepared_annotations = try self.tb.prepareAnnotationDeltaApply(delta, .after);
         defer prepared_annotations.deinit();
-        const next_meta = try self.tb.rope().redo();
+        const next_meta = try self.tb.commitHistoryRedo();
         self.tb.commitAnnotationDeltaApply(&prepared_annotations);
-        self.edit_undo.appendAssumeCapacity(self.edit_redo.pop().?);
-        self.trimAnnotationHistory(&self.edit_undo, self.tb.rope().undoDepth());
 
         const restored = try self.restoreCursorFromMeta(next_meta);
 
@@ -783,41 +766,51 @@ pub const EditBuffer = struct {
     }
 
     pub fn canUndo(self: *const EditBuffer) bool {
-        return self.tb.rope().can_undo();
+        return self.tb.canUndo();
     }
 
     pub fn canRedo(self: *const EditBuffer) bool {
-        return self.tb.rope().can_redo();
+        return self.tb.canRedo();
     }
 
     pub fn clearHistory(self: *EditBuffer) void {
-        self.tb.rope().clear_history();
-        self.clearAnnotationHistory(&self.edit_undo);
-        self.clearAnnotationHistory(&self.edit_redo);
+        self.tb.clearHistory();
         self.tb.requestStorageCompaction();
     }
 
     pub fn setMaxUndoDepth(self: *EditBuffer, max_depth: ?usize) void {
-        self.tb.rope().setMaxUndoDepth(max_depth);
-        self.trimAnnotationHistory(&self.edit_undo, self.tb.rope().undoDepth());
-        self.trimAnnotationHistory(&self.edit_redo, self.tb.rope().redoDepth());
+        self.tb.setMaxUndoDepth(max_depth);
         self.tb.requestStorageCompaction();
     }
 
     pub fn getMaxUndoDepth(self: *const EditBuffer) ?usize {
-        return self.tb.rope().getMaxUndoDepth();
+        return self.tb.getMaxUndoDepth();
     }
 
-    fn clearAnnotationHistory(self: *EditBuffer, history: *std.ArrayListUnmanaged(AnnotationEditDelta)) void {
-        for (history.items) |*delta| self.tb.releaseAnnotationDelta(delta);
-        history.clearRetainingCapacity();
+    pub fn addAnnotationRange(self: *EditBuffer, input: TextAnnotations.RangeInput, payload: TextAnnotations.PayloadInput) tb.TextBufferError!u64 {
+        var created: [1]u64 = undefined;
+        const operations = [_]tb.AnnotationOperation{.{
+            .kind = .add_range,
+            .start_byte = input.start_byte,
+            .end_byte = input.end_byte,
+            .start_gravity = input.start_gravity,
+            .end_gravity = input.end_gravity,
+            .payload = payload,
+        }};
+        _ = try self.applyAnnotationOperations(&operations, &created, &.{});
+        return created[0];
     }
 
-    fn trimAnnotationHistory(self: *EditBuffer, history: *std.ArrayListUnmanaged(AnnotationEditDelta), retained: usize) void {
-        const removed = history.items.len - @min(history.items.len, retained);
-        for (history.items[0..removed]) |*delta| self.tb.releaseAnnotationDelta(delta);
-        if (removed != 0) std.mem.copyForwards(AnnotationEditDelta, history.items[0..], history.items[removed..]);
-        history.shrinkRetainingCapacity(history.items.len - removed);
+    pub fn addAnnotationPoint(self: *EditBuffer, input: TextAnnotations.PointInput, payload: TextAnnotations.PayloadInput) tb.TextBufferError!u64 {
+        var created: [1]u64 = undefined;
+        const operations = [_]tb.AnnotationOperation{.{
+            .kind = .add_point,
+            .start_byte = input.byte,
+            .start_gravity = input.gravity,
+            .payload = payload,
+        }};
+        _ = try self.applyAnnotationOperations(&operations, &created, &.{});
+        return created[0];
     }
 
     pub fn applyAnnotationOperations(
@@ -826,7 +819,9 @@ pub const EditBuffer = struct {
         created_ids: []u64,
         deleted_ids: []u64,
     ) tb.TextBufferError!tb.AnnotationBatchResult {
-        const history_active = self.edit_undo.items.len != 0 or self.edit_redo.items.len != 0;
+        const undo_journal = self.tb.undoJournal();
+        const redo_journal = self.tb.currentJournal();
+        const history_active = undo_journal != null or redo_journal != null;
         var old_states: []?TextAnnotations.Annotation = &.{};
         if (history_active) old_states = self.allocator.alloc(?TextAnnotations.Annotation, operations.len) catch return tb.TextBufferError.OutOfMemory;
         defer if (history_active) self.allocator.free(old_states);
@@ -835,12 +830,8 @@ pub const EditBuffer = struct {
                 .update_range, .update_point, .update_payload => self.tb.textAnnotations().get(operation.id),
                 .add_range, .add_point, .remove, .clear_namespace => null,
             };
-            if (self.edit_undo.items.len != 0) {
-                self.edit_undo.items[self.edit_undo.items.len - 1].ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
-            }
-            if (self.edit_redo.items.len != 0) {
-                self.edit_redo.items[self.edit_redo.items.len - 1].ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
-            }
+            if (undo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
+            if (redo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
         }
         const result = try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
         if (history_active) {
@@ -856,24 +847,18 @@ pub const EditBuffer = struct {
                 };
                 const new_state = self.tb.textAnnotations().get(id);
                 if (old_state == null and new_state == null) continue;
-                if (self.edit_undo.items.len != 0) {
-                    self.tb.journalAnnotationDelta(&self.edit_undo.items[self.edit_undo.items.len - 1], .after, old_state, new_state);
-                }
-                if (self.edit_redo.items.len != 0) {
-                    self.tb.journalAnnotationDelta(&self.edit_redo.items[self.edit_redo.items.len - 1], .before, old_state, new_state);
-                }
+                if (undo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .after, old_state, new_state);
+                if (redo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .before, old_state, new_state);
             }
         }
         // Explicit removal is authoritative even when the ID exists only in an
         // undo delta, so a later undo cannot resurrect controller-owned state.
         for (operations) |operation| {
             if (operation.kind == .clear_namespace) {
-                for (self.edit_undo.items) |*delta| self.tb.purgeAnnotationDeltaNamespace(delta, operation.payload.namespace);
-                for (self.edit_redo.items) |*delta| self.tb.purgeAnnotationDeltaNamespace(delta, operation.payload.namespace);
+                self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace);
             }
             if (operation.kind != .remove) continue;
-            for (self.edit_undo.items) |*delta| self.tb.purgeAnnotationDelta(delta, &.{operation.id});
-            for (self.edit_redo.items) |*delta| self.tb.purgeAnnotationDelta(delta, &.{operation.id});
+            self.tb.purgeAnnotationHistory(&.{operation.id});
         }
         return result;
     }

@@ -510,11 +510,32 @@ pub fn Rope(comptime T: type) type {
             }
         };
 
+        pub const HistoryPayload = struct {
+            ptr: ?*anyopaque = null,
+            deinit_fn: ?*const fn (*anyopaque) void = null,
+
+            pub fn init(ptr: *anyopaque, deinit_fn: *const fn (*anyopaque) void) HistoryPayload {
+                return .{ .ptr = ptr, .deinit_fn = deinit_fn };
+            }
+
+            pub fn deinit(self: *HistoryPayload) void {
+                if (self.ptr) |ptr| self.deinit_fn.?(ptr);
+                self.* = .{};
+            }
+
+            pub fn take(self: *HistoryPayload) HistoryPayload {
+                const result = self.*;
+                self.* = .{};
+                return result;
+            }
+        };
+
         pub const UndoNode = struct {
             root: *const Node,
             next: ?*UndoNode = null,
             branches: ?*UndoBranch = null,
             meta: []const u8,
+            payload: HistoryPayload = .{},
         };
 
         pub const UndoBranch = struct {
@@ -711,6 +732,9 @@ pub fn Rope(comptime T: type) type {
                         .next = null,
                         .branches = null,
                         .meta = try cloner.allocator.dupe(u8, source.meta),
+                        // Type-erased transaction journals are move-only. A
+                        // retained Rope clone intentionally excludes them.
+                        .payload = .{},
                     };
                     target.next = if (source.next) |next| try cloner.history(next) else null;
                     target.branches = try cloner.branch(source.branches);
@@ -1380,10 +1404,14 @@ pub fn Rope(comptime T: type) type {
             pub fn deinit(self: *PreparedUndo) void {
                 if (!self.committed) {
                     if (self.branch) |branch| self.owner.allocator.destroy(branch);
-                    self.owner.allocator.free(@constCast(self.undo_node.meta));
-                    self.owner.allocator.destroy(self.undo_node);
+                    self.owner.destroyHistoryNode(self.undo_node);
                 }
                 self.* = undefined;
+            }
+
+            pub fn setPayload(self: *PreparedUndo, payload: HistoryPayload) void {
+                std.debug.assert(!self.committed and self.undo_node.payload.ptr == null);
+                self.undo_node.payload = payload;
             }
         };
 
@@ -1408,6 +1436,8 @@ pub fn Rope(comptime T: type) type {
             std.debug.assert(self.undo_history == prepared.expected_undo);
             std.debug.assert(self.redo_history == prepared.expected_redo);
             std.debug.assert(self.curr_history == prepared.expected_current);
+            self.destroyHistory(self.redo_history);
+            self.destroyHistory(self.curr_history);
             self.push_undo(prepared.undo_node);
             self.curr_history = null;
             self.redo_history = null;
@@ -1431,6 +1461,22 @@ pub fn Rope(comptime T: type) type {
             return undo_node;
         }
 
+        fn destroyHistoryNode(self: *Self, node: *UndoNode) void {
+            node.payload.deinit();
+            self.allocator.free(@constCast(node.meta));
+            self.allocator.destroy(node);
+        }
+
+        fn destroyHistory(self: *Self, first: ?*UndoNode) void {
+            var current = first;
+            while (current) |node| {
+                const next = node.next;
+                node.next = null;
+                self.destroyHistoryNode(node);
+                current = next;
+            }
+        }
+
         fn push_undo(self: *Self, undo_node: *UndoNode) void {
             const next = self.undo_history;
             self.undo_history = undo_node;
@@ -1447,6 +1493,7 @@ pub fn Rope(comptime T: type) type {
 
         fn trimUndoHistory(self: *Self, max_depth: usize) void {
             if (max_depth == 0) {
+                self.destroyHistory(self.undo_history);
                 self.undo_history = null;
                 self.undo_depth = 0;
                 return;
@@ -1457,7 +1504,9 @@ pub fn Rope(comptime T: type) type {
             while (current) |node| {
                 depth_count += 1;
                 if (depth_count == max_depth) {
+                    const removed = node.next;
                     node.next = null;
+                    self.destroyHistory(removed);
                     self.undo_depth = max_depth;
                     return;
                 }
@@ -1484,7 +1533,9 @@ pub fn Rope(comptime T: type) type {
             while (current) |node| {
                 depth += 1;
                 if (depth == max_depth) {
+                    const removed = node.next;
                     node.next = null;
+                    self.destroyHistory(removed);
                     return;
                 }
                 current = node.next;
@@ -1530,8 +1581,7 @@ pub fn Rope(comptime T: type) type {
 
             pub fn deinit(self: *PreparedUndoMove) void {
                 if (!self.committed and self.current_owned) {
-                    self.owner.allocator.free(@constCast(self.current.meta));
-                    self.owner.allocator.destroy(self.current);
+                    self.owner.destroyHistoryNode(self.current);
                 }
                 self.* = undefined;
             }
@@ -1560,6 +1610,7 @@ pub fn Rope(comptime T: type) type {
             const r = prepared.current;
             const h = prepared.previous;
             self.undo_history = h.next;
+            h.next = null;
             self.curr_history = h;
             self.root = h.root;
             self.version += 1;
@@ -1574,6 +1625,7 @@ pub fn Rope(comptime T: type) type {
             const h = self.redo_history orelse return error.Stop;
             if (u.root != self.root) return error.Stop;
             self.redo_history = h.next;
+            h.next = null;
             self.curr_history = h;
             self.root = h.root;
             self.version += 1;
@@ -1593,7 +1645,63 @@ pub fn Rope(comptime T: type) type {
             return self.undo_history != null or self.redo_history != null or self.curr_history != null;
         }
 
+        pub fn undoPayload(self: *Self) ?*anyopaque {
+            return if (self.undo_history) |node| node.payload.ptr else null;
+        }
+
+        pub fn currentPayload(self: *Self) ?*anyopaque {
+            return if (self.curr_history) |node| node.payload.ptr else null;
+        }
+
+        pub const HistoryPayloadVisitor = *const fn (ctx: *anyopaque, payload: *anyopaque) void;
+
+        pub fn walkHistoryPayloads(self: *Self, ctx: *anyopaque, visitor: HistoryPayloadVisitor) void {
+            walkPayloads(self.undo_history, ctx, visitor);
+            walkPayloads(self.redo_history, ctx, visitor);
+            walkPayloads(self.curr_history, ctx, visitor);
+        }
+
+        fn walkPayloads(first: ?*UndoNode, ctx: *anyopaque, visitor: HistoryPayloadVisitor) void {
+            var current = first;
+            while (current) |node| : (current = node.next) if (node.payload.ptr) |payload| visitor(ctx, payload);
+        }
+
+        /// Transfers move-only payload ownership after cloneRetained succeeds.
+        pub fn moveHistoryPayloadsTo(self: *Self, target: *Self) void {
+            movePayloadList(self.undo_history, target.undo_history);
+            movePayloadList(self.redo_history, target.redo_history);
+            movePayloadList(self.curr_history, target.curr_history);
+        }
+
+        fn movePayloadList(source_first: ?*UndoNode, target_first: ?*UndoNode) void {
+            var source = source_first;
+            var target = target_first;
+            while (source) |source_node| {
+                const target_node = target orelse unreachable;
+                target_node.payload = source_node.payload.take();
+                movePayloadBranches(source_node.branches, target_node.branches);
+                source = source_node.next;
+                target = target_node.next;
+            }
+            std.debug.assert(target == null);
+        }
+
+        fn movePayloadBranches(source_first: ?*UndoBranch, target_first: ?*UndoBranch) void {
+            var source = source_first;
+            var target = target_first;
+            while (source) |source_branch| {
+                const target_branch = target orelse unreachable;
+                movePayloadList(source_branch.redo, target_branch.redo);
+                source = source_branch.next;
+                target = target_branch.next;
+            }
+            std.debug.assert(target == null);
+        }
+
         pub fn clear_history(self: *Self) void {
+            self.destroyHistory(self.undo_history);
+            self.destroyHistory(self.redo_history);
+            self.destroyHistory(self.curr_history);
             self.undo_history = null;
             self.redo_history = null;
             self.curr_history = null;
@@ -1695,22 +1803,24 @@ pub fn Rope(comptime T: type) type {
             self.marker_cache.version = self.version;
         }
 
-        pub fn markerCount(self: *Self, tag: std.meta.Tag(T)) u32 {
+        pub fn markerCount(self: *const Self, tag: std.meta.Tag(T)) u32 {
+            const owner = @constCast(self);
             if (!marker_enabled) return 0;
 
             if (self.marker_cache.version != self.version) {
-                self.rebuildMarkerCache() catch return 0;
+                owner.rebuildMarkerCache() catch return 0;
             }
 
             const list = self.marker_cache.positions.get(tag) orelse return 0;
             return @intCast(list.items.len);
         }
 
-        pub fn getMarker(self: *Self, tag: std.meta.Tag(T), occurrence: u32) ?MarkerPosition {
+        pub fn getMarker(self: *const Self, tag: std.meta.Tag(T), occurrence: u32) ?MarkerPosition {
+            const owner = @constCast(self);
             if (!marker_enabled) return null;
 
             if (self.marker_cache.version != self.version) {
-                self.rebuildMarkerCache() catch return null;
+                owner.rebuildMarkerCache() catch return null;
             }
 
             const list = self.marker_cache.positions.get(tag) orelse return null;

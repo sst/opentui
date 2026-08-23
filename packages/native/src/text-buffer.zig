@@ -13,6 +13,33 @@ const TextAnnotations = @import("text-annotations.zig").TextAnnotations;
 const MarkTree = @import("mark-tree.zig").MarkTree;
 pub const AnnotationEditDelta = TextAnnotations.AnnotationEditDelta;
 
+/// Payload owned by one physical Rope history node. Annotation splices are the
+/// first transaction kind; document, move, and style journals can be added here
+/// without changing Rope history ownership.
+pub const DocumentTransactionJournal = struct {
+    owner: *UnifiedTextBuffer,
+    allocator: Allocator,
+    annotation_splice: ?AnnotationEditDelta = null,
+
+    pub fn create(owner: *UnifiedTextBuffer) TextBufferError!*DocumentTransactionJournal {
+        const journal = owner.global_allocator.create(DocumentTransactionJournal) catch return TextBufferError.OutOfMemory;
+        journal.* = .{ .owner = owner, .allocator = owner.global_allocator };
+        return journal;
+    }
+
+    pub fn destroy(self: *DocumentTransactionJournal) void {
+        const allocator = self.allocator;
+        if (self.annotation_splice) |*delta| self.owner.releaseAnnotationDelta(delta);
+        self.* = undefined;
+        allocator.destroy(self);
+    }
+
+    fn destroyOpaque(ptr: *anyopaque) void {
+        const self: *DocumentTransactionJournal = @ptrCast(@alignCast(ptr));
+        self.destroy();
+    }
+};
+
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
 
@@ -299,13 +326,68 @@ pub const UnifiedTextBuffer = struct {
         return self.allocator;
     }
 
-    /// Accessor: return pointer to the rope (for edit-path callers).
-    /// Const-preserving: returns *UnifiedRope or *const UnifiedRope depending on receiver.
-    pub fn rope(self: anytype) blk: {
-        const T = @TypeOf(self);
-        break :blk if (T == *Self) *UnifiedRope else if (T == *const Self) *const UnifiedRope else @compileError("expected *Self or *const Self");
-    } {
+    /// Query-only Rope view. History and root publication are owner operations.
+    pub fn rope(self: *const Self) *const UnifiedRope {
         return &self._rope;
+    }
+
+    pub fn ropeForTesting(self: *Self) *UnifiedRope {
+        if (!builtin.is_test) @compileError("mutable Rope access is test-only");
+        return &self._rope;
+    }
+
+    pub const PreparedHistoryStore = UnifiedRope.PreparedUndo;
+    pub const PreparedHistoryUndo = UnifiedRope.PreparedUndoMove;
+
+    pub fn prepareHistoryStore(self: *Self, meta: []const u8) !PreparedHistoryStore {
+        return self._rope.prepare_store_undo(meta);
+    }
+
+    pub fn commitHistoryStore(self: *Self, prepared: *PreparedHistoryStore, journal: *DocumentTransactionJournal) void {
+        prepared.setPayload(UnifiedRope.HistoryPayload.init(@ptrCast(journal), DocumentTransactionJournal.destroyOpaque));
+        self._rope.commit_store_undo(prepared);
+    }
+
+    pub fn prepareHistoryUndo(self: *Self, meta: []const u8) !PreparedHistoryUndo {
+        return self._rope.prepareUndo(meta);
+    }
+
+    pub fn commitHistoryUndo(self: *Self, prepared: *PreparedHistoryUndo) []const u8 {
+        return self._rope.commitUndo(prepared);
+    }
+
+    pub fn commitHistoryRedo(self: *Self) ![]const u8 {
+        return self._rope.redo();
+    }
+
+    pub fn undoJournal(self: *Self) ?*DocumentTransactionJournal {
+        const ptr = self._rope.undoPayload() orelse return null;
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    pub fn currentJournal(self: *Self) ?*DocumentTransactionJournal {
+        const ptr = self._rope.currentPayload() orelse return null;
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    pub fn clearHistory(self: *Self) void {
+        self._rope.clear_history();
+    }
+
+    pub fn setMaxUndoDepth(self: *Self, max_depth: ?usize) void {
+        self._rope.setMaxUndoDepth(max_depth);
+    }
+
+    pub fn getMaxUndoDepth(self: *const Self) ?usize {
+        return self._rope.getMaxUndoDepth();
+    }
+
+    pub fn canUndo(self: *const Self) bool {
+        return self._rope.can_undo();
+    }
+
+    pub fn canRedo(self: *const Self) bool {
+        return self._rope.can_redo();
     }
 
     /// Accessor: get line width at a given row.
@@ -543,7 +625,12 @@ pub const UnifiedTextBuffer = struct {
         return self.annotation_epoch;
     }
 
-    pub fn textAnnotations(self: *Self) *TextAnnotations {
+    pub fn textAnnotations(self: *const Self) *const TextAnnotations {
+        return &self.annotations;
+    }
+
+    pub fn textAnnotationsForTesting(self: *Self) *TextAnnotations {
+        if (!builtin.is_test) @compileError("mutable annotations access is test-only");
         return &self.annotations;
     }
 
@@ -707,6 +794,36 @@ pub const UnifiedTextBuffer = struct {
             write += 1;
         }
         delta.changes.shrinkRetainingCapacity(write);
+    }
+
+    pub fn purgeAnnotationHistory(self: *Self, ids: []const u64) void {
+        const Context = struct {
+            owner: *Self,
+            ids: []const u64,
+
+            fn visit(raw_context: *anyopaque, raw_payload: *anyopaque) void {
+                const context: *@This() = @ptrCast(@alignCast(raw_context));
+                const journal: *DocumentTransactionJournal = @ptrCast(@alignCast(raw_payload));
+                if (journal.annotation_splice) |*delta| context.owner.purgeAnnotationDelta(delta, context.ids);
+            }
+        };
+        var context: Context = .{ .owner = self, .ids = ids };
+        self._rope.walkHistoryPayloads(&context, Context.visit);
+    }
+
+    pub fn purgeAnnotationHistoryNamespace(self: *Self, namespace: u32) void {
+        const Context = struct {
+            owner: *Self,
+            namespace: u32,
+
+            fn visit(raw_context: *anyopaque, raw_payload: *anyopaque) void {
+                const context: *@This() = @ptrCast(@alignCast(raw_context));
+                const journal: *DocumentTransactionJournal = @ptrCast(@alignCast(raw_payload));
+                if (journal.annotation_splice) |*delta| context.owner.purgeAnnotationDeltaNamespace(delta, context.namespace);
+            }
+        };
+        var context: Context = .{ .owner = self, .namespace = namespace };
+        self._rope.walkHistoryPayloads(&context, Context.visit);
     }
 
     pub fn clearAnnotationDeltaAfter(self: *Self, delta: *AnnotationEditDelta) void {
@@ -1211,7 +1328,7 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, false, null);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, false, null, false);
     }
 
     pub fn replaceNormalizedBytesForEdit(
@@ -1220,7 +1337,7 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, null);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, null, false);
     }
 
     pub fn replaceNormalizedBytesForEditWithHistory(
@@ -1229,8 +1346,9 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
         delta_out: *?AnnotationEditDelta,
+        clear_annotations: bool,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, delta_out);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, delta_out, clear_annotations);
     }
 
     /// Consumes an annotation candidate already transformed for this splice.
@@ -1243,6 +1361,7 @@ pub const UnifiedTextBuffer = struct {
         supplied_annotations: ?*TextAnnotations,
         use_live_candidate: bool,
         delta_out: ?*?AnnotationEditDelta,
+        clear_annotations: bool,
     ) TextBufferError!SpliceResult {
         if (start > end or end > self.getByteSize()) return TextBufferError.InvalidByteOffset;
         if (!std.unicode.utf8ValidateSlice(replacement)) return TextBufferError.InvalidUtf8;
@@ -1254,7 +1373,7 @@ pub const UnifiedTextBuffer = struct {
         const old_start_display = try self.normalizedByteOffsetToDisplayPoint(start, .before);
         const old_end_display = try self.normalizedByteOffsetToDisplayPoint(end, .after);
         const old_display: DisplayRange = .{ .start = old_start_display, .end = old_end_display };
-        if (start == end and replacement.len == 0 and supplied_annotations == null) {
+        if (start == end and replacement.len == 0 and supplied_annotations == null and !clear_annotations) {
             return .{
                 .old_range = .{ .start = start, .end = end },
                 .inserted_len = 0,
@@ -1317,7 +1436,7 @@ pub const UnifiedTextBuffer = struct {
         defer if (prepared_annotation_splice) |*prepared| prepared.deinit();
         if (use_live_candidate) {
             prepared_annotation_splice = (if (delta_out != null)
-                candidate_annotations.prepareSpliceForHistory(start, end - start, inserted_len)
+                candidate_annotations.prepareSpliceForHistory(start, end - start, inserted_len, clear_annotations)
             else
                 candidate_annotations.prepareSplice(start, end - start, inserted_len)) catch |err| switch (err) {
                 error.OutOfMemory => return TextBufferError.OutOfMemory,
@@ -2005,7 +2124,7 @@ pub const UnifiedTextBuffer = struct {
             );
         }
         var storage_context: CompactStorageContext = .{ .owner = self, .mem_id = mem_id, .ranges = ranges };
-        const compacted = self._rope.cloneRetained(
+        var compacted = self._rope.cloneRetained(
             compacted_arena.allocator(),
             self.global_allocator,
             @ptrCast(&storage_context),
@@ -2029,6 +2148,7 @@ pub const UnifiedTextBuffer = struct {
         }
         storage_owned = false;
 
+        self._rope.moveHistoryPayloadsTo(&compacted);
         self.releaseRopeTransactionArenas();
         self._rope = compacted;
         self.rope_transaction_arenas.appendAssumeCapacity(compacted_arena);
@@ -3088,7 +3208,7 @@ pub const UnifiedTextBuffer = struct {
             };
         }
 
-        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate, false, null);
+        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate, false, null, false);
         candidate_owned = false;
         styles_committed = true;
         return result;

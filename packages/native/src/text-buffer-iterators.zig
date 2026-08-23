@@ -25,7 +25,7 @@ pub const Coords = struct {
 
 /// Note: Takes mutable rope for lazy marker cache rebuilding
 pub fn walkLines(
-    rope: *UnifiedRope,
+    rope: *const UnifiedRope,
     ctx: *anyopaque,
     callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
     include_newlines_in_offset: bool,
@@ -152,7 +152,7 @@ pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
 /// Optimized O(1) implementation using linestart marker lookups
 /// Note: Rope weight includes newlines (each .brk adds +1), but col is still display width
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
+pub fn coordsToOffset(rope: *const UnifiedRope, row: u32, col: u32) ?u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return null;
 
@@ -169,7 +169,7 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
 /// Note: Rope weight includes newlines, so valid offsets are 0..totalWeight() inclusive
 /// Takes mutable rope for lazy marker cache rebuilding
 /// TODO: Should clamp to min/max offset and always return valid coords
-pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
+pub fn offsetToCoords(rope: *const UnifiedRope, offset: u32) ?Coords {
     const linestart_count = rope.markerCount(.linestart);
     if (linestart_count == 0) return null;
 
@@ -212,7 +212,7 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
 
 /// Note: Returns display width only (excludes newline weight)
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
+pub fn lineWidthAt(rope: *const UnifiedRope, row: u32) u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return 0;
 
@@ -238,7 +238,7 @@ pub const GraphemeBounds = struct {
 };
 
 /// Takes mutable rope for lazy marker cache rebuilding
-fn getTextUnitBoundsAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod, cluster_graphemes: bool) ?GraphemeBounds {
+fn getTextUnitBoundsAt(rope: *const UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod, cluster_graphemes: bool) ?GraphemeBounds {
     const line_width = lineWidthAt(rope, row);
     if (col >= line_width) return null;
 
@@ -273,21 +273,21 @@ fn getTextUnitBoundsAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row
     return null;
 }
 
-pub fn getGraphemeBoundsAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) ?GraphemeBounds {
+pub fn getGraphemeBoundsAt(rope: *const UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) ?GraphemeBounds {
     return getTextUnitBoundsAt(rope, mem_registry, row, col, tab_width, width_method, true);
 }
 
-pub fn getCursorUnitBoundsAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) ?GraphemeBounds {
+pub fn getCursorUnitBoundsAt(rope: *const UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) ?GraphemeBounds {
     return getTextUnitBoundsAt(rope, mem_registry, row, col, tab_width, width_method, false);
 }
 
-pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
+pub fn getGraphemeWidthAt(rope: *const UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
     const bounds = getCursorUnitBoundsAt(rope, mem_registry, row, col, tab_width, width_method) orelse return 0;
     return bounds.end -| col;
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
+pub fn getPrevGraphemeWidth(rope: *const UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
     if (col == 0) return 0;
 
     const line_width = lineWidthAt(rope, row);

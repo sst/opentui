@@ -54,6 +54,10 @@ pub const TextAnnotations = struct {
         }
     };
 
+    fn annotationMark(annotation: Annotation) Mark {
+        return annotation.mark;
+    }
+
     pub const DeltaSide = enum { before, after };
 
     pub const AnnotationEditDelta = struct {
@@ -136,7 +140,6 @@ pub const TextAnnotations = struct {
         old_len: u32,
         new_len: u32,
         targets: []Annotation,
-        target_marks: []Mark,
         remove_ids: []u64,
         tree_restore: MarkTree.PreparedHistoryRestore,
         source_generation: u64,
@@ -145,7 +148,6 @@ pub const TextAnnotations = struct {
         pub fn deinit(self: *PreparedDeltaApply) void {
             self.tree_restore.deinit();
             self.owner.allocator.free(self.targets);
-            self.owner.allocator.free(self.target_marks);
             self.owner.allocator.free(self.remove_ids);
             self.* = undefined;
         }
@@ -199,13 +201,14 @@ pub const TextAnnotations = struct {
         };
     }
 
-    pub fn clone(self: *Self, allocator: Allocator) !Self {
-        var tree = try self.tree.clone(allocator);
+    pub fn clone(self: *const Self, allocator: Allocator) !Self {
+        const owner = @constCast(self);
+        var tree = try owner.tree.clone(allocator);
         errdefer tree.deinit();
         var payloads = std.AutoHashMap(u64, Payload).init(allocator);
         errdefer payloads.deinit();
         try payloads.ensureTotalCapacity(@intCast(self.payloads.count()));
-        var payload_iterator = self.payloads.iterator();
+        var payload_iterator = owner.payloads.iterator();
         while (payload_iterator.next()) |entry| payloads.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
         return .{
             .allocator = allocator,
@@ -340,9 +343,9 @@ pub const TextAnnotations = struct {
         return id;
     }
 
-    pub fn get(self: *Self, id: u64) ?Annotation {
+    pub fn get(self: *const Self, id: u64) ?Annotation {
         const payload = self.payloads.get(id) orelse return null;
-        const mark = self.tree.get(id) orelse return null;
+        const mark = @constCast(&self.tree).get(id) orelse return null;
         return .{ .mark = mark, .payload = payload };
     }
 
@@ -535,16 +538,16 @@ pub const TextAnnotations = struct {
     }
 
     pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
-        return self.prepareSpliceInternal(start_byte, old_len, new_len, false);
+        return self.prepareSpliceInternal(start_byte, old_len, new_len, false, false);
     }
 
-    pub fn prepareSpliceForHistory(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
-        return self.prepareSpliceInternal(start_byte, old_len, new_len, true);
+    pub fn prepareSpliceForHistory(self: *Self, start_byte: u32, old_len: u32, new_len: u32, clear_all: bool) !PreparedSplice {
+        return self.prepareSpliceInternal(start_byte, old_len, new_len, true, clear_all);
     }
 
-    fn prepareSpliceInternal(self: *Self, start_byte: u32, old_len: u32, new_len: u32, capture_history: bool) !PreparedSplice {
+    fn prepareSpliceInternal(self: *Self, start_byte: u32, old_len: u32, new_len: u32, capture_history: bool, clear_all: bool) !PreparedSplice {
         try self.checkCanMutate(0);
-        if (self.non_retaining_policy_count == 0 and !capture_history) {
+        if ((self.non_retaining_policy_count == 0 and !capture_history) or (capture_history and old_len == 0 and !clear_all)) {
             const tree_splice = try self.tree.prepareSplice(start_byte, old_len, new_len);
             return .{
                 .owner = self,
@@ -555,13 +558,19 @@ pub const TextAnnotations = struct {
                 .affected_storage = &.{},
                 .covered_storage = &.{},
                 .delete_ids = &.{},
+                .history_delta = if (capture_history) .{
+                    .allocator = self.allocator,
+                    .start_byte = start_byte,
+                    .old_len = old_len,
+                    .new_len = new_len,
+                } else null,
                 .source_generation = self.generation,
             };
         }
-        const counts = try self.tree.spliceReportCounts(start_byte, old_len, new_len);
-        const affected = try self.allocator.alloc(u64, counts.affected);
+        const report = try self.tree.prepareSpliceReport(start_byte, old_len, new_len);
+        const affected = try self.allocator.alloc(u64, report.counts.affected);
         errdefer self.allocator.free(affected);
-        const covered = try self.allocator.alloc(u64, counts.covered);
+        const covered = try self.allocator.alloc(u64, report.counts.covered);
         errdefer self.allocator.free(covered);
 
         const generation_budget = if (old_len == 0 and new_len == 0)
@@ -569,30 +578,41 @@ pub const TextAnnotations = struct {
         else
             std.math.add(usize, self.count(), 1) catch return error.GenerationExhausted;
         try self.checkTreeGenerations(generation_budget);
-        const tree_splice = try self.tree.prepareSpliceWithReport(start_byte, old_len, new_len, affected, covered);
+        const tree_splice = try self.tree.fillPreparedSpliceReport(start_byte, old_len, report, affected, covered);
 
         sortIds(tree_splice.affected_ids);
         sortIds(tree_splice.covered_range_ids);
         var covered_index: usize = 0;
         var delete_count: usize = 0;
+        var history_count: usize = 0;
         for (tree_splice.affected_ids) |id| {
             while (covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] < id) {
                 covered_index += 1;
             }
             const is_covered = covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] == id;
             if (is_covered) covered_index += 1;
-            const payload = self.payloads.get(id).?;
-            const should_delete = payload.splice_policy == .invalidate or
-                (payload.splice_policy == .delete_when_covered and is_covered);
+            const before = self.get(id).?;
+            const should_delete = before.payload.splice_policy == .invalidate or
+                (before.payload.splice_policy == .delete_when_covered and is_covered);
             delete_count += @intFromBool(should_delete);
+            if (capture_history and !clear_all) {
+                if (should_delete) {
+                    history_count += 1;
+                } else {
+                    const after = try MarkTree.splicedMark(before.mark, start_byte, old_len, new_len);
+                    const inverse = try MarkTree.splicedMark(after, start_byte, new_len, old_len);
+                    history_count += @intFromBool(!std.meta.eql(inverse, before.mark));
+                }
+            }
         }
+        if (capture_history and clear_all) history_count = self.count();
         const delete_ids = try self.allocator.alloc(u64, delete_count);
         errdefer self.allocator.free(delete_ids);
         var history_delta: ?AnnotationEditDelta = null;
         errdefer if (history_delta) |*delta| delta.deinit();
         if (capture_history) {
             history_delta = .{ .allocator = self.allocator, .start_byte = start_byte, .old_len = old_len, .new_len = new_len };
-            try history_delta.?.changes.ensureTotalCapacity(self.allocator, tree_splice.affected_ids.len);
+            try history_delta.?.changes.ensureTotalCapacity(self.allocator, history_count);
         }
         covered_index = 0;
         var delete_index: usize = 0;
@@ -608,14 +628,21 @@ pub const TextAnnotations = struct {
                 delete_index += 1;
             }
             if (history_delta) |*delta| {
+                if (clear_all) continue;
                 var after: ?Annotation = null;
                 if (!should_delete) {
                     after = before;
                     after.?.mark = try MarkTree.splicedMark(before.mark, start_byte, old_len, new_len);
+                    const inverse = try MarkTree.splicedMark(after.?.mark, start_byte, new_len, old_len);
+                    if (std.meta.eql(inverse, before.mark)) continue;
                 }
                 delta.changes.appendAssumeCapacity(.{ .before = before, .after = after });
             }
         }
+        if (history_delta) |*delta| if (clear_all) {
+            var annotations = self.iterator();
+            while (try annotations.next()) |annotation| delta.changes.appendAssumeCapacity(.{ .before = annotation, .after = null });
+        };
         return .{
             .owner = self,
             .start_byte = start_byte,
@@ -684,10 +711,7 @@ pub const TextAnnotations = struct {
             }
         }
         try self.payloads.ensureUnusedCapacity(@intCast(target_count));
-        const marks = try self.allocator.alloc(Mark, target_count);
-        errdefer self.allocator.free(marks);
-        for (targets, marks) |annotation, *mark| mark.* = annotation.mark;
-        var tree_restore = try self.tree.prepareHistoryRestore(delta.start_byte, old_len, new_len, marks);
+        var tree_restore = try self.tree.prepareHistoryRestore(delta.start_byte, old_len, new_len, targets, annotationMark);
         errdefer tree_restore.deinit();
         return .{
             .owner = self,
@@ -695,7 +719,6 @@ pub const TextAnnotations = struct {
             .old_len = old_len,
             .new_len = new_len,
             .targets = targets,
-            .target_marks = marks,
             .remove_ids = remove_ids,
             .tree_restore = tree_restore,
             .source_generation = self.generation,
@@ -708,7 +731,8 @@ pub const TextAnnotations = struct {
             prepared.start_byte,
             prepared.old_len,
             prepared.new_len,
-            prepared.target_marks,
+            prepared.targets,
+            annotationMark,
             prepared.remove_ids,
             &prepared.tree_restore,
         );
@@ -768,37 +792,40 @@ pub const TextAnnotations = struct {
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.
-    pub fn visitOverlapping(self: *Self, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
+    pub fn visitOverlapping(self: *const Self, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
+        const owner = @constCast(self);
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);
-        var collector = Collector{ .owner = self, .annotations = &annotations };
-        self.active_visits += 1;
-        defer self.active_visits -= 1;
-        try self.tree.visitOverlapping(first_byte, second_byte, &collector, Collector.range);
+        var collector = Collector{ .owner = owner, .annotations = &annotations };
+        owner.active_visits += 1;
+        defer owner.active_visits -= 1;
+        try owner.tree.visitOverlapping(first_byte, second_byte, &collector, Collector.range);
         sortByPrecedence(annotations.items);
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.
-    pub fn visitStartingAt(self: *Self, byte: u32, context: anytype, visitor: anytype) !void {
+    pub fn visitStartingAt(self: *const Self, byte: u32, context: anytype, visitor: anytype) !void {
+        const owner = @constCast(self);
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);
-        var collector = Collector{ .owner = self, .annotations = &annotations };
-        self.active_visits += 1;
-        defer self.active_visits -= 1;
-        try self.tree.visitStartingAt(byte, &collector, Collector.range);
+        var collector = Collector{ .owner = owner, .annotations = &annotations };
+        owner.active_visits += 1;
+        defer owner.active_visits -= 1;
+        try owner.tree.visitStartingAt(byte, &collector, Collector.range);
         sortByPrecedence(annotations.items);
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.
-    pub fn visitPointsAt(self: *Self, byte: u32, context: anytype, visitor: anytype) !void {
+    pub fn visitPointsAt(self: *const Self, byte: u32, context: anytype, visitor: anytype) !void {
+        const owner = @constCast(self);
         var annotations: std.ArrayList(Annotation) = .empty;
         defer annotations.deinit(self.allocator);
-        var collector = Collector{ .owner = self, .annotations = &annotations };
-        self.active_visits += 1;
-        defer self.active_visits -= 1;
-        try self.tree.visitPointsAt(byte, &collector, Collector.point);
+        var collector = Collector{ .owner = owner, .annotations = &annotations };
+        owner.active_visits += 1;
+        defer owner.active_visits -= 1;
+        try owner.tree.visitPointsAt(byte, &collector, Collector.point);
         sortByPrecedence(annotations.items);
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
@@ -806,7 +833,8 @@ pub const TextAnnotations = struct {
     pub const UnorderedVisitMode = enum { overlapping, starting, points };
 
     /// Visits directly in tree order for callers that sort complete output themselves.
-    pub fn visitUnordered(self: *Self, mode: UnorderedVisitMode, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
+    pub fn visitUnordered(self: *const Self, mode: UnorderedVisitMode, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
+        const owner = @constCast(self);
         const Adapter = struct {
             owner: *Self,
             target: @TypeOf(context),
@@ -827,19 +855,20 @@ pub const TextAnnotations = struct {
                 try visitor(adapter.target, annotation);
             }
         };
-        var adapter: Adapter = .{ .owner = self, .target = context };
-        self.active_visits += 1;
-        defer self.active_visits -= 1;
+        var adapter: Adapter = .{ .owner = owner, .target = context };
+        owner.active_visits += 1;
+        defer owner.active_visits -= 1;
         switch (mode) {
-            .overlapping => try self.tree.visitOverlapping(first_byte, second_byte, &adapter, Adapter.range),
-            .starting => try self.tree.visitStartingAt(first_byte, &adapter, Adapter.range),
-            .points => try self.tree.visitPointsAt(first_byte, &adapter, Adapter.point),
+            .overlapping => try owner.tree.visitOverlapping(first_byte, second_byte, &adapter, Adapter.range),
+            .starting => try owner.tree.visitStartingAt(first_byte, &adapter, Adapter.range),
+            .points => try owner.tree.visitPointsAt(first_byte, &adapter, Adapter.point),
         }
     }
 
     /// Finds the highest-precedence overlapping range with any requested kind
     /// without allocating query storage.
-    pub fn findOverlappingKind(self: *Self, first_byte: u32, second_byte: u32, kind_mask: u32) ?Annotation {
+    pub fn findOverlappingKind(self: *const Self, first_byte: u32, second_byte: u32, kind_mask: u32) ?Annotation {
+        const owner = @constCast(self);
         const Finder = struct {
             owner: *Self,
             kind_mask: u32,
@@ -863,8 +892,8 @@ pub const TextAnnotations = struct {
                 }
             }
         };
-        var finder: Finder = .{ .owner = self, .kind_mask = kind_mask };
-        self.tree.visitOverlapping(first_byte, second_byte, &finder, Finder.visit) catch unreachable;
+        var finder: Finder = .{ .owner = owner, .kind_mask = kind_mask };
+        owner.tree.visitOverlapping(first_byte, second_byte, &finder, Finder.visit) catch unreachable;
         return finder.best;
     }
 
@@ -876,10 +905,11 @@ pub const TextAnnotations = struct {
 
     /// Iterates by derived lower position then stable ID. Any annotation mutation
     /// invalidates the iterator, including a payload-only change or namespace clear.
-    pub fn iterator(self: *Self) Iterator {
+    pub fn iterator(self: *const Self) Iterator {
+        const owner = @constCast(self);
         return .{
-            .owner = self,
-            .tree_iterator = self.tree.iterator(),
+            .owner = owner,
+            .tree_iterator = owner.tree.iterator(),
             .generation = self.generation,
         };
     }
@@ -896,12 +926,13 @@ pub const TextAnnotations = struct {
         }
     };
 
-    pub fn validateIntegrity(self: *Self) IntegrityError!void {
-        try self.tree.validateIntegrity();
+    pub fn validateIntegrity(self: *const Self) IntegrityError!void {
+        const owner = @constCast(self);
+        try owner.tree.validateIntegrity();
         if (self.tree.count() != self.payloads.count()) return error.CountMismatch;
-        var payload_iterator = self.payloads.keyIterator();
+        var payload_iterator = owner.payloads.keyIterator();
         while (payload_iterator.next()) |id| {
-            if (self.tree.get(id.*) == null) return error.MissingMark;
+            if (owner.tree.get(id.*) == null) return error.MissingMark;
         }
     }
 

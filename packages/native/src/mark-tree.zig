@@ -72,6 +72,13 @@ pub const MarkTree = struct {
         covered: usize,
     };
 
+    pub const PreparedSpliceReport = struct {
+        source_generation: u64,
+        old_end: u32,
+        new_end: u32,
+        counts: SpliceReportCounts,
+    };
+
     pub const PreparedHistoryRestore = struct {
         owner: *Self,
         splice: PreparedSplice,
@@ -372,9 +379,33 @@ pub const MarkTree = struct {
         affected_buffer: []u64,
         covered_buffer: []u64,
     ) !PreparedSplice {
+        const report = try self.prepareSpliceReport(start_byte, old_len, new_len);
+        return self.fillPreparedSpliceReport(start_byte, old_len, report, affected_buffer, covered_buffer);
+    }
+
+    pub fn prepareSpliceReport(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSpliceReport {
         try self.checkCanMutate();
         const ends = try self.preflightSplice(start_byte, old_len, new_len);
         const counts = countDeletion(self.root, start_byte, ends.old_end, old_len, 0);
+        return .{
+            .source_generation = self.generation,
+            .old_end = ends.old_end,
+            .new_end = ends.new_end,
+            .counts = .{ .affected = counts.affected, .covered = counts.covered },
+        };
+    }
+
+    pub fn fillPreparedSpliceReport(
+        self: *Self,
+        start_byte: u32,
+        old_len: u32,
+        report: PreparedSpliceReport,
+        affected_buffer: []u64,
+        covered_buffer: []u64,
+    ) !PreparedSplice {
+        try self.checkCanMutate();
+        if (report.source_generation != self.generation) return error.StalePreparation;
+        const counts = report.counts;
         if (affected_buffer.len < counts.affected or covered_buffer.len < counts.covered) {
             return error.ReportBufferTooSmall;
         }
@@ -388,7 +419,7 @@ pub const MarkTree = struct {
             fillDeletion(
                 self.root,
                 start_byte,
-                ends.old_end,
+                report.old_end,
                 old_len,
                 affected_buffer,
                 covered_buffer,
@@ -398,18 +429,15 @@ pub const MarkTree = struct {
         }
         return .{
             .source_generation = self.generation,
-            .old_end = ends.old_end,
-            .new_end = ends.new_end,
+            .old_end = report.old_end,
+            .new_end = report.new_end,
             .affected_ids = affected_buffer[0..affected_len],
             .covered_range_ids = covered_buffer[0..covered_len],
         };
     }
 
     pub fn spliceReportCounts(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !SpliceReportCounts {
-        try self.checkCanMutate();
-        const ends = try self.preflightSplice(start_byte, old_len, new_len);
-        const counts = countDeletion(self.root, start_byte, ends.old_end, old_len, 0);
-        return .{ .affected = counts.affected, .covered = counts.covered };
+        return (try self.prepareSpliceReport(start_byte, old_len, new_len)).counts;
     }
 
     pub fn splicedMark(mark: Mark, start_byte: u32, old_len: u32, new_len: u32) !Mark {
@@ -439,7 +467,8 @@ pub const MarkTree = struct {
         start_byte: u32,
         old_len: u32,
         new_len: u32,
-        targets: []const Mark,
+        targets: anytype,
+        comptime markFor: anytype,
     ) !PreparedHistoryRestore {
         try self.checkCanMutate();
         const prepared_splice = try self.prepareSplice(start_byte, old_len, new_len);
@@ -449,7 +478,8 @@ pub const MarkTree = struct {
         var initialized: usize = 0;
         errdefer for (nodes[0..initialized]) |node| self.allocator.destroy(node);
         var priority_state = self.priority_state;
-        for (targets) |mark| {
+        for (targets) |target| {
+            const mark: Mark = markFor(target);
             const existing = self.get(mark.id());
             if (existing != null and std.meta.activeTag(existing.?) == std.meta.activeTag(mark)) continue;
             const node = try self.allocator.create(Node);
@@ -477,7 +507,8 @@ pub const MarkTree = struct {
         start_byte: u32,
         old_len: u32,
         new_len: u32,
-        targets: []const Mark,
+        targets: anytype,
+        comptime markFor: anytype,
         remove_ids: []const u64,
         prepared: *PreparedHistoryRestore,
     ) void {
@@ -485,7 +516,8 @@ pub const MarkTree = struct {
         self.commitPreparedSplice(start_byte, old_len, new_len, prepared.splice) catch unreachable;
         for (remove_ids) |id| _ = self.remove(id) catch unreachable;
         var node_index: usize = 0;
-        for (targets) |mark| {
+        for (targets) |target| {
+            const mark: Mark = markFor(target);
             if (self.get(mark.id())) |existing| {
                 std.debug.assert(std.meta.activeTag(existing) == std.meta.activeTag(mark));
                 switch (mark) {

@@ -13,7 +13,7 @@ fn expectText(eb: *EditBuffer, expected: []const u8) !void {
     try std.testing.expectEqualStrings(expected, output[0..written]);
 }
 
-fn expectAnnotationsEqual(expected: *TextAnnotations, actual: *TextAnnotations) !void {
+fn expectAnnotationsEqual(expected: *TextAnnotations, actual: *const TextAnnotations) !void {
     try std.testing.expectEqual(expected.count(), actual.count());
     var iterator = expected.iterator();
     while (try iterator.next()) |annotation| try std.testing.expectEqualDeep(annotation, actual.get(annotation.id()).?);
@@ -21,7 +21,7 @@ fn expectAnnotationsEqual(expected: *TextAnnotations, actual: *TextAnnotations) 
 
 fn prepareRedoBranch(eb: *EditBuffer) !u64 {
     try eb.setText("abc");
-    const id = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 1, .end_byte = 2 }, .{
+    const id = try eb.addAnnotationRange(.{ .start_byte = 1, .end_byte = 2 }, .{
         .namespace = 91,
         .style_id = 77,
         .priority = 4,
@@ -124,7 +124,7 @@ fn exerciseFailedSparseUndo(fail_offset: ?usize) !usize {
     const eb = try EditBuffer.init(failing.allocator(), pool, link_pool, .wcwidth, null);
     defer eb.deinit();
     try eb.setText("abcdef");
-    const id = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 1, .end_byte = 4 }, .{
+    const id = try eb.addAnnotationRange(.{ .start_byte = 1, .end_byte = 4 }, .{
         .namespace = 1,
         .style_id = 7,
         .splice_policy = .invalidate,
@@ -211,11 +211,14 @@ fn localEditAllocationCount(mark_count: usize, max_undo_depth: ?usize) !usize {
     defer link.deinitGlobalLinkPool();
     const eb = try EditBuffer.init(failing.allocator(), pool, link_pool, .wcwidth, null);
     defer eb.deinit();
-    try eb.setText("local edit");
+    const document = try std.testing.allocator.alloc(u8, 22_000);
+    defer std.testing.allocator.free(document);
+    @memset(document, 'a');
+    try eb.setText(document);
     eb.setMaxUndoDepth(max_undo_depth);
     for (0..mark_count) |index| {
         const start: u32 = @intCast(1_000 + index * 2);
-        _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
+        _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
             .namespace = 1,
             .splice_policy = .delete_when_covered,
         });
@@ -284,7 +287,7 @@ test "virtual annotation policy is native and reference counted" {
     defer eb.deinit();
 
     try eb.setText("abc[LINK]def");
-    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 3, .end_byte = 9 }, .{
+    _ = try eb.addAnnotationRange(.{ .start_byte = 3, .end_byte = 9 }, .{
         .namespace = 1,
         .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual,
         .splice_policy = .delete_when_covered,
@@ -317,9 +320,8 @@ test "virtual annotation policy ignores points and empty ranges without looping 
     defer eb.deinit();
 
     try eb.setText("abcdef");
-    const annotations = eb.getTextBuffer().textAnnotations();
-    _ = try annotations.addPoint(.{ .byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 3, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationPoint(.{ .byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 3, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     eb.setVirtualAnnotationPolicy(true);
 
     try eb.setCursorByOffset(0);
@@ -328,7 +330,7 @@ test "virtual annotation policy ignores points and empty ranges without looping 
     try eb.setCursorByOffset(3);
     try std.testing.expectEqual(@as(u32, 3), eb.getPrimaryCursor().offset);
 
-    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     try eb.setCursorByOffset(5);
     try eb.setCursorByOffset(0);
     try std.testing.expectEqual(@as(u32, 2), eb.getPrimaryCursor().offset);
@@ -344,25 +346,27 @@ test "virtual annotation direct placement and zero-start chains always resolve o
 
     try eb.setText("0123456789");
     try eb.setCursorByOffset(3);
-    const annotations = eb.getTextBuffer().textAnnotations();
-    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     eb.setVirtualAnnotationPolicy(true);
     try eb.setCursorByOffset(3);
     try std.testing.expectEqual(@as(u32, 5), eb.getPrimaryCursor().offset);
 
-    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 4, .end_byte = 8 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 4, .end_byte = 8 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     try eb.setCursorByOffset(9);
     try eb.setCursorByOffset(1);
     try std.testing.expectEqual(@as(u32, 8), eb.getPrimaryCursor().offset);
 
-    try std.testing.expectEqual(@as(usize, 5), try annotations.clearNamespace(1));
-    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 4, .end_byte = 7 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
-    _ = try annotations.addRange(.{ .start_byte = 6, .end_byte = 9 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    var deleted: [5]u64 = undefined;
+    const clear = [_]@import("../text-buffer.zig").AnnotationOperation{.{ .kind = .clear_namespace, .payload = .{ .namespace = 1 } }};
+    const cleared = try eb.applyAnnotationOperations(&clear, &.{}, &deleted);
+    try std.testing.expectEqual(@as(usize, 5), cleared.deleted_count);
+    _ = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 4, .end_byte = 7 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 6, .end_byte = 9 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     try eb.setCursorByOffset(10);
     try eb.setCursorByOffset(7);
     try std.testing.expectEqual(@as(u32, 9), eb.getPrimaryCursor().offset);
@@ -441,13 +445,13 @@ test "sparse annotation delta restores policy deletions and exact affected shape
 
     try eb.setText("0123456789");
     const annotations = eb.getTextBuffer().textAnnotations();
-    const retained = try annotations.addRange(.{
+    const retained = try eb.addAnnotationRange(.{
         .start_byte = 8,
         .end_byte = 2,
         .start_gravity = .left,
         .end_gravity = .right,
     }, .{ .namespace = 1, .style_id = 11, .priority = 3 });
-    const invalidated = try annotations.addPoint(.{ .byte = 4, .gravity = .left }, .{
+    const invalidated = try eb.addAnnotationPoint(.{ .byte = 4, .gravity = .left }, .{
         .namespace = 2,
         .style_id = 12,
         .kind_flags = 9,
@@ -459,7 +463,7 @@ test "sparse annotation delta restores policy deletions and exact affected shape
     try eb.deleteRange(.{ .row = 0, .col = 2 }, .{ .row = 0, .col = 7 });
     const after_retained = annotations.get(retained).?;
     try std.testing.expect(annotations.get(invalidated) == null);
-    try std.testing.expectEqual(@as(usize, 2), eb.edit_undo.items[0].changes.items.len);
+    try std.testing.expectEqual(@as(usize, 2), eb.getTextBuffer().undoJournal().?.annotation_splice.?.changes.items.len);
 
     _ = try eb.undo();
     try std.testing.expectEqualDeep(before_retained, annotations.get(retained).?);
@@ -467,6 +471,36 @@ test "sparse annotation delta restores policy deletions and exact affected shape
     _ = try eb.redo();
     try std.testing.expectEqualDeep(after_retained, annotations.get(retained).?);
     try std.testing.expect(annotations.get(invalidated) == null);
+}
+
+test "full replacement journals every annotation intentionally cleared" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abc");
+    const annotations = eb.getTextBuffer().textAnnotationsForTesting();
+    const point = try annotations.addPoint(.{ .byte = 100, .gravity = .left }, .{ .namespace = 1, .style_id = 7 });
+    const empty = try annotations.addRange(.{ .start_byte = 50, .end_byte = 50 }, .{ .namespace = 2, .style_id = 8 });
+    const point_before = annotations.get(point).?;
+    const empty_before = annotations.get(empty).?;
+
+    try eb.replaceText("replacement");
+    try std.testing.expectEqual(@as(usize, 0), annotations.count());
+    _ = try eb.undo();
+    try expectText(eb, "abc");
+    try std.testing.expectEqualDeep(point_before, annotations.get(point).?);
+    try std.testing.expectEqualDeep(empty_before, annotations.get(empty).?);
+
+    try eb.setText("");
+    const at_empty = try eb.addAnnotationPoint(.{ .byte = 0 }, .{ .namespace = 3 });
+    try eb.replaceText("");
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(at_empty) == null);
+    _ = try eb.undo();
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(at_empty) != null);
 }
 
 test "annotation CRUD journals both sides of active text history branches" {
@@ -530,10 +564,10 @@ test "zero undo depth creates no annotation delta entries" {
 
     try eb.setText("abcdef");
     eb.setMaxUndoDepth(0);
-    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{ .namespace = 1 });
+    _ = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 4 }, .{ .namespace = 1 });
     try eb.setCursorByOffset(0);
     try eb.insertText("X");
-    try std.testing.expectEqual(@as(usize, 0), eb.edit_undo.items.len);
+    try std.testing.expect(eb.getTextBuffer().undoJournal() == null);
     try std.testing.expect(!eb.canUndo());
 }
 
@@ -573,7 +607,7 @@ test "sparse annotation history matches snapshot oracle across randomized edits"
             1 => .invalidate,
             else => .delete_when_covered,
         };
-        _ = try eb.getTextBuffer().textAnnotations().addRange(.{
+        _ = try eb.addAnnotationRange(.{
             .start_byte = if (next(&random) & 1 == 0) start else end,
             .end_byte = if (next(&random) & 1 == 0) end else start,
             .start_gravity = if (next(&random) & 1 == 0) .left else .right,
@@ -620,18 +654,22 @@ test "bounded edit history trims sparse annotation deltas with repeated edits" {
     const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
     defer eb.deinit();
 
-    try eb.setText("abcdefghij");
+    const document = try std.testing.allocator.alloc(u8, 22_000);
+    defer std.testing.allocator.free(document);
+    @memset(document, 'a');
+    try eb.setText(document);
     eb.setMaxUndoDepth(4);
     for (0..10_000) |index| {
         const start: u32 = @intCast(1_000 + index * 2);
-        _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 1 }, .{ .namespace = 1 });
+        _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 1 }, .{ .namespace = 1 });
     }
     for (0..100) |_| try eb.insertText("x");
 
-    try std.testing.expectEqual(@as(usize, 4), eb.edit_undo.items.len);
-    for (eb.edit_undo.items) |delta| try std.testing.expectEqual(@as(usize, 0), delta.changes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), eb.getTextBuffer().undoJournal().?.annotation_splice.?.changes.items.len);
+    for (0..4) |_| _ = try eb.undo();
+    try std.testing.expectError(error.Stop, eb.undo());
     eb.clearHistory();
-    try std.testing.expectEqual(@as(usize, 0), eb.edit_undo.items.len);
+    try std.testing.expect(eb.getTextBuffer().undoJournal() == null);
 }
 
 test "EditBuffer - basic undo/redo with insertText" {

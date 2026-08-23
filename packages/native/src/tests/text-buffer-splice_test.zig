@@ -420,13 +420,13 @@ test "line projection uses explicit highlight refs and preserves native fallback
     defer tb.deinit();
     try tb.setText("abcdef");
 
-    _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = 2 }, .{
+    _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 0, .end_byte = 2 }, .{
         .namespace = 1,
         .style_id = 10,
         .highlight_ref = 65_000,
         .kind_flags = text_buffer.annotation_kind_style,
     });
-    const fallback_id = try tb.textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
+    const fallback_id = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
         .namespace = 1,
         .style_id = 11,
         .kind_flags = text_buffer.annotation_kind_style,
@@ -613,9 +613,9 @@ test "clearMemRegistry invalidates current and undo roots before freeing IDs" {
     const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
     try tb.setText("seed");
-    try tb.rope().store_undo("seed");
+    try tb.ropeForTesting().store_undo("seed");
     _ = try tb.replaceNormalizedBytes(0, 4, "changed");
-    try tb.rope().store_undo("changed");
+    try tb.ropeForTesting().store_undo("changed");
 
     tb.clearMemRegistry();
     try expectText(tb, "");
@@ -639,7 +639,7 @@ test "setStyledText releases splice backing and history before arena reset" {
     defer tb.deinit();
     try tb.setText("old");
     _ = try tb.replaceNormalizedBytes(3, 3, " splice");
-    try tb.rope().store_undo("old");
+    try tb.ropeForTesting().store_undo("old");
     try std.testing.expectEqual(@as(usize, 1), tb.memRegistry().getUsedSlots());
 
     const replacement = "styled";
@@ -1067,12 +1067,12 @@ test "randomized move batches equal separate transactions for text marks payload
             if (first > second and index % 3 != 0) std.mem.swap(u32, &first, &second);
             const gravity: TextAnnotations.Gravity = if (random.boolean()) .left else .right;
             const id = if (index % 4 == 0)
-                try tb.textAnnotations().addPoint(.{ .byte = first, .gravity = gravity }, .{
+                try tb.textAnnotationsForTesting().addPoint(.{ .byte = first, .gravity = gravity }, .{
                     .namespace = @intCast(700 + scenario),
                     .priority = @intCast(index % 11),
                 })
             else
-                try tb.textAnnotations().addRange(.{
+                try tb.textAnnotationsForTesting().addRange(.{
                     .start_byte = first,
                     .end_byte = second,
                     .start_gravity = gravity,
@@ -1381,13 +1381,13 @@ test "retained history remains usable and clear reclaims backing storage" {
     for (1..TextBuffer.rope_compaction_arena_limit + 4) |index| {
         var value: [16]u8 = undefined;
         const replacement = try std.fmt.bufPrint(&value, "{d}", .{index});
-        try tb.rope().store_undo(replacement);
+        try tb.ropeForTesting().store_undo(replacement);
         _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), replacement);
     }
-    _ = try tb.rope().undo("current");
+    _ = try tb.ropeForTesting().undo("current");
     try expectText(tb, "34");
 
-    tb.rope().clear_history();
+    tb.ropeForTesting().clear_history();
     tb.requestStorageCompaction();
     try std.testing.expect(tb.getBackingStoreBytes() <= tb.getByteSize());
     _ = try tb.replaceNormalizedBytes(0, tb.getByteSize(), "compacted");
@@ -2039,11 +2039,11 @@ test "splice backing survives undo roots and reset releases it" {
     const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
     try tb.setText("before");
-    try tb.rope().store_undo("before");
+    try tb.ropeForTesting().store_undo("before");
     _ = try tb.replaceNormalizedBytes(0, 6, "after");
-    _ = try tb.rope().undo("after");
+    _ = try tb.ropeForTesting().undo("after");
     try expectText(tb, "before");
-    _ = try tb.rope().redo();
+    _ = try tb.ropeForTesting().redo();
     try expectText(tb, "after");
 
     tb.reset();
@@ -2258,7 +2258,7 @@ test "EditBuffer undo and redo restore exact annotation identity payload and lif
     const eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
     defer eb.deinit();
     try eb.setText("abcdef");
-    const id = try eb.tb.textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
+    const id = try eb.tb.textAnnotationsForTesting().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
         .namespace = 71,
         .style_id = 99,
         .priority = 7,
@@ -2291,8 +2291,8 @@ test "EditBuffer whole replacement clears boundary annotations and undo restores
     const eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
     defer eb.deinit();
     try eb.setText("abcdef");
-    const at_start = try eb.tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = 0 }, .{ .namespace = 1 });
-    const at_end = try eb.tb.textAnnotations().addRange(.{ .start_byte = 6, .end_byte = 6 }, .{ .namespace = 1 });
+    const at_start = try eb.tb.textAnnotationsForTesting().addRange(.{ .start_byte = 0, .end_byte = 0 }, .{ .namespace = 1 });
+    const at_end = try eb.tb.textAnnotationsForTesting().addRange(.{ .start_byte = 6, .end_byte = 6 }, .{ .namespace = 1 });
 
     try eb.replaceText("XY");
     try std.testing.expectEqual(@as(usize, 0), eb.tb.textAnnotations().count());

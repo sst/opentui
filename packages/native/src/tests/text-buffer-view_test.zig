@@ -871,7 +871,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try segments.append(std.testing.allocator, .{ .text = chunk2 });
     try segments.append(std.testing.allocator, .{ .text = chunk3 });
 
-    try tb.rope().setSegments(segments.items);
+    try tb.ropeForTesting().setSegments(segments.items);
 
     view.virtual_lines_dirty = true;
 
@@ -3623,7 +3623,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const chunk2 = tb.createChunk(mem_id, 17, 21);
     try segments.append(std.testing.allocator, .{ .text = chunk2 });
 
-    try tb.rope().setSegments(segments.items);
+    try tb.ropeForTesting().setSegments(segments.items);
     view.virtual_lines_dirty = true;
 
     view.setWrapMode(.word);

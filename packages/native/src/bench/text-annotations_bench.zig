@@ -66,7 +66,7 @@ pub fn run(
                 const timer = bench_utils.BenchTimer.start(io);
                 for (0..10_000) |index| {
                     const start: u32 = @intCast(index * 4);
-                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+                    _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
                         .namespace = 1,
                         .kind_flags = text_buffer.annotation_kind_virtual,
                     });
@@ -90,7 +90,7 @@ pub fn run(
                 try eb.setText(text);
                 for (0..10_000) |index| {
                     const start: u32 = @intCast(index * 4);
-                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+                    _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
                         .namespace = 1,
                         .kind_flags = text_buffer.annotation_kind_virtual,
                     });
@@ -117,10 +117,13 @@ pub fn run(
             for (0..iterations) |_| {
                 const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
                 defer eb.deinit();
-                try eb.setText("local edit");
+                const text = try allocator.alloc(u8, 202_000);
+                defer allocator.free(text);
+                @memset(text, 'a');
+                try eb.setText(text);
                 for (0..case.count) |index| {
                     const start: u32 = @intCast(1_000 + index * 2);
-                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
+                    _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
                         .namespace = 1,
                         .splice_policy = .delete_when_covered,
                     });

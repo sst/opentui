@@ -515,14 +515,14 @@ test "TextAnnotations policy reports and history deltas allocate only affected m
         });
     }
 
-    var insertion = try owner.prepareSpliceForHistory(5, 0, 1);
+    var insertion = try owner.prepareSpliceForHistory(5, 0, 1, false);
     defer insertion.deinit();
     try std.testing.expectEqual(@as(usize, 0), insertion.affected_storage.len);
     try std.testing.expectEqual(@as(usize, 0), insertion.covered_storage.len);
     try std.testing.expectEqual(@as(usize, 0), insertion.delete_ids.len);
     try std.testing.expectEqual(@as(usize, 0), insertion.history_delta.?.changes.items.len);
 
-    var deletion = try owner.prepareSpliceForHistory(10, 10, 0);
+    var deletion = try owner.prepareSpliceForHistory(10, 10, 0, false);
     defer deletion.deinit();
     try std.testing.expectEqual(@as(usize, 1), deletion.affected_storage.len);
     try std.testing.expectEqual(@as(usize, 1), deletion.covered_storage.len);
