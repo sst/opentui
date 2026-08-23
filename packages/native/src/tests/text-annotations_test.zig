@@ -714,6 +714,111 @@ fn compareModel(owner: *TextAnnotations, entries: []const ModelEntry) !void {
     try owner.validateIntegrity();
 }
 
+test "TextAnnotations adaptive move batch selects sparse and dense work deterministically" {
+    var source = testAnnotations();
+    defer source.deinit();
+    for (0..100) |index| {
+        _ = try source.addPoint(.{ .byte = @intCast(index * 4) }, .{ .namespace = 1 });
+    }
+
+    const sparse_moves = [_]TextAnnotations.Move{
+        .{ .target_id = 0, .start_byte = 40, .len = 1, .destination_byte = 44 },
+        .{ .target_id = 0, .start_byte = 44, .len = 1, .destination_byte = 40 },
+    };
+    var sparse = try source.clone(std.testing.allocator);
+    defer sparse.deinit();
+    try std.testing.expectEqual(TextAnnotations.MoveBatchStrategy.affected, try sparse.prepareMoveBatch(&sparse_moves));
+
+    var below_crossover = try source.clone(std.testing.allocator);
+    defer below_crossover.deinit();
+    try std.testing.expectEqual(TextAnnotations.MoveBatchStrategy.affected, try below_crossover.prepareMoveBatch(&.{.{
+        .target_id = 0,
+        .start_byte = 0,
+        .len = 1,
+        .destination_byte = 107,
+    }}));
+    var at_crossover = try source.clone(std.testing.allocator);
+    defer at_crossover.deinit();
+    try std.testing.expectEqual(TextAnnotations.MoveBatchStrategy.snapshot, try at_crossover.prepareMoveBatch(&.{.{
+        .target_id = 0,
+        .start_byte = 0,
+        .len = 1,
+        .destination_byte = 111,
+    }}));
+
+    const dense_moves = [_]TextAnnotations.Move{
+        .{ .target_id = 0, .start_byte = 0, .len = 1, .destination_byte = 395 },
+        .{ .target_id = 0, .start_byte = 395, .len = 1, .destination_byte = 0 },
+    };
+    var first_dense = try source.clone(std.testing.allocator);
+    defer first_dense.deinit();
+    var second_dense = try source.clone(std.testing.allocator);
+    defer second_dense.deinit();
+    try std.testing.expectEqual(TextAnnotations.MoveBatchStrategy.snapshot, try first_dense.prepareMoveBatch(&dense_moves));
+    try std.testing.expectEqual(TextAnnotations.MoveBatchStrategy.snapshot, try second_dense.prepareMoveBatch(&dense_moves));
+    var source_iterator = source.iterator();
+    while (try source_iterator.next()) |annotation| {
+        try std.testing.expectEqualDeep(annotation, first_dense.get(annotation.id()).?);
+        try std.testing.expectEqualDeep(annotation, second_dense.get(annotation.id()).?);
+    }
+    try first_dense.validateIntegrity();
+    try second_dense.validateIntegrity();
+}
+
+test "TextAnnotations randomized adaptive sparse and dense batches equal exact snapshots" {
+    var random_state = std.Random.DefaultPrng.init(0x61646170746d6f76);
+    const random = random_state.random();
+    var source = testAnnotations();
+    defer source.deinit();
+    for (0..256) |index| {
+        const first = random.intRangeAtMost(u32, 0, 512);
+        if (index % 3 == 0) {
+            _ = try source.addPoint(.{
+                .byte = first,
+                .gravity = if (random.boolean()) .left else .right,
+            }, .{ .namespace = 1, .kind_flags = @intFromBool(index % 4 == 0) });
+        } else {
+            _ = try source.addRange(.{
+                .start_byte = first,
+                .end_byte = random.intRangeAtMost(u32, 0, 512),
+                .start_gravity = if (random.boolean()) .left else .right,
+                .end_gravity = if (random.boolean()) .left else .right,
+            }, .{ .namespace = 1, .kind_flags = @intFromBool(index % 4 == 0) });
+        }
+    }
+
+    for (0..40) |_| {
+        var actual = try source.clone(std.testing.allocator);
+        defer actual.deinit();
+        const move_count = random.intRangeAtMost(usize, 1, 30);
+        const moves = try std.testing.allocator.alloc(TextAnnotations.Move, move_count);
+        defer std.testing.allocator.free(moves);
+        for (moves) |*move| {
+            const len = random.intRangeAtMost(u32, 1, 32);
+            move.* = .{
+                .target_id = random.int(u64),
+                .start_byte = random.intRangeAtMost(u32, 0, 512 - len),
+                .len = len,
+                .destination_byte = random.intRangeAtMost(u32, 0, 512 - len),
+                .preserve_kind_flags = 1,
+            };
+        }
+
+        const expected = try std.testing.allocator.alloc(TextAnnotations.Annotation, source.count());
+        defer std.testing.allocator.free(expected);
+        var source_iterator = source.iterator();
+        var index: usize = 0;
+        while (try source_iterator.next()) |annotation| : (index += 1) expected[index] = annotation;
+        for (moves) |move| for (expected) |*annotation| {
+            annotation.* = try TextAnnotations.transformMove(annotation.*, move);
+        };
+
+        _ = try actual.prepareMoveBatch(moves);
+        for (expected) |annotation| try std.testing.expectEqualDeep(annotation, actual.get(annotation.id()).?);
+        try actual.validateIntegrity();
+    }
+}
+
 test "TextAnnotations randomized differential owner operations and iterator invalidation" {
     var owner = testAnnotations();
     defer owner.deinit();

@@ -3768,6 +3768,78 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
+    fn prepareMoveBatch(
+        self: *Self,
+        candidate_annotations: *TextAnnotations,
+        candidate_buffer: *Self,
+        operations: []const DocumentOperation,
+    ) TextBufferError!bool {
+        var resolved = std.AutoHashMap(u64, TextAnnotations.Annotation).init(self.global_allocator);
+        defer resolved.deinit();
+        const referenced_capacity = std.math.mul(usize, operations.len, 2) catch return TextBufferError.InvalidDimensions;
+        if (referenced_capacity > std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
+        resolved.ensureTotalCapacity(@intCast(referenced_capacity)) catch return TextBufferError.OutOfMemory;
+        for (operations) |operation| {
+            for ([_]u64{ operation.target_id, operation.anchor_id }) |id| {
+                if (resolved.contains(id)) continue;
+                const annotation = candidate_annotations.get(id) orelse return TextBufferError.InvalidIndex;
+                resolved.putAssumeCapacity(id, annotation);
+            }
+        }
+
+        const moves = self.global_allocator.alloc(TextAnnotations.Move, operations.len) catch return TextBufferError.OutOfMemory;
+        defer self.global_allocator.free(moves);
+        var move_count: usize = 0;
+        for (operations) |operation| {
+            const source_annotation = resolved.get(operation.target_id).?;
+            const anchor_annotation = resolved.get(operation.anchor_id).?;
+            if (source_annotation.mark != .range or anchor_annotation.mark != .range or
+                source_annotation.payload.namespace != operation.owner or anchor_annotation.payload.namespace != operation.owner)
+            {
+                return TextBufferError.InvalidIndex;
+            }
+            const source = source_annotation.mark.range;
+            const anchor = anchor_annotation.mark.range;
+            const source_start = @min(source.start_byte, source.end_byte);
+            const source_end = @max(source.start_byte, source.end_byte);
+            const len = source_end - source_start;
+            if (len == 0 or operation.target_id == operation.anchor_id) continue;
+            const desired = if (operation.before) @min(anchor.start_byte, anchor.end_byte) else @max(anchor.start_byte, anchor.end_byte);
+            if (desired >= source_start and desired <= source_end) continue;
+            const move: TextAnnotations.Move = .{
+                .target_id = operation.target_id,
+                .start_byte = source_start,
+                .len = len,
+                .destination_byte = if (desired > source_end) desired - len else desired,
+                .preserve_kind_flags = document_range_kind,
+            };
+            moves[move_count] = move;
+            move_count += 1;
+
+            var resolved_iterator = resolved.valueIterator();
+            while (resolved_iterator.next()) |annotation| {
+                annotation.* = TextAnnotations.transformMove(annotation.*, move) catch return TextBufferError.InvalidDimensions;
+            }
+            const prepared_rope = candidate_buffer._rope.prepareMoveRegionByMetric(
+                move.start_byte,
+                move.len,
+                move.destination_byte,
+                &candidate_buffer.byte_splitter,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return TextBufferError.OutOfMemory,
+                error.OutOfBounds => return TextBufferError.InvalidByteOffset,
+            };
+            candidate_buffer._rope.commitPreparedRoot(prepared_rope);
+        }
+
+        if (move_count == 0) return false;
+        _ = candidate_annotations.prepareMoveBatch(moves[0..move_count]) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            else => return TextBufferError.InvalidDimensions,
+        };
+        return true;
+    }
+
     /// Prepare an ordered operation log without changing live state. Stable IDs
     /// are resolved after each candidate edit; every commit action is reserved
     /// before this function returns.
@@ -4100,60 +4172,13 @@ pub const UnifiedTextBuffer = struct {
                     annotations_changed = true;
                 },
                 .move => {
-                    const source_annotation = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
-                    const anchor_annotation = candidate_annotations.get(operation.anchor_id) orelse return TextBufferError.InvalidIndex;
-                    if (source_annotation.mark != .range or anchor_annotation.mark != .range or
-                        source_annotation.payload.namespace != operation.owner or anchor_annotation.payload.namespace != operation.owner)
-                    {
-                        return TextBufferError.InvalidIndex;
+                    var run_end = operation_index + 1;
+                    while (run_end < operations.len and operations[run_end].kind == .move) : (run_end += 1) {}
+                    if (try self.prepareMoveBatch(&candidate_annotations, &candidate_buffer, operations[operation_index..run_end])) {
+                        content_changed = true;
+                        annotations_changed = true;
                     }
-                    const source = source_annotation.mark.range;
-                    const anchor = anchor_annotation.mark.range;
-                    const source_start = @min(source.start_byte, source.end_byte);
-                    const source_end = @max(source.start_byte, source.end_byte);
-                    const len = source_end - source_start;
-                    if (len == 0 or operation.target_id == operation.anchor_id) continue;
-                    const desired = if (operation.before) @min(anchor.start_byte, anchor.end_byte) else @max(anchor.start_byte, anchor.end_byte);
-                    if (desired >= source_start and desired <= source_end) continue;
-                    const destination = if (desired > source_end) desired - len else desired;
-                    const affected_start = @min(source_start, desired);
-                    const affected_end = @max(source_end, desired);
-
-                    var annotation_move = candidate_annotations.prepareMoveRegion(source_start, len, destination) catch |err| switch (err) {
-                        error.OutOfMemory => return TextBufferError.OutOfMemory,
-                        else => return TextBufferError.InvalidDimensions,
-                    };
-                    defer annotation_move.deinit();
-
-                    const EnclosingRange = struct {
-                        id: u64,
-                        input: TextAnnotations.RangeInput,
-                    };
-                    var enclosing_ranges: std.ArrayListUnmanaged(EnclosingRange) = .empty;
-                    defer enclosing_ranges.deinit(self.global_allocator);
-                    for (annotation_move.affectedIds()) |id| {
-                        const annotation = candidate_annotations.get(id).?;
-                        if (id == operation.target_id or annotation.payload.kind_flags & document_range_kind == 0 or annotation.mark != .range) continue;
-                        const range = annotation.mark.range;
-                        if (range.start_byte > affected_start or range.end_byte < affected_end) continue;
-                        try enclosing_ranges.append(self.global_allocator, .{ .id = id, .input = .{
-                            .start_byte = range.start_byte,
-                            .end_byte = range.end_byte,
-                            .start_gravity = range.start_gravity,
-                            .end_gravity = range.end_gravity,
-                        } });
-                    }
-                    const prepared_rope = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
-                        error.OutOfMemory => return TextBufferError.OutOfMemory,
-                        error.OutOfBounds => return TextBufferError.InvalidByteOffset,
-                    };
-                    candidate_annotations.commitPreparedMove(&annotation_move);
-                    for (enclosing_ranges.items) |enclosing| {
-                        if (!(candidate_annotations.updateRange(enclosing.id, enclosing.input) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
-                    }
-                    candidate_buffer._rope.commitPreparedRoot(prepared_rope);
-                    content_changed = true;
-                    annotations_changed = true;
+                    operation_index = run_end - 1;
                 },
                 .remove => {
                     const existing = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;

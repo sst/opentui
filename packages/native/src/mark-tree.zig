@@ -639,6 +639,25 @@ pub const MarkTree = struct {
         self.commitPreparedMove(&prepared);
     }
 
+    /// Replaces every mark value while retaining IDs, priorities, nodes, and
+    /// clone-slab ownership. Storage is reserved before the infallible rebuild.
+    pub fn replaceMarks(self: *Self, marks: []const Mark) !void {
+        try self.checkCanMutate();
+        if (marks.len != self.len) return error.CountMismatch;
+        const nodes = try self.allocator.alloc(*Node, marks.len);
+        defer self.allocator.free(nodes);
+        for (marks, 0..) |mark, index| {
+            nodes[index] = self.ids.get(mark.id()) orelse return error.InvalidId;
+        }
+        for (marks, nodes) |mark, node| {
+            node.mark = mark;
+            resetDetached(node);
+        }
+        std.mem.sort(*Node, nodes, {}, movedNodeLessThan);
+        self.root = rebuildSortedNodes(nodes);
+        self.finishMutation();
+    }
+
     /// Visits forward, non-empty paired ranges overlapping the half-open query.
     /// Reversed/crossed ranges are visually empty and never overlap.
     pub fn visitOverlapping(self: *Self, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
@@ -1202,6 +1221,37 @@ pub const MarkTree = struct {
             },
         }
         return result;
+    }
+
+    fn movedNodeLessThan(_: void, left: *Node, right: *Node) bool {
+        return keyLess(lowerByte(left.mark), left.mark.id(), lowerByte(right.mark), right.mark.id());
+    }
+
+    /// Builds the unique treap for sorted keys and existing priorities in one
+    /// pass. Parent pointers temporarily form the Cartesian stack.
+    fn rebuildSortedNodes(nodes: []*Node) ?*Node {
+        var top: ?*Node = null;
+        for (nodes) |node| {
+            var last: ?*Node = null;
+            while (top) |current| {
+                if (!priorityBefore(node, current)) break;
+                top = current.parent;
+                pull(current);
+                last = current;
+            }
+            setLeft(node, last);
+            if (top) |current| setRight(current, node) else node.parent = null;
+            top = node;
+        }
+
+        var root: ?*Node = null;
+        while (top) |current| {
+            top = current.parent;
+            pull(current);
+            root = current;
+        }
+        if (root) |value| value.parent = null;
+        return root;
     }
 
     fn countIntersecting(maybe_node: ?*Node, start_byte: u32, end_byte: u32) usize {

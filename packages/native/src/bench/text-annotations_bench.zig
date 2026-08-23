@@ -372,5 +372,42 @@ pub fn run(
         }
     }
 
+    const move_cases = [_]struct { name: []const u8, distance: u32 }{
+        .{ .name = "adaptive move batch: 20k marks, 100 moves, affected 6", .distance = 16 },
+        .{ .name = "adaptive move batch: 20k marks, 100 moves, affected 24", .distance = 160 },
+        .{ .name = "adaptive move batch: 20k marks, 100 moves, affected 204", .distance = 1_600 },
+        .{ .name = "adaptive move batch: 20k marks, 100 moves, affected 2004", .distance = 16_000 },
+        .{ .name = "adaptive move batch: 20k marks, 100 moves, affected 10004", .distance = 80_000 },
+    };
+    for (move_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |iteration| {
+                var annotations = TextAnnotations.initWithSeed(allocator, 0x7500 + iteration);
+                defer annotations.deinit();
+                for (0..10_000) |index| {
+                    const start_byte: u32 = @intCast(index * 16);
+                    _ = try annotations.addRange(.{ .start_byte = start_byte, .end_byte = start_byte + 12 }, .{ .namespace = 1 });
+                    _ = try annotations.addPoint(.{ .byte = start_byte + 4 }, .{ .namespace = 1 });
+                }
+                var moves: [100]TextAnnotations.Move = undefined;
+                const first: u32 = 40_000;
+                const second = first + case.distance;
+                for (&moves, 0..) |*move, index| move.* = .{
+                    .target_id = 0,
+                    .start_byte = if (index % 2 == 0) first else second,
+                    .len = 16,
+                    .destination_byte = if (index % 2 == 0) second else first,
+                };
+                const timer = bench_utils.BenchTimer.start(io);
+                const strategy = try annotations.prepareMoveBatch(&moves);
+                stats.record(timer.read());
+                std.mem.doNotOptimizeAway(strategy);
+                try annotations.validateIntegrity();
+            }
+            try addResult(&results, allocator, case.name, stats);
+        }
+    }
+
     return results.toOwnedSlice(allocator);
 }

@@ -54,6 +54,16 @@ pub const TextAnnotations = struct {
         }
     };
 
+    pub const Move = struct {
+        target_id: u64,
+        start_byte: u32,
+        len: u32,
+        destination_byte: u32,
+        preserve_kind_flags: u32 = 0,
+    };
+
+    pub const MoveBatchStrategy = enum { affected, snapshot };
+
     fn annotationMark(annotation: Annotation) Mark {
         return annotation.mark;
     }
@@ -131,22 +141,6 @@ pub const TextAnnotations = struct {
             const delta = self.history_delta.?;
             self.history_delta = null;
             return delta;
-        }
-    };
-
-    pub const PreparedMove = struct {
-        owner: *Self,
-        tree_move: MarkTree.PreparedMove,
-        source_generation: u64,
-        committed: bool = false,
-
-        pub fn affectedIds(self: *const PreparedMove) []const u64 {
-            return self.tree_move.affected_ids;
-        }
-
-        pub fn deinit(self: *PreparedMove) void {
-            self.tree_move.deinit();
-            self.* = undefined;
         }
     };
 
@@ -766,27 +760,111 @@ pub const TextAnnotations = struct {
         prepared.committed = true;
     }
 
-    pub fn prepareMoveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !PreparedMove {
-        try self.checkCanMutate(1);
-        return .{
-            .owner = self,
-            .tree_move = try self.tree.prepareMoveRegion(start_byte, len, destination_byte),
-            .source_generation = self.generation,
-        };
-    }
-
-    pub fn commitPreparedMove(self: *Self, prepared: *PreparedMove) void {
-        std.debug.assert(prepared.owner == self and !prepared.committed and prepared.source_generation == self.generation);
-        const before = self.tree.generation;
-        self.tree.commitPreparedMove(&prepared.tree_move);
-        if (self.tree.generation != before) self.finishMutation();
-        prepared.committed = true;
-    }
-
     pub fn moveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !void {
-        var prepared = try self.prepareMoveRegion(start_byte, len, destination_byte);
-        defer prepared.deinit();
-        self.commitPreparedMove(&prepared);
+        try self.checkCanMutate(1);
+        const before = self.tree.generation;
+        try self.tree.moveRegion(start_byte, len, destination_byte);
+        if (self.tree.generation != before) self.finishMutation();
+    }
+
+    /// Prepares a move batch on a detached transaction candidate. Affected
+    /// moves cost roughly A * tree_depth because every changed mark is erased
+    /// and reinserted. The exact snapshot path costs N * move_count transforms
+    /// plus one N * tree_depth sort/rebuild. Reindex work is conservatively
+    /// weighted four times an endpoint transform. The observed cumulative
+    /// affected average projects the remaining batch, so this deterministic
+    /// model selects from actual prepared work rather than input sizes.
+    pub fn prepareMoveBatch(self: *Self, moves: []const Move) !MoveBatchStrategy {
+        if (moves.len == 0) return .affected;
+        try self.checkCanMutate(1);
+
+        var original_marks = std.AutoHashMap(u64, Mark).init(self.allocator);
+        defer original_marks.deinit();
+        const PreservedRange = struct { id: u64, input: RangeInput };
+        var preserved_ranges: std.ArrayListUnmanaged(PreservedRange) = .empty;
+        defer preserved_ranges.deinit(self.allocator);
+        var cumulative_affected: usize = 0;
+
+        for (moves, 0..) |move, move_index| {
+            var tree_move = try self.tree.prepareMoveRegion(move.start_byte, move.len, move.destination_byte);
+            defer tree_move.deinit();
+            cumulative_affected +|= tree_move.affected_ids.len;
+            if (useSnapshotMoveBatch(self.count(), moves.len, move_index + 1, cumulative_affected)) {
+                const snapshot = try self.allocator.alloc(Annotation, self.count());
+                defer self.allocator.free(snapshot);
+                var annotation_iterator = self.iterator();
+                var index: usize = 0;
+                while (try annotation_iterator.next()) |annotation| : (index += 1) {
+                    snapshot[index] = annotation;
+                    if (original_marks.get(annotation.id())) |mark| snapshot[index].mark = mark;
+                }
+                std.debug.assert(index == snapshot.len);
+                for (moves) |snapshot_move| for (snapshot) |*annotation| {
+                    annotation.* = try transformMove(annotation.*, snapshot_move);
+                };
+                try self.replaceSnapshotMarks(snapshot);
+                return .snapshot;
+            }
+
+            preserved_ranges.clearRetainingCapacity();
+            for (tree_move.affected_ids) |id| {
+                const annotation = self.get(id).?;
+                const original = try original_marks.getOrPut(id);
+                if (!original.found_existing) original.value_ptr.* = annotation.mark;
+                if (std.meta.eql(annotation, try transformMove(annotation, move)) and annotation.mark == .range) {
+                    const range = annotation.mark.range;
+                    try preserved_ranges.append(self.allocator, .{ .id = id, .input = .{
+                        .start_byte = range.start_byte,
+                        .end_byte = range.end_byte,
+                        .start_gravity = range.start_gravity,
+                        .end_gravity = range.end_gravity,
+                    } });
+                }
+            }
+            const before = self.tree.generation;
+            self.tree.commitPreparedMove(&tree_move);
+            if (self.tree.generation != before) self.finishMutation();
+            for (preserved_ranges.items) |preserved| {
+                if (!(try self.updateRange(preserved.id, preserved.input))) return error.InvalidId;
+            }
+        }
+        return .affected;
+    }
+
+    pub fn transformMove(annotation: Annotation, move: Move) !Annotation {
+        const end_byte = std.math.add(u32, move.start_byte, move.len) catch return error.PositionOverflow;
+        const destination_end = std.math.add(u32, move.destination_byte, move.len) catch return error.PositionOverflow;
+        const affected_start = @min(move.start_byte, move.destination_byte);
+        const affected_end = @max(end_byte, destination_end);
+        if (annotation.id() != move.target_id and annotation.payload.kind_flags & move.preserve_kind_flags != 0 and
+            annotation.mark == .range)
+        {
+            const range = annotation.mark.range;
+            if (range.start_byte <= affected_start and range.end_byte >= affected_end) return annotation;
+        }
+        var result = annotation;
+        result.mark = try MarkTree.movedMark(result.mark, move.start_byte, end_byte, move.len, move.destination_byte);
+        return result;
+    }
+
+    /// Publishes positions from a complete detached snapshot in one MarkTree
+    /// rebuild. Payloads and membership remain unchanged.
+    fn replaceSnapshotMarks(self: *Self, annotations: []const Annotation) !void {
+        if (annotations.len != self.count()) return error.CountMismatch;
+        const marks = try self.allocator.alloc(Mark, annotations.len);
+        defer self.allocator.free(marks);
+        for (annotations, marks) |annotation, *mark| mark.* = annotation.mark;
+        try self.tree.replaceMarks(marks);
+        self.finishMutation();
+    }
+
+    fn useSnapshotMoveBatch(mark_count: usize, move_count: usize, prepared_move_count: usize, cumulative_affected: usize) bool {
+        if (mark_count == 0 or move_count == 0 or prepared_move_count == 0) return false;
+        const depth = @max(@as(usize, 1), std.math.log2_int_ceil(usize, mark_count +| 1));
+        const projected_affected = cumulative_affected *| move_count / prepared_move_count;
+        const affected_cost = projected_affected *| depth *| 4;
+        const snapshot_cost = mark_count *| (move_count +| depth);
+        return affected_cost >= snapshot_cost;
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.
