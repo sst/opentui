@@ -782,14 +782,17 @@ pub const UnifiedTextBuffer = struct {
 
     pub fn purgeAnnotationDeltaNamespace(self: *Self, delta: *AnnotationEditDelta, namespace: u32) void {
         var write: usize = 0;
-        for (delta.changes.items) |change| {
-            const matches = (if (change.before) |annotation| annotation.payload.namespace == namespace else false) or
-                (if (change.after) |annotation| annotation.payload.namespace == namespace else false);
-            if (matches) {
-                if (change.before) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-                if (change.after) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-                continue;
-            }
+        for (delta.changes.items) |change_value| {
+            var change = change_value;
+            if (change.before) |annotation| if (annotation.payload.namespace == namespace) {
+                self.releaseInternalStyle(annotation.payload.style_id);
+                change.before = null;
+            };
+            if (change.after) |annotation| if (annotation.payload.namespace == namespace) {
+                self.releaseInternalStyle(annotation.payload.style_id);
+                change.after = null;
+            };
+            if (change.before == null and change.after == null) continue;
             delta.changes.items[write] = change;
             write += 1;
         }
