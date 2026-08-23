@@ -1025,9 +1025,9 @@ export fn audioMixToBuffer(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_
     return native_audio.mixToBuffer(object_ptr, out_ptr, frame_count, channels);
 }
 
-export fn audioEnableTap(engine_handle: NativeHandle, enabled: bool, capacity_frames: u32) i32 {
+export fn audioEnableTap(engine_handle: NativeHandle, enabled: u8, capacity_frames: u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.enableTap(object_ptr, enabled, capacity_frames);
+    return native_audio.enableTap(object_ptr, enabled == 1, capacity_frames);
 }
 
 export fn audioReadTap(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32) i32 {
@@ -1320,27 +1320,28 @@ export fn commitSplitFooterSnapshot(
     renderer_handle: NativeHandle,
     snapshot_buffer_handle: NativeHandle,
     rowColumns: u32,
-    startOnNewLine: bool,
-    trailingNewline: bool,
+    flags: u8,
     pinnedRenderOffset: u32,
-    force: bool,
-    beginFrame: bool,
-    finalizeFrame: bool,
 ) u64 {
     const renderer_ptr = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
     const snapshot_ptr = acquireBuffer(snapshot_buffer_handle) orelse return packFailedRenderResult();
+    const start_on_new_line = (flags & (1 << 0)) != 0;
+    const trailing_newline = (flags & (1 << 1)) != 0;
+    const force = (flags & (1 << 2)) != 0;
+    const begin_frame = (flags & (1 << 3)) != 0;
+    const finalize_frame = (flags & (1 << 4)) != 0;
 
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
-    if (beginFrame and finalizeFrame) {
+    if (begin_frame and finalize_frame) {
         return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
             snapshot_ptr,
             rowColumns,
-            startOnNewLine,
-            trailingNewline,
+            start_on_new_line,
+            trailing_newline,
             pinnedRenderOffset,
             force,
             true,
@@ -1351,16 +1352,16 @@ export fn commitSplitFooterSnapshot(
     return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
         snapshot_ptr,
         rowColumns,
-        startOnNewLine,
-        trailingNewline,
+        start_on_new_line,
+        trailing_newline,
         pinnedRenderOffset,
         force,
-        beginFrame,
-        finalizeFrame,
+        begin_frame,
+        finalize_frame,
     ));
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: ?[*]const u8, idLen: u32) NativeHandle {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: u8, widthMethod: u8, idPtr: ?[*]const u8, idLen: u32) NativeHandle {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return INVALID_HANDLE;
@@ -1372,7 +1373,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const id = sliceFromPtrLen(idPtr, idLen);
 
     const bufferPtr = buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
-        .respectAlpha = respectAlpha,
+        .respectAlpha = respectAlpha == 1,
         .pool = pool,
         .width_method = wMethod,
         .id = id,
@@ -1581,7 +1582,7 @@ export fn getCursorState(renderer_handle: NativeHandle, outPtr: *ExternalCursorS
     };
 }
 
-export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: u8) void {
+export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: u8, corner: u8) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,
@@ -1590,7 +1591,7 @@ export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: 
         else => .bottomRight,
     };
 
-    object_ptr.setDebugOverlay(enabled, cornerEnum);
+    object_ptr.setDebugOverlay(enabled == 1, cornerEnum);
 }
 
 export fn clearTerminal(renderer_handle: NativeHandle) void {
