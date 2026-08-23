@@ -11,7 +11,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 ---
 
 <Minimal {title} description={description}>
-  <main>
+  <main class="reading">
     <header>
       <h1><OpenTUILogo class="logo" title="OpenTUI" /></h1>
       <p>A library to build terminal user interfaces.</p>
@@ -344,7 +344,7 @@ const videos = Object.fromEntries(landingVideos.map((video) => [video.slug, vide
 
   .caption {
     margin-block: 0.375rem 0;
-    font-size: 0.75rem;
+    font-size: var(--text-caption);
     color: var(--muted-color);
     pointer-events: auto;
   }

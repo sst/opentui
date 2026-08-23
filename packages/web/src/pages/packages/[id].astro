@@ -66,7 +66,13 @@ function groupPlatforms(platforms: PlatformFact[]) {
 }
 ---
 
-<SitePage wide title={`${entry.data.name} | OpenTUI Packages`} description={entry.data.summary} footerAnimation="equalizer">
+<SitePage
+  wide
+  reading
+  title={`${entry.data.name} | OpenTUI Packages`}
+  description={entry.data.summary}
+  footerAnimation="equalizer"
+>
   <article class="package prose">
     <p class="facts">
       <span>{entry.id}</span>
@@ -239,16 +245,13 @@ function groupPlatforms(platforms: PlatformFact[]) {
       margin-block-start: 0;
     }
 
-    /* Aside sections read as sidebar matter: small bold labels on the
-     * body line grid instead of article section headings. */
+    /* Aside sections read as sidebar matter: body-size bold labels on
+     * the body line grid instead of article section headings, which set
+     * their own size and 1.5rem line boxes. */
     .side h2 {
       margin-block: 0 0.75rem;
-      font-size: 0.875rem;
-      line-height: 1.5rem;
-    }
-
-    .side p {
-      font-size: 0.875rem;
+      font-size: var(--text-body);
+      line-height: 1.5;
     }
 
     .side section + section {

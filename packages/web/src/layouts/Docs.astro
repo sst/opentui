@@ -138,22 +138,49 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   }
 
   .docs {
+    --docs-nav-width: 13rem;
+    --docs-gap: 3rem;
     --subnav-height: 0rem;
+    isolation: isolate;
     position: relative;
     display: grid;
-    grid-template-columns: 13rem minmax(0, 48rem);
-    column-gap: 3rem;
-    align-items: start;
+    grid-template-columns:
+      var(--docs-nav-width)
+      minmax(0, calc(var(--frame-width) - var(--docs-nav-width) - var(--docs-gap)));
+    column-gap: var(--docs-gap);
     margin-block: 3rem;
   }
 
+  /* The column stretches with the article so the page list can stick
+   * for the whole page. Search stays in flow and scrolls away. Overflow
+   * stays visible so results can grow across the article. */
   .docs-pages {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .docs-pages :global(.docs-index) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .docs-pages :global([data-docs-nav]) {
     position: sticky;
     top: calc(var(--site-nav-height) + var(--subnav-height));
     max-height: calc(100vh - var(--site-nav-height) - var(--subnav-height));
     overflow-y: auto;
     scrollbar-width: thin;
     padding-block-end: 2rem;
+  }
+
+  /* Results overlay the article from the nav's left edge. Isolation on
+   * .docs keeps this above in-page code frames and below the header. */
+  .docs-pages:has(.docs-search .results:not([hidden])) {
+    z-index: 1;
   }
 
   main {
@@ -184,7 +211,6 @@ const hasSections = headings.some((heading) => heading.depth === 2)
   .subnav summary {
     cursor: pointer;
     list-style: none;
-    font-size: 0.875rem;
     width: fit-content;
     max-width: 100%;
     white-space: nowrap;
@@ -275,7 +301,6 @@ const hasSections = headings.some((heading) => heading.depth === 2)
 
     .docs-onpage .label {
       display: block;
-      font-size: 0.875rem;
       font-weight: 700;
       line-height: 1.6;
       margin-block-end: 0.25rem;
@@ -295,14 +320,14 @@ const hasSections = headings.some((heading) => heading.depth === 2)
 </style>
 
 <script>
-  // Keep the current page visible inside the sidebar's own scroll area
+  // Keep the current page visible inside the page list's own scroll area
   // without moving the document.
-  const aside = document.querySelector(".docs-pages")
-  const link = aside?.querySelector("a[aria-current='page']")
-  if (aside instanceof HTMLElement && link instanceof HTMLElement) {
-    const linkTop = link.getBoundingClientRect().top - aside.getBoundingClientRect().top
-    if (linkTop < 0 || linkTop > aside.clientHeight - 48) {
-      aside.scrollTop += linkTop - aside.clientHeight / 3
+  const nav = document.querySelector(".docs-pages [data-docs-nav]")
+  const link = nav?.querySelector("a[aria-current='page']")
+  if (nav instanceof HTMLElement && link instanceof HTMLElement) {
+    const linkTop = link.getBoundingClientRect().top - nav.getBoundingClientRect().top
+    if (linkTop < 0 || linkTop > nav.clientHeight - 48) {
+      nav.scrollTop += linkTop - nav.clientHeight / 3
     }
   }
 

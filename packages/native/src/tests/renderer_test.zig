@@ -416,6 +416,54 @@ test "renderer honors per-placement protocol overrides" {
     try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") == null);
 }
 
+test "renderer does not send forced Sixel to Apple Terminal" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 4, 2, pool, &.{
+        .{ .key = "TERM_PROGRAM", .value = "Apple_Terminal" },
+    });
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.find(u8, output, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, output, "█") != null);
+}
+
+test "renderer does not send forced Sixel through tmux XTVERSION" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 4, 2, pool, &.{
+        .{ .key = "TERM_PROGRAM", .value = "Apple_Terminal" },
+    });
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.find(u8, output, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1bPtmux;") == null);
+    try std.testing.expect(std.mem.find(u8, output, "█") != null);
+}
+
 test "renderer does not send forced Sixel to Kitty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -34,7 +34,7 @@
 .terminal-illustration__screen {
   color: inherit;
   flex: none;
-  font-family: "Berkeley Mono", ui-monospace, monospace;
+  font-family: "OpenTUI Mono", ui-monospace, monospace;
   font-variant-ligatures: none;
   white-space: pre;
 }
@@ -113,7 +113,7 @@
 
 .terminal-illustration[data-illustration-controls="below"] .terminal-illustration__caption {
   color: var(--muted-color);
-  font-size: 0.8125rem;
+  font-size: var(--text-small);
   opacity: 1;
   order: -1;
   text-align: left;
@@ -130,7 +130,7 @@
 .terminal-illustration[data-illustration-controls="below"] .terminal-illustration__toggle {
   background: none;
   border: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-small);
   height: auto;
   padding: 0;
 }

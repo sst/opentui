@@ -10,16 +10,19 @@ interface Props {
   description: string
   /** Let the page use the full 64rem frame instead of the reading column. */
   wide?: boolean
+  /** Step the content up to the 16px reading scale (see Minimal's .reading). */
+  reading?: boolean
   footerLinks?: boolean
   footerAnimation?: ComponentProps<typeof SiteFooter>["animation"]
+  robots?: string
 }
 
-const { title, description, wide = false, footerLinks = false, footerAnimation } = Astro.props
+const { title, description, wide = false, reading = false, footerLinks = false, footerAnimation, robots } = Astro.props
 ---
 
-<Minimal {title} {description} wide>
+<Minimal {title} {description} wide {robots}>
   <SiteNav slot="nav" />
-  <main class:list={[{ wide }]}><slot /></main>
+  <main class:list={[{ wide, reading }]}><slot /></main>
   <SiteFooter links={footerLinks} animation={footerAnimation} />
 </Minimal>
 

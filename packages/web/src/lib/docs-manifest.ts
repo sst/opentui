@@ -123,6 +123,9 @@ const CANONICAL_SECTION: Record<DocSectionId, string> = {
   reference: "Reference / Lookup",
 }
 
+/* Sidebar labels: the 13rem column fits 24 monospace characters at the
+ * 14px body size. Keep navTitle within that; the full title lives in
+ * frontmatter. */
 function page(
   section: DocSectionId,
   navOrder: number,
@@ -160,7 +163,7 @@ export const DOC_MANIFEST = {
     searchSymbols: ["createCliRenderer", "TextRenderable"],
     related: ["core-concepts/renderer", "bindings/react", "bindings/solid", "core-concepts/lifecycle"],
   }),
-  "getting-started/runtime-support": page("start", 3, "Runtime and platform support", "decision-guide", {
+  "getting-started/runtime-support": page("start", 3, "Runtime support", "decision-guide", {
     packages: [
       "@opentui/core",
       "@opentui/react",
@@ -206,7 +209,7 @@ export const DOC_MANIFEST = {
     searchSymbols: ["LayoutOptions", "PositionType", "Overflow"],
     related: ["components/box", "components/scrollbox", "core-concepts/rendering-pipeline"],
   }),
-  "core-concepts/interaction": page("core", 4, "Interaction, focus, and selection", "concept", {
+  "core-concepts/interaction": page("core", 4, "Interaction", "concept", {
     searchSymbols: ["MouseEvent", "FocusableRenderable", "Selection", "SelectionEvent"],
     related: ["core-concepts/keyboard", "components/input", "components/text", "core-concepts/testing"],
   }),
@@ -539,7 +542,7 @@ export const DOC_MANIFEST = {
     searchSymbols: ["AudioStream", "AudioStreamError", "createIcyStreamDemuxer"],
     related: ["core-concepts/audio", "application-apis/audio-capture", "core-concepts/lifecycle"],
   }),
-  "application-apis/audio-capture": page("application-apis", 5, "Audio capture and recording", "task-guide", {
+  "application-apis/audio-capture": page("application-apis", 5, "Audio capture", "task-guide", {
     searchSymbols: ["AudioCaptureStream", "AudioCaptureStreamError", "AudioRecorder", "AudioRecorderError"],
     related: ["core-concepts/audio", "application-apis/audio-streaming", "core-concepts/lifecycle"],
   }),
@@ -614,7 +617,7 @@ export const DOC_MANIFEST = {
     searchSymbols: ["PluginSlot"],
     related: ["plugins/slots", "bindings/solid"],
   }),
-  "extend/runtime-plugins": page("plugin-slots", 5, "Load plugins and modules at runtime", "task-guide", {
+  "extend/runtime-plugins": page("plugin-slots", 5, "Load at runtime", "task-guide", {
     canonicalSection: "Extend / Runtime extensions",
     packages: ["@opentui/core", "@opentui/react", "@opentui/solid"],
     availability: FRAMEWORKS,
@@ -700,7 +703,7 @@ export const DOC_MANIFEST = {
     searchSymbols: ["bun build --compile", "node:sea"],
     related: ["reference/env-vars", "reference/ssh"],
   }),
-  "ship/deploy": page("ship", 1, "Deploy an OpenTUI application", "task-guide", {
+  "ship/deploy": page("ship", 1, "Deploy", "task-guide", {
     packages: [
       "@opentui/core",
       "@opentui/react",

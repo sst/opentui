@@ -3,6 +3,7 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 
+import { getFenceMarker, closesFence, slugifyHeading } from "../src/lib/docs-headings"
 import { buildDocsIndex } from "../src/lib/docs-index"
 import { parsePackageEntryFile } from "./package-entry-file"
 
@@ -259,31 +260,7 @@ function collectRepositoryPaths(content: string): RepositoryPathInfo[] {
   return paths
 }
 
-export function slugifyHeading(text: string): string {
-  return text
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/<([^>]+)>/g, "$1")
-    .replace(/[*~]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9_\s-]/g, "")
-    .trim()
-    .replace(/\s/g, "-")
-}
-
-function getFenceMarker(line: string): { marker: string; length: number } | undefined {
-  const match = line.match(/^(`{3,}|~{3,})/)
-  if (!match) {
-    return undefined
-  }
-
-  return { marker: match[1][0], length: match[1].length }
-}
-
-function closesFence(line: string, fence: { marker: string; length: number }): boolean {
-  const pattern = new RegExp(`^${fence.marker}{${fence.length},}\\s*$`)
-  return pattern.test(line)
-}
+export { slugifyHeading }
 
 function isExternalLink(target: string): boolean {
   return /^(https?:\/\/|mailto:)/.test(target)

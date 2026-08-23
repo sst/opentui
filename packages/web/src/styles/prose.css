@@ -8,11 +8,11 @@
  * then scroll. Structural hairlines use GrayText; content-level rules
  * use the text color.
  *
- * Vertical rhythm sits on the 1.5rem body line grid, like blank lines in
- * a terminal: one line (1.5rem) between blocks, two lines (3rem) above a
- * heading or thematic break, half a line (0.75rem) between list items.
- * Below a section heading, half a line binds it to the text it
- * introduces; the document title stands apart with two lines below.
+ * Vertical rhythm sits on a 1.5rem grid, like blank lines in a terminal:
+ * one step (1.5rem) between blocks, two steps (3rem) above a heading or
+ * thematic break, half a step (0.75rem) between list items. Below a
+ * section heading, half a step binds it to the text it introduces; the
+ * document title stands apart with two steps below.
  */
 
 .prose {
@@ -126,9 +126,9 @@
 /* Code blocks */
 
 /* Without an explicit font, pre falls back to the browser's default
- * fixed font and size, not the page typeface. Code sits at 0.875rem,
- * matching tables: denser than prose, and ~90 characters fit the
- * documentation column before scrolling. */
+ * fixed font and size, not the page typeface. Code sits one step below
+ * body text, matching tables: denser than prose, and ~95 characters fit
+ * the documentation column before scrolling. */
 .prose pre {
   width: fit-content;
   min-width: min(100%, var(--content-width));
@@ -138,7 +138,7 @@
   border: 1px solid GrayText;
   overflow-x: auto;
   font-family: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .prose .code-block {
@@ -186,7 +186,7 @@
   background: var(--page-background);
   color: inherit;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
   cursor: pointer;
   opacity: 0;
 }
@@ -238,7 +238,7 @@
 
 .prose table {
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   line-height: 1.5;
   /* Keep word-level column sizing; the wrapper scrolls instead. */
   overflow-wrap: normal;

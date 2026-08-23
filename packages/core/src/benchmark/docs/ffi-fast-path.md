@@ -28,7 +28,7 @@ Calibration failures retry a complete pair. Retained timing and pair-gap drift a
 
 ## Run
 
-From `packages/core`, set `NODE26_PATH` to Node 26.4.0:
+From `packages/core`, set `NODE26_PATH` to Node 26.4 or later:
 
 ```sh
 export NODE26_PATH=/absolute/path/to/node

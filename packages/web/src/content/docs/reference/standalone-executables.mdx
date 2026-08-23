@@ -56,7 +56,7 @@ apk add --no-cache libstdc++ libgcc
 
 ## Node.js SEA
 
-Use exactly Node.js 26.4.0 for this procedure. The tested SEA is ESM and enables experimental FFI. It does not support
+Use Node.js 26.4.0 or later for this procedure. The tested SEA is ESM and enables experimental FFI. It does not support
 OpenTUI's Bun runtime-plugin system or `@opentui/three`.
 
 Node stores SEA assets as bytes inside the executable. The OpenTUI native library and worker need filesystem paths.
@@ -144,7 +144,7 @@ function run(command, args) {
 }
 ```
 
-Run this build file with Node.js 26.4.0. The example builds for the host platform and architecture. It uses Bun only as
+Run this build file with Node.js 26.4.0 or later. The example builds for the host platform and architecture. It uses Bun only as
 the ESM bundler. The matching optional native package must be installed.
 
 The application uses normal OpenTUI imports:

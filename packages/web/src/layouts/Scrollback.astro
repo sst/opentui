@@ -13,7 +13,7 @@ interface Props {
 const { title, description, footerLinks = false, footerAnimation } = Astro.props
 ---
 
-<SitePage {title} {description} {footerLinks} {footerAnimation}><slot /></SitePage>
+<SitePage {title} {description} {footerLinks} {footerAnimation} reading><slot /></SitePage>
 
 <style>
   /* The title and its gray meta line read as one unit; two blank lines

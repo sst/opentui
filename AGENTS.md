@@ -15,8 +15,8 @@
 - Use Bun for dependency management and development commands: `bun install`, `bun run <script>`, `bun test`, and `bun <file>`.
 - Run package scripts from the package directory unless the script is defined at the repository root.
 - Shared runtime code must preserve the supported Bun and Node paths. Keep runtime-specific behavior behind existing
-  platform/runtime/build seams; do not introduce Bun-only APIs into shared modules. Node checks use the version enforced
-  by `scripts/node26.mjs`.
+  platform/runtime/build seams; do not introduce Bun-only APIs into shared modules. Node checks use the minimum
+  version enforced by `scripts/node26.mjs`.
 
 ## Verification
 

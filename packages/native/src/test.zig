@@ -3,6 +3,7 @@ const text_buffer_tests = @import("tests/text-buffer_test.zig");
 const text_buffer_highlights_tests = @import("tests/text-buffer-highlights_test.zig");
 const text_buffer_view_tests = @import("tests/text-buffer-view_test.zig");
 const text_buffer_selection_tests = @import("tests/text-buffer-selection_test.zig");
+const text_buffer_selection_gesture_tests = @import("tests/text-buffer-selection-gesture_test.zig");
 const text_buffer_drawing_tests = @import("tests/text-buffer-drawing_test.zig");
 const text_buffer_segment_tests = @import("tests/text-buffer-segment_test.zig");
 const text_buffer_iterators_tests = @import("tests/text-buffer-iterators_test.zig");
@@ -51,6 +52,7 @@ comptime {
     _ = text_buffer_highlights_tests;
     _ = text_buffer_view_tests;
     _ = text_buffer_selection_tests;
+    _ = text_buffer_selection_gesture_tests;
     _ = text_buffer_drawing_tests;
     _ = text_buffer_segment_tests;
     _ = text_buffer_iterators_tests;

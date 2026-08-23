@@ -1766,6 +1766,19 @@ pub fn getTerminalName(self: *Terminal) []const u8 {
     return self.term_info.name[0..self.term_info.name_len];
 }
 
+/// Forced Sixel bypasses detection. Refuse it when identity cannot be a
+/// Sixel host. After XTVERSION, a multiplexer is not the host; DA still
+/// wins if the host reported Sixel through it. Apple Terminal has no
+/// XTVERSION, so TERM_PROGRAM is the only identity.
+pub fn refusesForcedSixel(self: *Terminal) bool {
+    if (self.caps.sixel) return false;
+    if (self.term_info.from_xtversion) {
+        if (self.multiplexer != .none) return true;
+        return std.ascii.eqlIgnoreCase(self.getTerminalName(), "kitty");
+    }
+    return std.ascii.eqlIgnoreCase(self.getTerminalName(), "Apple_Terminal");
+}
+
 pub fn getTerminalVersion(self: *Terminal) []const u8 {
     return self.term_info.version[0..self.term_info.version_len];
 }

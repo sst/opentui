@@ -3451,3 +3451,261 @@ test "EditorView - mouse selection focus outside buffer bounds clamps correctly"
     // Cursor should be clamped to last line (line 9)
     try std.testing.expectEqual(@as(u32, 9), cursor.row);
 }
+
+test "EditorView - cursor syncs to focus not selection end for inclusive forward selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    // Forward selection from cell 0 to cell 5: inclusive end is 6, but the
+    // cursor must land on the focus (5), not the extended end.
+    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, true);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}
+
+test "EditorView - backward selection keeps anchor cell and cursor at focus" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    // Press at cell 8, drag left to cell 6: cells 6..8 selected = "Wor",
+    // cursor at the focus cell 6.
+    _ = ev.setLocalSelection(8, 0, 8, 0, null, null, true);
+    _ = ev.updateLocalSelection(8, 0, 6, 0, null, null, true);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Wor", out_buffer[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "occupancy - EditorView forwards occupancy and replays stored endpoints" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    try std.testing.expectEqual(text_buffer_view.SelectionOccupancy.cell, ev.getSelectionOccupancy());
+
+    _ = ev.setLocalSelection(0, 0, 1, 0, null, null, true);
+    var out: [100]u8 = undefined;
+    var len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("He", out[0..len]);
+
+    const cursor_before = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor_before.col);
+
+    ev.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqual(text_buffer_view.SelectionOccupancy.boundary, ev.getSelectionOccupancy());
+    len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("H", out[0..len]);
+
+    // Occupancy replay must not move the stored focus.
+    const cursor_after = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor_after.col);
+
+    try eb.setText("\u{1F44B}\u{1F3FF}X");
+    ev.resetLocalSelection();
+    ev.setSelectionOccupancy(.cell);
+    _ = ev.setLocalSelection(0, 0, 2, 0, null, null, true);
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
+    len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("\u{1F44B}\u{1F3FF}", out[0..len]);
+
+    ev.resetLocalSelection();
+    _ = ev.setLocalSelection(4, 0, 2, 0, null, null, true);
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
+
+    ev.resetLocalSelection();
+    _ = ev.setLocalSelection(0, 0, 2, 0, null, null, true);
+
+    try ev.deleteSelectedText();
+    len = ev.getText(&out);
+    try std.testing.expectEqualStrings("X", out[0..len]);
+
+    try eb.setText("Hello");
+    try eb.setCursor(0, 4);
+    _ = ev.updateLocalSelection(0, 0, 2, 0, null, null, false);
+    ev.setSelectionOccupancy(.boundary);
+    try std.testing.expectEqual(@as(u32, 4), ev.getPrimaryCursor().col);
+
+    try eb.setText("abcdefgh");
+    ev.resetLocalSelection();
+    ev.setSelectionOccupancy(.boundary);
+    _ = ev.setLocalSelection(0, 0, 8, 0, null, null, true);
+    try eb.setText("abcde");
+    ev.setSelectionOccupancy(.cell);
+    try std.testing.expectEqual(@as(u32, 5), ev.getPrimaryCursor().col);
+
+    ev.resetLocalSelection();
+    try eb.setCursor(0, 3);
+    _ = ev.setLocalSelection(0, -1, 0, -1, null, null, true);
+    try std.testing.expectEqual(@as(u32, 3), ev.getPrimaryCursor().col);
+
+    try eb.setText("\u{1F44B}\u{1F3FF}X");
+    ev.setSelectionOccupancy(.cell);
+    ev.setWrapMode(.char);
+    ev.setViewportSize(2, 24);
+    try eb.setCursor(0, 2);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().col);
+
+    try eb.setText("\u{4F60}a");
+    ev.setWrapMode(.word);
+    ev.setViewportSize(1, 24);
+    ev.setSelectionOccupancy(.boundary);
+    try eb.setCursor(0, 0);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 1), ev.getPrimaryCursor().offset);
+
+    ev.setSelectionOccupancy(.cell);
+    ev.gotoVisualLineEnd();
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().offset);
+}
+
+test "EditorView - word press keeps cursor on the clicked grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("alpha beta");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    _ = ev.setLocalSelectionBehavior(6, 0, 6, 0, null, null, true, .word);
+
+    var out: [32]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("beta", out[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "EditorView - line press keeps cursor on the clicked grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("  hello world  ");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    _ = ev.setLocalSelectionBehavior(4, 0, 4, 0, null, null, true, .line);
+
+    var out: [32]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("hello world", out[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+}
+
+test "EditorView - cell press still syncs cursor without selecting" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("alpha beta");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    _ = ev.setLocalSelection(6, 0, 6, 0, null, null, true);
+
+    var out: [32]u8 = undefined;
+    const len = ev.getSelectedTextIntoBuffer(&out);
+    try std.testing.expectEqualStrings("", out[0..len]);
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "EditorView - convert word selection to cell keeps the range and moves focus to the last cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.insertText("alpha beta");
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    _ = ev.setLocalSelectionBehavior(6, 0, 6, 0, null, null, true, .word);
+    try std.testing.expect(ev.convertSelectionToCell());
+
+    var converted: [32]u8 = undefined;
+    const converted_len = ev.getSelectedTextIntoBuffer(&converted);
+    try std.testing.expectEqualStrings("beta", converted[0..converted_len]);
+
+    const converted_cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), converted_cursor.row);
+    try std.testing.expectEqual(@as(u32, 9), converted_cursor.col);
+}

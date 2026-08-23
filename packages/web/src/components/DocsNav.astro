@@ -1,5 +1,6 @@
 ---
 import { buildDocsIndex } from "../lib/docs-index"
+import DocsSearch from "./DocsSearch.astro"
 
 const docsIndex = await buildDocsIndex()
 
@@ -7,33 +8,35 @@ const normalize = (path: string) => path.replace(/\/+$/, "") || "/"
 const current = normalize(Astro.url.pathname)
 ---
 
-<nav aria-label="Documentation">
-  <ul>
-    {
-      docsIndex.sections.map((section) => (
-        <li>
-          <span class="section">{section.title}</span>
-          <ul>
-            {section.pages.map((page, index) => (
-              <>
-                {page.group && page.group !== section.pages[index - 1]?.group && <li class="group">{page.group}</li>}
-                <li>
-                  <a href={page.url} aria-current={current === page.url ? "page" : undefined}>
-                    {page.navTitle}
-                  </a>
-                </li>
-              </>
-            ))}
-          </ul>
-        </li>
-      ))
-    }
-  </ul>
-</nav>
+<div class="docs-index">
+  <DocsSearch />
+  <nav aria-label="Documentation" data-docs-nav>
+    <ul>
+      {
+        docsIndex.sections.map((section) => (
+          <li>
+            <span class="section">{section.title}</span>
+            <ul>
+              {section.pages.map((page, index) => (
+                <>
+                  {page.group && page.group !== section.pages[index - 1]?.group && <li class="group">{page.group}</li>}
+                  <li>
+                    <a href={page.url} aria-current={current === page.url ? "page" : undefined}>
+                      {page.navTitle}
+                    </a>
+                  </li>
+                </>
+              ))}
+            </ul>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+</div>
 
 <style>
-  nav {
-    font-size: 0.875rem;
+  .docs-index {
     line-height: 1.6;
   }
 
@@ -41,6 +44,10 @@ const current = normalize(Astro.url.pathname)
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+
+  nav[hidden] {
+    display: none;
   }
 
   nav > ul > li + li {
@@ -53,7 +60,7 @@ const current = normalize(Astro.url.pathname)
 
   .group {
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: var(--text-caption);
     margin-block-start: 0.75rem;
   }
 

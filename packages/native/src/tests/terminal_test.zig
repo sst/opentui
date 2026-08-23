@@ -227,6 +227,31 @@ test "graphics identity - malformed XTVERSION cannot reuse environment version" 
     try testing.expect(!term.caps.sixel);
 }
 
+test "refusesForcedSixel - XTVERSION replaces leftover Apple Terminal env" {
+    var leftover = std.process.Environ.Map.init(testing.allocator);
+    defer leftover.deinit();
+    try leftover.put("TERM_PROGRAM", "Apple_Terminal");
+    var foot = Terminal.init(.{ .env_map = &leftover });
+    foot.processCapabilityResponse("\x1bP>|foot(1.20.2)\x1b\\");
+    try testing.expect(!foot.refusesForcedSixel());
+
+    var iterm = Terminal.init(.{});
+    iterm.processCapabilityResponse("\x1bP>|iTerm2 3.6.9\x1b\\");
+    try testing.expect(!iterm.refusesForcedSixel());
+}
+
+test "refusesForcedSixel - tmux XTVERSION is not a Sixel endpoint" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "Apple_Terminal");
+    var term = Terminal.init(.{ .env_map = &env });
+    term.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
+    try testing.expect(term.refusesForcedSixel());
+
+    term.processCapabilityResponse("\x1b[?62;4c");
+    try testing.expect(!term.refusesForcedSixel());
+}
+
 test "graphics identity - environment name alone is not authoritative" {
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
