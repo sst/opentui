@@ -677,10 +677,12 @@ pub const UnifiedTextBuffer = struct {
     pub fn checkpointAnnotations(self: *Self) TextBufferError!TextAnnotations {
         var checkpoint = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         errdefer checkpoint.deinit();
+        if (self.internal_style_slots.items.len == 0) return checkpoint;
         var retained: std.ArrayListUnmanaged(u32) = .empty;
         defer retained.deinit(self.global_allocator);
         var it = checkpoint.iterator();
         while (it.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+            if (annotation.payload.style_id & internal_style_base == 0) continue;
             self.retainInternalStyle(annotation.payload.style_id) catch |err| {
                 for (retained.items) |style_id| self.releaseInternalStyle(style_id);
                 return err;
@@ -700,6 +702,38 @@ pub const UnifiedTextBuffer = struct {
         checkpoint.deinit();
     }
 
+    pub fn beginAnnotationEdit(self: *Self) TextBufferError!TextAnnotations {
+        const candidate = try self.checkpointAnnotations();
+        const previous = self.annotations;
+        self.annotations = candidate;
+        return previous;
+    }
+
+    pub fn rollbackAnnotationEdit(self: *Self, previous: TextAnnotations) void {
+        var candidate = self.annotations;
+        var annotations = candidate.iterator();
+        while (annotations.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        candidate.deinit();
+        self.annotations = previous;
+    }
+
+    pub fn swapAnnotationCheckpoint(self: *Self, checkpoint: TextAnnotations) TextAnnotations {
+        const current = self.annotations;
+        self.annotations = checkpoint;
+        self.annotation_epoch +%= 1;
+        self.projection_epoch +%= 1;
+        return current;
+    }
+
+    pub fn purgeAnnotationCheckpoint(self: *Self, checkpoint: *TextAnnotations, ids: []const u64) void {
+        for (ids) |id| {
+            const annotation = checkpoint.get(id) orelse continue;
+            const removed = checkpoint.remove(id) catch unreachable;
+            std.debug.assert(removed);
+            self.releaseInternalStyle(annotation.payload.style_id);
+        }
+    }
+
     /// Clear live annotations without releasing references owned by detached
     /// EditBuffer history checkpoints.
     pub fn clearAnnotations(self: *Self) void {
@@ -708,17 +742,6 @@ pub const UnifiedTextBuffer = struct {
         self.annotations.deinit();
         self.annotations = TextAnnotations.init(self.global_allocator);
         self.markPaintDirty();
-    }
-
-    /// Transfers checkpoint-owned style references to the live annotation set.
-    pub fn restoreAnnotationCheckpoint(self: *Self, checkpoint: TextAnnotations) void {
-        var current = self.annotations.iterator();
-        while (current.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-        var old = self.annotations;
-        self.annotations = checkpoint;
-        old.deinit();
-        self.annotation_epoch +%= 1;
-        self.projection_epoch +%= 1;
     }
 
     fn publishAnnotationCandidate(self: *Self, candidate_value: TextAnnotations) TextBufferError!void {
@@ -1116,7 +1139,16 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, false);
+    }
+
+    pub fn replaceNormalizedBytesForEdit(
+        self: *Self,
+        start: NormalizedByteOffset,
+        end: NormalizedByteOffset,
+        replacement: []const u8,
+    ) TextBufferError!SpliceResult {
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true);
     }
 
     /// Consumes an annotation candidate already transformed for this splice.
@@ -1127,6 +1159,7 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
         supplied_annotations: ?*TextAnnotations,
+        use_live_candidate: bool,
     ) TextBufferError!SpliceResult {
         if (start > end or end > self.getByteSize()) return TextBufferError.InvalidByteOffset;
         if (!std.unicode.utf8ValidateSlice(replacement)) return TextBufferError.InvalidUtf8;
@@ -1188,7 +1221,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         var generated_annotations: ?TextAnnotations = null;
-        if (supplied_annotations == null) {
+        if (supplied_annotations == null and !use_live_candidate) {
             generated_annotations = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
                 error.OutOfMemory => return TextBufferError.OutOfMemory,
                 else => return TextBufferError.InvalidDimensions,
@@ -1196,8 +1229,15 @@ pub const UnifiedTextBuffer = struct {
         }
         var annotation_candidate_owned = generated_annotations != null;
         defer if (annotation_candidate_owned) generated_annotations.?.deinit();
-        const candidate_annotations = supplied_annotations orelse &generated_annotations.?;
-        if (supplied_annotations == null) {
+        const candidate_annotations = if (use_live_candidate) &self.annotations else supplied_annotations orelse &generated_annotations.?;
+        var prepared_annotation_splice: ?TextAnnotations.PreparedSplice = null;
+        defer if (prepared_annotation_splice) |*prepared| prepared.deinit();
+        if (use_live_candidate) {
+            prepared_annotation_splice = candidate_annotations.prepareSplice(start, end - start, inserted_len) catch |err| switch (err) {
+                error.OutOfMemory => return TextBufferError.OutOfMemory,
+                else => return TextBufferError.InvalidDimensions,
+            };
+        } else if (supplied_annotations == null) {
             candidate_annotations.splice(start, end - start, inserted_len) catch |err| switch (err) {
                 error.OutOfMemory => return TextBufferError.OutOfMemory,
                 else => return TextBufferError.InvalidDimensions,
@@ -1206,10 +1246,15 @@ pub const UnifiedTextBuffer = struct {
 
         var deleted_style_ids: std.ArrayListUnmanaged(u32) = .empty;
         defer deleted_style_ids.deinit(self.global_allocator);
-        var old_annotations = self.annotations.iterator();
-        while (old_annotations.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            if (candidate_annotations.get(annotation.id()) == null) {
-                try deleted_style_ids.append(self.global_allocator, annotation.payload.style_id);
+        if (prepared_annotation_splice) |*prepared| {
+            try deleted_style_ids.ensureTotalCapacity(self.global_allocator, prepared.delete_ids.len);
+            for (prepared.delete_ids) |id| deleted_style_ids.appendAssumeCapacity(candidate_annotations.get(id).?.payload.style_id);
+        } else {
+            var old_annotations = self.annotations.iterator();
+            while (old_annotations.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+                if (candidate_annotations.get(annotation.id()) == null) {
+                    try deleted_style_ids.append(self.global_allocator, annotation.payload.style_id);
+                }
             }
         }
 
@@ -1242,10 +1287,14 @@ pub const UnifiedTextBuffer = struct {
         self.rope_transaction_arenas.appendAssumeCapacity(transaction_arena);
         transaction_arena_owned = false;
         if (self.edit_storage_guard_depth == 0) self.sweepUnreachableBacking();
-        var previous_annotations = self.annotations;
-        self.annotations = candidate_annotations.*;
-        annotation_candidate_owned = false;
-        previous_annotations.deinit();
+        if (prepared_annotation_splice) |*prepared| {
+            candidate_annotations.commitPreparedSplice(prepared) catch unreachable;
+        } else {
+            var previous_annotations = self.annotations;
+            self.annotations = candidate_annotations.*;
+            annotation_candidate_owned = false;
+            previous_annotations.deinit();
+        }
         for (deleted_style_ids.items) |style_id| self.releaseInternalStyle(style_id);
         self.annotation_epoch +%= 1;
         self.markAllViewsDirty();
@@ -1425,6 +1474,11 @@ pub const UnifiedTextBuffer = struct {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         _ = try self.replaceNormalizedBytes(0, self.getByteSize(), text);
         self.clearAnnotations();
+    }
+
+    pub fn replaceTextFromMemIdForEdit(self: *Self, mem_id: u8) TextBufferError!void {
+        const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        _ = try self.replaceNormalizedBytesForEdit(0, self.getByteSize(), text);
     }
 
     /// Append text to the end of the buffer without clearing
@@ -2924,7 +2978,7 @@ pub const UnifiedTextBuffer = struct {
             };
         }
 
-        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate);
+        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate, false);
         candidate_owned = false;
         styles_committed = true;
         return result;

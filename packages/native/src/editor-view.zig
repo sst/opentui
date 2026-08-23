@@ -46,6 +46,7 @@ pub const EditorView = struct {
     cursor_visual_affinity: ?CursorVisualAffinity,
     selection_updates_cursor: bool,
     selection_follow_cursor: bool, // Keep viewport synced during selection
+    annotation_policy_selection_active: bool,
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
     placeholder_buffer: ?*UnifiedTextBuffer,
@@ -88,6 +89,7 @@ pub const EditorView = struct {
             .cursor_visual_affinity = null,
             .selection_updates_cursor = false,
             .selection_follow_cursor = false,
+            .annotation_policy_selection_active = false,
             .cursor_changed_listener = .{
                 .ctx = undefined, // Will be set below
                 .handle = onCursorChanged,
@@ -117,6 +119,7 @@ pub const EditorView = struct {
         defer global_allocator.destroy(self);
 
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
+        if (self.annotation_policy_selection_active) self.edit_buffer.setAnnotationPolicySelection(false);
 
         if (self.placeholder_syntax_style) |style| {
             style.deinit();
@@ -317,25 +320,30 @@ pub const EditorView = struct {
     pub fn setSelection(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.setSelection(start, end, bgColor, fgColor);
+        self.syncAnnotationPolicySelection();
     }
 
     pub fn updateSelection(self: *EditorView, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.updateSelection(end, bgColor, fgColor);
+        self.syncAnnotationPolicySelection();
     }
 
     pub fn setSelectionInclusive(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.setSelectionInclusiveStyle(start, end, tbv.SelectionStyle.rgb(bgColor, fgColor));
+        self.syncAnnotationPolicySelection();
     }
 
     pub fn resetSelection(self: *EditorView) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.resetSelection();
+        self.syncAnnotationPolicySelection();
     }
 
     pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
         const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        self.syncAnnotationPolicySelection();
         self.selection_updates_cursor = updateCursor;
 
         if (updateCursor and self.text_buffer_view.selection_endpoints != null) {
@@ -349,6 +357,7 @@ pub const EditorView = struct {
     pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
         const had_endpoints = self.text_buffer_view.selection_endpoints != null;
         const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        self.syncAnnotationPolicySelection();
         if (!had_endpoints) {
             self.selection_updates_cursor = updateCursor;
         } else if (updateCursor) {
@@ -366,6 +375,14 @@ pub const EditorView = struct {
     pub fn resetLocalSelection(self: *EditorView) void {
         self.selection_updates_cursor = false;
         self.text_buffer_view.resetLocalSelection();
+        self.syncAnnotationPolicySelection();
+    }
+
+    fn syncAnnotationPolicySelection(self: *EditorView) void {
+        const active = self.text_buffer_view.selection != null;
+        if (active == self.annotation_policy_selection_active) return;
+        self.annotation_policy_selection_active = active;
+        self.edit_buffer.setAnnotationPolicySelection(active);
     }
 
     pub fn setSelectionOccupancy(self: *EditorView, occupancy: tbv.SelectionOccupancy) void {
@@ -686,17 +703,20 @@ pub const EditorView = struct {
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
+                const adjusted_offset = self.edit_buffer.adjustCursorOffsetForAnnotations(new_vcursor.offset, .vertical_up);
+                const adjusted_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), adjusted_offset) orelse return;
+                const adjusted_vcursor = self.logicalToVisualCursor(adjusted_coords.row, adjusted_coords.col);
                 self.edit_buffer.cursors.items[0] = .{
-                    .row = new_vcursor.logical_row,
-                    .col = new_vcursor.logical_col,
-                    .desired_col = new_vcursor.logical_col,
-                    .offset = new_vcursor.offset,
+                    .row = adjusted_coords.row,
+                    .col = adjusted_coords.col,
+                    .desired_col = adjusted_coords.col,
+                    .offset = adjusted_offset,
                 };
                 self.cursor_visual_affinity = null;
                 if (self.text_buffer_view.getSelectionOccupancy() == .boundary) {
                     self.setCursorAffinityForAbsoluteRow(target_visual_row);
                 }
-                self.ensureCursorVisible(new_vcursor.visual_row);
+                self.ensureCursorVisible(adjusted_vcursor.visual_row);
 
                 // Restore desired_visual_col after the cursor change event resets it
                 self.desired_visual_col = desired_visual_col;
@@ -727,17 +747,20 @@ pub const EditorView = struct {
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
+                const adjusted_offset = self.edit_buffer.adjustCursorOffsetForAnnotations(new_vcursor.offset, .vertical_down);
+                const adjusted_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), adjusted_offset) orelse return;
+                const adjusted_vcursor = self.logicalToVisualCursor(adjusted_coords.row, adjusted_coords.col);
                 self.edit_buffer.cursors.items[0] = .{
-                    .row = new_vcursor.logical_row,
-                    .col = new_vcursor.logical_col,
-                    .desired_col = new_vcursor.logical_col,
-                    .offset = new_vcursor.offset,
+                    .row = adjusted_coords.row,
+                    .col = adjusted_coords.col,
+                    .desired_col = adjusted_coords.col,
+                    .offset = adjusted_offset,
                 };
                 self.cursor_visual_affinity = null;
                 if (self.text_buffer_view.getSelectionOccupancy() == .boundary) {
                     self.setCursorAffinityForAbsoluteRow(target_visual_row);
                 }
-                self.ensureCursorVisible(new_vcursor.visual_row);
+                self.ensureCursorVisible(adjusted_vcursor.visual_row);
 
                 // Restore desired_visual_col after the cursor change event resets it
                 self.desired_visual_col = desired_visual_col;

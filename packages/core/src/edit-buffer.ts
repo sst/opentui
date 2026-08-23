@@ -249,6 +249,11 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferSetCursorByOffset(this.bufferPtr, offset)
   }
 
+  public setVirtualAnnotationPolicy(enabled: boolean): void {
+    this.guard()
+    this.lib.editBufferSetVirtualAnnotationPolicy(this.bufferPtr, enabled)
+  }
+
   public getCursorPosition(): LogicalCursor {
     this.guard()
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)

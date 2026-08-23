@@ -1,6 +1,10 @@
 const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
+const EditBuffer = @import("../edit-buffer.zig").EditBuffer;
+const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 const TextAnnotations = @import("../text-annotations.zig").TextAnnotations;
+const text_buffer = @import("../text-buffer.zig");
 
 pub const benchName = "TextAnnotations Ownership";
 
@@ -42,6 +46,92 @@ pub fn run(
     _ = show_mem;
     var results: std.ArrayList(bench_utils.BenchResult) = .empty;
     errdefer results.deinit(allocator);
+
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(allocator);
+    defer link.deinitGlobalLinkPool();
+
+    {
+        const name = "10k edit annotations: setup";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                const text = try allocator.alloc(u8, 40_001);
+                defer allocator.free(text);
+                @memset(text, 'a');
+                try eb.setText(text);
+                const timer = bench_utils.BenchTimer.start(io);
+                for (0..10_000) |index| {
+                    const start: u32 = @intCast(index * 4);
+                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+                        .namespace = 1,
+                        .kind_flags = text_buffer.annotation_kind_virtual,
+                    });
+                }
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
+
+    {
+        const name = "10k edit annotations: local edit";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                const text = try allocator.alloc(u8, 40_001);
+                defer allocator.free(text);
+                @memset(text, 'a');
+                try eb.setText(text);
+                for (0..10_000) |index| {
+                    const start: u32 = @intCast(index * 4);
+                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+                        .namespace = 1,
+                        .kind_flags = text_buffer.annotation_kind_virtual,
+                    });
+                }
+                try eb.setCursorByOffset(20_000);
+                const timer = bench_utils.BenchTimer.start(io);
+                try eb.insertText("X");
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
+
+    {
+        const name = "10k edit annotations: 10k local queries";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |iteration| {
+                var annotations = TextAnnotations.initWithSeed(allocator, 0x7400 + iteration);
+                defer annotations.deinit();
+                for (0..10_000) |index| {
+                    const start: u32 = @intCast(index * 4);
+                    _ = try annotations.addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+                        .namespace = 1,
+                        .kind_flags = text_buffer.annotation_kind_virtual,
+                    });
+                }
+                var total: u64 = 0;
+                const timer = bench_utils.BenchTimer.start(io);
+                for (0..10_000) |query| {
+                    const byte: u32 = @intCast((query * 397) % 40_000);
+                    if (annotations.findOverlappingKind(byte, byte + 1, text_buffer.annotation_kind_virtual)) |annotation| {
+                        total +%= annotation.id();
+                    }
+                }
+                stats.record(timer.read());
+                std.mem.doNotOptimizeAway(total);
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
 
     {
         const name = "overlap precedence: 2k queries across 50k payloads";

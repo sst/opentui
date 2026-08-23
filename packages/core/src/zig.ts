@@ -1744,6 +1744,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32"],
       returns: "void",
     },
+    editBufferSetVirtualAnnotationPolicy: {
+      args: ["u32", "bool"],
+      returns: "void",
+    },
     editBufferGetCursorPosition: {
       args: ["u32", "ptr"],
       returns: "void",
@@ -3342,6 +3346,7 @@ export interface RenderLib extends AudioEngineLib {
   editBufferSetCursor: (buffer: EditBufferHandle, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: EditBufferHandle, line: number, col: number) => void
   editBufferSetCursorByOffset: (buffer: EditBufferHandle, offset: number) => void
+  editBufferSetVirtualAnnotationPolicy: (buffer: EditBufferHandle, enabled: boolean) => void
   editBufferGetCursorPosition: (buffer: EditBufferHandle) => LogicalCursor
   editBufferGetId: (buffer: EditBufferHandle) => number
   editBufferGetTextBuffer: (buffer: EditBufferHandle) => TextBufferHandle
@@ -6246,6 +6251,10 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferSetCursorByOffset(buffer: Pointer, offset: number): void {
     this.opentui.symbols.editBufferSetCursorByOffset(buffer, offset)
+  }
+
+  public editBufferSetVirtualAnnotationPolicy(buffer: Pointer, enabled: boolean): void {
+    this.opentui.symbols.editBufferSetVirtualAnnotationPolicy(buffer, enabled ? 1 : 0)
   }
 
   public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {

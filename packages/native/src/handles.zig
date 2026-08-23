@@ -222,6 +222,11 @@ pub fn isOwned(handle: Handle, expected_kind: ObjectKind) bool {
     return slots[index].owned;
 }
 
+pub fn ownerHandle(handle: Handle, expected_kind: ObjectKind) ?Handle {
+    const index = validateSlot(handle, expected_kind) orelse return null;
+    return if (slots[index].owner == 0) null else slots[index].owner;
+}
+
 pub fn invalidate(handle: Handle, expected_kind: ObjectKind) void {
     const index = validateSlot(handle, expected_kind) orelse return;
     slots[index].state = .destroying;

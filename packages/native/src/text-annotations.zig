@@ -622,6 +622,37 @@ pub const TextAnnotations = struct {
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
+    /// Finds the highest-precedence overlapping range with any requested kind
+    /// without allocating query storage.
+    pub fn findOverlappingKind(self: *Self, first_byte: u32, second_byte: u32, kind_mask: u32) ?Annotation {
+        const Finder = struct {
+            owner: *Self,
+            kind_mask: u32,
+            best: ?Annotation = null,
+
+            fn visit(finder: *@This(), range: MarkTree.Range) !void {
+                const annotation: Annotation = .{
+                    .mark = .{ .range = range },
+                    .payload = finder.owner.payloads.get(range.id).?,
+                };
+                if (annotation.payload.kind_flags & finder.kind_mask == 0) return;
+                const best = finder.best orelse {
+                    finder.best = annotation;
+                    return;
+                };
+                if (annotation.payload.priority > best.payload.priority or
+                    (annotation.payload.priority == best.payload.priority and annotation.payload.sequence > best.payload.sequence) or
+                    (annotation.payload.priority == best.payload.priority and annotation.payload.sequence == best.payload.sequence and annotation.id() > best.id()))
+                {
+                    finder.best = annotation;
+                }
+            }
+        };
+        var finder: Finder = .{ .owner = self, .kind_mask = kind_mask };
+        self.tree.visitOverlapping(first_byte, second_byte, &finder, Finder.visit) catch unreachable;
+        return finder.best;
+    }
+
     /// Iterates by derived lower position then stable ID. Any annotation mutation
     /// invalidates the iterator, including a payload-only change or namespace clear.
     pub fn iterator(self: *Self) Iterator {

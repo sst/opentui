@@ -149,6 +149,75 @@ test "invalid edit coordinates and text preserve history and redo branch" {
     try expectText(eb, "aXbc");
 }
 
+test "virtual annotation policy is native and reference counted" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abc[LINK]def");
+    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 3, .end_byte = 9 }, .{
+        .namespace = 1,
+        .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual,
+        .splice_policy = .delete_when_covered,
+    });
+    eb.setVirtualAnnotationPolicy(true);
+    eb.setVirtualAnnotationPolicy(true);
+
+    try eb.setCursorByOffset(2);
+    eb.moveRight();
+    try std.testing.expectEqual(@as(u32, 9), eb.getPrimaryCursor().offset);
+    eb.moveLeft();
+    try std.testing.expectEqual(@as(u32, 2), eb.getPrimaryCursor().offset);
+
+    eb.setVirtualAnnotationPolicy(false);
+    try eb.setCursorByOffset(2);
+    eb.moveRight();
+    try std.testing.expectEqual(@as(u32, 9), eb.getPrimaryCursor().offset);
+    eb.setVirtualAnnotationPolicy(false);
+    try eb.setCursorByOffset(2);
+    eb.moveRight();
+    try std.testing.expectEqual(@as(u32, 3), eb.getPrimaryCursor().offset);
+}
+
+test "explicit annotation removals are purged from text history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abcdef");
+    var created: [2]u64 = undefined;
+    var deleted: [2]u64 = undefined;
+    const adds = [_]@import("../text-buffer.zig").AnnotationOperation{
+        .{ .kind = .add_range, .start_byte = 1, .end_byte = 3, .payload = .{ .namespace = 7, .style_id = 31 } },
+        .{ .kind = .add_range, .start_byte = 3, .end_byte = 5, .payload = .{ .namespace = 8, .style_id = 32 } },
+    };
+    _ = try eb.applyAnnotationOperations(&adds, &created, &deleted);
+    try eb.setCursorByOffset(0);
+    try eb.insertText("X");
+    _ = try eb.undo();
+
+    const clear = [_]@import("../text-buffer.zig").AnnotationOperation{
+        .{ .kind = .clear_namespace, .payload = .{ .namespace = 7 } },
+    };
+    const clear_result = try eb.applyAnnotationOperations(&clear, &.{}, &deleted);
+    try std.testing.expectEqual(@as(usize, 1), clear_result.deleted_count);
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[0]) == null);
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[1]) != null);
+
+    _ = try eb.redo();
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[0]) == null);
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[1]) != null);
+    _ = try eb.undo();
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[0]) == null);
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[1]) != null);
+}
+
 test "EditBuffer - basic undo/redo with insertText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

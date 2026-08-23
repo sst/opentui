@@ -42,191 +42,20 @@ const UINT32_MAX = 0xffffffff
 
 export class ExtmarksController {
   private readonly editBuffer: EditBuffer
-  private readonly editorView: EditorView
   private readonly sidecars = new Map<number, ExtmarkSidecar>()
   private nextId = 1
   private destroyed = false
   private readonly typeNameToId = new Map<string, number>()
   private readonly typeIdToName = new Map<number, string>()
   private nextTypeId = 1
-
-  private readonly originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
-  private readonly originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
-  private readonly originalSetCursorByOffset: typeof EditBuffer.prototype.setCursorByOffset
-  private readonly originalEditorViewSetCursorByOffset: typeof EditorView.prototype.setCursorByOffset
-  private readonly originalMoveUpVisual: typeof EditorView.prototype.moveUpVisual
-  private readonly originalMoveDownVisual: typeof EditorView.prototype.moveDownVisual
-  private readonly originalDeleteCharBackward: typeof EditBuffer.prototype.deleteCharBackward
-  private readonly originalDeleteChar: typeof EditBuffer.prototype.deleteChar
-  private readonly originalDeleteRange: typeof EditBuffer.prototype.deleteRange
-  private readonly originalUndo: typeof EditBuffer.prototype.undo
-  private readonly originalRedo: typeof EditBuffer.prototype.redo
   private readonly handleAnnotationsReset = (): void => {
     this.sidecars.clear()
   }
 
-  constructor(editBuffer: EditBuffer, editorView: EditorView) {
+  constructor(editBuffer: EditBuffer, _editorView: EditorView) {
     this.editBuffer = editBuffer
-    this.editorView = editorView
-    this.originalMoveCursorLeft = editBuffer.moveCursorLeft
-    this.originalMoveCursorRight = editBuffer.moveCursorRight
-    this.originalSetCursorByOffset = editBuffer.setCursorByOffset
-    this.originalEditorViewSetCursorByOffset = editorView.setCursorByOffset
-    this.originalMoveUpVisual = editorView.moveUpVisual
-    this.originalMoveDownVisual = editorView.moveDownVisual
-    this.originalDeleteCharBackward = editBuffer.deleteCharBackward
-    this.originalDeleteChar = editBuffer.deleteChar
-    this.originalDeleteRange = editBuffer.deleteRange
-    this.originalUndo = editBuffer.undo
-    this.originalRedo = editBuffer.redo
-
-    this.installVirtualPolicy()
+    this.editBuffer.setVirtualAnnotationPolicy(true)
     this.editBuffer.on("annotations-reset", this.handleAnnotationsReset)
-  }
-
-  private installVirtualPolicy(): void {
-    this.editBuffer.moveCursorLeft = (): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        this.originalMoveCursorLeft.call(this.editBuffer)
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = currentOffset > 0 ? this.findVirtualExtmarkContaining(currentOffset - 1) : null
-      if (virtualExtmark && currentOffset >= virtualExtmark.end) {
-        this.originalSetCursorByOffset.call(this.editBuffer, Math.max(0, virtualExtmark.start - 1))
-        return
-      }
-      this.originalMoveCursorLeft.call(this.editBuffer)
-    }
-
-    this.editBuffer.moveCursorRight = (): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        this.originalMoveCursorRight.call(this.editBuffer)
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = this.findVirtualExtmarkContaining(currentOffset + 1)
-      if (virtualExtmark && currentOffset <= virtualExtmark.start) {
-        this.originalSetCursorByOffset.call(this.editBuffer, virtualExtmark.end)
-        return
-      }
-      this.originalMoveCursorRight.call(this.editBuffer)
-    }
-
-    const adjustVerticalMove = (move: () => void, down: boolean): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        move()
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      move()
-      const newOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
-      if (!virtualExtmark) return
-
-      const distanceToStart = newOffset - virtualExtmark.start
-      const distanceToEnd = virtualExtmark.end - newOffset
-      if (distanceToStart >= distanceToEnd) {
-        this.originalEditorViewSetCursorByOffset.call(this.editorView, virtualExtmark.end)
-        return
-      }
-
-      const before = Math.max(0, virtualExtmark.start - 1)
-      this.originalEditorViewSetCursorByOffset.call(
-        this.editorView,
-        down && before <= currentOffset ? virtualExtmark.end : before,
-      )
-    }
-
-    this.editorView.moveUpVisual = (): void =>
-      adjustVerticalMove(() => this.originalMoveUpVisual.call(this.editorView), false)
-    this.editorView.moveDownVisual = (): void =>
-      adjustVerticalMove(() => this.originalMoveDownVisual.call(this.editorView), true)
-
-    const setCursorByOffset = (offset: number, setCursor: (offset: number) => void): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        setCursor(offset)
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = this.findVirtualExtmarkContaining(offset)
-      if (!virtualExtmark) {
-        setCursor(offset)
-      } else if (offset > currentOffset && currentOffset <= virtualExtmark.start) {
-        setCursor(virtualExtmark.end)
-      } else if (offset < currentOffset && currentOffset >= virtualExtmark.end) {
-        setCursor(Math.max(0, virtualExtmark.start - 1))
-      } else {
-        setCursor(offset)
-      }
-    }
-    this.editBuffer.setCursorByOffset = (offset: number): void =>
-      setCursorByOffset(offset, (value) => this.originalSetCursorByOffset.call(this.editBuffer, value))
-    this.editorView.setCursorByOffset = (offset: number): void =>
-      setCursorByOffset(offset, (value) => this.originalEditorViewSetCursorByOffset.call(this.editorView, value))
-
-    this.editBuffer.deleteCharBackward = (): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        this.originalDeleteCharBackward.call(this.editBuffer)
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = currentOffset > 0 ? this.findVirtualExtmarkContaining(currentOffset - 1) : null
-      if (!virtualExtmark || currentOffset !== virtualExtmark.end) {
-        this.originalDeleteCharBackward.call(this.editBuffer)
-        return
-      }
-
-      const start = this.offsetToPosition(virtualExtmark.start)
-      const end = this.offsetToPosition(virtualExtmark.end)
-      this.originalDeleteRange.call(this.editBuffer, start.row, start.col, end.row, end.col)
-    }
-
-    this.editBuffer.deleteChar = (): void => {
-      if (this.destroyed || this.editorView.hasSelection()) {
-        this.originalDeleteChar.call(this.editBuffer)
-        return
-      }
-
-      const currentOffset = this.editorView.getVisualCursor().offset
-      const virtualExtmark = this.findVirtualExtmarkContaining(currentOffset)
-      if (!virtualExtmark || currentOffset !== virtualExtmark.start) {
-        this.originalDeleteChar.call(this.editBuffer)
-        return
-      }
-
-      const start = this.offsetToPosition(virtualExtmark.start)
-      const end = this.offsetToPosition(virtualExtmark.end)
-      this.originalDeleteRange.call(this.editBuffer, start.row, start.col, end.row, end.col)
-    }
-
-    this.editBuffer.undo = (): string | null => {
-      const result = this.originalUndo.call(this.editBuffer)
-      if (result !== null) this.removeOrphanedNativeExtmarks()
-      return result
-    }
-    this.editBuffer.redo = (): string | null => {
-      const result = this.originalRedo.call(this.editBuffer)
-      if (result !== null) this.removeOrphanedNativeExtmarks()
-      return result
-    }
-  }
-
-  private removeOrphanedNativeExtmarks(): void {
-    const orphaned = this.editBuffer
-      .queryAnnotations({ kind: "kindMask", kindMask: TEXT_ANNOTATION_KIND_EXTMARK })
-      .filter((annotation) => {
-        const publicId = Number(annotation.clientToken)
-        return !Number.isSafeInteger(publicId) || this.sidecars.get(publicId)?.nativeId !== annotation.id
-      })
-    if (orphaned.length > 0) {
-      this.editBuffer.applyAnnotationOperations(orphaned.map((annotation) => ({ kind: "remove", id: annotation.id })))
-    }
   }
 
   private offsetToPosition(offset: number): { row: number; col: number } {
@@ -271,10 +100,6 @@ export class ExtmarksController {
       data: sidecar.data,
       typeId: annotation.namespace,
     }
-  }
-
-  private findVirtualExtmarkContaining(offset: number): Extmark | null {
-    return this.getAtOffset(offset).find((extmark) => extmark.virtual) ?? null
   }
 
   public create(options: ExtmarkOptions): number {
@@ -416,16 +241,7 @@ export class ExtmarksController {
     if (this.destroyed) return
     this.clear()
     this.editBuffer.off("annotations-reset", this.handleAnnotationsReset)
-    this.editBuffer.moveCursorLeft = this.originalMoveCursorLeft
-    this.editBuffer.moveCursorRight = this.originalMoveCursorRight
-    this.editBuffer.setCursorByOffset = this.originalSetCursorByOffset
-    this.editorView.setCursorByOffset = this.originalEditorViewSetCursorByOffset
-    this.editorView.moveUpVisual = this.originalMoveUpVisual
-    this.editorView.moveDownVisual = this.originalMoveDownVisual
-    this.editBuffer.deleteCharBackward = this.originalDeleteCharBackward
-    this.editBuffer.deleteChar = this.originalDeleteChar
-    this.editBuffer.undo = this.originalUndo
-    this.editBuffer.redo = this.originalRedo
+    this.editBuffer.setVirtualAnnotationPolicy(false)
     this.typeNameToId.clear()
     this.typeIdToName.clear()
     this.destroyed = true

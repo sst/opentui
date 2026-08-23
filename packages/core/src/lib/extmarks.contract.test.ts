@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import type { Highlight } from "../types.js"
 import { TextareaRenderable } from "../renderables/Textarea.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
-import type { Extmark, ExtmarksController } from "./extmarks.js"
+import { createExtmarksController, type Extmark, type ExtmarksController } from "./extmarks.js"
 
 interface Harness {
   renderer: TestRenderer
@@ -476,7 +476,7 @@ describe("ExtmarksController observable migration contract", () => {
     expect(textarea.getLineHighlights(0)).toEqual([{ start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 }])
   })
 
-  it("restores pre-existing method identities on destroy", async () => {
+  it("never replaces editor methods", async () => {
     let moveCursorRight: TextareaRenderable["editBuffer"]["moveCursorRight"]
     let setCursorByOffset: TextareaRenderable["editorView"]["setCursorByOffset"]
     let undo: TextareaRenderable["editBuffer"]["undo"]
@@ -489,10 +489,30 @@ describe("ExtmarksController observable migration contract", () => {
       value.editBuffer.undo = undo
     })
 
+    expect(textarea.editBuffer.moveCursorRight).toBe(moveCursorRight!)
+    expect(textarea.editorView.setCursorByOffset).toBe(setCursorByOffset!)
+    expect(textarea.editBuffer.undo).toBe(undo!)
     extmarks.destroy()
     expect(textarea.editBuffer.moveCursorRight).toBe(moveCursorRight!)
     expect(textarea.editorView.setCursorByOffset).toBe(setCursorByOffset!)
     expect(textarea.editBuffer.undo).toBe(undo!)
+  })
+
+  it("keeps one native policy reference per controller", async () => {
+    const { textarea, extmarks } = await mount("abcdefgh")
+    expect(textarea.extmarks).toBe(extmarks)
+    const second = createExtmarksController(textarea.editBuffer, textarea.editorView)
+    second.create({ start: 3, end: 6, virtual: true })
+
+    extmarks.destroy()
+    textarea.cursorOffset = 2
+    textarea.moveCursorRight()
+    expect(textarea.cursorOffset).toBe(6)
+
+    second.destroy()
+    textarea.cursorOffset = 2
+    textarea.moveCursorRight()
+    expect(textarea.cursorOffset).toBe(3)
   })
 
   it("uses display-cell offsets for tabs, wide and composed graphemes, and normalized line endings", async () => {

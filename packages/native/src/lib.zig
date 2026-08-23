@@ -2559,6 +2559,11 @@ export fn editBufferSetCursorByOffset(edit_handle: NativeHandle, offset: u32) vo
     object_ptr.setCursorByOffset(offset) catch {};
 }
 
+export fn editBufferSetVirtualAnnotationPolicy(edit_handle: NativeHandle, enabled: bool) void {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setVirtualAnnotationPolicy(enabled);
+}
+
 export fn editBufferGetNextWordBoundary(edit_handle: NativeHandle, outPtr: *ExternalLogicalCursor) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
@@ -3505,7 +3510,11 @@ export fn textBufferApplyAnnotationOperations(
     var empty_deleted: [0]u64 = .{};
     const created = if (created_capacity == 0) empty_created[0..] else out_created_ids.?[0..created_capacity];
     const deleted = if (deleted_capacity == 0) empty_deleted[0..] else out_deleted_ids.?[0..deleted_capacity];
-    const result = object_ptr.applyAnnotationOperations(operations, created, deleted) catch |err| return textDocumentErrorStatus(err);
+    const result = (if (handles.ownerHandle(tb_handle, .text_buffer)) |owner_handle| blk: {
+        const edit_buffer = acquireEditBuffer(owner_handle) orelse break :blk object_ptr.applyAnnotationOperations(operations, created, deleted);
+        if (edit_buffer.getTextBuffer() != object_ptr) break :blk object_ptr.applyAnnotationOperations(operations, created, deleted);
+        break :blk edit_buffer.applyAnnotationOperations(operations, created, deleted);
+    } else object_ptr.applyAnnotationOperations(operations, created, deleted)) catch |err| return textDocumentErrorStatus(err);
     output.* = .{ .created_count = @intCast(result.created_count), .deleted_count = @intCast(result.deleted_count) };
     return @intFromEnum(TextDocumentStatus.ok);
 }

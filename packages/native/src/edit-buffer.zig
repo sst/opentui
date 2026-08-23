@@ -83,7 +83,7 @@ const PreparedEditHistory = struct {
     committed: bool = false,
 
     fn deinit(self: *PreparedEditHistory, edit_buffer: *EditBuffer) void {
-        if (!self.committed) edit_buffer.tb.releaseAnnotationCheckpoint(&self.annotations);
+        if (!self.committed) edit_buffer.tb.rollbackAnnotationEdit(self.annotations);
         self.rope.deinit();
         edit_buffer.tb.finishEditStorage();
         self.* = undefined;
@@ -102,6 +102,8 @@ pub const EditBuffer = struct {
     event_sink: ?*event_bus.EventSink,
     annotation_undo: std.ArrayListUnmanaged(TextAnnotations),
     annotation_redo: std.ArrayListUnmanaged(TextAnnotations),
+    annotation_cursor_policy_references: u32,
+    annotation_cursor_policy_selections: u32,
 
     pub fn init(
         allocator: Allocator,
@@ -134,6 +136,8 @@ pub const EditBuffer = struct {
             .event_sink = event_sink,
             .annotation_undo = .empty,
             .annotation_redo = .empty,
+            .annotation_cursor_policy_references = 0,
+            .annotation_cursor_policy_selections = 0,
         };
 
         return self;
@@ -227,8 +231,64 @@ pub const EditBuffer = struct {
     }
 
     pub fn setCursorByOffset(self: *EditBuffer, offset: u32) !void {
-        const coords = iter_mod.offsetToCoords(self.tb.rope(), offset) orelse iter_mod.Coords{ .row = 0, .col = 0 };
+        const adjusted = self.adjustCursorOffsetForAnnotations(offset, .direct);
+        const coords = iter_mod.offsetToCoords(self.tb.rope(), adjusted) orelse iter_mod.Coords{ .row = 0, .col = 0 };
         try self.setCursor(coords.row, coords.col);
+    }
+
+    pub const AnnotationCursorMove = enum { direct, vertical_up, vertical_down };
+
+    const AnnotationDisplayRange = struct { start: u32, end: u32 };
+
+    pub fn setVirtualAnnotationPolicy(self: *EditBuffer, enabled: bool) void {
+        if (enabled) self.annotation_cursor_policy_references +|= 1 else self.annotation_cursor_policy_references -|= 1;
+    }
+
+    pub fn setAnnotationPolicySelection(self: *EditBuffer, active: bool) void {
+        if (active) {
+            self.annotation_cursor_policy_selections +|= 1;
+        } else {
+            self.annotation_cursor_policy_selections -|= 1;
+        }
+    }
+
+    fn annotationRangeAtOffset(self: *EditBuffer, offset: u32) ?AnnotationDisplayRange {
+        if (self.annotation_cursor_policy_references == 0 or self.annotation_cursor_policy_selections != 0) return null;
+        const coords = iter_mod.offsetToCoords(self.tb.rope(), offset) orelse return null;
+        const byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = coords.row, .col = coords.col }, .before) catch return null;
+        if (byte == std.math.maxInt(u32)) return null;
+        const annotation = self.tb.textAnnotations().findOverlappingKind(byte, byte + 1, tb.annotation_kind_virtual) orelse return null;
+        const range = switch (annotation.mark) {
+            .range => |value| value,
+            .point => return null,
+        };
+        const start_point = (self.tb.normalizedByteOffsetToDisplayPoint(range.start_byte, .before) catch return null).point;
+        const end_point = (self.tb.normalizedByteOffsetToDisplayPoint(range.end_byte, .after) catch return null).point;
+        const start = iter_mod.coordsToOffset(self.tb.rope(), start_point.row, start_point.col) orelse return null;
+        const end = iter_mod.coordsToOffset(self.tb.rope(), end_point.row, end_point.col) orelse return null;
+        if (start >= end or offset < start or offset >= end) return null;
+        return .{ .start = start, .end = end };
+    }
+
+    pub fn adjustCursorOffsetForAnnotations(self: *EditBuffer, target: u32, move: AnnotationCursorMove) u32 {
+        const current = self.getPrimaryCursor().offset;
+        const range = self.annotationRangeAtOffset(target) orelse return target;
+        return switch (move) {
+            .direct => if (target > current and current <= range.start)
+                range.end
+            else if (target < current and current >= range.end)
+                range.start -| 1
+            else
+                target,
+            .vertical_up, .vertical_down => blk: {
+                const distance_to_start = target - range.start;
+                const distance_to_end = range.end - target;
+                if (distance_to_start >= distance_to_end) break :blk range.end;
+                const before = range.start -| 1;
+                if (move == .vertical_down and before <= current) break :blk range.end;
+                break :blk before;
+            },
+        };
     }
 
     fn preparePrimaryCursor(self: *EditBuffer) !void {
@@ -245,7 +305,7 @@ pub const EditBuffer = struct {
         if (!std.unicode.utf8ValidateSlice(bytes)) return tb.TextBufferError.InvalidUtf8;
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        const result = try self.tb.replaceNormalizedBytes(insert_byte, insert_byte, bytes);
+        const result = try self.tb.replaceNormalizedBytesForEdit(insert_byte, insert_byte, bytes);
         self.commitAutoStoreUndo(&history);
         const point = result.new_display.end.point;
         const new_offset = iter_mod.coordsToOffset(self.tb.rope(), point.row, point.col) orelse 0;
@@ -280,7 +340,7 @@ pub const EditBuffer = struct {
 
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try self.tb.replaceNormalizedBytes(start_offset, end_offset, "");
+        _ = try self.tb.replaceNormalizedBytesForEdit(start_offset, end_offset, "");
         self.commitAutoStoreUndo(&history);
 
         if (self.cursors.items.len > 0) {
@@ -301,6 +361,16 @@ pub const EditBuffer = struct {
     pub fn backspace(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
         const stored_cursor = self.cursors.items[0];
+        if (stored_cursor.offset > 0) {
+            if (self.annotationRangeAtOffset(stored_cursor.offset - 1)) |range| {
+                if (stored_cursor.offset == range.end) {
+                    const start = iter_mod.offsetToCoords(self.tb.rope(), range.start) orelse return;
+                    const end = iter_mod.offsetToCoords(self.tb.rope(), range.end) orelse return;
+                    try self.deleteRange(.{ .row = start.row, .col = start.col }, .{ .row = end.row, .col = end.col });
+                    return;
+                }
+            }
+        }
         const cursor = try self.canonicalEditCursorCoords(stored_cursor.row, stored_cursor.col);
 
         if (cursor.row == 0 and cursor.col == 0) return;
@@ -330,6 +400,14 @@ pub const EditBuffer = struct {
     pub fn deleteForward(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
         const stored_cursor = self.cursors.items[0];
+        if (self.annotationRangeAtOffset(stored_cursor.offset)) |range| {
+            if (stored_cursor.offset == range.start) {
+                const start = iter_mod.offsetToCoords(self.tb.rope(), range.start) orelse return;
+                const end = iter_mod.offsetToCoords(self.tb.rope(), range.end) orelse return;
+                try self.deleteRange(.{ .row = start.row, .col = start.col }, .{ .row = end.row, .col = end.col });
+                return;
+            }
+        }
         const cursor = try self.canonicalEditCursorCoords(stored_cursor.row, stored_cursor.col);
 
         const line_width = iter_mod.lineWidthAt(self.tb.rope(), cursor.row);
@@ -358,17 +436,20 @@ pub const EditBuffer = struct {
             return;
         }
         const cursor = &self.cursors.items[0];
+        var target = cursor.*;
 
-        if (cursor.col > 0) {
-            const prev_width = self.tb.getPrevGraphemeWidth(cursor.row, cursor.col);
-            cursor.col -= prev_width;
-        } else if (cursor.row > 0) {
-            cursor.row -= 1;
-            const line_width = iter_mod.lineWidthAt(self.tb.rope(), cursor.row);
-            cursor.col = line_width;
+        if (target.col > 0) {
+            const prev_width = self.tb.getPrevGraphemeWidth(target.row, target.col);
+            target.col -= prev_width;
+        } else if (target.row > 0) {
+            target.row -= 1;
+            const line_width = iter_mod.lineWidthAt(self.tb.rope(), target.row);
+            target.col = line_width;
         }
-        cursor.desired_col = cursor.col;
-        cursor.offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cursor.col) orelse 0;
+        const target_offset = iter_mod.coordsToOffset(self.tb.rope(), target.row, target.col) orelse 0;
+        const adjusted = self.adjustCursorOffsetForAnnotations(target_offset, .direct);
+        const coords = iter_mod.offsetToCoords(self.tb.rope(), adjusted) orelse return;
+        cursor.* = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col, .offset = adjusted };
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
@@ -377,19 +458,22 @@ pub const EditBuffer = struct {
     pub fn moveRight(self: *EditBuffer) void {
         if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
+        var target = cursor.*;
 
-        const line_width = iter_mod.lineWidthAt(self.tb.rope(), cursor.row);
+        const line_width = iter_mod.lineWidthAt(self.tb.rope(), target.row);
         const line_count = self.tb.getLineCount();
 
-        if (cursor.col < line_width) {
-            const grapheme_width = self.tb.getGraphemeWidthAt(cursor.row, cursor.col);
-            cursor.col += grapheme_width;
-        } else if (cursor.row + 1 < line_count) {
-            cursor.row += 1;
-            cursor.col = 0;
+        if (target.col < line_width) {
+            const grapheme_width = self.tb.getGraphemeWidthAt(target.row, target.col);
+            target.col += grapheme_width;
+        } else if (target.row + 1 < line_count) {
+            target.row += 1;
+            target.col = 0;
         }
-        cursor.desired_col = cursor.col;
-        cursor.offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cursor.col) orelse 0;
+        const target_offset = iter_mod.coordsToOffset(self.tb.rope(), target.row, target.col) orelse 0;
+        const adjusted = self.adjustCursorOffsetForAnnotations(target_offset, .direct);
+        const coords = iter_mod.offsetToCoords(self.tb.rope(), adjusted) orelse return;
+        cursor.* = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col, .offset = adjusted };
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
@@ -441,7 +525,7 @@ pub const EditBuffer = struct {
     /// Set text and completely reset the buffer state.
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
         try self.preparePrimaryCursor();
-        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        _ = try self.tb.replaceNormalizedBytesForEdit(0, self.tb.getByteSize(), text);
         self.tb.clearAnnotations();
         self.clearHistory();
         try self.setCursor(0, 0);
@@ -451,7 +535,8 @@ pub const EditBuffer = struct {
     /// Set text from memory ID and completely reset the buffer state.
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
         try self.preparePrimaryCursor();
-        try self.tb.setTextFromMemId(mem_id);
+        try self.tb.replaceTextFromMemIdForEdit(mem_id);
+        self.tb.clearAnnotations();
         self.clearHistory();
         try self.setCursor(0, 0);
 
@@ -464,7 +549,7 @@ pub const EditBuffer = struct {
         try self.preparePrimaryCursor();
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try self.tb.replaceNormalizedBytes(0, self.tb.getByteSize(), text);
+        _ = try self.tb.replaceNormalizedBytesForEdit(0, self.tb.getByteSize(), text);
         self.tb.clearAnnotations();
         self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
@@ -477,7 +562,8 @@ pub const EditBuffer = struct {
         try self.preparePrimaryCursor();
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        try self.tb.setTextFromMemId(mem_id);
+        try self.tb.replaceTextFromMemIdForEdit(mem_id);
+        self.tb.clearAnnotations();
         self.commitAutoStoreUndo(&history);
         try self.setCursor(0, 0);
 
@@ -575,11 +661,10 @@ pub const EditBuffer = struct {
         var meta_buffer: [64]u8 = undefined;
         const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
         try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
-        var checkpoint = try self.tb.checkpointAnnotations();
-        errdefer self.tb.releaseAnnotationCheckpoint(&checkpoint);
         var prepared_rope = try self.tb.rope().prepare_store_undo(meta);
         errdefer prepared_rope.deinit();
-        return .{ .annotations = checkpoint, .rope = prepared_rope };
+        const previous_annotations = try self.tb.beginAnnotationEdit();
+        return .{ .annotations = previous_annotations, .rope = prepared_rope };
     }
 
     fn commitAutoStoreUndo(self: *EditBuffer, prepared: *PreparedEditHistory) void {
@@ -592,15 +677,13 @@ pub const EditBuffer = struct {
 
     pub fn undo(self: *EditBuffer) ![]const u8 {
         if (self.annotation_undo.items.len == 0) return error.Stop;
-        var current_annotations = try self.tb.checkpointAnnotations();
-        errdefer self.tb.releaseAnnotationCheckpoint(&current_annotations);
         try self.annotation_redo.ensureUnusedCapacity(self.allocator, 1);
         var current_meta_buffer: [64]u8 = undefined;
         const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
         const prev_meta = try self.tb.rope().undo(current_meta);
         const previous_annotations = self.annotation_undo.pop().?;
+        const current_annotations = self.tb.swapAnnotationCheckpoint(previous_annotations);
         self.annotation_redo.appendAssumeCapacity(current_annotations);
-        self.tb.restoreAnnotationCheckpoint(previous_annotations);
 
         const restored = try self.restoreCursorFromMeta(prev_meta);
 
@@ -618,14 +701,12 @@ pub const EditBuffer = struct {
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
         if (self.annotation_redo.items.len == 0) return error.Stop;
-        var current_annotations = try self.tb.checkpointAnnotations();
-        errdefer self.tb.releaseAnnotationCheckpoint(&current_annotations);
         try self.annotation_undo.ensureUnusedCapacity(self.allocator, 1);
         const next_meta = try self.tb.rope().redo();
         const next_annotations = self.annotation_redo.pop().?;
+        const current_annotations = self.tb.swapAnnotationCheckpoint(next_annotations);
         self.annotation_undo.appendAssumeCapacity(current_annotations);
         self.trimAnnotationHistory(&self.annotation_undo, self.tb.rope().undoDepth());
-        self.tb.restoreAnnotationCheckpoint(next_annotations);
 
         const restored = try self.restoreCursorFromMeta(next_meta);
 
@@ -677,6 +758,19 @@ pub const EditBuffer = struct {
         for (history.items[0..removed]) |*checkpoint| self.tb.releaseAnnotationCheckpoint(checkpoint);
         if (removed != 0) std.mem.copyForwards(TextAnnotations, history.items[0..], history.items[removed..]);
         history.shrinkRetainingCapacity(history.items.len - removed);
+    }
+
+    pub fn applyAnnotationOperations(
+        self: *EditBuffer,
+        operations: []const tb.AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+    ) tb.TextBufferError!tb.AnnotationBatchResult {
+        const result = try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
+        const deleted = deleted_ids[0..result.deleted_count];
+        for (self.annotation_undo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
+        for (self.annotation_redo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
+        return result;
     }
 
     pub fn clear(self: *EditBuffer) !void {
