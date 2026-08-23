@@ -132,7 +132,7 @@ export interface TreeSitterClientOptions {
   initTimeout?: number // Timeout in milliseconds for worker initialization, defaults to 10000
 }
 
-export interface EditPoint {
+export interface TreeSitterPoint {
   row: number
   column: number
 }
@@ -142,9 +142,9 @@ export interface Utf8EditChange {
   startIndex: number
   oldEndIndex: number
   newEndIndex: number
-  startPosition: EditPoint
-  oldEndPosition: EditPoint
-  newEndPosition: EditPoint
+  startPosition: TreeSitterPoint
+  oldEndPosition: TreeSitterPoint
+  newEndPosition: TreeSitterPoint
   readonly coordinateSpace?: never
 }
 
@@ -153,9 +153,9 @@ export interface TreeSitterEdit {
   startIndex: number
   oldEndIndex: number
   newEndIndex: number
-  startPosition: EditPoint
-  oldEndPosition: EditPoint
-  newEndPosition: EditPoint
+  startPosition: TreeSitterPoint
+  oldEndPosition: TreeSitterPoint
+  newEndPosition: TreeSitterPoint
   readonly coordinateSpace: "utf16"
 }
 

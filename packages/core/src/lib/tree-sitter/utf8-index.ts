@@ -1,4 +1,4 @@
-import type { EditPoint, TreeSitterEdit, Utf8EditChange } from "./types.js"
+import type { TreeSitterEdit, TreeSitterPoint, Utf8EditChange } from "./types.js"
 
 const encoder = new TextEncoder()
 
@@ -21,7 +21,7 @@ export class Utf8ContentIndex {
     return this.totalByteLength
   }
 
-  utf16IndexAtPoint(point: EditPoint): number {
+  utf16IndexAtPoint(point: TreeSitterPoint): number {
     const lineStart = this.utf16LineStarts[point.row]
     const byteLineStart = this.utf8LineStarts[point.row]
     if (lineStart === undefined || byteLineStart === undefined || point.column < 0) {
@@ -42,7 +42,7 @@ export class Utf8ContentIndex {
     return utf16Index
   }
 
-  byteIndexAtPoint(point: EditPoint): number {
+  byteIndexAtPoint(point: TreeSitterPoint): number {
     const lineStart = this.utf8LineStarts[point.row]
     if (lineStart === undefined || point.column < 0) {
       throw new RangeError(`Invalid UTF-8 point ${point.row}:${point.column}`)
