@@ -2237,7 +2237,12 @@ pub const UnifiedTextBuffer = struct {
                 .line_start = line_start,
                 .line_end = line_end,
             };
-            self.annotations.visitOverlapping(line_start, line_end, &context, Context.visit) catch return TextBufferError.OutOfMemory;
+            self.annotations.visitUnordered(.overlapping, line_start, line_end, &context, Context.visit) catch return TextBufferError.OutOfMemory;
+            std.mem.sort(ProjectedAnnotation, projected_annotations.items, {}, struct {
+                fn lessThan(_: void, a: ProjectedAnnotation, b: ProjectedAnnotation) bool {
+                    return TextAnnotations.hasHigherPrecedence(a.annotation, b.annotation);
+                }
+            }.lessThan);
             std.mem.sort(utf8.DisplayBoundary, boundaries.items, {}, projectionBoundaryLessThan);
             var boundary_count: usize = 0;
             for (boundaries.items) |boundary| {

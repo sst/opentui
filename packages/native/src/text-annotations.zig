@@ -687,6 +687,12 @@ pub const TextAnnotations = struct {
         return finder.best;
     }
 
+    pub fn hasHigherPrecedence(a: Annotation, b: Annotation) bool {
+        if (a.payload.priority != b.payload.priority) return a.payload.priority > b.payload.priority;
+        if (a.payload.sequence != b.payload.sequence) return a.payload.sequence > b.payload.sequence;
+        return a.id() > b.id();
+    }
+
     /// Iterates by derived lower position then stable ID. Any annotation mutation
     /// invalidates the iterator, including a payload-only change or namespace clear.
     pub fn iterator(self: *Self) Iterator {
@@ -806,9 +812,7 @@ pub const TextAnnotations = struct {
     fn sortByPrecedence(annotations: []Annotation) void {
         std.mem.sort(Annotation, annotations, {}, struct {
             fn lessThan(_: void, a: Annotation, b: Annotation) bool {
-                if (a.payload.priority != b.payload.priority) return a.payload.priority > b.payload.priority;
-                if (a.payload.sequence != b.payload.sequence) return a.payload.sequence > b.payload.sequence;
-                return a.id() > b.id();
+                return hasHigherPrecedence(a, b);
             }
         }.lessThan);
     }

@@ -5,6 +5,7 @@ const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const ss = @import("../syntax-style.zig");
 const bench_utils = @import("../bench-utils.zig");
+const TextAnnotations = @import("../text-annotations.zig").TextAnnotations;
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const RGBA = text_buffer.RGBA;
@@ -55,6 +56,44 @@ fn referenceSpans(allocator: std.mem.Allocator, highlights: []const Highlight, l
         }
     }
     return output;
+}
+
+const ReferenceAnnotation = struct {
+    annotation: TextAnnotations.Annotation,
+    start: u32,
+    end: u32,
+};
+
+fn collectReferenceAnnotations(
+    allocator: std.mem.Allocator,
+    tb: *TextBuffer,
+    line_start: u32,
+    line_end: u32,
+    output: *std.ArrayList(ReferenceAnnotation),
+) !void {
+    const Context = struct {
+        allocator: std.mem.Allocator,
+        output: *std.ArrayList(ReferenceAnnotation),
+        line_start: u32,
+        line_end: u32,
+
+        fn visit(ctx: *@This(), annotation: TextAnnotations.Annotation) !void {
+            if (annotation.payload.kind_flags & text_buffer.annotation_kind_style == 0 or annotation.mark != .range) return;
+            const range = annotation.mark.range;
+            const start = @max(range.start_byte, ctx.line_start);
+            const end = @min(range.end_byte, ctx.line_end);
+            if (start >= end) return;
+            try ctx.output.append(ctx.allocator, .{ .annotation = annotation, .start = start, .end = end });
+        }
+    };
+    var context: Context = .{ .allocator = allocator, .output = output, .line_start = line_start, .line_end = line_end };
+    try tb.textAnnotations().visitOverlapping(line_start, line_end, &context, Context.visit);
+}
+
+fn resolvedReferenceStyle(tb: *TextBuffer, style_id: u32) u32 {
+    if (style_id & TextBuffer.internal_style_base == 0) return style_id;
+    const slot_index: usize = style_id & ~TextBuffer.internal_style_base;
+    return tb.internal_style_slots.items[slot_index].resolved_style_id;
 }
 
 test "TextBuffer coords - addHighlightByCoords" {
@@ -457,41 +496,192 @@ test "TextBuffer spans match reference for nested coextensive and crossed ranges
     }
 }
 
-test "TextBuffer dirty projection scales near n log n for flat range counts through 2000" {
+test "line projection matches ordered reference for randomized paint and positional ranges" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
-    const counts = [_]usize{ 100, 200, 400, 800, 1600, 2000 };
-    var elapsed: [counts.len]u64 = undefined;
-    const line = try std.testing.allocator.alloc(u8, 5000);
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const syntax = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    tb.setSyntaxStyle(syntax);
+
+    var text = [_]u8{'x'} ** 259;
+    text[64] = '\n';
+    text[129] = '\n';
+    text[194] = '\n';
+    try tb.setText(&text);
+    const text_len: u32 = @intCast(text.len);
+
+    var registered_styles: [6]u32 = undefined;
+    for (&registered_styles, 0..) |*style_id, index| {
+        var name_buffer: [16]u8 = undefined;
+        const name = try std.fmt.bufPrint(&name_buffer, "projection-{d}", .{index});
+        style_id.* = try syntax.registerStyle(name, null, null, @intCast(index + 1));
+    }
+    for (0..4) |line| {
+        try tb.addHighlight(line, 2, 20, registered_styles[line], 3, @intCast(100 + line));
+        try tb.addHighlight(line, 8, 24, registered_styles[line + 1], 3, @intCast(200 + line));
+    }
+
+    var random_state = std.Random.DefaultPrng.init(0x70726f6a65637469);
+    const random = random_state.random();
+    for (0..800) |index| {
+        const start = random.intRangeAtMost(u32, 0, text_len);
+        const end = if (index % 19 == 0) start else random.intRangeAtMost(u32, 0, text_len);
+        const paints = index % 5 == 0;
+        _ = try tb.textAnnotations().addRange(.{ .start_byte = start, .end_byte = end }, .{
+            .namespace = @intCast(index % 9),
+            .style_id = registered_styles[index % registered_styles.len],
+            .highlight_ref = if (index % 7 == 0) @intCast(1000 + index) else null,
+            .priority = @intCast(index % 8),
+            .internal = index % 3 == 0,
+            .kind_flags = if (paints) text_buffer.annotation_kind_style else 1 << 1,
+        });
+        if (index % 31 == 0) {
+            _ = try tb.textAnnotations().addPoint(.{ .byte = start }, .{ .namespace = 77, .kind_flags = text_buffer.annotation_kind_virtual });
+        }
+    }
+
+    const linked: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 4,
+        .link_ptr = "https://projection.test".ptr,
+        .link_len = "https://projection.test".len,
+    };
+    _ = try tb.createStyleValueRange(90, 20, 220, linked, 9);
+    _ = try tb.createStyleRange(91, 4, 30, registered_styles[0], 40);
+    _ = try tb.createStyleRange(91, 20, 50, registered_styles[1], 40);
+    _ = try tb.createStyleRange(91, 8, 24, registered_styles[2], 200);
+    _ = try tb.createStyleRange(91, 8, 24, registered_styles[3], 200);
+    _ = try tb.textAnnotations().addRange(.{ .start_byte = 30, .end_byte = 10 }, .{
+        .namespace = 91,
+        .style_id = registered_styles[4],
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+    _ = try tb.textAnnotations().addRange(.{ .start_byte = 12, .end_byte = 12 }, .{
+        .namespace = 91,
+        .style_id = registered_styles[5],
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+    _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = text_len }, .{
+        .namespace = 91,
+        .kind_flags = 1 << 1,
+    });
+    _ = try tb.createStyleRange(91, 195, 203, registered_styles[5], 250);
+    _ = try tb.createStyleRange(91, 203, 211, registered_styles[5], 250);
+
+    const line_starts = [_]u32{ 0, 65, 130, 195 };
+    for (line_starts, 0..) |line_start, line_index| {
+        const line_end = line_start + 64;
+        var ordered: std.ArrayList(ReferenceAnnotation) = .empty;
+        defer ordered.deinit(std.testing.allocator);
+        try collectReferenceAnnotations(std.testing.allocator, tb, line_start, line_end, &ordered);
+
+        const actual_highlights = tb.getLineHighlights(line_index);
+        var expected_highlights: std.ArrayList(Highlight) = .empty;
+        defer expected_highlights.deinit(std.testing.allocator);
+        try expected_highlights.appendSlice(std.testing.allocator, tb.external_line_highlights.items[line_index].items);
+        var annotation_index = ordered.items.len;
+        while (annotation_index != 0) {
+            annotation_index -= 1;
+            const value = ordered.items[annotation_index];
+            try expected_highlights.append(std.testing.allocator, .{
+                .col_start = value.start - line_start,
+                .col_end = value.end - line_start,
+                .style_id = resolvedReferenceStyle(tb, value.annotation.payload.style_id),
+                .priority = value.annotation.payload.priority,
+                .hl_ref = value.annotation.payload.highlight_ref orelse
+                    (std.math.cast(u16, value.annotation.id() & std.math.maxInt(u32)) orelse 0),
+                .internal = true,
+            });
+        }
+        try std.testing.expectEqualSlices(Highlight, expected_highlights.items, actual_highlights);
+        var expected_spans = try referenceSpans(std.testing.allocator, expected_highlights.items, 64);
+        defer expected_spans.deinit(std.testing.allocator);
+        try std.testing.expectEqualSlices(StyleSpan, expected_spans.items, tb.getLineSpans(line_index));
+    }
+
+    const last_spans = tb.getLineSpans(3);
+    try std.testing.expectEqualDeep(StyleSpan{ .col = 0, .next_col = 16, .style_id = registered_styles[5] }, last_spans[0]);
+}
+
+test "line projection filters exactly 4k positional ranges before precedence sorting" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const line = try std.testing.allocator.alloc(u8, 8192);
     defer std.testing.allocator.free(line);
     @memset(line, 'x');
+    try tb.setText(line);
+    const line_len: u32 = @intCast(line.len);
 
-    for (counts, 0..) |count, count_index| {
-        var samples: [3]u64 = undefined;
-        for (&samples) |*sample| {
-            const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-            defer tb.deinit();
-            try tb.setText(line);
-            for (0..count) |index| {
-                const start: u32 = @intCast(index * 2);
-                _ = try tb.createStyleRange(88, start, start + 1, @intCast(index + 1), @intCast(index % 13));
-            }
-            const timer = bench_utils.BenchTimer.start(std.testing.io);
-            try std.testing.expectEqual(count * 2, tb.getLineSpans(0).len);
-            sample.* = timer.read();
+    for (0..4000) |index| {
+        _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = line_len }, .{
+            .namespace = @intCast(index % 17),
+            .kind_flags = 1 << 1,
+        });
+    }
+    for (0..32) |index| {
+        _ = try tb.createStyleRange(100, @intCast(index * 2), @intCast(index * 2 + 1), @intCast(index + 1), @intCast(index % 4));
+    }
+
+    const Counts = struct {
+        total: usize = 0,
+        paint: usize = 0,
+        checksum: u64 = 0,
+
+        fn visit(ctx: *@This(), annotation: TextAnnotations.Annotation) !void {
+            ctx.total += 1;
+            ctx.paint += @intFromBool(annotation.payload.kind_flags & text_buffer.annotation_kind_style != 0);
+            ctx.checksum +%= annotation.id();
         }
-        std.mem.sort(u64, &samples, {}, std.sort.asc(u64));
-        elapsed[count_index] = samples[1];
-    }
+    };
+    var counts: Counts = .{};
+    try tb.textAnnotations().visitUnordered(.overlapping, 0, line_len, &counts, Counts.visit);
+    try std.testing.expectEqual(@as(usize, 4032), counts.total);
+    try std.testing.expectEqual(@as(usize, 4000), counts.total - counts.paint);
+    try std.testing.expectEqual(@as(usize, 32), counts.paint);
+    try std.testing.expectEqual(@as(usize, 32), tb.getLineHighlights(0).len);
+    try std.testing.expectEqual(@as(usize, 64), tb.getLineSpans(0).len);
 
-    // Doubling n log n remains comfortably below 3x. The additive allowance
-    // absorbs timer and allocator noise at the two smallest sizes.
-    for (elapsed[1..], elapsed[0 .. elapsed.len - 1]) |current, previous| {
-        try std.testing.expect(current <= previous * 3 + 2 * std.time.ns_per_ms);
+    var ordered_samples: [7]u64 = undefined;
+    var filtered_samples: [7]u64 = undefined;
+    for (0..ordered_samples.len) |sample_index| {
+        if (sample_index % 2 == 0) {
+            var ordered: Counts = .{};
+            var timer = bench_utils.BenchTimer.start(std.testing.io);
+            try tb.textAnnotations().visitOverlapping(0, line_len, &ordered, Counts.visit);
+            ordered_samples[sample_index] = timer.read();
+            std.mem.doNotOptimizeAway(ordered.checksum);
+
+            tb.projection_epoch +%= 1;
+            timer = bench_utils.BenchTimer.start(std.testing.io);
+            std.mem.doNotOptimizeAway(tb.getLineSpans(0));
+            filtered_samples[sample_index] = timer.read();
+        } else {
+            tb.projection_epoch +%= 1;
+            var timer = bench_utils.BenchTimer.start(std.testing.io);
+            std.mem.doNotOptimizeAway(tb.getLineSpans(0));
+            filtered_samples[sample_index] = timer.read();
+
+            var ordered: Counts = .{};
+            timer = bench_utils.BenchTimer.start(std.testing.io);
+            try tb.textAnnotations().visitOverlapping(0, line_len, &ordered, Counts.visit);
+            ordered_samples[sample_index] = timer.read();
+            std.mem.doNotOptimizeAway(ordered.checksum);
+        }
     }
-    try std.testing.expect(elapsed[elapsed.len - 1] <= 100 * std.time.ns_per_ms);
+    std.mem.sort(u64, &ordered_samples, {}, std.sort.asc(u64));
+    std.mem.sort(u64, &filtered_samples, {}, std.sort.asc(u64));
+    try std.testing.expect(filtered_samples[filtered_samples.len / 2] * 2 < ordered_samples[ordered_samples.len / 2]);
 }
 
 // ===== Character Range Highlight Tests =====
