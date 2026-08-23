@@ -2102,6 +2102,12 @@ fn destroyTextBufferViewChildren(owner: NativeHandle) void {
     }
 }
 
+fn borrowedEditBufferOwner(tb_handle: NativeHandle, text_buffer_ptr: *text_buffer.UnifiedTextBuffer) ?*edit_buffer_mod.EditBuffer {
+    const owner_handle = handles.ownerHandle(tb_handle, .text_buffer) orelse return null;
+    const owner = acquireEditBuffer(owner_handle) orelse return null;
+    return if (owner.getTextBuffer() == text_buffer_ptr) owner else null;
+}
+
 export fn createTextBuffer(widthMethod: u8) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
@@ -2135,11 +2141,13 @@ export fn textBufferGetByteSize(tb_handle: NativeHandle) u32 {
 
 export fn textBufferReset(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     object_ptr.reset();
 }
 
 export fn textBufferClear(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     object_ptr.clear();
 }
 
@@ -2195,22 +2203,26 @@ export fn textBufferClearMemRegistry(tb_handle: NativeHandle) void {
 
 export fn textBufferSetTextFromMem(tb_handle: NativeHandle, id: u8) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     object_ptr.setTextFromMemId(id) catch {};
 }
 
 export fn textBufferAppend(tb_handle: NativeHandle, dataPtr: ?[*]const u8, dataLen: u32) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     const data = sliceFromPtrLen(dataPtr, dataLen);
     object_ptr.append(data) catch {};
 }
 
 export fn textBufferAppendFromMemId(tb_handle: NativeHandle, id: u8) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     object_ptr.appendFromMemId(id) catch {};
 }
 
 export fn textBufferLoadFile(tb_handle: NativeHandle, pathPtr: ?[*]const u8, pathLen: u32) bool {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return false;
     const path = sliceFromPtrLen(pathPtr, pathLen);
     object_ptr.loadFile(path) catch return false;
     return true;
@@ -2222,6 +2234,7 @@ export fn textBufferSetStyledText(
     chunkCount: u32,
 ) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     if (chunkCount != 0 and chunksPtr == null) return;
     const external_chunks = if (chunkCount == 0) &[_]ExternalStyledChunk32{} else chunksPtr.?[0..@as(usize, chunkCount)];
     const chunks = globalAllocator.alloc(text_buffer.StyledChunk, external_chunks.len) catch return;
@@ -3788,6 +3801,7 @@ export fn textBufferReplaceStyledRangeBytes(
     out_result: ?*ExternalTextSpliceResult,
 ) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return @intFromEnum(TextDocumentStatus.invalid_argument);
     const output = out_result orelse return @intFromEnum(TextDocumentStatus.invalid_argument);
     if (chunk_count != 0 and chunks_ptr == null) return @intFromEnum(TextDocumentStatus.invalid_argument);
     const external_chunks = if (chunk_count == 0) &[_]ExternalStyledChunk32{} else chunks_ptr.?[0..chunk_count];
@@ -3976,6 +3990,7 @@ export fn textBufferApplyDocumentOperations(
     out_id_count: u32,
 ) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return @intFromEnum(TextDocumentStatus.invalid_argument);
     if ((operation_count != 0 and operations_ptr == null) or
         (chunk_count != 0 and chunks_ptr == null) or
         (range_count != 0 and ranges_ptr == null) or
@@ -4014,6 +4029,9 @@ export fn textBufferApplyTwoDocumentOperations(
 ) u32 {
     const first = acquireTextBuffer(first_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
     const second = acquireTextBuffer(second_handle) orelse return @intFromEnum(TextDocumentStatus.invalid_handle);
+    if (borrowedEditBufferOwner(first_handle, first) != null or borrowedEditBufferOwner(second_handle, second) != null) {
+        return @intFromEnum(TextDocumentStatus.invalid_argument);
+    }
     if (first_handle == second_handle or first == second) return @intFromEnum(TextDocumentStatus.invalid_argument);
     if ((first_operation_count != 0 and first_operations_ptr == null) or
         (first_chunk_count != 0 and first_chunks_ptr == null) or
@@ -4590,6 +4608,44 @@ test "document operation FFI validates complete descriptors before outputs" {
         0,
         &.{base},
         1,
+        null,
+        0,
+        null,
+        0,
+        null,
+        0,
+        null,
+        0,
+    ));
+}
+
+test "borrowed EditBuffer text handles reject unjournaled mutations" {
+    const edit_handle = createEditBuffer(1, INVALID_HANDLE);
+    try std.testing.expect(edit_handle != INVALID_HANDLE);
+    defer destroyEditBuffer(edit_handle);
+    editBufferSetText(edit_handle, "abc".ptr, 3);
+    const tb_handle = editBufferGetTextBuffer(edit_handle);
+    try std.testing.expect(tb_handle != INVALID_HANDLE);
+
+    textBufferClear(tb_handle);
+    textBufferReset(tb_handle);
+    textBufferAppend(tb_handle, "x".ptr, 1);
+    const owner = acquireEditBuffer(edit_handle).?;
+    var output: [3]u8 = undefined;
+    try std.testing.expectEqualStrings("abc", output[0..owner.getText(&output)]);
+
+    var splice: ExternalTextSpliceResult = undefined;
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
+        tb_handle,
+        0,
+        0,
+        null,
+        0,
+        1,
+        &splice,
+    ));
+    try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferApplyDocumentOperations(
+        tb_handle,
         null,
         0,
         null,
