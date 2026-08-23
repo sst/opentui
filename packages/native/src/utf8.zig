@@ -2,10 +2,11 @@ const std = @import("std");
 const uucode = @import("uucode");
 
 /// The method to use when calculating the width of a grapheme
-pub const WidthMethod = enum {
-    wcwidth,
-    unicode,
-    no_zwj,
+pub const WidthMethod = enum(u8) {
+    wcwidth = 0,
+    unicode = 1,
+    no_zwj = 2,
+    unicode_wide = 3,
 };
 
 /// Check if a byte slice contains only printable ASCII (32..126)
@@ -847,7 +848,7 @@ const GraphemeWidthState = struct {
             return;
         }
 
-        // unicode and no_zwj modes: use grapheme-aware width
+        // Grapheme-aware width modes.
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
@@ -878,6 +879,8 @@ const GraphemeWidthState = struct {
         } else if (!self.has_width and cp_width > 0) {
             self.width = cp_width;
             self.has_width = true;
+        } else if (self.width_method == .unicode_wide and self.has_width and !uucode.get(.wcwidth_zero_in_grapheme, cp)) {
+            self.width = @max(self.width, 2);
         } else if (self.has_width and is_spacing_mark and cp_width > 0) {
             self.width = @max(self.width, 2);
         } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
@@ -990,7 +993,7 @@ pub fn findWrapPosByWidth(
     width_method: WidthMethod,
 ) WrapByWidthResult {
     switch (width_method) {
-        .unicode, .no_zwj => return findWrapPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, width_method),
+        .unicode, .unicode_wide, .no_zwj => return findWrapPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, width_method),
         .wcwidth => return findWrapPosByWidthWCWidth(text, max_columns, tab_width, isASCIIOnly),
     }
 }
@@ -1190,7 +1193,7 @@ pub fn findPosByWidth(
     width_method: WidthMethod,
 ) PosByWidthResult {
     switch (width_method) {
-        .unicode, .no_zwj => return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method),
+        .unicode, .unicode_wide, .no_zwj => return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method),
         .wcwidth => return findPosByWidthWCWidth(text, max_columns, tab_width, isASCIIOnly, include_start_before),
     }
 }
@@ -1404,7 +1407,7 @@ fn findPosByWidthWCWidth(
 /// Get width at byte offset - proxy function that dispatches based on width_method
 pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
     switch (width_method) {
-        .unicode, .no_zwj => return getWidthAtUnicode(text, byte_offset, tab_width, width_method),
+        .unicode, .unicode_wide, .no_zwj => return getWidthAtUnicode(text, byte_offset, tab_width, width_method),
         .wcwidth => return getWidthAtWCWidth(text, byte_offset, tab_width),
     }
 }
@@ -1479,7 +1482,7 @@ pub const PrevGraphemeResult = struct {
 /// Get previous grapheme start - proxy function that dispatches based on width_method
 pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) ?PrevGraphemeResult {
     switch (width_method) {
-        .unicode, .no_zwj => return getPrevGraphemeStartUnicode(text, byte_offset, tab_width, width_method),
+        .unicode, .unicode_wide, .no_zwj => return getPrevGraphemeStartUnicode(text, byte_offset, tab_width, width_method),
         .wcwidth => return getPrevGraphemeStartWCWidth(text, byte_offset, tab_width),
     }
 }
@@ -1569,7 +1572,7 @@ fn getPrevGraphemeStartUnicode(text: []const u8, byte_offset: usize, tab_width: 
 /// Calculate the display width of text - proxy function that dispatches based on width_method
 pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
     switch (width_method) {
-        .unicode, .no_zwj => return calculateTextWidthUnicode(text, tab_width, isASCIIOnly, width_method),
+        .unicode, .unicode_wide, .no_zwj => return calculateTextWidthUnicode(text, tab_width, isASCIIOnly, width_method),
         .wcwidth => return calculateTextWidthWCWidth(text, tab_width, isASCIIOnly),
     }
 }
@@ -1694,7 +1697,7 @@ pub fn findGraphemeInfo(
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
     switch (width_method) {
-        .unicode, .no_zwj => try findGraphemeInfoUnicode(allocator, text, tab_width, isASCIIOnly, width_method, result),
+        .unicode, .unicode_wide, .no_zwj => try findGraphemeInfoUnicode(allocator, text, tab_width, isASCIIOnly, width_method, result),
         .wcwidth => try findGraphemeInfoWCWidth(allocator, text, tab_width, isASCIIOnly, result),
     }
 }

@@ -1334,6 +1334,42 @@ test("custom stdout defaults to remote env behavior", async () => {
   }
 })
 
+test("Ghostty width profile reaches renderer-owned buffers", async () => {
+  const previousTermProgram = process.env.TERM_PROGRAM
+  const previousTermProgramVersion = process.env.TERM_PROGRAM_VERSION
+  process.env.TERM_PROGRAM = "ghostty"
+  process.env.TERM_PROGRAM_VERSION = "1.3.1"
+
+  try {
+    const renderer = new CliRenderer(createTestStdin(), createCollectingStdout(80, 24), 80, 24, {
+      remote: false,
+      forwardEnvKeys: ["TERM_PROGRAM", "TERM_PROGRAM_VERSION"],
+    })
+    destroyFns.push(() => renderer.destroy())
+
+    expect(renderer.widthMethod).toBe("unicode-wide")
+    await renderer.setupTerminal()
+    expect(renderer.currentRenderBuffer.widthMethod).toBe("unicode-wide")
+    expect(renderer.nextRenderBuffer.widthMethod).toBe("unicode-wide")
+    const encoded = renderer.nextRenderBuffer.encodeUnicode("OpenCode search configuration പരിശോധിക്കൽ")
+    expect(encoded).not.toBeNull()
+    try {
+      expect(encoded!.data.reduce((width, cell) => width + cell.width, 0)).toBe(40)
+    } finally {
+      if (encoded) renderer.nextRenderBuffer.freeUnicode(encoded)
+    }
+
+    renderer.resize(81, 24)
+    expect(renderer.currentRenderBuffer.widthMethod).toBe("unicode-wide")
+    expect(renderer.nextRenderBuffer.widthMethod).toBe("unicode-wide")
+  } finally {
+    if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM
+    else process.env.TERM_PROGRAM = previousTermProgram
+    if (previousTermProgramVersion === undefined) delete process.env.TERM_PROGRAM_VERSION
+    else process.env.TERM_PROGRAM_VERSION = previousTermProgramVersion
+  }
+})
+
 // ---- Shutdown bytes reach the remote Writable (F1 regression test) ----
 
 test("destroy emits shutdown ANSI sequence through the custom Writable", async () => {

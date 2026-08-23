@@ -166,6 +166,7 @@ capability_queries_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
 explicit_width_probe_reports_pending: u8 = 0,
+unicode_wide_locked: ?bool = null,
 
 state: struct {
     alt_screen: bool = false,
@@ -295,6 +296,7 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
+    self.unicode_wide_locked = self.caps.unicode == .unicode_wide;
     self.graphics_query_pending = !self.skip_graphics_query;
     self.sixel_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
@@ -416,7 +418,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
     }
 
-    if (self.caps.unicode == .unicode and !self.caps.explicit_width) {
+    if ((self.caps.unicode == .unicode or self.caps.unicode == .unicode_wide) and !self.caps.explicit_width) {
         try tty.writeAll(ansi.ANSI.unicodeSet);
     }
 
@@ -692,6 +694,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 
     const env_is_forwarded = if (self.host_env_map) |*host_env_map| env_map == host_env_map else false;
+    self.applyKnownUnicodeWidthIdentity();
     if (self.opts.remote_mode == .auto and self.remote and env_is_forwarded) {
         return;
     }
@@ -853,6 +856,8 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.kitty_graphics = false;
         }
     }
+
+    self.applyKnownUnicodeWidthIdentity();
 
     if (env_map.get("OPENTUI_FORCE_WCWIDTH")) |_| {
         self.caps.unicode = .wcwidth;
@@ -1156,6 +1161,16 @@ fn semanticVersionAtLeast(version: []const u8, required_major: u32, required_min
     return true;
 }
 
+fn ghosttyWideGraphemeWidths(version: []const u8) bool {
+    if (semanticVersionAtLeast(version, 1, 3)) return true;
+    const prefix = "0.0.0-";
+    if (!std.mem.startsWith(u8, version, prefix) or version.len <= prefix.len + 8 or version[prefix.len + 8] != '.') return false;
+    const date_text = version[prefix.len .. prefix.len + 8];
+    for (date_text) |char| if (!std.ascii.isDigit(char)) return false;
+    const date = std.fmt.parseInt(u32, date_text, 10) catch return false;
+    return date >= 20260224;
+}
+
 fn wezTermBuildAtLeast(version: []const u8, required_date: u32) bool {
     var parts = std.mem.splitAny(u8, version, "-._");
     const date_text = parts.next() orelse return false;
@@ -1201,6 +1216,27 @@ fn applyKnownGraphicsIdentity(self: *Terminal) void {
     if (std.ascii.eqlIgnoreCase(name, "wezterm") and wezTermBuildAtLeast(version, 20200620)) {
         self.caps.sixel = true;
     }
+}
+
+fn applyKnownUnicodeWidthIdentity(self: *Terminal) void {
+    if (self.unicode_wide_locked) |enabled| {
+        if (enabled) {
+            self.caps.unicode = .unicode_wide;
+        }
+        return;
+    }
+
+    if (self.caps.unicode == .unicode_wide) {
+        self.caps.unicode = .unicode;
+    }
+    if (self.remote or self.multiplexer != .none) return;
+    const env_map = self.opts.env_map orelse return;
+    const term_program = env_map.get("TERM_PROGRAM") orelse return;
+    if (!std.ascii.eqlIgnoreCase(term_program, "ghostty")) return;
+    const version = env_map.get("TERM_PROGRAM_VERSION") orelse return;
+    if (!ghosttyWideGraphemeWidths(version)) return;
+    if (self.term_info.from_xtversion and !std.ascii.eqlIgnoreCase(self.getTerminalName(), "ghostty")) return;
+    self.caps.unicode = .unicode_wide;
 }
 
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
