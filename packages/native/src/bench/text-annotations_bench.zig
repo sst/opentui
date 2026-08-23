@@ -136,6 +136,77 @@ pub fn run(
         }
     }
 
+    const delete_scaling_cases = [_]struct { name: []const u8, count: usize }{
+        .{ .name = "history local delete: 0 distant annotations", .count = 0 },
+        .{ .name = "history local delete: 1k distant annotations", .count = 1_000 },
+        .{ .name = "history local delete: 10k distant annotations", .count = 10_000 },
+        .{ .name = "history local delete: 100k distant annotations", .count = 100_000 },
+    };
+    for (delete_scaling_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                const text = try allocator.alloc(u8, 202_000);
+                defer allocator.free(text);
+                @memset(text, 'a');
+                try eb.setText(text);
+                for (0..case.count) |index| {
+                    const start: u32 = @intCast(1_000 + index * 2);
+                    _ = try eb.addAnnotationRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
+                        .namespace = 1,
+                        .splice_policy = .delete_when_covered,
+                    });
+                }
+                const timer = bench_utils.BenchTimer.start(io);
+                try eb.deleteRange(.{ .row = 0, .col = 0 }, .{ .row = 0, .col = 1 });
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, case.name, stats);
+        }
+    }
+
+    {
+        const name = "history delete: 50k affected annotations";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                try eb.setText("ab");
+                for (0..50_000) |_| {
+                    _ = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 1 }, .{
+                        .namespace = 1,
+                        .splice_policy = .invalidate,
+                    });
+                }
+                const timer = bench_utils.BenchTimer.start(io);
+                try eb.deleteRange(.{ .row = 0, .col = 0 }, .{ .row = 0, .col = 1 });
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
+
+    {
+        const name = "history traversal: 100 edits undo redo";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                try eb.setText("history");
+                const timer = bench_utils.BenchTimer.start(io);
+                for (0..100) |_| try eb.insertText("x");
+                for (0..100) |_| _ = try eb.undo();
+                for (0..100) |_| _ = try eb.redo();
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, name, stats);
+        }
+    }
+
     {
         const name = "10k edit annotations: 10k local queries";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
