@@ -104,6 +104,35 @@ pub fn run(
         }
     }
 
+    const scaling_cases = [_]struct { name: []const u8, count: usize }{
+        .{ .name = "history local insert: 0 distant annotations", .count = 0 },
+        .{ .name = "history local insert: 100 distant annotations", .count = 100 },
+        .{ .name = "history local insert: 1k distant annotations", .count = 1_000 },
+        .{ .name = "history local insert: 10k distant annotations", .count = 10_000 },
+        .{ .name = "history local insert: 100k distant annotations", .count = 100_000 },
+    };
+    for (scaling_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const eb = try EditBuffer.init(allocator, pool, link_pool, .wcwidth, null);
+                defer eb.deinit();
+                try eb.setText("local edit");
+                for (0..case.count) |index| {
+                    const start: u32 = @intCast(1_000 + index * 2);
+                    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
+                        .namespace = 1,
+                        .splice_policy = .delete_when_covered,
+                    });
+                }
+                const timer = bench_utils.BenchTimer.start(io);
+                try eb.insertText("X");
+                stats.record(timer.read());
+            }
+            try addResult(&results, allocator, case.name, stats);
+        }
+    }
+
     {
         const name = "10k edit annotations: 10k local queries";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {

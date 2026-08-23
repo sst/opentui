@@ -1513,14 +1513,59 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn undo(self: *Self, meta: []const u8) ![]const u8 {
-            const r = self.curr_history orelse try self.create_undo_node(self.root, meta);
+            var prepared = try self.prepareUndo(meta);
+            defer prepared.deinit();
+            return self.commitUndo(&prepared);
+        }
+
+        pub const PreparedUndoMove = struct {
+            owner: *Self,
+            current: *UndoNode,
+            previous: *UndoNode,
+            current_owned: bool,
+            expected_undo: ?*UndoNode,
+            expected_redo: ?*UndoNode,
+            expected_current: ?*UndoNode,
+            committed: bool = false,
+
+            pub fn deinit(self: *PreparedUndoMove) void {
+                if (!self.committed and self.current_owned) {
+                    self.owner.allocator.free(@constCast(self.current.meta));
+                    self.owner.allocator.destroy(self.current);
+                }
+                self.* = undefined;
+            }
+        };
+
+        pub fn prepareUndo(self: *Self, meta: []const u8) !PreparedUndoMove {
             const h = self.undo_history orelse return error.Stop;
+            const current_owned = self.curr_history == null;
+            const current = self.curr_history orelse try self.create_undo_node(self.root, meta);
+            return .{
+                .owner = self,
+                .current = current,
+                .previous = h,
+                .current_owned = current_owned,
+                .expected_undo = self.undo_history,
+                .expected_redo = self.redo_history,
+                .expected_current = self.curr_history,
+            };
+        }
+
+        pub fn commitUndo(self: *Self, prepared: *PreparedUndoMove) []const u8 {
+            std.debug.assert(prepared.owner == self and !prepared.committed);
+            std.debug.assert(self.undo_history == prepared.expected_undo);
+            std.debug.assert(self.redo_history == prepared.expected_redo);
+            std.debug.assert(self.curr_history == prepared.expected_current);
+            const r = prepared.current;
+            const h = prepared.previous;
             self.undo_history = h.next;
             self.curr_history = h;
             self.root = h.root;
             self.version += 1;
             self.push_redo(r);
             if (self.undo_depth > 0) self.undo_depth -= 1;
+            prepared.committed = true;
             return h.meta;
         }
 

@@ -477,7 +477,7 @@ test "TextAnnotations absent and sparse namespace clears allocate only for match
     try owner.validateIntegrity();
 }
 
-test "TextAnnotations destructive clear and splice release scratch high-water storage" {
+test "TextAnnotations destructive clear releases scratch high-water storage" {
     var owner = testAnnotations();
     defer owner.deinit();
 
@@ -497,8 +497,37 @@ test "TextAnnotations destructive clear and splice release scratch high-water st
     }
     try owner.splice(10, 10, 0);
     try std.testing.expectEqual(@as(usize, 0), owner.affected_scratch.capacity);
-    try std.testing.expectEqual(@as(usize, 0), owner.covered_scratch.capacity);
     try owner.validateIntegrity();
+}
+
+test "TextAnnotations policy reports and history deltas allocate only affected marks" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    _ = try owner.addRange(.{ .start_byte = 10, .end_byte = 20 }, .{
+        .namespace = 1,
+        .splice_policy = .invalidate,
+    });
+    for (0..10_000) |index| {
+        const start: u32 = @intCast(1_000 + index * 3);
+        _ = try owner.addRange(.{ .start_byte = start, .end_byte = start + 1 }, .{
+            .namespace = 2,
+            .splice_policy = .delete_when_covered,
+        });
+    }
+
+    var insertion = try owner.prepareSpliceForHistory(5, 0, 1);
+    defer insertion.deinit();
+    try std.testing.expectEqual(@as(usize, 0), insertion.affected_storage.len);
+    try std.testing.expectEqual(@as(usize, 0), insertion.covered_storage.len);
+    try std.testing.expectEqual(@as(usize, 0), insertion.delete_ids.len);
+    try std.testing.expectEqual(@as(usize, 0), insertion.history_delta.?.changes.items.len);
+
+    var deletion = try owner.prepareSpliceForHistory(10, 10, 0);
+    defer deletion.deinit();
+    try std.testing.expectEqual(@as(usize, 1), deletion.affected_storage.len);
+    try std.testing.expectEqual(@as(usize, 1), deletion.covered_storage.len);
+    try std.testing.expectEqual(@as(usize, 1), deletion.delete_ids.len);
+    try std.testing.expectEqual(@as(usize, 1), deletion.history_delta.?.changes.items.len);
 }
 
 test "TextAnnotations position overflow preserves both structures" {

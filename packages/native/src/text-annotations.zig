@@ -54,6 +54,49 @@ pub const TextAnnotations = struct {
         }
     };
 
+    pub const DeltaSide = enum { before, after };
+
+    pub const AnnotationEditDelta = struct {
+        allocator: Allocator,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        changes: std.ArrayListUnmanaged(Change) = .empty,
+
+        pub const Change = struct {
+            before: ?Annotation,
+            after: ?Annotation,
+
+            pub fn id(self: Change) u64 {
+                return if (self.before) |value| value.id() else self.after.?.id();
+            }
+        };
+
+        pub fn deinit(self: *AnnotationEditDelta) void {
+            self.changes.deinit(self.allocator);
+            self.* = undefined;
+        }
+
+        pub fn findChange(self: *AnnotationEditDelta, id: u64) ?*Change {
+            for (self.changes.items) |*change| if (change.id() == id) return change;
+            return null;
+        }
+
+        pub fn ensureJournalCapacity(self: *AnnotationEditDelta, additional: usize) !void {
+            try self.changes.ensureUnusedCapacity(self.allocator, additional);
+        }
+
+        pub fn purge(self: *AnnotationEditDelta, ids: []const u64) void {
+            var write: usize = 0;
+            for (self.changes.items) |change| {
+                if (std.mem.indexOfScalar(u64, ids, change.id()) != null) continue;
+                self.changes.items[write] = change;
+                write += 1;
+            }
+            self.changes.shrinkRetainingCapacity(write);
+        }
+    };
+
     pub const IntegrityError = MarkTree.IntegrityError || error{
         MissingMark,
         CountMismatch,
@@ -67,15 +110,43 @@ pub const TextAnnotations = struct {
         tree_splice: MarkTree.PreparedSplice,
         affected_storage: []u64,
         covered_storage: []u64,
-        delete_storage: []u64,
         delete_ids: []u64,
+        history_delta: ?AnnotationEditDelta = null,
         source_generation: u64,
         committed: bool = false,
 
         pub fn deinit(self: *PreparedSplice) void {
             if (self.affected_storage.len != 0) self.owner.allocator.free(self.affected_storage);
             if (self.covered_storage.len != 0) self.owner.allocator.free(self.covered_storage);
-            if (self.delete_storage.len != 0) self.owner.allocator.free(self.delete_storage);
+            if (self.delete_ids.len != 0) self.owner.allocator.free(self.delete_ids);
+            if (self.history_delta) |*delta| delta.deinit();
+            self.* = undefined;
+        }
+
+        pub fn takeHistoryDelta(self: *PreparedSplice) AnnotationEditDelta {
+            const delta = self.history_delta.?;
+            self.history_delta = null;
+            return delta;
+        }
+    };
+
+    pub const PreparedDeltaApply = struct {
+        owner: *Self,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        targets: []Annotation,
+        target_marks: []Mark,
+        remove_ids: []u64,
+        tree_restore: MarkTree.PreparedHistoryRestore,
+        source_generation: u64,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedDeltaApply) void {
+            self.tree_restore.deinit();
+            self.owner.allocator.free(self.targets);
+            self.owner.allocator.free(self.target_marks);
+            self.owner.allocator.free(self.remove_ids);
             self.* = undefined;
         }
     };
@@ -105,7 +176,6 @@ pub const TextAnnotations = struct {
     // Report storage is retained across ordinary edits. After deletions, a
     // buffer above both 256 IDs and four times the remaining count is released.
     affected_scratch: std.ArrayList(u64) = .empty,
-    covered_scratch: std.ArrayList(u64) = .empty,
     non_retaining_policy_count: usize = 0,
     next_sequence: u64 = 1,
     generation: u64 = 0,
@@ -156,7 +226,6 @@ pub const TextAnnotations = struct {
         try self.tree.tryDeinit();
         self.payloads.deinit();
         self.affected_scratch.deinit(self.allocator);
-        self.covered_scratch.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -466,8 +535,16 @@ pub const TextAnnotations = struct {
     }
 
     pub fn prepareSplice(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
+        return self.prepareSpliceInternal(start_byte, old_len, new_len, false);
+    }
+
+    pub fn prepareSpliceForHistory(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !PreparedSplice {
+        return self.prepareSpliceInternal(start_byte, old_len, new_len, true);
+    }
+
+    fn prepareSpliceInternal(self: *Self, start_byte: u32, old_len: u32, new_len: u32, capture_history: bool) !PreparedSplice {
         try self.checkCanMutate(0);
-        if (self.non_retaining_policy_count == 0) {
+        if (self.non_retaining_policy_count == 0 and !capture_history) {
             const tree_splice = try self.tree.prepareSplice(start_byte, old_len, new_len);
             return .{
                 .owner = self,
@@ -477,18 +554,15 @@ pub const TextAnnotations = struct {
                 .tree_splice = tree_splice,
                 .affected_storage = &.{},
                 .covered_storage = &.{},
-                .delete_storage = &.{},
                 .delete_ids = &.{},
                 .source_generation = self.generation,
             };
         }
-        const scratch_len = if (old_len == 0) 0 else self.count();
-        const affected = try self.allocator.alloc(u64, scratch_len);
+        const counts = try self.tree.spliceReportCounts(start_byte, old_len, new_len);
+        const affected = try self.allocator.alloc(u64, counts.affected);
         errdefer self.allocator.free(affected);
-        const covered = try self.allocator.alloc(u64, scratch_len);
+        const covered = try self.allocator.alloc(u64, counts.covered);
         errdefer self.allocator.free(covered);
-        const delete_ids = try self.allocator.alloc(u64, scratch_len);
-        errdefer self.allocator.free(delete_ids);
 
         const generation_budget = if (old_len == 0 and new_len == 0)
             0
@@ -510,9 +584,36 @@ pub const TextAnnotations = struct {
             const payload = self.payloads.get(id).?;
             const should_delete = payload.splice_policy == .invalidate or
                 (payload.splice_policy == .delete_when_covered and is_covered);
+            delete_count += @intFromBool(should_delete);
+        }
+        const delete_ids = try self.allocator.alloc(u64, delete_count);
+        errdefer self.allocator.free(delete_ids);
+        var history_delta: ?AnnotationEditDelta = null;
+        errdefer if (history_delta) |*delta| delta.deinit();
+        if (capture_history) {
+            history_delta = .{ .allocator = self.allocator, .start_byte = start_byte, .old_len = old_len, .new_len = new_len };
+            try history_delta.?.changes.ensureTotalCapacity(self.allocator, tree_splice.affected_ids.len);
+        }
+        covered_index = 0;
+        var delete_index: usize = 0;
+        for (tree_splice.affected_ids) |id| {
+            while (covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] < id) covered_index += 1;
+            const is_covered = covered_index < tree_splice.covered_range_ids.len and tree_splice.covered_range_ids[covered_index] == id;
+            if (is_covered) covered_index += 1;
+            const before = self.get(id).?;
+            const should_delete = before.payload.splice_policy == .invalidate or
+                (before.payload.splice_policy == .delete_when_covered and is_covered);
             if (should_delete) {
-                delete_ids[delete_count] = id;
-                delete_count += 1;
+                delete_ids[delete_index] = id;
+                delete_index += 1;
+            }
+            if (history_delta) |*delta| {
+                var after: ?Annotation = null;
+                if (!should_delete) {
+                    after = before;
+                    after.?.mark = try MarkTree.splicedMark(before.mark, start_byte, old_len, new_len);
+                }
+                delta.changes.appendAssumeCapacity(.{ .before = before, .after = after });
             }
         }
         return .{
@@ -523,8 +624,8 @@ pub const TextAnnotations = struct {
             .tree_splice = tree_splice,
             .affected_storage = affected,
             .covered_storage = covered,
-            .delete_storage = delete_ids,
-            .delete_ids = delete_ids[0..delete_count],
+            .delete_ids = delete_ids,
+            .history_delta = history_delta,
             .source_generation = self.generation,
         };
     }
@@ -542,6 +643,86 @@ pub const TextAnnotations = struct {
             _ = self.payloads.remove(id);
         }
         if (self.tree.generation != before) self.finishMutation();
+        prepared.committed = true;
+    }
+
+    pub fn prepareDeltaApply(self: *Self, delta: *const AnnotationEditDelta, side: DeltaSide) !PreparedDeltaApply {
+        try self.checkCanMutate(delta.changes.items.len * 2 + 1);
+        const old_len = if (side == .before) delta.new_len else delta.old_len;
+        const new_len = if (side == .before) delta.old_len else delta.new_len;
+        var target_count: usize = 0;
+        var remove_count: usize = 0;
+        for (delta.changes.items) |change| {
+            const target = if (side == .before) change.before else change.after;
+            if (target) |annotation| {
+                target_count += 1;
+                const current = self.get(annotation.id());
+                remove_count += @intFromBool(current != null and std.meta.activeTag(current.?.mark) != std.meta.activeTag(annotation.mark));
+            } else {
+                remove_count += @intFromBool(self.get(change.id()) != null);
+            }
+        }
+        const targets = try self.allocator.alloc(Annotation, target_count);
+        errdefer self.allocator.free(targets);
+        const remove_ids = try self.allocator.alloc(u64, remove_count);
+        errdefer self.allocator.free(remove_ids);
+        var target_index: usize = 0;
+        var remove_index: usize = 0;
+        for (delta.changes.items) |change| {
+            const target = if (side == .before) change.before else change.after;
+            if (target) |annotation| {
+                targets[target_index] = annotation;
+                target_index += 1;
+                const current = self.get(annotation.id());
+                if (current != null and std.meta.activeTag(current.?.mark) != std.meta.activeTag(annotation.mark)) {
+                    remove_ids[remove_index] = annotation.id();
+                    remove_index += 1;
+                }
+            } else if (self.get(change.id()) != null) {
+                remove_ids[remove_index] = change.id();
+                remove_index += 1;
+            }
+        }
+        try self.payloads.ensureUnusedCapacity(@intCast(target_count));
+        const marks = try self.allocator.alloc(Mark, target_count);
+        errdefer self.allocator.free(marks);
+        for (targets, marks) |annotation, *mark| mark.* = annotation.mark;
+        var tree_restore = try self.tree.prepareHistoryRestore(delta.start_byte, old_len, new_len, marks);
+        errdefer tree_restore.deinit();
+        return .{
+            .owner = self,
+            .start_byte = delta.start_byte,
+            .old_len = old_len,
+            .new_len = new_len,
+            .targets = targets,
+            .target_marks = marks,
+            .remove_ids = remove_ids,
+            .tree_restore = tree_restore,
+            .source_generation = self.generation,
+        };
+    }
+
+    pub fn commitDeltaApply(self: *Self, prepared: *PreparedDeltaApply) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed and prepared.source_generation == self.generation);
+        self.tree.commitHistoryRestore(
+            prepared.start_byte,
+            prepared.old_len,
+            prepared.new_len,
+            prepared.target_marks,
+            prepared.remove_ids,
+            &prepared.tree_restore,
+        );
+        for (prepared.remove_ids) |id| if (self.payloads.fetchRemove(id)) |removed| {
+            self.non_retaining_policy_count -= @intFromBool(removed.value.splice_policy != .retain);
+        };
+        for (prepared.targets) |annotation| {
+            if (self.payloads.get(annotation.id())) |old| {
+                self.non_retaining_policy_count -= @intFromBool(old.splice_policy != .retain);
+            }
+            self.payloads.putAssumeCapacity(annotation.id(), annotation.payload);
+            self.non_retaining_policy_count += @intFromBool(annotation.payload.splice_policy != .retain);
+        }
+        self.finishMutation();
         prepared.committed = true;
     }
 
@@ -772,10 +953,8 @@ pub const TextAnnotations = struct {
 
     fn finishScratchUse(self: *Self, destructive: bool) void {
         self.affected_scratch.clearRetainingCapacity();
-        self.covered_scratch.clearRetainingCapacity();
         if (!destructive) return;
         self.trimScratch(&self.affected_scratch);
-        self.trimScratch(&self.covered_scratch);
     }
 
     fn trimScratch(self: *Self, scratch: *std.ArrayList(u64)) void {

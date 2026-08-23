@@ -10,6 +10,8 @@ const gp = @import("grapheme.zig");
 const ansi = @import("ansi.zig");
 const link = @import("link.zig");
 const TextAnnotations = @import("text-annotations.zig").TextAnnotations;
+const MarkTree = @import("mark-tree.zig").MarkTree;
+pub const AnnotationEditDelta = TextAnnotations.AnnotationEditDelta;
 
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
@@ -70,7 +72,7 @@ pub const DisplayExtent = struct {
 
 /// Rope content and content_epoch change together on success. Byte annotations
 /// follow the edit. External line highlights, selections, view-local state,
-/// EditBuffer cursors, and undo checkpoints remain caller-owned.
+/// EditBuffer cursors and undo history remain caller-owned.
 pub const SpliceResult = struct {
     old_range: NormalizedByteRange,
     /// Length of replacement after CR/LF/CRLF normalization.
@@ -674,68 +676,132 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
-    pub fn checkpointAnnotations(self: *Self) TextBufferError!TextAnnotations {
-        var checkpoint = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
-        errdefer checkpoint.deinit();
-        if (self.internal_style_slots.items.len == 0) return checkpoint;
-        var retained: std.ArrayListUnmanaged(u32) = .empty;
-        defer retained.deinit(self.global_allocator);
-        var it = checkpoint.iterator();
-        while (it.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            if (annotation.payload.style_id & internal_style_base == 0) continue;
-            self.retainInternalStyle(annotation.payload.style_id) catch |err| {
-                for (retained.items) |style_id| self.releaseInternalStyle(style_id);
-                return err;
+    pub fn releaseAnnotationDelta(self: *Self, delta: *AnnotationEditDelta) void {
+        for (delta.changes.items) |change| {
+            if (change.before) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+            if (change.after) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        }
+        delta.deinit();
+    }
+
+    pub fn purgeAnnotationDelta(self: *Self, delta: *AnnotationEditDelta, ids: []const u64) void {
+        for (delta.changes.items) |change| {
+            if (std.mem.indexOfScalar(u64, ids, change.id()) == null) continue;
+            if (change.before) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+            if (change.after) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+        }
+        delta.purge(ids);
+    }
+
+    pub fn purgeAnnotationDeltaNamespace(self: *Self, delta: *AnnotationEditDelta, namespace: u32) void {
+        var write: usize = 0;
+        for (delta.changes.items) |change| {
+            const matches = (if (change.before) |annotation| annotation.payload.namespace == namespace else false) or
+                (if (change.after) |annotation| annotation.payload.namespace == namespace else false);
+            if (matches) {
+                if (change.before) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+                if (change.after) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+                continue;
+            }
+            delta.changes.items[write] = change;
+            write += 1;
+        }
+        delta.changes.shrinkRetainingCapacity(write);
+    }
+
+    pub fn clearAnnotationDeltaAfter(self: *Self, delta: *AnnotationEditDelta) void {
+        for (delta.changes.items) |*change| if (change.after) |annotation| {
+            self.releaseInternalStyle(annotation.payload.style_id);
+            change.after = null;
+        };
+    }
+
+    pub fn journalAnnotationDelta(
+        self: *Self,
+        delta: *AnnotationEditDelta,
+        side: TextAnnotations.DeltaSide,
+        old_state: ?TextAnnotations.Annotation,
+        new_state: ?TextAnnotations.Annotation,
+    ) void {
+        const id = if (old_state) |annotation| annotation.id() else new_state.?.id();
+        if (delta.findChange(id)) |change| {
+            const state = if (side == .before) &change.before else &change.after;
+            if (state.*) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
+            if (new_state) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
+            state.* = new_state;
+            return;
+        }
+        var opposite = old_state;
+        if (opposite) |*annotation| {
+            annotation.mark = if (side == .after)
+                MarkTree.splicedMark(annotation.mark, delta.start_byte, delta.new_len, delta.old_len) catch unreachable
+            else
+                MarkTree.splicedMark(annotation.mark, delta.start_byte, delta.old_len, delta.new_len) catch unreachable;
+        }
+        if (opposite) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
+        if (new_state) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
+        delta.changes.appendAssumeCapacity(if (side == .before)
+            .{ .before = new_state, .after = opposite }
+        else
+            .{ .before = opposite, .after = new_state });
+    }
+
+    pub const PreparedAnnotationDeltaApply = struct {
+        owner: *Self,
+        annotations: TextAnnotations.PreparedDeltaApply,
+        acquired: std.ArrayListUnmanaged(u32) = .empty,
+        released: std.ArrayListUnmanaged(u32) = .empty,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedAnnotationDeltaApply) void {
+            if (!self.committed) for (self.acquired.items) |style_id| self.owner.releaseInternalStyle(style_id);
+            self.annotations.deinit();
+            self.acquired.deinit(self.owner.global_allocator);
+            self.released.deinit(self.owner.global_allocator);
+            self.* = undefined;
+        }
+    };
+
+    pub fn prepareAnnotationDeltaApply(
+        self: *Self,
+        delta: *const AnnotationEditDelta,
+        side: TextAnnotations.DeltaSide,
+    ) TextBufferError!PreparedAnnotationDeltaApply {
+        var prepared = self.annotations.prepareDeltaApply(delta, side) catch |err| return annotationMutationError(err);
+        errdefer prepared.deinit();
+        var acquired: std.ArrayListUnmanaged(u32) = .empty;
+        errdefer {
+            for (acquired.items) |style_id| self.releaseInternalStyle(style_id);
+            acquired.deinit(self.global_allocator);
+        }
+        var released: std.ArrayListUnmanaged(u32) = .empty;
+        errdefer released.deinit(self.global_allocator);
+        try acquired.ensureTotalCapacity(self.global_allocator, delta.changes.items.len);
+        try released.ensureTotalCapacity(self.global_allocator, delta.changes.items.len);
+        for (delta.changes.items) |change| {
+            const target = if (side == .before) change.before else change.after;
+            const current = self.annotations.get(change.id());
+            if (target) |annotation| if (current == null or current.?.payload.style_id != annotation.payload.style_id) {
+                try self.retainInternalStyle(annotation.payload.style_id);
+                acquired.appendAssumeCapacity(annotation.payload.style_id);
             };
-            retained.append(self.global_allocator, annotation.payload.style_id) catch {
-                self.releaseInternalStyle(annotation.payload.style_id);
-                for (retained.items) |style_id| self.releaseInternalStyle(style_id);
-                return TextBufferError.OutOfMemory;
+            if (current) |annotation| if (target == null or target.?.payload.style_id != annotation.payload.style_id) {
+                released.appendAssumeCapacity(annotation.payload.style_id);
             };
         }
-        return checkpoint;
+        return .{ .owner = self, .annotations = prepared, .acquired = acquired, .released = released };
     }
 
-    pub fn releaseAnnotationCheckpoint(self: *Self, checkpoint: *TextAnnotations) void {
-        var it = checkpoint.iterator();
-        while (it.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-        checkpoint.deinit();
-    }
-
-    pub fn beginAnnotationEdit(self: *Self) TextBufferError!TextAnnotations {
-        const candidate = try self.checkpointAnnotations();
-        const previous = self.annotations;
-        self.annotations = candidate;
-        return previous;
-    }
-
-    pub fn rollbackAnnotationEdit(self: *Self, previous: TextAnnotations) void {
-        var candidate = self.annotations;
-        var annotations = candidate.iterator();
-        while (annotations.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-        candidate.deinit();
-        self.annotations = previous;
-    }
-
-    pub fn swapAnnotationCheckpoint(self: *Self, checkpoint: TextAnnotations) TextAnnotations {
-        const current = self.annotations;
-        self.annotations = checkpoint;
+    pub fn commitAnnotationDeltaApply(self: *Self, prepared: *PreparedAnnotationDeltaApply) void {
+        self.annotations.commitDeltaApply(&prepared.annotations);
+        for (prepared.released.items) |style_id| self.releaseInternalStyle(style_id);
+        prepared.committed = true;
         self.annotation_epoch +%= 1;
         self.projection_epoch +%= 1;
-        return current;
-    }
-
-    pub fn purgeAnnotationCheckpoint(self: *Self, checkpoint: *TextAnnotations, ids: []const u64) void {
-        for (ids) |id| {
-            const annotation = checkpoint.get(id) orelse continue;
-            const removed = checkpoint.remove(id) catch unreachable;
-            std.debug.assert(removed);
-            self.releaseInternalStyle(annotation.payload.style_id);
-        }
     }
 
     /// Clear live annotations without releasing references owned by detached
-    /// EditBuffer history checkpoints.
+    /// EditBuffer history deltas.
     pub fn clearAnnotations(self: *Self) void {
         var annotations = self.annotations.iterator();
         while (annotations.next() catch null) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
@@ -1136,7 +1202,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Replace normalized UTF-8 document bytes in [start, end). Only the Rope and
     /// edit-following annotations are committed here. External highlights,
-    /// selections, view state, EditBuffer cursors, and undo checkpoint policy
+    /// selections, view state, EditBuffer cursors, and undo history policy
     /// remain caller-owned. Rope undo/redo does not rewind annotation payloads or
     /// positions; callers that combine both own that history policy.
     pub fn replaceNormalizedBytes(
@@ -1145,7 +1211,7 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, false);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, false, null);
     }
 
     pub fn replaceNormalizedBytesForEdit(
@@ -1154,7 +1220,17 @@ pub const UnifiedTextBuffer = struct {
         end: NormalizedByteOffset,
         replacement: []const u8,
     ) TextBufferError!SpliceResult {
-        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true);
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, null);
+    }
+
+    pub fn replaceNormalizedBytesForEditWithHistory(
+        self: *Self,
+        start: NormalizedByteOffset,
+        end: NormalizedByteOffset,
+        replacement: []const u8,
+        delta_out: *?AnnotationEditDelta,
+    ) TextBufferError!SpliceResult {
+        return self.replaceNormalizedBytesWithAnnotations(start, end, replacement, null, true, delta_out);
     }
 
     /// Consumes an annotation candidate already transformed for this splice.
@@ -1166,6 +1242,7 @@ pub const UnifiedTextBuffer = struct {
         replacement: []const u8,
         supplied_annotations: ?*TextAnnotations,
         use_live_candidate: bool,
+        delta_out: ?*?AnnotationEditDelta,
     ) TextBufferError!SpliceResult {
         if (start > end or end > self.getByteSize()) return TextBufferError.InvalidByteOffset;
         if (!std.unicode.utf8ValidateSlice(replacement)) return TextBufferError.InvalidUtf8;
@@ -1239,7 +1316,10 @@ pub const UnifiedTextBuffer = struct {
         var prepared_annotation_splice: ?TextAnnotations.PreparedSplice = null;
         defer if (prepared_annotation_splice) |*prepared| prepared.deinit();
         if (use_live_candidate) {
-            prepared_annotation_splice = candidate_annotations.prepareSplice(start, end - start, inserted_len) catch |err| switch (err) {
+            prepared_annotation_splice = (if (delta_out != null)
+                candidate_annotations.prepareSpliceForHistory(start, end - start, inserted_len)
+            else
+                candidate_annotations.prepareSplice(start, end - start, inserted_len)) catch |err| switch (err) {
                 error.OutOfMemory => return TextBufferError.OutOfMemory,
                 else => return TextBufferError.InvalidDimensions,
             };
@@ -1249,6 +1329,23 @@ pub const UnifiedTextBuffer = struct {
                 else => return TextBufferError.InvalidDimensions,
             };
         }
+
+        var retained_delta_styles: std.ArrayListUnmanaged(u32) = .empty;
+        defer retained_delta_styles.deinit(self.global_allocator);
+        errdefer for (retained_delta_styles.items) |style_id| self.releaseInternalStyle(style_id);
+        if (prepared_annotation_splice) |*prepared| if (prepared.history_delta) |*delta| {
+            try retained_delta_styles.ensureTotalCapacity(self.global_allocator, delta.changes.items.len * 2);
+            for (delta.changes.items) |change| {
+                if (change.before) |annotation| {
+                    try self.retainInternalStyle(annotation.payload.style_id);
+                    retained_delta_styles.appendAssumeCapacity(annotation.payload.style_id);
+                }
+                if (change.after) |annotation| {
+                    try self.retainInternalStyle(annotation.payload.style_id);
+                    retained_delta_styles.appendAssumeCapacity(annotation.payload.style_id);
+                }
+            }
+        };
 
         var deleted_style_ids: std.ArrayListUnmanaged(u32) = .empty;
         defer deleted_style_ids.deinit(self.global_allocator);
@@ -1295,6 +1392,7 @@ pub const UnifiedTextBuffer = struct {
         if (self.edit_storage_guard_depth == 0) self.sweepUnreachableBacking();
         if (prepared_annotation_splice) |*prepared| {
             candidate_annotations.commitPreparedSplice(prepared) catch unreachable;
+            if (delta_out) |out| out.* = prepared.takeHistoryDelta();
         } else {
             var previous_annotations = self.annotations;
             self.annotations = candidate_annotations.*;
@@ -2990,7 +3088,7 @@ pub const UnifiedTextBuffer = struct {
             };
         }
 
-        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate, false);
+        const result = try self.replaceNormalizedBytesWithAnnotations(start_byte, end_byte, replacement[0..normalized_len], &candidate, false, null);
         candidate_owned = false;
         styles_committed = true;
         return result;

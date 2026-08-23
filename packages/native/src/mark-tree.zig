@@ -67,6 +67,27 @@ pub const MarkTree = struct {
         covered_range_ids: []u64,
     };
 
+    pub const SpliceReportCounts = struct {
+        affected: usize,
+        covered: usize,
+    };
+
+    pub const PreparedHistoryRestore = struct {
+        owner: *Self,
+        splice: PreparedSplice,
+        node_storage: []*Node,
+        nodes: []*Node,
+        next_priority_state: u64,
+        source_generation: u64,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedHistoryRestore) void {
+            if (!self.committed) for (self.nodes) |node| self.owner.allocator.destroy(node);
+            self.owner.allocator.free(self.node_storage);
+            self.* = undefined;
+        }
+    };
+
     pub const PreparedRanges = struct {
         owner: *Self,
         nodes: []*Node,
@@ -382,6 +403,114 @@ pub const MarkTree = struct {
             .affected_ids = affected_buffer[0..affected_len],
             .covered_range_ids = covered_buffer[0..covered_len],
         };
+    }
+
+    pub fn spliceReportCounts(self: *Self, start_byte: u32, old_len: u32, new_len: u32) !SpliceReportCounts {
+        try self.checkCanMutate();
+        const ends = try self.preflightSplice(start_byte, old_len, new_len);
+        const counts = countDeletion(self.root, start_byte, ends.old_end, old_len, 0);
+        return .{ .affected = counts.affected, .covered = counts.covered };
+    }
+
+    pub fn splicedMark(mark: Mark, start_byte: u32, old_len: u32, new_len: u32) !Mark {
+        const old_end = std.math.add(u32, start_byte, old_len) catch return error.PositionOverflow;
+        const new_end = std.math.add(u32, start_byte, new_len) catch return error.PositionOverflow;
+        return switch (mark) {
+            .range => |value| .{ .range = .{
+                .id = value.id,
+                .start_byte = try transformPositionChecked(value.start_byte, value.start_gravity, start_byte, old_end, new_end),
+                .end_byte = try transformPositionChecked(value.end_byte, value.end_gravity, start_byte, old_end, new_end),
+                .start_gravity = value.start_gravity,
+                .end_gravity = value.end_gravity,
+            } },
+            .point => |value| .{ .point = .{
+                .id = value.id,
+                .byte = try transformPositionChecked(value.byte, value.gravity, start_byte, old_end, new_end),
+                .gravity = value.gravity,
+            } },
+        };
+    }
+
+    /// Prepares an ordinary positional splice followed by exact restoration of
+    /// a sparse set of marks. Missing marks and kind changes receive detached
+    /// nodes now so publication cannot allocate.
+    pub fn prepareHistoryRestore(
+        self: *Self,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        targets: []const Mark,
+    ) !PreparedHistoryRestore {
+        try self.checkCanMutate();
+        const prepared_splice = try self.prepareSplice(start_byte, old_len, new_len);
+        try self.ids.ensureUnusedCapacity(@intCast(targets.len));
+        const nodes = try self.allocator.alloc(*Node, targets.len);
+        errdefer self.allocator.free(nodes);
+        var initialized: usize = 0;
+        errdefer for (nodes[0..initialized]) |node| self.allocator.destroy(node);
+        var priority_state = self.priority_state;
+        for (targets) |mark| {
+            const existing = self.get(mark.id());
+            if (existing != null and std.meta.activeTag(existing.?) == std.meta.activeTag(mark)) continue;
+            const node = try self.allocator.create(Node);
+            node.* = .{
+                .mark = mark,
+                .priority = nextPriorityValue(&priority_state),
+                .max_byte = upperByte(mark),
+                .max_overlap_end_byte = overlapEndByte(mark),
+            };
+            nodes[initialized] = node;
+            initialized += 1;
+        }
+        return .{
+            .owner = self,
+            .splice = prepared_splice,
+            .node_storage = nodes,
+            .nodes = nodes[0..initialized],
+            .next_priority_state = priority_state,
+            .source_generation = self.generation,
+        };
+    }
+
+    pub fn commitHistoryRestore(
+        self: *Self,
+        start_byte: u32,
+        old_len: u32,
+        new_len: u32,
+        targets: []const Mark,
+        remove_ids: []const u64,
+        prepared: *PreparedHistoryRestore,
+    ) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed and prepared.source_generation == self.generation);
+        self.commitPreparedSplice(start_byte, old_len, new_len, prepared.splice) catch unreachable;
+        for (remove_ids) |id| _ = self.remove(id) catch unreachable;
+        var node_index: usize = 0;
+        for (targets) |mark| {
+            if (self.get(mark.id())) |existing| {
+                std.debug.assert(std.meta.activeTag(existing) == std.meta.activeTag(mark));
+                switch (mark) {
+                    .range => |value| _ = self.updateRange(value.id, .{
+                        .start_byte = value.start_byte,
+                        .end_byte = value.end_byte,
+                        .start_gravity = value.start_gravity,
+                        .end_gravity = value.end_gravity,
+                    }) catch unreachable,
+                    .point => |value| _ = self.updatePoint(value.id, .{ .byte = value.byte, .gravity = value.gravity }) catch unreachable,
+                }
+            } else {
+                const node = prepared.nodes[node_index];
+                node_index += 1;
+                std.debug.assert(node.mark.id() == mark.id());
+                self.ids.putAssumeCapacity(mark.id(), node);
+                self.root = insert(self.root, node);
+                if (self.root) |root| root.parent = null;
+                self.len += 1;
+                self.generation += 1;
+            }
+        }
+        std.debug.assert(node_index == prepared.nodes.len);
+        self.priority_state = prepared.next_priority_state;
+        prepared.committed = true;
     }
 
     /// Publishes a splice previously prepared against the current tree. No
