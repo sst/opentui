@@ -26,6 +26,34 @@ pub const EditBufferEvent = enum {
     cursorChanged,
 };
 
+pub const EditChangeKind = enum(u32) {
+    splice = 0,
+    reset = 1,
+};
+
+/// Fixed-width Tree-sitter edit coordinates. Indices and columns are normalized
+/// UTF-8 bytes, never display cells, code points, or source CRLF byte counts.
+pub const EditChange = extern struct {
+    epoch: u64,
+    kind: EditChangeKind,
+    start_index: u32,
+    old_end_index: u32,
+    new_end_index: u32,
+    start_row: u32,
+    start_column: u32,
+    old_end_row: u32,
+    old_end_column: u32,
+    new_end_row: u32,
+    new_end_column: u32,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(EditChange) == 48);
+    std.debug.assert(@offsetOf(EditChange, "epoch") == 0);
+    std.debug.assert(@offsetOf(EditChange, "kind") == 8);
+    std.debug.assert(@offsetOf(EditChange, "new_end_column") == 44);
+}
+
 /// Cursor position (row, col in display-width coordinates)
 pub const Cursor = struct {
     row: u32,
@@ -110,6 +138,8 @@ pub const EditBuffer = struct {
     event_sink: ?*event_bus.EventSink,
     annotation_cursor_policy_references: u32,
     annotation_cursor_policy_selections: u32,
+    change_epoch: u64,
+    last_change: ?EditChange,
 
     pub fn init(
         allocator: Allocator,
@@ -142,6 +172,8 @@ pub const EditBuffer = struct {
             .event_sink = event_sink,
             .annotation_cursor_policy_references = 0,
             .annotation_cursor_policy_selections = 0,
+            .change_epoch = 0,
+            .last_change = null,
         };
 
         return self;
@@ -171,6 +203,56 @@ pub const EditBuffer = struct {
         defer self.allocator.free(full_name);
 
         event_bus.emit(self.event_sink, full_name, &id_bytes);
+    }
+
+    fn changeFromSplice(result: tb.SpliceResult, kind: EditChangeKind) EditChange {
+        return .{
+            .epoch = 0,
+            .kind = kind,
+            .start_index = result.old_range.start,
+            .old_end_index = result.old_range.end,
+            .new_end_index = result.new_end,
+            .start_row = result.old_start_location.row,
+            .start_column = result.old_start_location.byte_in_line,
+            .old_end_row = result.old_end_location.row,
+            .old_end_column = result.old_end_location.byte_in_line,
+            .new_end_row = result.new_end_location.row,
+            .new_end_column = result.new_end_location.byte_in_line,
+        };
+    }
+
+    fn inverseChange(change: EditChange) EditChange {
+        return .{
+            .epoch = 0,
+            .kind = change.kind,
+            .start_index = change.start_index,
+            .old_end_index = change.new_end_index,
+            .new_end_index = change.old_end_index,
+            .start_row = change.start_row,
+            .start_column = change.start_column,
+            .old_end_row = change.new_end_row,
+            .old_end_column = change.new_end_column,
+            .new_end_row = change.old_end_row,
+            .new_end_column = change.old_end_column,
+        };
+    }
+
+    fn emitContentChange(self: *EditBuffer, base_change: EditChange) void {
+        self.change_epoch +%= 1;
+        if (self.change_epoch == 0) self.change_epoch = 1;
+        var change = base_change;
+        change.epoch = self.change_epoch;
+        self.last_change = change;
+
+        const sink = self.event_sink orelse return;
+        var data: [2 + @sizeOf(EditChange)]u8 = undefined;
+        std.mem.writeInt(u16, data[0..2], self.id, .little);
+        @memcpy(data[2..], std.mem.asBytes(&change));
+        event_bus.emit(sink, "eb_content-changed", &data);
+    }
+
+    pub fn getLastChange(self: *const EditBuffer) ?EditChange {
+        return self.last_change;
     }
 
     pub fn getTextBuffer(self: *EditBuffer) *UnifiedTextBuffer {
@@ -342,13 +424,13 @@ pub const EditBuffer = struct {
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
         const result = try history.replace(self, insert_byte, insert_byte, bytes, false);
-        self.commitAutoStoreUndo(&history);
+        self.commitAutoStoreUndo(&history, result);
         const point = result.new_display.end.point;
         const new_offset = iter_mod.coordsToOffset(self.tb.rope(), point.row, point.col) orelse 0;
         self.cursors.items[0] = .{ .row = point.row, .col = point.col, .desired_col = point.col, .offset = new_offset };
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .splice));
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
@@ -376,8 +458,8 @@ pub const EditBuffer = struct {
 
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try history.replace(self, start_offset, end_offset, "", false);
-        self.commitAutoStoreUndo(&history);
+        const result = try history.replace(self, start_offset, end_offset, "", false);
+        self.commitAutoStoreUndo(&history, result);
 
         if (self.cursors.items.len > 0) {
             const line_count = self.tb.lineCount();
@@ -391,7 +473,7 @@ pub const EditBuffer = struct {
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .splice));
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -561,22 +643,22 @@ pub const EditBuffer = struct {
     /// Set text and completely reset the buffer state.
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
         try self.preparePrimaryCursor();
-        _ = try self.tb.replaceNormalizedBytesForEdit(0, self.tb.getByteSize(), text);
+        const result = try self.tb.replaceNormalizedBytesForEdit(0, self.tb.getByteSize(), text);
         self.tb.clearAnnotations();
         self.clearHistory();
         try self.setCursor(0, 0);
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .reset));
     }
 
     /// Set text from memory ID and completely reset the buffer state.
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
         try self.preparePrimaryCursor();
-        try self.tb.replaceTextFromMemIdForEdit(mem_id);
+        const result = try self.tb.replaceTextFromMemIdForEdit(mem_id);
         self.tb.clearAnnotations();
         self.clearHistory();
         try self.setCursor(0, 0);
 
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .reset));
     }
 
     /// Replace text while preserving undo history (creates an undo point)
@@ -585,11 +667,11 @@ pub const EditBuffer = struct {
         try self.preparePrimaryCursor();
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
-        _ = try history.replace(self, 0, self.tb.getByteSize(), text, true);
+        const result = try history.replace(self, 0, self.tb.getByteSize(), text, true);
         self.tb.clearAnnotations();
-        self.commitAutoStoreUndo(&history);
+        self.commitAutoStoreUndo(&history, result);
         try self.setCursor(0, 0);
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .splice));
     }
 
     /// Replace text from memory ID while preserving undo history (creates an undo point)
@@ -599,12 +681,12 @@ pub const EditBuffer = struct {
         var history = try self.prepareAutoStoreUndo();
         defer history.deinit(self);
         const text = self.tb.memRegistry().get(mem_id).?;
-        _ = try history.replace(self, 0, self.tb.getByteSize(), text, true);
+        const result = try history.replace(self, 0, self.tb.getByteSize(), text, true);
         self.tb.clearAnnotations();
-        self.commitAutoStoreUndo(&history);
+        self.commitAutoStoreUndo(&history, result);
         try self.setCursor(0, 0);
 
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(changeFromSplice(result, .splice));
     }
 
     pub fn getText(self: *EditBuffer, out_buffer: []u8) usize {
@@ -705,11 +787,12 @@ pub const EditBuffer = struct {
         return .{ .journal = journal, .rope = prepared_rope, .storage_prepared = true };
     }
 
-    fn commitAutoStoreUndo(self: *EditBuffer, prepared: *PreparedEditHistory) void {
+    fn commitAutoStoreUndo(self: *EditBuffer, prepared: *PreparedEditHistory, result: tb.SpliceResult) void {
         if (prepared.rope == null) {
             prepared.committed = true;
             return;
         }
+        prepared.journal.?.text_splice = result;
         self.tb.commitHistoryStore(&prepared.rope.?, prepared.journal.?);
         prepared.journal = null;
         prepared.committed = true;
@@ -737,7 +820,8 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
-        self.emitNativeEvent("cursorChanged");
+        self.emitNativeEvent("cursor-changed");
+        self.emitContentChange(inverseChange(changeFromSplice(journal.text_splice.?, .splice)));
 
         return prev_meta;
     }
@@ -760,7 +844,8 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
-        self.emitNativeEvent("cursorChanged");
+        self.emitNativeEvent("cursor-changed");
+        self.emitContentChange(changeFromSplice(journal.text_splice.?, .splice));
 
         return next_meta;
     }
@@ -928,10 +1013,24 @@ pub const EditBuffer = struct {
     }
 
     pub fn clear(self: *EditBuffer) !void {
+        const old_end = self.tb.getByteSize();
+        const old_end_location = try self.tb.normalizedByteOffsetToLocation(old_end);
         self.tb.clear();
         self.clearHistory();
         try self.setCursor(0, 0);
-        self.emitNativeEvent("content-changed");
+        self.emitContentChange(.{
+            .epoch = 0,
+            .kind = .reset,
+            .start_index = 0,
+            .old_end_index = old_end,
+            .new_end_index = 0,
+            .start_row = 0,
+            .start_column = 0,
+            .old_end_row = old_end_location.row,
+            .old_end_column = old_end_location.byte_in_line,
+            .new_end_row = 0,
+            .new_end_column = 0,
+        });
     }
 
     pub fn getNextWordBoundary(self: *EditBuffer) Cursor {

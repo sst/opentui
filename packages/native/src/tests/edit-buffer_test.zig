@@ -25,6 +25,62 @@ fn expectPrimaryCursor(eb: *EditBuffer, row: u32, col: u32, desired_col: u32, of
     try std.testing.expectEqual(offset, cursor.offset);
 }
 
+fn expectChange(
+    eb: *EditBuffer,
+    kind: edit_buffer.EditChangeKind,
+    indices: [3]u32,
+    start: [2]u32,
+    old_end: [2]u32,
+    new_end: [2]u32,
+) !u64 {
+    const change = eb.getLastChange().?;
+    try std.testing.expectEqual(kind, change.kind);
+    try std.testing.expectEqual(indices[0], change.start_index);
+    try std.testing.expectEqual(indices[1], change.old_end_index);
+    try std.testing.expectEqual(indices[2], change.new_end_index);
+    try std.testing.expectEqual(start[0], change.start_row);
+    try std.testing.expectEqual(start[1], change.start_column);
+    try std.testing.expectEqual(old_end[0], change.old_end_row);
+    try std.testing.expectEqual(old_end[1], change.old_end_column);
+    try std.testing.expectEqual(new_end[0], change.new_end_row);
+    try std.testing.expectEqual(new_end[1], change.new_end_column);
+    return change.epoch;
+}
+
+test "EditBuffer - exact normalized UTF-8 edit changes cover reset splice undo and redo" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try std.testing.expect(eb.getLastChange() == null);
+    try eb.setText("A界\r\ne\u{301}👩‍💻\tZ");
+    const reset_epoch = try expectChange(eb, .reset, .{ 0, 0, 21 }, .{ 0, 0 }, .{ 0, 0 }, .{ 1, 16 });
+    try expectEditText(eb, "A界\ne\u{301}👩‍💻\tZ");
+
+    try eb.setCursor(1, 1);
+    try eb.insertText("中\rX\n");
+    const insert_epoch = try expectChange(eb, .splice, .{ 8, 8, 14 }, .{ 1, 3 }, .{ 1, 3 }, .{ 3, 0 });
+    try std.testing.expect(insert_epoch > reset_epoch);
+    try expectEditText(eb, "A界\ne\u{301}中\nX\n👩‍💻\tZ");
+
+    _ = try eb.undo();
+    const undo_epoch = try expectChange(eb, .splice, .{ 8, 14, 8 }, .{ 1, 3 }, .{ 3, 0 }, .{ 1, 3 });
+    try std.testing.expect(undo_epoch > insert_epoch);
+    try expectEditText(eb, "A界\ne\u{301}👩‍💻\tZ");
+
+    _ = try eb.redo();
+    const redo_epoch = try expectChange(eb, .splice, .{ 8, 8, 14 }, .{ 1, 3 }, .{ 1, 3 }, .{ 3, 0 });
+    try std.testing.expect(redo_epoch > undo_epoch);
+
+    try eb.clear();
+    const clear_epoch = try expectChange(eb, .reset, .{ 0, 27, 0 }, .{ 0, 0 }, .{ 3, 13 }, .{ 0, 0 });
+    try std.testing.expect(clear_epoch > redo_epoch);
+    try std.testing.expect(!eb.canUndo());
+}
+
 fn exerciseInteriorCursorInsertion(width_method: utf8.WidthMethod) !void {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

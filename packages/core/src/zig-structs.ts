@@ -265,6 +265,20 @@ export const TextSpliceResultStruct = defineStruct([
   ["newExtentColumns", "u32"],
 ])
 
+export const EditChangeStruct = defineStruct([
+  ["epoch", "u64"],
+  ["kind", "u32"],
+  ["startIndex", "u32"],
+  ["oldEndIndex", "u32"],
+  ["newEndIndex", "u32"],
+  ["startRow", "u32"],
+  ["startColumn", "u32"],
+  ["oldEndRow", "u32"],
+  ["oldEndColumn", "u32"],
+  ["newEndRow", "u32"],
+  ["newEndColumn", "u32"],
+])
+
 export const HighlightStruct = defineStruct([
   ["start", "u32"],
   ["end", "u32"],

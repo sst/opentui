@@ -1,6 +1,8 @@
 import {
   resolveRenderLib,
+  decodeEditChange,
   type EditBufferHandle,
+  type EditChange,
   type LogicalCursor,
   type RenderLib,
   type TextAnnotation,
@@ -16,7 +18,7 @@ import { RGBA } from "./lib/RGBA.js"
 import { EventEmitter } from "events"
 import type { SyntaxStyle } from "./syntax-style.js"
 
-export type { LogicalCursor }
+export type { EditChange, LogicalCursor }
 
 /**
  * EditBuffer provides a text editing buffer with cursor management,
@@ -67,7 +69,7 @@ export class EditBuffer extends EventEmitter {
           // Strip the "eb_" prefix and forward the event
           const eventName = name.slice(3)
           const eventData = data.slice(2)
-          instance.emit(eventName, eventData)
+          instance.emit(eventName, eventName === "content-changed" ? decodeEditChange(eventData) : eventData)
         }
       }
     })
@@ -80,6 +82,11 @@ export class EditBuffer extends EventEmitter {
   public get ptr(): EditBufferHandle {
     this.guard()
     return this.bufferPtr
+  }
+
+  public getLastChange(): EditChange | null {
+    this.guard()
+    return this.lib.editBufferGetLastChange(this.bufferPtr)
   }
 
   /**

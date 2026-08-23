@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { EditBuffer } from "./edit-buffer.js"
+import { EditBuffer, type EditChange } from "./edit-buffer.js"
 import { resolveRenderLib } from "./zig.js"
 import { ManualClock } from "./testing/manual-clock.js"
 
@@ -12,6 +12,60 @@ async function flushNativeEvents(): Promise<void> {
   })
   clock.advance(0)
   await wait
+}
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+function normalized(text: string): string {
+  return text.replace(/\r\n?/g, "\n")
+}
+
+function bytePoint(text: string, index: number): { row: number; column: number } {
+  const bytes = encoder.encode(normalized(text))
+  let row = 0
+  let column = 0
+  for (let i = 0; i < index; i++) {
+    if (bytes[i] === 0x0a) {
+      row++
+      column = 0
+    } else {
+      column++
+    }
+  }
+  return { row, column }
+}
+
+function applyByteSplice(text: string, change: EditChange, replacement: string): string {
+  const bytes = encoder.encode(normalized(text))
+  const inserted = encoder.encode(normalized(replacement))
+  const result = new Uint8Array(change.startIndex + inserted.length + bytes.length - change.oldEndIndex)
+  result.set(bytes.subarray(0, change.startIndex))
+  result.set(inserted, change.startIndex)
+  result.set(bytes.subarray(change.oldEndIndex), change.startIndex + inserted.length)
+  return decoder.decode(result)
+}
+
+function expectExactChange(
+  change: EditChange,
+  oldText: string,
+  startIndex: number,
+  oldEndIndex: number,
+  replacement: string,
+  kind: EditChange["kind"] = "splice",
+): string {
+  const newEndIndex = startIndex + encoder.encode(normalized(replacement)).length
+  const newText = applyByteSplice(oldText, change, replacement)
+  expect(change).toMatchObject({
+    kind,
+    startIndex,
+    oldEndIndex,
+    newEndIndex,
+    startPosition: bytePoint(oldText, startIndex),
+    oldEndPosition: bytePoint(oldText, oldEndIndex),
+    newEndPosition: bytePoint(newText, newEndIndex),
+  })
+  return newText
 }
 
 describe("EditBuffer", () => {
@@ -1193,9 +1247,11 @@ describe("EditBuffer Events", () => {
       })
 
       const id = new DataView(payload).getUint16(0, true)
+      const epoch = new DataView(payload).getBigUint64(2, true)
 
-      expect(payload.byteLength).toBe(2)
+      expect(payload.byteLength).toBe(2 + 48)
       expect(id).toBe(testBuffer.id)
+      expect(epoch).toBe(testBuffer.getLastChange()?.epoch)
 
       testBuffer.destroy()
     })
@@ -1910,5 +1966,132 @@ describe("EditBuffer Memory Registry Limits", () => {
 
       expect(buffer.getText()).toBe("Without history 299")
     })
+  })
+})
+
+describe("EditBuffer exact content changes", () => {
+  it("emits normalized byte edits for reset, multiline splice, undo, redo, and branch", async () => {
+    const testBuffer = EditBuffer.create("wcwidth")
+    const changes: EditChange[] = []
+    testBuffer.on("content-changed", (change: EditChange) => changes.push(change))
+
+    try {
+      let text = ""
+      testBuffer.setText("A界\r\ne\u0301👩‍💻\tZ")
+      await flushNativeEvents()
+      text = expectExactChange(changes.shift()!, text, 0, 0, "A界\r\ne\u0301👩‍💻\tZ", "reset")
+      expect(text).toBe(testBuffer.getText())
+
+      testBuffer.setCursor(1, 1)
+      testBuffer.insertText("中\rX\n")
+      await flushNativeEvents()
+      const insert = changes.shift()!
+      text = expectExactChange(insert, text, 8, 8, "中\rX\n")
+      expect(text).toBe(testBuffer.getText())
+
+      testBuffer.undo()
+      await flushNativeEvents()
+      const undo = changes.shift()!
+      text = expectExactChange(undo, text, insert.startIndex, insert.newEndIndex, "")
+      expect(text).toBe(testBuffer.getText())
+
+      testBuffer.redo()
+      await flushNativeEvents()
+      const redo = changes.shift()!
+      text = expectExactChange(redo, text, insert.startIndex, insert.oldEndIndex, "中\nX\n")
+      expect(text).toBe(testBuffer.getText())
+
+      testBuffer.undo()
+      await flushNativeEvents()
+      changes.shift()
+      text = testBuffer.getText()
+      testBuffer.insertText("branch")
+      await flushNativeEvents()
+      const branch = changes.shift()!
+      text = expectExactChange(branch, text, 8, 8, "branch")
+      expect(testBuffer.canRedo()).toBe(false)
+      expect(text).toBe(testBuffer.getText())
+
+      testBuffer.replaceText("R\r\n界")
+      await flushNativeEvents()
+      const replace = changes.shift()!
+      text = expectExactChange(replace, text, 0, encoder.encode(text).length, "R\r\n界")
+      expect(text).toBe(testBuffer.getText())
+
+      const epochs = [insert.epoch, undo.epoch, redo.epoch, branch.epoch, replace.epoch]
+      expect(epochs.every((epoch, index) => index === 0 || epoch > epochs[index - 1]!)).toBe(true)
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("uses UTF-8 byte columns for selection deletion and explicit clear reset", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const changes: EditChange[] = []
+    testBuffer.on("content-changed", (change: EditChange) => changes.push(change))
+
+    try {
+      testBuffer.setText("A界\nB")
+      await flushNativeEvents()
+      changes.length = 0
+
+      testBuffer.deleteRange(0, 1, 1, 0)
+      await flushNativeEvents()
+      let text = expectExactChange(changes.shift()!, "A界\nB", 1, 5, "")
+      expect(text).toBe("AB")
+
+      testBuffer.clear()
+      await flushNativeEvents()
+      text = expectExactChange(changes.shift()!, text, 0, 2, "", "reset")
+      expect(text).toBe("")
+      expect(testBuffer.canUndo()).toBe(false)
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("copies each native payload before queued delivery and exposes the same last change over FFI", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const changes: EditChange[] = []
+    testBuffer.on("content-changed", (change: EditChange) => changes.push(change))
+
+    try {
+      expect(testBuffer.getLastChange()).toBeNull()
+      testBuffer.insertText("A")
+      testBuffer.insertText("界")
+      await flushNativeEvents()
+
+      expect(changes).toHaveLength(2)
+      expectExactChange(changes[0]!, "", 0, 0, "A")
+      expectExactChange(changes[1]!, "A", 1, 1, "界")
+      expect(changes[1]!.epoch).toBeGreaterThan(changes[0]!.epoch)
+      expect(testBuffer.getLastChange()).toEqual(changes[1])
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("does not depend on the 1 MiB getText snapshot limit", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const changes: EditChange[] = []
+    testBuffer.on("content-changed", (change: EditChange) => changes.push(change))
+    const inserted = "x".repeat(1024 * 1024 + 17)
+
+    try {
+      testBuffer.insertText(inserted)
+      await flushNativeEvents()
+      expect(changes).toHaveLength(1)
+      expect(changes[0]).toMatchObject({
+        kind: "splice",
+        startIndex: 0,
+        oldEndIndex: 0,
+        newEndIndex: inserted.length,
+        startPosition: { row: 0, column: 0 },
+        oldEndPosition: { row: 0, column: 0 },
+        newEndPosition: { row: 0, column: inserted.length },
+      })
+    } finally {
+      testBuffer.destroy()
+    }
   })
 })

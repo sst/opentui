@@ -8,6 +8,7 @@ import {
   DocumentOperationStruct,
   DocumentRangeInputStruct,
   DocumentStyledChunkStruct,
+  EditChangeStruct,
 } from "./zig-structs.js"
 
 describe("annotation ABI", () => {
@@ -22,6 +23,15 @@ describe("annotation ABI", () => {
     expect(AnnotationRecordStruct.layoutByName.get("highlightRef")?.offset).toBe(64)
     expect(AnnotationBatchResultStruct.size).toBe(8)
     expect(DisplayPointStruct.size).toBe(12)
+  })
+})
+
+describe("edit change ABI", () => {
+  test("matches the native fixed-width layout", () => {
+    expect(EditChangeStruct.size).toBe(48)
+    expect(EditChangeStruct.layoutByName.get("epoch")?.offset).toBe(0)
+    expect(EditChangeStruct.layoutByName.get("kind")?.offset).toBe(8)
+    expect(EditChangeStruct.layoutByName.get("newEndColumn")?.offset).toBe(44)
   })
 })
 

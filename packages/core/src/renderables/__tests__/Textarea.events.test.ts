@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
+import type { ContentChangeEvent } from "../EditBufferRenderable.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -233,6 +234,33 @@ describe("Textarea - Event Handlers Tests", () => {
 
         expect(contentChangeCount).toBeGreaterThan(initialCount)
         expect(editor.plainText).toBe("H")
+      })
+
+      it("should expose the exact edit through onContentChange", async () => {
+        let latestChange: ContentChangeEvent | undefined
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+          initialValue: "界",
+          width: 40,
+          height: 10,
+          onContentChange: (change) => {
+            latestChange = change
+          },
+        })
+
+        editor.focus()
+        editor.gotoLine(9999)
+        currentMockInput.pressKey("A")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(latestChange).toMatchObject({
+          kind: "splice",
+          startIndex: 3,
+          oldEndIndex: 3,
+          newEndIndex: 4,
+          startPosition: { row: 0, column: 3 },
+          oldEndPosition: { row: 0, column: 3 },
+          newEndPosition: { row: 0, column: 4 },
+        })
       })
 
       it("should fire onContentChange when deleting", async () => {

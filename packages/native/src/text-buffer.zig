@@ -22,6 +22,7 @@ pub const DocumentTransactionJournal = struct {
     owner: *UnifiedTextBuffer,
     allocator: Allocator,
     annotation_splice: ?AnnotationEditDelta = null,
+    text_splice: ?SpliceResult = null,
 
     pub fn create(owner: *UnifiedTextBuffer) TextBufferError!*DocumentTransactionJournal {
         const journal = owner.global_allocator.create(DocumentTransactionJournal) catch return TextBufferError.OutOfMemory;
@@ -108,6 +109,10 @@ pub const SpliceResult = struct {
     inserted_len: u32,
     /// old_range.start + inserted_len in the new normalized document.
     new_end: NormalizedByteOffset,
+    old_start_location: NormalizedByteLocation,
+    old_end_location: NormalizedByteLocation,
+    new_start_location: NormalizedByteLocation,
+    new_end_location: NormalizedByteLocation,
     old_display: DisplayRange,
     new_display: DisplayRange,
     old_extent: DisplayExtent,
@@ -1577,12 +1582,18 @@ pub const UnifiedTextBuffer = struct {
 
         const old_start_display = try self.normalizedByteOffsetToDisplayPoint(start, .before);
         const old_end_display = try self.normalizedByteOffsetToDisplayPoint(end, .after);
+        const old_start_location = try self.normalizedByteOffsetToLocation(start);
+        const old_end_location = try self.normalizedByteOffsetToLocation(end);
         const old_display: DisplayRange = .{ .start = old_start_display, .end = old_end_display };
         if (start == end and replacement.len == 0 and supplied_annotations == null and !clear_annotations) {
             return .{
                 .old_range = .{ .start = start, .end = end },
                 .inserted_len = 0,
                 .new_end = start,
+                .old_start_location = old_start_location,
+                .old_end_location = old_end_location,
+                .new_start_location = old_start_location,
+                .new_end_location = old_start_location,
                 .old_display = old_display,
                 .new_display = old_display,
                 .old_extent = displayExtent(old_display),
@@ -1728,10 +1739,16 @@ pub const UnifiedTextBuffer = struct {
             .start = self.normalizedByteOffsetToDisplayPoint(start, .before) catch unreachable,
             .end = self.normalizedByteOffsetToDisplayPoint(new_end, .after) catch unreachable,
         };
+        const new_start_location = self.normalizedByteOffsetToLocation(start) catch unreachable;
+        const new_end_location = self.normalizedByteOffsetToLocation(new_end) catch unreachable;
         return .{
             .old_range = .{ .start = start, .end = end },
             .inserted_len = inserted_len,
             .new_end = new_end,
+            .old_start_location = old_start_location,
+            .old_end_location = old_end_location,
+            .new_start_location = new_start_location,
+            .new_end_location = new_end_location,
             .old_display = old_display,
             .new_display = new_display,
             .old_extent = displayExtent(old_display),
@@ -1901,9 +1918,9 @@ pub const UnifiedTextBuffer = struct {
         self.clearAnnotations();
     }
 
-    pub fn replaceTextFromMemIdForEdit(self: *Self, mem_id: u8) TextBufferError!void {
+    pub fn replaceTextFromMemIdForEdit(self: *Self, mem_id: u8) TextBufferError!SpliceResult {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
-        _ = try self.replaceNormalizedBytesForEdit(0, self.getByteSize(), text);
+        return self.replaceNormalizedBytesForEdit(0, self.getByteSize(), text);
     }
 
     /// Append text to the end of the buffer without clearing

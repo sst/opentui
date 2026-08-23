@@ -2739,6 +2739,18 @@ export fn editBufferGetId(edit_handle: NativeHandle) u16 {
     return object_ptr.getId();
 }
 
+export fn editBufferGetLastChange(edit_handle: NativeHandle, out_change: *edit_buffer_mod.EditChange) bool {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
+        out_change.* = std.mem.zeroes(edit_buffer_mod.EditChange);
+        return false;
+    };
+    out_change.* = object_ptr.getLastChange() orelse {
+        out_change.* = std.mem.zeroes(edit_buffer_mod.EditChange);
+        return false;
+    };
+    return true;
+}
+
 export fn editBufferDebugLogRope(edit_handle: NativeHandle) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     object_ptr.debugLogRope();

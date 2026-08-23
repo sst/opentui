@@ -52,6 +52,7 @@ import {
   AnnotationBatchResultStruct,
   DisplayPointStruct,
   TextSpliceResultStruct,
+  EditChangeStruct,
   HighlightStruct,
   LogicalCursorStruct,
   VisualCursorStruct,
@@ -461,6 +462,34 @@ function packDocumentOperations(operations: DocumentOperation[]) {
   }
 }
 export type EditBufferHandle = NativeHandle<"edit_buffer">
+export interface EditPoint {
+  row: number
+  column: number
+}
+export interface EditChange {
+  kind: "splice" | "reset"
+  epoch: bigint
+  startIndex: number
+  oldEndIndex: number
+  newEndIndex: number
+  startPosition: EditPoint
+  oldEndPosition: EditPoint
+  newEndPosition: EditPoint
+}
+
+export function decodeEditChange(data: ArrayBufferLike): EditChange {
+  const value = EditChangeStruct.unpack(data) as Record<string, number | bigint>
+  return {
+    kind: value.kind === 0 ? "splice" : "reset",
+    epoch: value.epoch as bigint,
+    startIndex: value.startIndex as number,
+    oldEndIndex: value.oldEndIndex as number,
+    newEndIndex: value.newEndIndex as number,
+    startPosition: { row: value.startRow as number, column: value.startColumn as number },
+    oldEndPosition: { row: value.oldEndRow as number, column: value.oldEndColumn as number },
+    newEndPosition: { row: value.newEndRow as number, column: value.newEndColumn as number },
+  }
+}
 export type EditorViewHandle = NativeHandle<"editor_view">
 export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
@@ -1768,6 +1797,10 @@ function getOpenTUILib(libPath?: string) {
     editBufferGetId: {
       args: ["u32"],
       returns: "u16",
+    },
+    editBufferGetLastChange: {
+      args: ["u32", "buffer"],
+      returns: "bool",
     },
     editBufferGetTextBuffer: {
       args: ["u32"],
@@ -3368,6 +3401,7 @@ export interface RenderLib extends AudioEngineLib {
   editBufferSetVirtualAnnotationPolicy: (buffer: EditBufferHandle, enabled: boolean) => void
   editBufferGetCursorPosition: (buffer: EditBufferHandle) => LogicalCursor
   editBufferGetId: (buffer: EditBufferHandle) => number
+  editBufferGetLastChange: (buffer: EditBufferHandle) => EditChange | null
   editBufferGetTextBuffer: (buffer: EditBufferHandle) => TextBufferHandle
   editBufferDebugLogRope: (buffer: EditBufferHandle) => void
   editBufferUndo: (buffer: EditBufferHandle, maxLength: number) => Uint8Array | null
@@ -6326,6 +6360,12 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetId(buffer: Pointer): number {
     return this.opentui.symbols.editBufferGetId(buffer)
+  }
+
+  public editBufferGetLastChange(buffer: Pointer): EditChange | null {
+    const out = new Uint8Array(EditChangeStruct.size)
+    if (!this.opentui.symbols.editBufferGetLastChange(buffer, out)) return null
+    return decodeEditChange(out.buffer)
   }
 
   public editBufferGetTextBuffer(buffer: EditBufferHandle): TextBufferHandle {

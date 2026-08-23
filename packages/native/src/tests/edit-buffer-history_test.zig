@@ -62,6 +62,7 @@ fn exerciseFailedHistoryEdit(operation: FailedEdit, fail_offset: ?usize) !usize 
     const before_root = eb.getTextBuffer().rope().root;
     const before_version = eb.getTextBuffer().rope().version;
     const before_content_epoch = eb.getTextBuffer().getContentEpoch();
+    const before_change = eb.getLastChange();
     const before_annotation_epoch = eb.getTextBuffer().getAnnotationEpoch();
     const before_position_generation = eb.getTextBuffer().textAnnotations().positionGeneration();
     const before_alloc = failing.alloc_index;
@@ -88,6 +89,7 @@ fn exerciseFailedHistoryEdit(operation: FailedEdit, fail_offset: ?usize) !usize 
         try std.testing.expect(eb.getTextBuffer().rope().root == before_root);
         try std.testing.expectEqual(before_version, eb.getTextBuffer().rope().version);
         try std.testing.expectEqual(before_content_epoch, eb.getTextBuffer().getContentEpoch());
+        try std.testing.expectEqualDeep(before_change, eb.getLastChange());
         try std.testing.expectEqual(before_annotation_epoch, eb.getTextBuffer().getAnnotationEpoch());
         try std.testing.expectEqual(before_position_generation, eb.getTextBuffer().textAnnotations().positionGeneration());
         try std.testing.expectEqualDeep(before_annotation, eb.getTextBuffer().textAnnotations().get(id).?);

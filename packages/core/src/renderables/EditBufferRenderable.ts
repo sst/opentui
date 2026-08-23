@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
-import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
+import { EditBuffer, type EditChange, type LogicalCursor } from "../edit-buffer.js"
 import { EditorView, type VisualCursor } from "../editor-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import type {
@@ -49,9 +49,7 @@ export interface CursorChangeEvent {
   visualColumn: number
 }
 
-export interface ContentChangeEvent {
-  // No payload - use getText() to retrieve content if needed
-}
+export type ContentChangeEvent = EditChange
 
 export interface EditBufferOptions extends RenderableOptions<EditBufferRenderable> {
   textColor?: string | RGBA
@@ -192,12 +190,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       }
     })
 
-    this.editBuffer.on("content-changed", () => {
+    this.editBuffer.on("content-changed", (change: EditChange) => {
       this.yogaNode.markDirty()
       this.requestRender()
       this.emit("line-info-change")
       if (this._contentChangeListener) {
-        this._contentChangeListener({})
+        this._contentChangeListener(change)
       }
     })
   }
