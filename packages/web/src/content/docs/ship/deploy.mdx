@@ -20,7 +20,7 @@ must reach the target machine.
 | Bun source     | You can install Bun and dependencies on the target.                    | Ship source, the lockfile, production dependencies, and the matching Core native package.                                               |
 | Bun bundle     | You want built JavaScript but can install Bun on the target.           | Ship the bundle and every emitted asset or external dependency. The build needs the matching native package unless it remains external. |
 | Bun executable | You want one target-specific host executable.                          | Build once per operating system, architecture, and Linux libc. Deploy runtime-loaded plugins as sidecars.                               |
-| Node.js ESM    | You need the accepted Node.js runtime path without SEA packaging.      | Use Node.js 26.4.0, ESM, `--experimental-ffi`, installed runtime assets, and the matching native package.                               |
+| Node.js ESM    | You need the accepted Node.js runtime path without SEA packaging.      | Use Node.js 26.4.0 or later, ESM, `--experimental-ffi`, installed runtime assets, and the matching native package.                      |
 | Node.js SEA    | You need one Node.js executable and can extract its assets at startup. | Embed the exact Node asset manifest, extract it, and set `OTUI_ASSET_ROOT` before Core executes.                                        |
 | SSH            | Users connect through an SSH client instead of a local terminal.       | Package the host with one of the preceding forms, then configure listener security and remote-session policy.                           |
 
@@ -48,7 +48,7 @@ Use [Standalone executables](/docs/reference/standalone-executables#bun) for the
 
 The accepted Node.js SEA workflow has these constraints:
 
-- Use Node.js 26.4.0 and an ESM application bundle.
+- Use Node.js 26.4.0 or later and an ESM application bundle.
 - Do not use `@opentui/three` or runtime-plugin support. Those entry points are Bun-only.
 - Call `getNodeAssets()` at build time only.
 - Select the target platform, architecture, and Linux libc when you create the manifest.

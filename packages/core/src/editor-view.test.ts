@@ -289,6 +289,14 @@ describe("EditorView", () => {
       expect(view.getSelectedText()).toBe("ABCDEFGHIJKLMNOP")
     })
 
+    it("should select a word with word behavior on the same cell", () => {
+      buffer.setText("alpha beta gamma")
+
+      const changed = view.setLocalSelection(6, 0, 6, 0, undefined, undefined, false, false, "word")
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("beta")
+    })
+
     it("should return null bytes for zero-length selected-text output buffer", () => {
       buffer.setText("Hello World")
       view.setSelection(0, 5)

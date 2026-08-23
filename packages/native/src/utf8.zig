@@ -853,6 +853,7 @@ const GraphemeWidthState = struct {
 
         const gc = uucode.get(.general_category, cp);
         const is_virama = gc == .mark_nonspacing;
+        const is_spacing_mark = uucode.get(.grapheme_break, cp) == .spacing_mark;
 
         const is_devanagari_ra = (cp == 0x0930);
 
@@ -877,6 +878,8 @@ const GraphemeWidthState = struct {
         } else if (!self.has_width and cp_width > 0) {
             self.width = cp_width;
             self.has_width = true;
+        } else if (self.has_width and is_spacing_mark and cp_width > 0) {
+            self.width = @max(self.width, 2);
         } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
             if (!is_devanagari_ra) {
                 self.width += cp_width;

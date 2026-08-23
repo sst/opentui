@@ -20,6 +20,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     strategy:
+      fail-fast: false
       matrix:
         os: [blacksmith-8vcpu-ubuntu-2404, blacksmith-8vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
@@ -62,10 +63,21 @@ jobs:
           cd packages/react
           bun run build --ci
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
           cd packages/react
           bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-react-${{ matrix.os }}-${{ github.run_attempt }}
 
   # Gate job for branch protection
   build-complete:

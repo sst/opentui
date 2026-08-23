@@ -7,7 +7,7 @@ import {
   type TextBufferViewHandle,
 } from "./zig.js"
 import type { TextBuffer } from "./text-buffer.js"
-import type { SelectionOccupancy } from "./types.js"
+import type { SelectionBehavior, SelectionOccupancy } from "./types.js"
 
 export class TextBufferView {
   private lib: RenderLib
@@ -69,6 +69,7 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.textBufferViewSetLocalSelection(
@@ -79,6 +80,7 @@ export class TextBufferView {
       focusY,
       bgColor || null,
       fgColor || null,
+      behavior,
     )
   }
 
@@ -89,6 +91,7 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.textBufferViewUpdateLocalSelection(
@@ -99,6 +102,7 @@ export class TextBufferView {
       focusY,
       bgColor || null,
       fgColor || null,
+      behavior,
     )
   }
 

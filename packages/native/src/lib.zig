@@ -198,6 +198,14 @@ inline fn selectionOccupancy(value: u8) text_buffer_view.SelectionOccupancy {
     return if (value == 1) .boundary else .cell;
 }
 
+inline fn selectionBehavior(value: u8) text_buffer_view.SelectionBehavior {
+    return switch (value) {
+        1 => .word,
+        2 => .line,
+        else => .cell,
+    };
+}
+
 comptime {
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalCursor) == 14);
     std.debug.assert(@sizeOf(ExternalEmbeddedTerminalKeyOptions) == 12);
@@ -1025,9 +1033,9 @@ export fn audioMixToBuffer(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_
     return native_audio.mixToBuffer(object_ptr, out_ptr, frame_count, channels);
 }
 
-export fn audioEnableTap(engine_handle: NativeHandle, enabled: bool, capacity_frames: u32) i32 {
+export fn audioEnableTap(engine_handle: NativeHandle, enabled: u8, capacity_frames: u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.enableTap(object_ptr, enabled, capacity_frames);
+    return native_audio.enableTap(object_ptr, enabled == 1, capacity_frames);
 }
 
 export fn audioReadTap(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32) i32 {
@@ -1320,27 +1328,28 @@ export fn commitSplitFooterSnapshot(
     renderer_handle: NativeHandle,
     snapshot_buffer_handle: NativeHandle,
     rowColumns: u32,
-    startOnNewLine: bool,
-    trailingNewline: bool,
+    flags: u8,
     pinnedRenderOffset: u32,
-    force: bool,
-    beginFrame: bool,
-    finalizeFrame: bool,
 ) u64 {
     const renderer_ptr = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
     const snapshot_ptr = acquireBuffer(snapshot_buffer_handle) orelse return packFailedRenderResult();
+    const start_on_new_line = (flags & (1 << 0)) != 0;
+    const trailing_newline = (flags & (1 << 1)) != 0;
+    const force = (flags & (1 << 2)) != 0;
+    const begin_frame = (flags & (1 << 3)) != 0;
+    const finalize_frame = (flags & (1 << 4)) != 0;
 
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
-    if (beginFrame and finalizeFrame) {
+    if (begin_frame and finalize_frame) {
         return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
             snapshot_ptr,
             rowColumns,
-            startOnNewLine,
-            trailingNewline,
+            start_on_new_line,
+            trailing_newline,
             pinnedRenderOffset,
             force,
             true,
@@ -1351,16 +1360,16 @@ export fn commitSplitFooterSnapshot(
     return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
         snapshot_ptr,
         rowColumns,
-        startOnNewLine,
-        trailingNewline,
+        start_on_new_line,
+        trailing_newline,
         pinnedRenderOffset,
         force,
-        beginFrame,
-        finalizeFrame,
+        begin_frame,
+        finalize_frame,
     ));
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: ?[*]const u8, idLen: u32) NativeHandle {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: u8, widthMethod: u8, idPtr: ?[*]const u8, idLen: u32) NativeHandle {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return INVALID_HANDLE;
@@ -1372,7 +1381,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const id = sliceFromPtrLen(idPtr, idLen);
 
     const bufferPtr = buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
-        .respectAlpha = respectAlpha,
+        .respectAlpha = respectAlpha == 1,
         .pool = pool,
         .width_method = wMethod,
         .id = id,
@@ -1581,7 +1590,7 @@ export fn getCursorState(renderer_handle: NativeHandle, outPtr: *ExternalCursorS
     };
 }
 
-export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: u8) void {
+export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: u8, corner: u8) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,
@@ -1590,7 +1599,7 @@ export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: 
         else => .bottomRight,
     };
 
-    object_ptr.setDebugOverlay(enabled, cornerEnum);
+    object_ptr.setDebugOverlay(enabled == 1, cornerEnum);
 }
 
 export fn clearTerminal(renderer_handle: NativeHandle) void {
@@ -2271,9 +2280,9 @@ export fn textBufferViewGetSelectionInfo(view_handle: NativeHandle) u64 {
     return object_ptr.packSelectionInfo();
 }
 
-export fn textBufferViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
+export fn textBufferViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, behavior: u8) bool {
     const object_ptr = acquireTextBufferView(view_handle) orelse return false;
-    return object_ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    return object_ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)), selectionBehavior(behavior));
 }
 
 export fn textBufferViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
@@ -2281,9 +2290,9 @@ export fn textBufferViewUpdateSelection(view_handle: NativeHandle, end: u32, bgC
     object_ptr.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
-export fn textBufferViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
+export fn textBufferViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, behavior: u8) bool {
     const object_ptr = acquireTextBufferView(view_handle) orelse return false;
-    return object_ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    return object_ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)), selectionBehavior(behavior));
 }
 
 export fn textBufferViewResetLocalSelection(view_handle: NativeHandle) void {
@@ -2915,10 +2924,10 @@ export fn editorViewGetSelection(view_handle: NativeHandle) u64 {
     return object_ptr.text_buffer_view.packSelectionInfo();
 }
 
-export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
+export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, flags: u8) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
-    object_ptr.setSelectionFollowCursor(followCursor);
-    return object_ptr.setLocalSelection(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor);
+    object_ptr.setSelectionFollowCursor(flags & 2 != 0);
+    return object_ptr.setLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), flags & 1 != 0, selectionBehavior(flags >> 2));
 }
 
 export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
@@ -2926,16 +2935,21 @@ export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor
     object_ptr.updateSelection(end, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor));
 }
 
-export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
+export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, flags: u8) bool {
     const object_ptr = acquireEditorView(view_handle) orelse return false;
-    object_ptr.setSelectionFollowCursor(followCursor);
-    return object_ptr.updateLocalSelection(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), updateCursor);
+    object_ptr.setSelectionFollowCursor(flags & 2 != 0);
+    return object_ptr.updateLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor), flags & 1 != 0, selectionBehavior(flags >> 2));
 }
 
 export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     object_ptr.setSelectionFollowCursor(false);
     object_ptr.resetLocalSelection();
+}
+
+export fn editorViewConvertSelectionToCell(view_handle: NativeHandle) bool {
+    const object_ptr = acquireEditorView(view_handle) orelse return false;
+    return object_ptr.convertSelectionToCell();
 }
 
 export fn editorViewSetSelectionOccupancy(view_handle: NativeHandle, occupancy: u8) void {

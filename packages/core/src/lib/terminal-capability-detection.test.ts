@@ -178,6 +178,8 @@ describe("renderer capabilities event", () => {
     const { createTestRenderer } = await import("../testing/test-renderer.js")
     const { renderer } = await createTestRenderer({})
 
+    await renderer.setupTerminal()
+
     const events: any[] = []
     renderer.on("capabilities", (caps) => events.push({ ...caps }))
 
@@ -189,11 +191,12 @@ describe("renderer capabilities event", () => {
       "\x1b[?1004;2$y", // 4. focus_tracking
       "\x1b[?2004;2$y", // 5. bracketed_paste
       "\x1b[?2026;2$y", // 6. sync
-      "\x1b[1;2R", // 7. explicit_width (CPR)
-      "\x1b[1;3R", // 8. scaled_text (CPR)
-      "\x1bP>|kitty(0.42.2)\x1b\\", // 9. xtversion (triggers kitty detection)
-      "\x1b[?0u", // 10. kitty keyboard query
-      "\x1b_Gi=31337;OK\x1b\\", // 11. exact graphics query response
+      "\x1b[15;42R", // 7. startup cursor position (CPR)
+      "\x1b[1;2R", // 8. explicit_width probe reply (CPR)
+      "\x1b[1;3R", // 9. scaled_text probe reply (CPR)
+      "\x1bP>|kitty(0.42.2)\x1b\\", // 10. xtversion (triggers kitty detection)
+      "\x1b[?0u", // 11. kitty keyboard query
+      "\x1b_Gi=31337;OK\x1b\\", // 12. exact graphics query response
     ]
 
     for (const response of kittyResponses) {
@@ -201,20 +204,20 @@ describe("renderer capabilities event", () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
-    expect(events.length).toBe(11)
+    expect(events.length).toBe(12)
 
     // First event: sgr_pixels detected
     expect(events[0].sgr_pixels).toBe(true)
 
-    // After xtversion (event 9): kitty_keyboard should be true
-    expect(events[8].kitty_keyboard).toBe(true)
-    expect(events[8].kitty_graphics).toBe(true)
-    expect(events[8].notifications).toBe(true)
-    expect(events[8].terminal.name).toBe("kitty")
-    expect(events[8].terminal.version).toBe("0.42.2")
+    // After xtversion (event 10): kitty_keyboard should be true
+    expect(events[9].kitty_keyboard).toBe(true)
+    expect(events[9].kitty_graphics).toBe(true)
+    expect(events[9].notifications).toBe(true)
+    expect(events[9].terminal.name).toBe("kitty")
+    expect(events[9].terminal.version).toBe("0.42.2")
 
     // Final state should have all kitty capabilities
-    const finalCaps = events[10]
+    const finalCaps = events[11]
     expect(finalCaps.kitty_keyboard).toBe(true)
     expect(finalCaps.sgr_pixels).toBe(true)
     expect(finalCaps.color_scheme_updates).toBe(true)

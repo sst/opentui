@@ -41,6 +41,49 @@ pub const SelectionOccupancy = enum(u8) {
     boundary = 1,
 };
 
+/// How local cell coordinates expand into a highlight range.
+/// `cell` is the current inclusive press/drag. `word` and `line` expand
+/// each endpoint through selectWord / selectLine.
+pub const SelectionBehavior = enum(u8) {
+    cell = 0,
+    word = 1,
+    line = 2,
+};
+
+/// Half-open display-offset range used by word/line click expansion.
+pub const SelectionRange = struct {
+    start: u32,
+    end: u32,
+};
+
+/// Ghostty-style boundaries for double-click selection. NUL is omitted because
+/// OpenTUI text buffers do not use it for unwritten terminal cells.
+/// Keep this policy separate from `utf8.findWrapBreaks`: wrap and editor motion
+/// split on `/`, `-`, and CJK/ASCII transitions, but selection does not.
+/// Selection groups consecutive graphemes by this class, so space and tab runs
+/// are selectable instead of mapping to an adjacent word.
+const default_word_boundaries = [_]u21{
+    ' ',
+    '\t',
+    '\'',
+    '"',
+    '│',
+    '`',
+    '|',
+    ':',
+    ';',
+    ',',
+    '(',
+    ')',
+    '[',
+    ']',
+    '{',
+    '}',
+    '<',
+    '>',
+    '$',
+};
+
 const SelectionEndpoints = struct {
     anchor: u32,
     focus: u32,
@@ -147,6 +190,7 @@ pub const UnifiedTextBufferView = struct {
     /// cell occupancy can extend `selection.end` past the focus grapheme.
     selection_endpoints: ?SelectionEndpoints,
     selection_occupancy: SelectionOccupancy,
+    selection_behavior: SelectionBehavior,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -206,6 +250,7 @@ pub const UnifiedTextBufferView = struct {
             .selection = null,
             .selection_endpoints = null,
             .selection_occupancy = .cell,
+            .selection_behavior = .cell,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -604,6 +649,7 @@ pub const UnifiedTextBufferView = struct {
     pub fn resetSelection(self: *Self) void {
         self.selection = null;
         self.clearSelectionEndpoints();
+        self.selection_behavior = .cell;
     }
 
     pub fn setSelectionOccupancy(self: *Self, occupancy: SelectionOccupancy) void {
@@ -613,7 +659,8 @@ pub const UnifiedTextBufferView = struct {
         const text_end = self.getTextEndOffset();
         endpoints.anchor = @min(endpoints.anchor, text_end);
         endpoints.focus = @min(endpoints.focus, text_end);
-        const range = self.selectionRange(endpoints.anchor, endpoints.focus, text_end);
+        const range = self.expandSelectionRange(endpoints.anchor, endpoints.focus, text_end, self.selection_behavior) orelse
+            self.selectionRange(endpoints.anchor, endpoints.focus, text_end);
         selection.start = range.start;
         selection.end = range.end;
     }
@@ -656,10 +703,14 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), .cell);
     }
 
-    pub fn setLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    pub fn setLocalSelectionBehavior(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA, behavior: SelectionBehavior) bool {
+        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), behavior);
+    }
+
+    pub fn setLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
             self.ensureTruncation();
@@ -703,8 +754,10 @@ pub const UnifiedTextBufferView = struct {
             };
 
         self.selection_endpoints = .{ .anchor = anchor_offset, .focus = focus_offset };
+        self.selection_behavior = behavior;
 
-        const range = self.selectionRange(anchor_offset, focus_offset, text_end_offset);
+        const range = self.expandSelectionRange(anchor_offset, focus_offset, text_end_offset, behavior) orelse
+            self.selectionRange(anchor_offset, focus_offset, text_end_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
         const new_selection = selectionFromStyle(range.start, range.end, style);
@@ -719,18 +772,22 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), .cell);
     }
 
-    pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    pub fn updateLocalSelectionBehavior(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA, behavior: SelectionBehavior) bool {
+        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor), behavior);
+    }
+
+    pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         if (self.selection_endpoints != null) {
-            return self.updateLocalSelectionFocusOnly(focusX, focusY, style);
+            return self.updateLocalSelectionFocusOnly(focusX, focusY, style, behavior);
         } else {
-            return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style);
+            return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style, behavior);
         }
     }
 
-    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle) bool {
+    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle, behavior: SelectionBehavior) bool {
         const endpoints = self.selection_endpoints orelse return false;
         const anchor_offset = endpoints.anchor;
 
@@ -753,11 +810,237 @@ pub const UnifiedTextBufferView = struct {
             self.coordsToCharOffset(focusX, focusY) orelse return false;
 
         self.selection_endpoints.?.focus = focus_col_offset;
+        self.selection_behavior = behavior;
 
-        const range = self.selectionRange(anchor_offset, focus_col_offset, text_end_offset);
+        const range = self.expandSelectionRange(anchor_offset, focus_col_offset, text_end_offset, behavior) orelse return false;
         self.selection = selectionFromStyle(range.start, range.end, style);
 
         return true;
+    }
+
+    /// Keep the exclusive highlight and store cell endpoints so a later
+    /// cell drag or shift-extend does not re-expand by word or line.
+    /// Cell occupancy pins focus on the last occupied grapheme; boundary
+    /// occupancy pins it on the exclusive end.
+    pub fn convertSelectionToCell(self: *Self) bool {
+        const selection = self.selection orelse return false;
+        if (selection.start == selection.end) return false;
+
+        const focus = if (self.selection_occupancy == .boundary)
+            selection.end
+        else if (self.text_buffer.graphemeBoundsAtOffset(selection.end - 1)) |bounds|
+            bounds.start
+        else
+            selection.end - 1;
+
+        self.selection_endpoints = .{ .anchor = selection.start, .focus = focus };
+        self.selection_behavior = .cell;
+        return true;
+    }
+
+    fn expandSelectionRange(
+        self: *Self,
+        anchor_offset: u32,
+        focus_offset: u32,
+        text_end_offset: u32,
+        behavior: SelectionBehavior,
+    ) ?SelectionRange {
+        switch (behavior) {
+            .cell => return self.selectionRange(anchor_offset, focus_offset, text_end_offset),
+            .word => {
+                const a = self.selectWordBetween(anchor_offset, focus_offset);
+                const b = self.selectWordBetween(focus_offset, anchor_offset);
+                return unionRanges(a, b);
+            },
+            .line => {
+                const a = self.selectLine(anchor_offset);
+                const b = self.selectLine(focus_offset);
+                return unionRanges(a, b);
+            },
+        }
+    }
+
+    fn unionRanges(a: ?SelectionRange, b: ?SelectionRange) ?SelectionRange {
+        const left = a orelse return b;
+        const right = b orelse return a;
+        return .{
+            .start = @min(left.start, right.start),
+            .end = @max(left.end, right.end),
+        };
+    }
+
+    /// Word at `offset`. Null on newline or end-of-buffer. `/` is not a boundary.
+    pub fn selectWord(self: *Self, offset: u32) ?SelectionRange {
+        const grapheme = self.selectionGraphemeAt(offset) orelse return null;
+        if (grapheme.is_break) return null;
+
+        const expect_boundary = isWordBoundary(grapheme.first_cp);
+        var start = grapheme.start;
+        var end = grapheme.end;
+
+        while (self.prevSelectionGrapheme(start)) |prev| {
+            if (prev.is_break) break;
+            if (isWordBoundary(prev.first_cp) != expect_boundary) break;
+            if (prev.start >= start) break;
+            start = prev.start;
+        }
+
+        while (self.selectionGraphemeAt(end)) |next| {
+            if (next.is_break) break;
+            if (isWordBoundary(next.first_cp) != expect_boundary) break;
+            if (next.end <= end) break;
+            end = next.end;
+        }
+
+        return .{ .start = start, .end = end };
+    }
+
+    /// First non-null `selectWord` walking from `from` toward `toward`, inclusive.
+    pub fn selectWordBetween(self: *Self, from: u32, toward: u32) ?SelectionRange {
+        const text_end = self.text_buffer.textEndOffset();
+        var offset = @min(from, text_end);
+        const limit = @min(toward, text_end);
+
+        if (offset <= limit) {
+            while (offset <= limit) {
+                if (self.selectWord(offset)) |range| return range;
+                const next = self.selectionGraphemeAt(offset) orelse return null;
+                if (next.end <= offset) return null;
+                offset = next.end;
+            }
+            return null;
+        }
+
+        while (true) {
+            if (self.selectWord(offset)) |range| return range;
+            if (offset <= limit) return null;
+            const prev = self.prevSelectionGrapheme(offset) orelse return null;
+            if (prev.start >= offset) return null;
+            offset = prev.start;
+        }
+    }
+
+    /// Logical line at `offset`, ASCII space/tab trimmed. All-whitespace keeps
+    /// the full source line so a blank line is still selected.
+    pub fn selectLine(self: *Self, offset: u32) ?SelectionRange {
+        return self.trimLineWhitespace(self.sourceLineRangeAt(offset) orelse return null);
+    }
+
+    fn sourceLineRangeAt(self: *Self, offset: u32) ?SelectionRange {
+        const rope = self.text_buffer.rope();
+        const text_end = self.text_buffer.textEndOffset();
+        if (offset > text_end) return null;
+        const coords = iter_mod.offsetToCoords(rope, offset) orelse return null;
+        const start = offset - coords.col;
+        return .{ .start = start, .end = start + iter_mod.lineWidthAt(rope, coords.row) };
+    }
+
+    fn trimLineWhitespace(self: *Self, range: SelectionRange) SelectionRange {
+        var start = range.start;
+        var end = range.end;
+        var saw_content = false;
+
+        var offset = range.start;
+        while (offset < range.end) {
+            const grapheme = self.selectionGraphemeAt(offset) orelse break;
+            if (grapheme.is_break) break;
+            if (grapheme.first_cp != ' ' and grapheme.first_cp != '\t') {
+                if (!saw_content) start = grapheme.start;
+                end = grapheme.end;
+                saw_content = true;
+            }
+            if (grapheme.end <= offset) break;
+            offset = grapheme.end;
+        }
+
+        if (!saw_content) return range;
+        return .{ .start = start, .end = end };
+    }
+
+    const SelectionGrapheme = struct {
+        start: u32,
+        end: u32,
+        first_cp: u21,
+        is_break: bool,
+    };
+
+    fn selectionGraphemeAt(self: *Self, offset: u32) ?SelectionGrapheme {
+        const text_end = self.text_buffer.textEndOffset();
+        if (offset >= text_end) return null;
+
+        const rope = self.text_buffer.rope();
+        const coords = iter_mod.offsetToCoords(rope, offset) orelse return null;
+        const line_width = iter_mod.lineWidthAt(rope, coords.row);
+        const line_start = offset - coords.col;
+
+        if (coords.col >= line_width) {
+            return .{
+                .start = line_start + line_width,
+                .end = line_start + line_width + 1,
+                .first_cp = '\n',
+                .is_break = true,
+            };
+        }
+
+        const linestart = rope.getMarker(.linestart, coords.row) orelse return null;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
+        const mem_registry = self.text_buffer.memRegistry();
+        const tab_width = self.text_buffer.tabWidth();
+        const width_method = self.text_buffer.widthMethod();
+
+        while (seg_idx < rope.count()) : (seg_idx += 1) {
+            const seg = rope.get(seg_idx) orelse break;
+            if (seg.isBreak() or seg.isLineStart()) break;
+            const chunk = seg.asText() orelse continue;
+            const next_cols = cols_before + chunk.width;
+            if (coords.col < next_cols) {
+                const bytes = chunk.getBytes(mem_registry);
+                const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const pos = utf8.findGraphemePosByWidth(
+                    bytes,
+                    coords.col - cols_before,
+                    tab_width,
+                    is_ascii,
+                    false,
+                    width_method,
+                );
+                if (pos.byte_offset >= bytes.len) return null;
+                var width = utf8.getGraphemeWidthAt(bytes, pos.byte_offset, tab_width, width_method);
+                if (width == 0) {
+                    const next = utf8.findGraphemePosByWidth(
+                        bytes,
+                        pos.columns_used + 1,
+                        tab_width,
+                        is_ascii,
+                        false,
+                        width_method,
+                    );
+                    if (next.byte_offset < bytes.len) {
+                        width = utf8.getGraphemeWidthAt(bytes, next.byte_offset, tab_width, width_method);
+                    }
+                }
+                const first_cp = utf8.decodeUtf8Unchecked(bytes, pos.byte_offset).cp;
+                const start = line_start + cols_before + pos.columns_used;
+                return .{
+                    .start = start,
+                    .end = start + width,
+                    .first_cp = first_cp,
+                    .is_break = first_cp == '\n' or first_cp == '\r',
+                };
+            }
+            cols_before = next_cols;
+        }
+        return null;
+    }
+
+    fn prevSelectionGrapheme(self: *Self, offset: u32) ?SelectionGrapheme {
+        if (offset == 0) return null;
+        return self.selectionGraphemeAt(offset - 1);
+    }
+
+    fn isWordBoundary(cp: u21) bool {
+        return std.mem.indexOfScalar(u21, &default_word_boundaries, cp) != null;
     }
 
     /// Derive the exclusive highlight/copy/delete range from stored endpoints.
@@ -765,7 +1048,7 @@ pub const UnifiedTextBufferView = struct {
     /// `boundary`: `[min, max)` — the insert range the caret swept.
     /// Zero extent (`anchor == focus`) stays empty in both modes: a press is
     /// not a cell to occupy.
-    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) struct { start: u32, end: u32 } {
+    fn selectionRange(self: *Self, anchor_offset: u32, focus_offset: u32, text_end_offset: u32) SelectionRange {
         var start = @min(anchor_offset, focus_offset);
         var end = @max(anchor_offset, focus_offset);
         if (anchor_offset == focus_offset) {

@@ -17,6 +17,7 @@ function bounds(anchorX: number, focusX: number, anchorY = 0, focusY = 0): Local
     focusX,
     focusY,
     isActive: true,
+    behavior: "cell",
   }
 }
 

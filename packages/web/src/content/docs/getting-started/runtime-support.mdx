@@ -15,10 +15,9 @@ Check the runtime, native artifact, permission, asset, and package requirements 
 | Runtime | Project requirement | Native Core requirements                               |
 | ------- | ------------------- | ------------------------------------------------------ |
 | Bun     | 1.3.0 or later      | Bun loads the matching optional native package.        |
-| Node.js | 26.4.0 exactly      | Use ECMAScript modules (ESM) and `--experimental-ffi`. |
+| Node.js | 26.4.0 or later     | Use ECMAScript modules (ESM) and `--experimental-ffi`. |
 
-The Node.js acceptance scripts reject every version other than 26.4.0. Do not interpret this requirement as
-Node.js 26 or later.
+The Node.js acceptance scripts accept Node.js 26.4 or later.
 
 Use ESM for Node.js applications. The Core root has an asynchronous ESM graph. A CommonJS `require("@opentui/core")`
 call fails with `ERR_REQUIRE_ASYNC_MODULE`.

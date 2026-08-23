@@ -15,12 +15,13 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_VERSION: 26.4.0
+  NODE_VERSION: 26.7.0
 
 jobs:
   bun-test:
     name: Bun Test (${{ matrix.os }})
     strategy:
+      fail-fast: false
       matrix:
         os: [blacksmith-8vcpu-ubuntu-2404, blacksmith-8vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
@@ -61,9 +62,21 @@ jobs:
         working-directory: packages/solid
         run: bun run build --ci
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         working-directory: packages/solid
-        run: bun run test
+        run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
+          bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-solid-${{ matrix.os }}-${{ github.run_attempt }}
 
   node-source:
     name: Node Source Lane

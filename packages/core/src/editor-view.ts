@@ -9,7 +9,7 @@ import {
 } from "./zig.js"
 import type { EditBuffer } from "./edit-buffer.js"
 import { createExtmarksController } from "./lib/index.js"
-import type { SelectionOccupancy } from "./types.js"
+import type { SelectionBehavior, SelectionOccupancy } from "./types.js"
 
 export interface Viewport {
   offsetY: number
@@ -118,6 +118,7 @@ export class EditorView {
     fgColor?: RGBA,
     updateCursor?: boolean,
     followCursor?: boolean,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
@@ -130,6 +131,7 @@ export class EditorView {
       fgColor || null,
       updateCursor ?? false,
       followCursor ?? false,
+      behavior,
     )
   }
 
@@ -142,6 +144,7 @@ export class EditorView {
     fgColor?: RGBA,
     updateCursor?: boolean,
     followCursor?: boolean,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.editorViewUpdateLocalSelection(
@@ -154,12 +157,18 @@ export class EditorView {
       fgColor || null,
       updateCursor ?? false,
       followCursor ?? false,
+      behavior,
     )
   }
 
   public resetLocalSelection(): void {
     this.guard()
     this.lib.editorViewResetLocalSelection(this.viewPtr)
+  }
+
+  public convertSelectionToCell(): boolean {
+    this.guard()
+    return this.lib.editorViewConvertSelectionToCell(this.viewPtr)
   }
 
   public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
