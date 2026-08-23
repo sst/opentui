@@ -532,8 +532,9 @@ test "remote detection - explicit local mode ignores SSH environment" {
 
 test "processCapabilityResponse captures startup cursor report before home probes" {
     var term = Terminal.init(.{});
-    term.startup_cursor_query_pending = true;
-    term.startup_cursor_query_captured = false;
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.queryTerminalSend(&writer);
 
     term.processCapabilityResponse("\x1b[7;11R\x1b[1;2R\x1b[1;3R");
 
@@ -544,6 +545,34 @@ test "processCapabilityResponse captures startup cursor report before home probe
     try testing.expect(!term.startup_cursor_query_pending);
     try testing.expect(term.caps.explicit_width);
     try testing.expect(term.caps.scaled_text);
+}
+
+test "processCapabilityResponse only accepts exact ordered explicit width probe reports" {
+    var unrelated = Terminal.init(.{});
+    unrelated.processCapabilityResponse("\x1b[1;5R");
+    try testing.expect(!unrelated.caps.explicit_width);
+    try testing.expect(!unrelated.caps.scaled_text);
+
+    var startup_on_row_one = Terminal.init(.{});
+    var startup_writer = TestWriter.init(testing.allocator);
+    defer startup_writer.deinit();
+    try startup_on_row_one.queryTerminalSend(&startup_writer);
+    startup_on_row_one.processCapabilityResponse("\x1b[1;5R");
+    startup_on_row_one.processCapabilityResponse("\x1b[1;2R");
+    startup_on_row_one.processCapabilityResponse("\x1b[1;3R");
+    const cursor = startup_on_row_one.getCursorPosition();
+    try testing.expectEqual(@as(u32, 5), cursor.x);
+    try testing.expectEqual(@as(u32, 1), cursor.y);
+    try testing.expect(startup_on_row_one.caps.explicit_width);
+    try testing.expect(startup_on_row_one.caps.scaled_text);
+
+    var echoed = Terminal.init(.{});
+    var echoed_writer = TestWriter.init(testing.allocator);
+    defer echoed_writer.deinit();
+    try echoed.queryTerminalSend(&echoed_writer);
+    echoed.processCapabilityResponse("\x1b[7;11R\x1b[1;12R\x1b[1;8R");
+    try testing.expect(!echoed.caps.explicit_width);
+    try testing.expect(!echoed.caps.scaled_text);
 }
 
 test "environment variables - should be overridden by xtversion" {
@@ -1580,12 +1609,12 @@ fn forwardScreenDcs(input: []const u8, output: []u8) ![]const u8 {
     return output[0..output_offset];
 }
 
-test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {
+test "queryTerminalSend - force-off rejects unrelated row-1 cursor reports" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
-    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "0");
 
     var term = Terminal.init(.{ .env_map = &env });
 
@@ -1605,6 +1634,10 @@ test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH
     // Verify the flag was set correctly
     try testing.expect(term.skip_explicit_width_query);
     try testing.expect(!term.caps.explicit_width);
+
+    term.processCapabilityResponse("\x1b[1;2R");
+    try testing.expect(!term.caps.explicit_width);
+    try testing.expect(!term.caps.scaled_text);
 }
 
 test "queryTerminalSend - sends OSC 66 queries by default" {
