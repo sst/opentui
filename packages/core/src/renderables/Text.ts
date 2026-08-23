@@ -1814,29 +1814,51 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private planNativeChildMoves(previous: TextRenderable[], next: TextRenderable[]): PlannedNativeMove[] {
-    const forward: PlannedNativeMove[] = []
-    const forwardOrder = [...previous]
-    for (let index = 0; index < next.length; index++) {
-      const desired = next[index]!
-      const currentIndex = forwardOrder.indexOf(desired)
-      if (currentIndex === index) continue
-      const anchor = forwardOrder[index]!
-      forward.push({ source: desired, anchor, before: true })
-      forwardOrder.splice(currentIndex, 1)
-      forwardOrder.splice(index, 0, desired)
+    type ChildNode = { child: TextRenderable; prev: ChildNode | null; next: ChildNode | null }
+    const plan = (fromEnd: boolean): PlannedNativeMove[] => {
+      const nodes = new Map<TextRenderable, ChildNode>()
+      let last: ChildNode | null = null
+      for (const child of previous) {
+        const node: ChildNode = { child, prev: last, next: null }
+        if (last) last.next = node
+        nodes.set(child, node)
+        last = node
+      }
+
+      const moves: PlannedNativeMove[] = []
+      let cursor = fromEnd ? last : (nodes.get(previous[0]!) ?? null)
+      for (
+        let index = fromEnd ? next.length - 1 : 0;
+        fromEnd ? index >= 0 : index < next.length;
+        index += fromEnd ? -1 : 1
+      ) {
+        const desired = nodes.get(next[index]!)!
+        if (desired === cursor) {
+          cursor = fromEnd ? cursor.prev : cursor.next
+          continue
+        }
+
+        const anchor = cursor!
+        moves.push({ source: desired.child, anchor: anchor.child, before: !fromEnd })
+        if (desired.prev) desired.prev.next = desired.next
+        if (desired.next) desired.next.prev = desired.prev
+        if (fromEnd) {
+          desired.prev = anchor
+          desired.next = anchor.next
+          if (anchor.next) anchor.next.prev = desired
+          anchor.next = desired
+        } else {
+          desired.prev = anchor.prev
+          desired.next = anchor
+          if (anchor.prev) anchor.prev.next = desired
+          anchor.prev = desired
+        }
+      }
+      return moves
     }
 
-    const reverse: PlannedNativeMove[] = []
-    const reverseOrder = [...previous]
-    for (let index = next.length - 1; index >= 0; index--) {
-      const desired = next[index]!
-      const currentIndex = reverseOrder.indexOf(desired)
-      if (currentIndex === index) continue
-      const anchor = reverseOrder[index]!
-      reverse.push({ source: desired, anchor, before: false })
-      reverseOrder.splice(currentIndex, 1)
-      reverseOrder.splice(index, 0, desired)
-    }
+    const forward = plan(false)
+    const reverse = plan(true)
     return forward.length <= reverse.length ? forward : reverse
   }
 
