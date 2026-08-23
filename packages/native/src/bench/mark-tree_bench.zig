@@ -52,9 +52,55 @@ pub fn run(
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]bench_utils.BenchResult {
-    _ = show_mem;
     var results: std.ArrayList(bench_utils.BenchResult) = .empty;
     errdefer results.deinit(allocator);
+
+    const clone_cases = [_]struct { name: []const u8, count: usize }{
+        .{ .name = "clone: 1k ranges", .count = 1_000 },
+        .{ .name = "clone: 10k ranges", .count = 10_000 },
+        .{ .name = "clone: 100k ranges", .count = 100_000 },
+    };
+    for (clone_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var tree = initTree(allocator, 0x636c6f6e65 + case.count);
+            defer tree.deinit();
+            for (0..case.count) |index| {
+                const start_byte: u32 = @intCast(index * 4);
+                _ = try tree.addRange(.{ .start_byte = start_byte, .end_byte = start_byte + 3 });
+            }
+            try tree.splice(0, 0, 1);
+
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const timer = bench_utils.BenchTimer.start(io);
+                var clone = try tree.clone(allocator);
+                stats.record(timer.read());
+                std.mem.doNotOptimizeAway(clone.root);
+                clone.deinit();
+            }
+            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+                var measured_allocator: std.heap.DebugAllocator(.{ .enable_memory_limit = true }) = .init;
+                var clone = try tree.clone(measured_allocator.allocator());
+                const requested_bytes = measured_allocator.total_requested_bytes;
+                clone.deinit();
+                std.debug.assert(measured_allocator.deinit() == .ok);
+                const values = try allocator.alloc(bench_utils.MemStat, 1);
+                values[0] = .{ .name = "clone requested (2 allocs)", .bytes = requested_bytes };
+                break :blk values;
+            } else null;
+            try results.append(allocator, .{
+                .name = case.name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = stats.count,
+                .stddev_ns = stats.standardDeviation(),
+                .rme_95 = stats.relativeMarginOfError95(),
+                .mem_stats = mem_stats,
+            });
+        }
+    }
 
     {
         const name = "suffix: 10k splices with 100k ranges";

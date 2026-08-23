@@ -1629,10 +1629,7 @@ pub const UnifiedTextBuffer = struct {
 
         var generated_annotations: ?TextAnnotations = null;
         if (supplied_annotations == null and !use_live_candidate) {
-            generated_annotations = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
-                error.OutOfMemory => return TextBufferError.OutOfMemory,
-                else => return TextBufferError.InvalidDimensions,
-            };
+            generated_annotations = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         }
         var annotation_candidate_owned = generated_annotations != null;
         defer if (annotation_candidate_owned) generated_annotations.?.deinit();
@@ -3378,10 +3375,7 @@ pub const UnifiedTextBuffer = struct {
         const normalized_len = try normalizeStyledChunks(chunks, replacement, normalized_boundaries);
         const normalized_offset: u32 = @intCast(normalized_len);
 
-        var candidate = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => return TextBufferError.InvalidDimensions,
-        };
+        var candidate = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         var candidate_owned = true;
         defer if (candidate_owned) candidate.deinit();
         candidate.clipOwnerRange(owner, start_byte, end_byte) catch |err| switch (err) {
@@ -3821,10 +3815,7 @@ pub const UnifiedTextBuffer = struct {
         }
         if (output_count != output_id_count or operations.len == 0) return TextBufferError.InvalidDimensions;
 
-        var candidate_annotations = self.annotations.clone(self.global_allocator) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => return TextBufferError.InvalidDimensions,
-        };
+        var candidate_annotations = self.annotations.clone(self.global_allocator) catch return TextBufferError.OutOfMemory;
         var annotations_owned = true;
         defer if (annotations_owned) candidate_annotations.deinit();
 
@@ -3873,10 +3864,29 @@ pub const UnifiedTextBuffer = struct {
         defer if (!styles_committed) for (acquired_styles.items) |style_id| self.releaseInternalStyle(style_id);
         var released_styles: std.ArrayListUnmanaged(u32) = .empty;
         defer released_styles.deinit(self.global_allocator);
-        const maximum_acquired_styles = std.math.add(usize, output_count + operations.len, self.annotations.count()) catch return TextBufferError.InvalidDimensions;
+        const maximum_acquired_styles = std.math.add(usize, output_count, operations.len) catch return TextBufferError.InvalidDimensions;
         try acquired_styles.ensureTotalCapacity(self.global_allocator, maximum_acquired_styles);
-        const maximum_released_styles = std.math.add(usize, self.annotations.count(), maximum_acquired_styles) catch return TextBufferError.InvalidDimensions;
-        try released_styles.ensureTotalCapacity(self.global_allocator, maximum_released_styles);
+        const StyleOwnershipEffect = struct { before: ?u32, after: ?u32 };
+        var style_effects = std.AutoHashMap(u64, StyleOwnershipEffect).init(self.global_allocator);
+        defer style_effects.deinit();
+        const trackStyleEffect = struct {
+            fn track(
+                effects: *std.AutoHashMap(u64, StyleOwnershipEffect),
+                before: ?TextAnnotations.Annotation,
+                after: ?TextAnnotations.Annotation,
+            ) TextBufferError!void {
+                const id = if (before) |annotation| annotation.id() else if (after) |annotation| annotation.id() else return;
+                const entry = effects.getOrPut(id) catch return TextBufferError.OutOfMemory;
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = .{
+                        .before = if (before) |annotation| annotation.payload.style_id else null,
+                        .after = if (after) |annotation| annotation.payload.style_id else null,
+                    };
+                } else {
+                    entry.value_ptr.after = if (after) |annotation| annotation.payload.style_id else null;
+                }
+            }
+        }.track;
         const created_ids = self.global_allocator.alloc(u64, output_id_count) catch return TextBufferError.OutOfMemory;
         var created_ids_owned = true;
         defer if (created_ids_owned) self.global_allocator.free(created_ids);
@@ -3975,10 +3985,13 @@ pub const UnifiedTextBuffer = struct {
                         };
                         candidate_annotations.visitOverlapping(target.start_byte, target.end_byte, &enclosing_context, EnclosingContext.visit) catch return TextBufferError.OutOfMemory;
                     }
-                    candidate_annotations.splice(start, end - start, normalized_offset) catch |err| switch (err) {
+                    var annotation_splice = candidate_annotations.prepareSplice(start, end - start, normalized_offset) catch |err| switch (err) {
                         error.OutOfMemory => return TextBufferError.OutOfMemory,
                         else => return TextBufferError.InvalidDimensions,
                     };
+                    defer annotation_splice.deinit();
+                    for (annotation_splice.delete_ids) |id| try trackStyleEffect(&style_effects, candidate_annotations.get(id), null);
+                    candidate_annotations.commitPreparedSplice(&annotation_splice) catch return TextBufferError.InvalidDimensions;
 
                     if (target_range) |target| {
                         const transformed = candidate_annotations.get(target.id) orelse return TextBufferError.InvalidIndex;
@@ -4008,6 +4021,7 @@ pub const UnifiedTextBuffer = struct {
                             const existing = candidate_annotations.get(range.id) orelse return TextBufferError.InvalidIndex;
                             if (existing.payload.namespace != operation.owner or existing.payload.kind_flags & document_range_kind == 0) return TextBufferError.InvalidIndex;
                             if (!(candidate_annotations.remove(range.id) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
+                            try trackStyleEffect(&style_effects, existing, null);
                             created_ids[output_index] = range.id;
                             output_index += 1;
                             annotations_changed = true;
@@ -4036,6 +4050,7 @@ pub const UnifiedTextBuffer = struct {
                                 self.releaseInternalStyle(style_id);
                                 _ = acquired_styles.pop();
                             }
+                            try trackStyleEffect(&style_effects, existing, candidate_annotations.get(range.id));
                             created_ids[output_index] = range.id;
                         } else {
                             created_ids[output_index] = candidate_annotations.addRange(input, .{
@@ -4049,6 +4064,7 @@ pub const UnifiedTextBuffer = struct {
                                 error.OutOfMemory => return TextBufferError.OutOfMemory,
                                 else => return TextBufferError.InvalidDimensions,
                             };
+                            try trackStyleEffect(&style_effects, null, candidate_annotations.get(created_ids[output_index]));
                         }
                         output_index += 1;
                         annotations_changed = true;
@@ -4080,6 +4096,7 @@ pub const UnifiedTextBuffer = struct {
                         self.releaseInternalStyle(style_id);
                         _ = acquired_styles.pop();
                     }
+                    try trackStyleEffect(&style_effects, existing, candidate_annotations.get(operation.target_id));
                     annotations_changed = true;
                 },
                 .move => {
@@ -4146,9 +4163,14 @@ pub const UnifiedTextBuffer = struct {
                     const existing = candidate_annotations.get(operation.target_id) orelse return TextBufferError.InvalidIndex;
                     if (existing.payload.namespace != operation.owner or existing.payload.kind_flags & document_range_kind == 0) return TextBufferError.InvalidIndex;
                     if (!(candidate_annotations.remove(operation.target_id) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
+                    try trackStyleEffect(&style_effects, existing, null);
                     annotations_changed = true;
                 },
                 .clear_owner => {
+                    var clear_iterator = candidate_annotations.iterator();
+                    while (clear_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
+                        if (annotation.payload.namespace == operation.owner) try trackStyleEffect(&style_effects, annotation, null);
+                    }
                     _ = candidate_annotations.clearOwner(operation.owner) catch |err| switch (err) {
                         error.OutOfMemory => return TextBufferError.OutOfMemory,
                         else => return TextBufferError.InvalidDimensions,
@@ -4158,10 +4180,9 @@ pub const UnifiedTextBuffer = struct {
             }
         }
 
-        // Reconcile ownership against the final candidate rather than the
-        // operation log. Intermediate replace/style/remove combinations may
-        // acquire styles that do not survive publication, while splices may
-        // create retained fragments without an explicit acquisition.
+        // Reconcile only IDs whose membership or style changed. Each effect
+        // retains its live side and latest candidate side, so intermediate
+        // acquisitions that do not survive publication are released below.
         var available_acquisitions = std.AutoHashMap(u32, usize).init(self.global_allocator);
         defer available_acquisitions.deinit();
         try available_acquisitions.ensureTotalCapacity(@intCast(acquired_styles.items.len));
@@ -4169,28 +4190,25 @@ pub const UnifiedTextBuffer = struct {
             const entry = available_acquisitions.getOrPutAssumeCapacity(style_id);
             if (entry.found_existing) entry.value_ptr.* += 1 else entry.value_ptr.* = 1;
         }
-        var candidate_iterator = candidate_annotations.iterator();
-        while (candidate_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            const current = self.annotations.get(annotation.id());
-            if (current != null and current.?.payload.style_id == annotation.payload.style_id) continue;
-            const available = available_acquisitions.getPtr(annotation.payload.style_id);
-            if (available != null and available.?.* != 0) {
-                available.?.* -= 1;
-            } else {
-                try self.retainInternalStyle(annotation.payload.style_id);
-                acquired_styles.appendAssumeCapacity(annotation.payload.style_id);
+        var style_effect_iterator = style_effects.valueIterator();
+        while (style_effect_iterator.next()) |effect| {
+            if (effect.before == effect.after) continue;
+            if (effect.after) |style_id| {
+                const available = available_acquisitions.getPtr(style_id);
+                if (available != null and available.?.* != 0) {
+                    available.?.* -= 1;
+                } else {
+                    try self.retainInternalStyle(style_id);
+                    acquired_styles.appendAssumeCapacity(style_id);
+                }
             }
-        }
-        var current_iterator = self.annotations.iterator();
-        while (current_iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
-            const next = candidate_annotations.get(annotation.id());
-            if (next == null or next.?.payload.style_id != annotation.payload.style_id) {
-                try released_styles.append(self.global_allocator, annotation.payload.style_id);
+            if (effect.before) |style_id| {
+                try released_styles.append(self.global_allocator, style_id);
             }
         }
         var unused_acquisitions = available_acquisitions.iterator();
         while (unused_acquisitions.next()) |entry| {
-            for (0..entry.value_ptr.*) |_| released_styles.appendAssumeCapacity(entry.key_ptr.*);
+            for (0..entry.value_ptr.*) |_| try released_styles.append(self.global_allocator, entry.key_ptr.*);
         }
         var style_switch_releases: usize = 0;
         if (next_syntax_style != self.syntax_style) {

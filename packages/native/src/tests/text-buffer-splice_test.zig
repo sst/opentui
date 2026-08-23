@@ -1649,6 +1649,79 @@ test "document operation candidate releases every intermediate style and link" {
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
+test "document replacement releases styles for annotation policy deletions" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const values = [_][]const u8{ "a", "b", "c" };
+    var chunks: [values.len]text_buffer.StyledChunk = undefined;
+    for (values, &chunks) |value, *chunk| chunk.* = .{
+        .text_ptr = value.ptr,
+        .text_len = value.len,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const replacement: text_buffer.StyledChunk = .{
+        .text_ptr = "abc".ptr,
+        .text_len = 3,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 0,
+    };
+    const first_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+    };
+    const second_style: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 2,
+    };
+    const ranges = [_]text_buffer.DocumentRangeInput{
+        .{ .start_chunk = 0, .end_chunk = 3, .style = first_style, .styled = true, .priority = 1 },
+        .{ .start_chunk = 1, .end_chunk = 2, .style = second_style, .styled = true, .priority = 2 },
+    };
+    var ids: [2]u64 = undefined;
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .use_target = false,
+        .owner = 67,
+        .chunks = &chunks,
+        .ranges = &ranges,
+    }}, &ids);
+    const deleted = tb.textAnnotations().get(ids[1]).?;
+    try std.testing.expect(try tb.textAnnotationsForTesting().updatePayload(ids[1], .{
+        .namespace = deleted.payload.namespace,
+        .style_id = deleted.payload.style_id,
+        .highlight_ref = deleted.payload.highlight_ref,
+        .priority = deleted.payload.priority,
+        .internal = deleted.payload.internal,
+        .kind_flags = deleted.payload.kind_flags,
+        .splice_policy = .invalidate,
+    }));
+
+    try tb.applyDocumentOperations(&.{.{
+        .kind = .replace,
+        .target_id = ids[0],
+        .owner = 67,
+        .chunks = &.{replacement},
+    }}, &.{});
+    try std.testing.expect(tb.textAnnotations().get(ids[1]) == null);
+    var live_refs: u32 = 0;
+    for (tb.internal_style_slots.items) |slot| live_refs += slot.refs;
+    try std.testing.expectEqual(@as(u32, 1), live_refs);
+}
+
 test "pure style batches update paint without changing content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

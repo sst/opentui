@@ -34,6 +34,37 @@ fn expectPoint(owner: *TextAnnotations, id: u64, byte: u32, kind_flags: u32) !vo
     }
 }
 
+fn cloneAnnotationsOnce(allocator: std.mem.Allocator, source: *TextAnnotations) !void {
+    var clone = try source.clone(allocator);
+    defer clone.deinit();
+    try clone.validateIntegrity();
+    try std.testing.expectEqual(source.count(), clone.count());
+    var iterator = source.iterator();
+    while (try iterator.next()) |annotation| try std.testing.expectEqualDeep(annotation, clone.get(annotation.id()).?);
+}
+
+test "TextAnnotations clone preserves payload data and uses three allocations" {
+    var owner = testAnnotations();
+    defer owner.deinit();
+    for (0..64) |index| {
+        const start: u32 = @intCast(index * 3);
+        _ = try owner.addRange(.{ .start_byte = start, .end_byte = start + 2 }, .{
+            .namespace = @intCast(index % 4),
+            .style_id = @intCast(index + 10),
+            .priority = @intCast(index % 8),
+            .kind_flags = @intCast(index),
+            .splice_policy = if (index % 3 == 0) .invalidate else .retain,
+        });
+    }
+    try owner.splice(0, 0, 5);
+
+    var counting = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var clone = try owner.clone(counting.allocator());
+    clone.deinit();
+    try std.testing.expectEqual(@as(usize, 3), counting.alloc_index);
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, cloneAnnotationsOnce, .{&owner});
+}
+
 test "TextAnnotations CRUD keeps payload and position identity" {
     var owner = testAnnotations();
     defer owner.deinit();

@@ -139,6 +139,9 @@ pub const MarkTree = struct {
     allocator: Allocator,
     root: ?*Node = null,
     ids: std.AutoHashMap(u64, *Node),
+    // Clone nodes share one allocation. Removed slab nodes stay allocated until
+    // tree deinit; nodes added after cloning retain ordinary per-node ownership.
+    bulk_nodes: ?[]Node = null,
     next_id: u64 = 1,
     priority_state: u64,
     id_nonce: u32,
@@ -169,16 +172,22 @@ pub const MarkTree = struct {
     /// Creates an independent tree with identical IDs, positions, and mutation
     /// counters. This is used to prepare compound Rope/annotation transactions
     /// without exposing a partially-mutated mark index.
-    pub fn clone(self: *Self, allocator: Allocator) !Self {
+    pub fn clone(self: *const Self, allocator: Allocator) !Self {
         var result = initWithSeedAndNonce(allocator, self.priority_state, self.id_nonce);
         errdefer result.deinit();
-        result.id_nonce = self.id_nonce;
         try result.ids.ensureTotalCapacity(@intCast(self.len));
-
-        var it = self.iterator();
-        while (try it.next()) |mark| try result.addMarkWithId(mark);
+        if (self.len != 0) {
+            const nodes = try allocator.alloc(Node, self.len);
+            result.bulk_nodes = nodes;
+            var next_node: usize = 0;
+            result.root = cloneNodes(self.root, nodes, &next_node, null);
+            std.debug.assert(next_node == nodes.len);
+            for (nodes) |*node| result.ids.putAssumeCapacity(node.mark.id(), node);
+        }
         result.next_id = self.next_id;
         result.priority_state = self.priority_state;
+        result.id_nonce = self.id_nonce;
+        result.len = self.len;
         result.generation = self.generation;
         return result;
     }
@@ -289,7 +298,7 @@ pub const MarkTree = struct {
         self.root = erase(self.root, lowerByte(node.mark), id);
         if (self.root) |root| root.parent = null;
         _ = self.ids.remove(id);
-        self.allocator.destroy(node);
+        if (!self.isBulkNode(node)) self.allocator.destroy(node);
         self.len -= 1;
         self.finishMutation();
         return true;
@@ -700,21 +709,6 @@ pub const MarkTree = struct {
         return (@as(u64, self.id_nonce) << 32) | local_id;
     }
 
-    fn addMarkWithId(self: *Self, mark: Mark) !void {
-        const node = try self.allocator.create(Node);
-        errdefer self.allocator.destroy(node);
-        node.* = .{
-            .mark = mark,
-            .priority = self.nextPriority(),
-            .max_byte = upperByte(mark),
-            .max_overlap_end_byte = overlapEndByte(mark),
-        };
-        self.ids.putAssumeCapacity(mark.id(), node);
-        self.root = insert(self.root, node);
-        if (self.root) |root| root.parent = null;
-        self.len += 1;
-    }
-
     fn addMark(self: *Self, mark: Mark) !void {
         const priority_state = self.priority_state;
         errdefer self.priority_state = priority_state;
@@ -802,11 +796,30 @@ pub const MarkTree = struct {
                 if (parent) |value| {
                     if (value.left == node) value.left = null else value.right = null;
                 }
-                self.allocator.destroy(node);
+                if (!self.isBulkNode(node)) self.allocator.destroy(node);
                 current = parent;
             }
         }
         self.root = null;
+        if (self.bulk_nodes) |nodes| self.allocator.free(nodes);
+        self.bulk_nodes = null;
+    }
+
+    fn isBulkNode(self: *const Self, node: *const Node) bool {
+        const nodes = self.bulk_nodes orelse return false;
+        const address = @intFromPtr(node);
+        return address >= @intFromPtr(&nodes[0]) and address <= @intFromPtr(&nodes[nodes.len - 1]);
+    }
+
+    fn cloneNodes(source: ?*const Node, nodes: []Node, next_node: *usize, parent: ?*Node) ?*Node {
+        const source_node = source orelse return null;
+        const node = &nodes[next_node.*];
+        next_node.* += 1;
+        node.* = source_node.*;
+        node.parent = parent;
+        node.left = cloneNodes(source_node.left, nodes, next_node, node);
+        node.right = cloneNodes(source_node.right, nodes, next_node, node);
+        return node;
     }
 
     fn rangeFromInput(id: u64, input: RangeInput) Range {

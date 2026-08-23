@@ -43,7 +43,6 @@ pub fn run(
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]bench_utils.BenchResult {
-    _ = show_mem;
     var results: std.ArrayList(bench_utils.BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
@@ -51,6 +50,57 @@ pub fn run(
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(allocator);
     defer link.deinitGlobalLinkPool();
+
+    const clone_cases = [_]struct { name: []const u8, count: usize }{
+        .{ .name = "clone: 1k annotations", .count = 1_000 },
+        .{ .name = "clone: 10k annotations", .count = 10_000 },
+        .{ .name = "clone: 100k annotations", .count = 100_000 },
+    };
+    for (clone_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var annotations = TextAnnotations.initWithSeed(allocator, 0x616e6e636c6f6e65 + case.count);
+            defer annotations.deinit();
+            for (0..case.count) |index| {
+                const start: u32 = @intCast(index * 4);
+                _ = try annotations.addRange(.{ .start_byte = start, .end_byte = start + 3 }, .{
+                    .namespace = @intCast(index % 8),
+                    .style_id = @intCast(index),
+                    .priority = @intCast(index % 16),
+                });
+            }
+            try annotations.splice(0, 0, 1);
+
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |_| {
+                const timer = bench_utils.BenchTimer.start(io);
+                var clone = try annotations.clone(allocator);
+                stats.record(timer.read());
+                std.mem.doNotOptimizeAway(clone.count());
+                clone.deinit();
+            }
+            const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+                var measured_allocator: std.heap.DebugAllocator(.{ .enable_memory_limit = true }) = .init;
+                var clone = try annotations.clone(measured_allocator.allocator());
+                const requested_bytes = measured_allocator.total_requested_bytes;
+                clone.deinit();
+                std.debug.assert(measured_allocator.deinit() == .ok);
+                const values = try allocator.alloc(bench_utils.MemStat, 1);
+                values[0] = .{ .name = "clone requested (3 allocs)", .bytes = requested_bytes };
+                break :blk values;
+            } else null;
+            try results.append(allocator, .{
+                .name = case.name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = stats.count,
+                .stddev_ns = stats.standardDeviation(),
+                .rme_95 = stats.relativeMarginOfError95(),
+                .mem_stats = mem_stats,
+            });
+        }
+    }
 
     {
         const name = "10k edit annotations: setup";

@@ -32,6 +32,123 @@ fn expectPoint(actual: ?Point, id: u64, byte: u32, gravity: Gravity) !void {
     try std.testing.expectEqualDeep(Point{ .id = id, .byte = byte, .gravity = gravity }, actual.?);
 }
 
+fn expectNodeRepresentationEqual(expected: anytype, actual: anytype) !void {
+    try std.testing.expectEqual(expected == null, actual == null);
+    const expected_node = expected orelse return;
+    const actual_node = actual.?;
+    try std.testing.expectEqualDeep(expected_node.mark, actual_node.mark);
+    try std.testing.expectEqual(expected_node.priority, actual_node.priority);
+    try std.testing.expectEqual(expected_node.max_byte, actual_node.max_byte);
+    try std.testing.expectEqual(expected_node.max_overlap_end_byte, actual_node.max_overlap_end_byte);
+    try std.testing.expectEqual(expected_node.lazy_shift, actual_node.lazy_shift);
+    try std.testing.expectEqual(expected_node.parent == null, actual_node.parent == null);
+    try expectNodeRepresentationEqual(expected_node.left, actual_node.left);
+    try expectNodeRepresentationEqual(expected_node.right, actual_node.right);
+}
+
+fn expectRepresentationEqual(expected: *MarkTree, actual: *MarkTree) !void {
+    try std.testing.expectEqual(expected.count(), actual.count());
+    try std.testing.expectEqual(expected.next_id, actual.next_id);
+    try std.testing.expectEqual(expected.priority_state, actual.priority_state);
+    try std.testing.expectEqual(expected.id_nonce, actual.id_nonce);
+    try std.testing.expectEqual(expected.generation, actual.generation);
+    try expectNodeRepresentationEqual(expected.root, actual.root);
+}
+
+fn cloneTreeOnce(allocator: std.mem.Allocator, source: *MarkTree) !void {
+    var clone = try source.clone(allocator);
+    defer clone.deinit();
+    try expectRepresentationEqual(source, &clone);
+}
+
+test "MarkTree clone preserves structural and lazy representation" {
+    var tree = testTree();
+    defer tree.deinit();
+    for (0..128) |index| {
+        const start: u32 = @intCast(index * 4 + 10);
+        if (index % 3 == 0) {
+            _ = try tree.addPoint(.{ .byte = start, .gravity = if (index % 2 == 0) .left else .right });
+        } else {
+            _ = try tree.addRange(.{ .start_byte = start, .end_byte = start + 3 });
+        }
+    }
+    try tree.splice(0, 0, 7);
+    try std.testing.expect(tree.root.?.lazy_shift != 0);
+
+    var clone = try tree.clone(std.testing.allocator);
+    defer clone.deinit();
+    try expectRepresentationEqual(&tree, &clone);
+    try std.testing.expect(tree.root.?.lazy_shift != 0);
+}
+
+test "MarkTree clone supports random remove add splice move and deinit" {
+    var tree = testTree();
+    defer tree.deinit();
+    for (0..256) |index| {
+        const start: u32 = @intCast(index * 3);
+        _ = try tree.addRange(.{ .start_byte = start, .end_byte = start + 2 });
+    }
+    try tree.splice(0, 0, 5);
+    var clone = try tree.clone(std.testing.allocator);
+    defer clone.deinit();
+
+    var prng = std.Random.DefaultPrng.init(0x62756c6b636c6f6e);
+    const random = prng.random();
+    var document_len: u32 = 773;
+    for (0..1_000) |step| {
+        switch (random.intRangeAtMost(u8, 0, 3)) {
+            0 => {
+                const id = random.intRangeAtMost(u64, 1, tree.next_id - 1);
+                try std.testing.expectEqual(try tree.remove(id), try clone.remove(id));
+            },
+            1 => {
+                const input = RangeInput{
+                    .start_byte = random.intRangeAtMost(u32, 0, document_len),
+                    .end_byte = random.intRangeAtMost(u32, 0, document_len),
+                    .start_gravity = if (random.boolean()) .left else .right,
+                    .end_gravity = if (random.boolean()) .left else .right,
+                };
+                try std.testing.expectEqual(try tree.addRange(input), try clone.addRange(input));
+            },
+            2 => {
+                const start = random.intRangeAtMost(u32, 0, document_len);
+                const old_len = random.intRangeAtMost(u32, 0, @min(document_len - start, 8));
+                const new_len = random.intRangeAtMost(u32, 0, 8);
+                try tree.splice(start, old_len, new_len);
+                try clone.splice(start, old_len, new_len);
+                document_len = document_len - old_len + new_len;
+            },
+            3 => {
+                const start = random.intRangeAtMost(u32, 0, document_len);
+                const len = random.intRangeAtMost(u32, 0, @min(document_len - start, 8));
+                const destination = random.intRangeAtMost(u32, 0, document_len - len);
+                try tree.moveRegion(start, len, destination);
+                try clone.moveRegion(start, len, destination);
+            },
+            else => unreachable,
+        }
+        if (step % 37 == 0) try expectRepresentationEqual(&tree, &clone);
+    }
+    try expectRepresentationEqual(&tree, &clone);
+    try tree.validateIntegrity();
+    try clone.validateIntegrity();
+}
+
+test "MarkTree clone releases every partial allocation on failure" {
+    var tree = testTree();
+    defer tree.deinit();
+    for (0..64) |index| {
+        const start: u32 = @intCast(index * 2);
+        _ = try tree.addRange(.{ .start_byte = start, .end_byte = start + 1 });
+    }
+    try tree.splice(0, 0, 3);
+    var counting = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var clone = try tree.clone(counting.allocator());
+    clone.deinit();
+    try std.testing.expectEqual(@as(usize, 2), counting.alloc_index);
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, cloneTreeOnce, .{&tree});
+}
+
 test "MarkTree range and point CRUD preserves endpoint identity and stable IDs" {
     var tree = testTree();
     defer tree.deinit();
