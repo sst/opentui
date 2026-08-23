@@ -12,7 +12,6 @@ import {
   type KeyEvent,
 } from "@opentui/core"
 import { NativeTreeSitterHighlighter } from "./lib/native-tree-sitter-highlighter.js"
-import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const initialCode = `// Toggle between static extmarks and incremental Tree-sitter.
 interface User {
@@ -257,5 +256,4 @@ export async function destroy(renderer: CliRenderer): Promise<void> {
 if (import.meta.main) {
   const renderer = await createCliRenderer({ targetFps: 60, exitOnCtrlC: true })
   run(renderer)
-  setupCommonDemoKeys(renderer)
 }
