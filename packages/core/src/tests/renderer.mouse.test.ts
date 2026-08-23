@@ -343,7 +343,7 @@ describe("renderer handleMouseData", () => {
     }
   })
 
-  test("selection drag marks events as dragging and ends on mouse up", async () => {
+  test("selection drag ignores right-button release and ends on left mouse up", async () => {
     try {
       const target = new TestRenderable(renderer, {
         id: "selectable",
@@ -372,7 +372,11 @@ describe("renderer handleMouseData", () => {
       const endY = target.y + 3
 
       await mockMouse.pressDown(startX, startY)
+      await mockMouse.click(startX, startY, MouseButtons.RIGHT)
+      expect(renderer.getSelection()?.isDragging).toBe(true)
+
       await mockMouse.moveTo(endX, endY)
+      expect(renderer.getSelection()?.focus).toEqual({ x: endX, y: endY })
       await mockMouse.release(endX, endY)
 
       expect(renderer.hasSelection).toBe(true)

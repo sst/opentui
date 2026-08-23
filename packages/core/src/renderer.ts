@@ -3630,7 +3630,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return true
     }
 
-    if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+    if (mouseEvent.type === "up" && mouseEvent.button === MouseButton.LEFT && this.currentSelection?.isDragging) {
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
           ...mouseEvent,
@@ -3716,7 +3716,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderable = undefined
     }
 
-    if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
+    if (
+      !event?.defaultPrevented &&
+      mouseEvent.type === "down" &&
+      mouseEvent.button === MouseButton.LEFT &&
+      this.currentSelection
+    ) {
       this.clearSelection()
     }
 
