@@ -71,10 +71,21 @@ jobs:
           cd packages/ssh
           bun run typecheck
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
           cd packages/ssh
           bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-ssh-${{ matrix.os }}-${{ github.run_attempt }}
 
   packed-consumer:
     name: Packed Node Consumer
