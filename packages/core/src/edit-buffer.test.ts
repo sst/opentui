@@ -102,6 +102,12 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe(text)
     })
 
+    it("should retrieve content larger than 1 MiB without truncation", () => {
+      const text = `${"x".repeat(1024 * 1024)}界tail`
+      buffer.setText(text)
+      expect(buffer.getText()).toBe(text)
+    })
+
     it("should return null bytes for zero-length getText output buffer", () => {
       buffer.setText("Hello World")
 
