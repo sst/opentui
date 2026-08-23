@@ -4649,6 +4649,10 @@ test "borrowed EditBuffer text handles reject unjournaled mutations" {
     var output: [3]u8 = undefined;
     try std.testing.expectEqualStrings("abc", output[0..owner.getText(&output)]);
 
+    editBufferSetText(edit_handle, "owner".ptr, 5);
+    var owner_output: [5]u8 = undefined;
+    try std.testing.expectEqualStrings("owner", owner_output[0..owner.getText(&owner_output)]);
+
     var splice: ExternalTextSpliceResult = undefined;
     try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.invalid_argument), textBufferReplaceStyledRangeBytes(
         tb_handle,

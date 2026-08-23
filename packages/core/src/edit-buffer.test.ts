@@ -1455,8 +1455,7 @@ describe("EditBuffer History Management", () => {
       expect(buffer.getText()).toBe("")
     })
 
-    it("should reuse single memory slot on repeated calls", () => {
-      // This tests the memory efficiency - each call should replace the previous
+    it("should replace text through the owner on repeated calls", () => {
       buffer.setText("Text 1")
       expect(buffer.getText()).toBe("Text 1")
 

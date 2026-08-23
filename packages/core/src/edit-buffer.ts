@@ -33,8 +33,6 @@ export class EditBuffer extends EventEmitter {
   private textBufferPtr: TextBufferHandle
   public readonly id: number
   private _destroyed: boolean = false
-  private _singleTextBytes: Uint8Array | null = null
-  private _singleTextMemId: number | null = null
   private _syntaxStyle?: SyntaxStyle
 
   constructor(lib: RenderLib, ptr: EditBufferHandle) {
@@ -91,14 +89,7 @@ export class EditBuffer extends EventEmitter {
   public setText(text: string): void {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
-
-    if (this._singleTextMemId !== null) {
-      this.lib.textBufferReplaceMemBuffer(this.textBufferPtr, this._singleTextMemId, textBytes, false)
-    } else {
-      this._singleTextMemId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
-    }
-    this._singleTextBytes = textBytes
-    this.lib.editBufferSetTextFromMem(this.bufferPtr, this._singleTextMemId)
+    this.lib.editBufferSetText(this.bufferPtr, textBytes)
     this.emitAnnotationsReset()
   }
 
