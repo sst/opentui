@@ -1888,9 +1888,10 @@ Press ESC to return to main menu.`
 
       textarea.focus()
       textarea.cursorOffset = 0
+      expect(textarea.cursorOffset).toBe(5)
 
       currentMockInput.pressArrow("right")
-      expect(textarea.cursorOffset).toBe(5)
+      expect(textarea.cursorOffset).toBe(6)
 
       const extmark = extmarks.get(id)
       expect(extmark).not.toBeNull()

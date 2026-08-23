@@ -411,6 +411,33 @@ test "line projection matches single-offset mapping for randomized Unicode annot
     }
 }
 
+test "line projection uses explicit highlight refs and preserves native fallback refs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("abcdef");
+
+    _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = 2 }, .{
+        .namespace = 1,
+        .style_id = 10,
+        .highlight_ref = 65_000,
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+    const fallback_id = try tb.textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 4 }, .{
+        .namespace = 1,
+        .style_id = 11,
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+    try std.testing.expectEqual(@as(u16, 65_000), highlights[0].hl_ref);
+    try std.testing.expectEqual(std.math.cast(u16, fallback_id & std.math.maxInt(u32)).?, highlights[1].hl_ref);
+}
+
 fn exerciseProjectionPublicationFailure(fail_offset: ?usize) !usize {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const allocator = failing.allocator();

@@ -440,6 +440,37 @@ describe("ExtmarksController observable migration contract", () => {
     expect(textarea.cursorOffset).toBe(1)
   })
 
+  it("moves every direct cursor API outside same-target virtual ranges", async () => {
+    for (const place of [
+      (textarea: TextareaRenderable) => textarea.editBuffer.setCursor(0, 3),
+      (textarea: TextareaRenderable) => textarea.editBuffer.setCursorByOffset(3),
+      (textarea: TextareaRenderable) => (textarea.cursorOffset = 3),
+    ]) {
+      const { textarea, extmarks } = await mount("0123456789")
+      textarea.editBuffer.setCursorByOffset(3)
+      extmarks.create({ start: 2, end: 5, virtual: true })
+      place(textarea)
+      expect(textarea.cursorOffset).toBe(5)
+    }
+  })
+
+  it("switches zero-start backward chains forward across Unicode and line boundaries", async () => {
+    const { textarea, extmarks } = await mount("界\nabcdef")
+    extmarks.create({ start: 0, end: 4, virtual: true })
+    extmarks.create({ start: 3, end: 7, virtual: true })
+    extmarks.create({ start: 3, end: 7, virtual: true })
+
+    for (const place of [
+      (value: TextareaRenderable) => value.editBuffer.setCursor(0, 2),
+      (value: TextareaRenderable) => value.editBuffer.setCursorByOffset(3),
+      (value: TextareaRenderable) => (value.cursorOffset = 4),
+    ]) {
+      textarea.cursorOffset = 9
+      place(textarea)
+      expect(textarea.cursorOffset).toBe(7)
+    }
+  })
+
   it("resolves overlapping virtual chains for visual up and down movement", async () => {
     const { textarea, extmarks } = await mount("0123456789\nabcdefghij\nABCDEFGHIJ")
     extmarks.create({ start: 13, end: 16, virtual: true })
@@ -544,6 +575,21 @@ describe("ExtmarksController observable migration contract", () => {
     ])
     extmarks.clear()
     expect(textarea.getLineHighlights(0)).toEqual([{ start: 0, end: 1, styleId: 12, priority: 1, hlRef: 77 }])
+  })
+
+  it("keeps public extmark IDs as highlight refs after controller recreation and annotation reset", async () => {
+    const { textarea, extmarks } = await mount("abcdef")
+    extmarks.create({ start: 1, end: 3, styleId: 10 })
+    extmarks.destroy()
+
+    const recreated = textarea.extmarks
+    const recreatedId = recreated.create({ start: 2, end: 4, styleId: 11 })
+    expect(textarea.getLineHighlights(0)).toEqual([{ start: 2, end: 4, styleId: 11, priority: 0, hlRef: recreatedId }])
+
+    textarea.setText("abcdef")
+    const resetId = recreated.create({ start: 3, end: 5, styleId: 12 })
+    expect(textarea.getLineHighlights(0)).toEqual([{ start: 3, end: 5, styleId: 12, priority: 0, hlRef: resetId }])
+    recreated.destroy()
   })
 
   it("never replaces editor methods", async () => {

@@ -20,6 +20,7 @@ describe("TextBuffer native annotations", () => {
         endByte: 5,
         namespace: 7,
         styleId: 11,
+        highlightRef: 65000,
         priority: 3,
         kindFlags: TEXT_ANNOTATION_KIND_STYLE,
         splicePolicy: "invalidate",
@@ -46,11 +47,13 @@ describe("TextBuffer native annotations", () => {
       endGravity: "left",
       namespace: 7,
       styleId: 11,
+      highlightRef: 65000,
       priority: 3,
       kindFlags: TEXT_ANNOTATION_KIND_STYLE,
       splicePolicy: "invalidate",
     })
     expect(all[1]).toMatchObject({ kind: "point", pointGravity: "right" })
+    expect(all[1].highlightRef).toBeUndefined()
     expect(all[1].sequence).toBeGreaterThan(all[0].sequence)
 
     expect(buffer.queryAnnotations({ kind: "byId", id: rangeId }).map((value) => value.id)).toEqual([rangeId])
@@ -130,6 +133,11 @@ describe("TextBuffer native annotations", () => {
     expect(() => buffer.applyAnnotationOperations([{ kind: "addPoint", byte: 99, namespace: 1 }])).toThrow(
       "invalid argument",
     )
+    expect(() =>
+      buffer.applyAnnotationOperations([
+        { kind: "addRange", startByte: 1, endByte: 2, namespace: 1, highlightRef: 65536 },
+      ]),
+    ).toThrow("unsigned 16-bit")
     expect(buffer.queryAnnotations()).toEqual([])
   })
 })

@@ -2267,7 +2267,8 @@ pub const UnifiedTextBuffer = struct {
                 .col_end = end_col,
                 .style_id = annotation.annotation.payload.style_id,
                 .priority = annotation.annotation.payload.priority,
-                .hl_ref = std.math.cast(u16, annotation.annotation.id() & std.math.maxInt(u32)) orelse 0,
+                .hl_ref = annotation.annotation.payload.highlight_ref orelse
+                    (std.math.cast(u16, annotation.annotation.id() & std.math.maxInt(u32)) orelse 0),
                 .internal = true,
             });
         }

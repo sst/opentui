@@ -39,6 +39,7 @@ interface ExtmarkSidecar {
 }
 
 const UINT32_MAX = 0xffffffff
+const UINT16_MAX = 0xffff
 
 export class ExtmarksController {
   private readonly editBuffer: EditBuffer
@@ -124,6 +125,9 @@ export class ExtmarksController {
     const startByte = this.displayOffsetToByte(options.start, "before")
     const endByte = this.displayOffsetToByte(options.end, "after")
     const id = this.nextId
+    if (options.styleId !== undefined && id > UINT16_MAX) {
+      throw new Error("Styled extmark public ID space exhausted")
+    }
     let kindFlags = TEXT_ANNOTATION_KIND_EXTMARK
     if (options.virtual) kindFlags |= TEXT_ANNOTATION_KIND_VIRTUAL
     if (options.styleId !== undefined) kindFlags |= TEXT_ANNOTATION_KIND_STYLE
@@ -139,6 +143,7 @@ export class ExtmarksController {
         endGravity: "left",
         namespace: typeId,
         styleId: options.styleId,
+        highlightRef: options.styleId === undefined ? undefined : id,
         priority: options.priority,
         kindFlags,
         splicePolicy: "deleteWhenCovered",

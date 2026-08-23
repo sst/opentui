@@ -3173,7 +3173,8 @@ pub const ExternalAnnotationOperation = extern struct {
     start_gravity: u32 = 0,
     end_gravity: u32 = 0,
     splice_policy: u32 = 0,
-    reserved: u32 = 0,
+    highlight_ref: u16 = 0,
+    has_highlight_ref: u16 = 0,
 };
 
 pub const ExternalAnnotationQuery = extern struct {
@@ -3201,6 +3202,8 @@ pub const ExternalAnnotationRecord = extern struct {
     priority: u32,
     splice_policy: u32,
     internal: u32,
+    highlight_ref: u16,
+    has_highlight_ref: u16,
 };
 
 pub const ExternalAnnotationBatchResult = extern struct {
@@ -3303,7 +3306,7 @@ comptime {
     std.debug.assert(@offsetOf(ExternalAnnotationOperation, "id") == 8);
     std.debug.assert(@sizeOf(ExternalAnnotationQuery) == 32);
     std.debug.assert(@offsetOf(ExternalAnnotationQuery, "id") == 8);
-    std.debug.assert(@sizeOf(ExternalAnnotationRecord) == 64);
+    std.debug.assert(@sizeOf(ExternalAnnotationRecord) == 72);
     std.debug.assert(@offsetOf(ExternalAnnotationRecord, "sequence") == 8);
     std.debug.assert(@offsetOf(ExternalAnnotationRecord, "kind_flags") == 32);
     std.debug.assert(@sizeOf(ExternalAnnotationBatchResult) == 8);
@@ -3351,16 +3354,18 @@ const AnnotationQueryMode = enum(u32) {
 
 fn externalAnnotationPayloadIsZero(operation: ExternalAnnotationOperation) bool {
     return operation.internal == 0 and operation.namespace == 0 and
-        operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0;
+        operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0 and
+        operation.highlight_ref == 0 and operation.has_highlight_ref == 0;
 }
 
 fn validExternalAnnotationPayload(operation: ExternalAnnotationOperation) bool {
     return operation.internal <= 1 and operation.priority <= std.math.maxInt(u8) and
+        operation.has_highlight_ref <= 1 and (operation.has_highlight_ref != 0 or operation.highlight_ref == 0) and
         operation.splice_policy <= @intFromEnum(@import("text-annotations.zig").TextAnnotations.SplicePolicy.delete_when_covered);
 }
 
 fn validExternalAnnotationOperation(operation: ExternalAnnotationOperation) bool {
-    if (operation.kind > @intFromEnum(text_buffer.AnnotationOperationKind.clear_namespace) or operation.reserved != 0) return false;
+    if (operation.kind > @intFromEnum(text_buffer.AnnotationOperationKind.clear_namespace)) return false;
     const kind: text_buffer.AnnotationOperationKind = @enumFromInt(operation.kind);
     return switch (kind) {
         .add_range => operation.id == 0 and operation.start_gravity <= 1 and operation.end_gravity <= 1 and
@@ -3377,7 +3382,8 @@ fn validExternalAnnotationOperation(operation: ExternalAnnotationOperation) bool
             operation.start_gravity == 0 and operation.end_gravity == 0 and externalAnnotationPayloadIsZero(operation),
         .clear_namespace => operation.id == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
             operation.start_gravity == 0 and operation.end_gravity == 0 and operation.internal == 0 and
-            operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0,
+            operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0 and
+            operation.highlight_ref == 0 and operation.has_highlight_ref == 0,
     };
 }
 
@@ -3392,6 +3398,7 @@ fn decodeAnnotationOperation(operation: ExternalAnnotationOperation) text_buffer
         .payload = .{
             .namespace = operation.namespace,
             .style_id = operation.style_id,
+            .highlight_ref = if (operation.has_highlight_ref != 0) operation.highlight_ref else null,
             .priority = @intCast(operation.priority),
             .internal = operation.internal != 0,
             .kind_flags = operation.kind_flags,
@@ -3455,6 +3462,8 @@ fn externalAnnotationRecord(annotation: anytype) ExternalAnnotationRecord {
         .priority = annotation.payload.priority,
         .splice_policy = @intFromEnum(annotation.payload.splice_policy),
         .internal = @intFromBool(annotation.payload.internal),
+        .highlight_ref = annotation.payload.highlight_ref orelse 0,
+        .has_highlight_ref = @intFromBool(annotation.payload.highlight_ref != null),
     };
     switch (annotation.mark) {
         .range => |range| {
@@ -4164,6 +4173,8 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
             .namespace = 7,
             .style_id = 11,
             .kind_flags = text_buffer.annotation_kind_style,
+            .highlight_ref = 65_000,
+            .has_highlight_ref = 1,
             .priority = 3,
             .start_gravity = 1,
             .splice_policy = 1,
@@ -4202,7 +4213,10 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
     try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, &records, records.len, &count));
     try std.testing.expectEqualSlices(u64, &created, &.{ records[0].id, records[1].id });
     try std.testing.expectEqual(@as(u32, 1), records[0].kind);
+    try std.testing.expectEqual(@as(u16, 65_000), records[0].highlight_ref);
+    try std.testing.expectEqual(@as(u16, 1), records[0].has_highlight_ref);
     try std.testing.expectEqual(@as(u32, 2), records[1].kind);
+    try std.testing.expectEqual(@as(u16, 0), records[1].has_highlight_ref);
     try std.testing.expectEqual(@as(u32, 1), records[1].point_gravity);
 
     const queries = [_]ExternalAnnotationQuery{
@@ -4254,7 +4268,7 @@ test "annotation FFI rejects malformed descriptors atomically and converts Unico
         .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_point),
         .start_byte = 1,
         .namespace = 1,
-        .reserved = 1,
+        .has_highlight_ref = 2,
     }};
     var created = [_]u64{std.math.maxInt(u64)};
     var batch_result = ExternalAnnotationBatchResult{ .created_count = std.math.maxInt(u32), .deleted_count = std.math.maxInt(u32) };

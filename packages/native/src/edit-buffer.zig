@@ -288,15 +288,18 @@ pub const EditBuffer = struct {
         return context.result;
     }
 
-    fn resolveCursorOffsetForAnnotations(self: *EditBuffer, target: u32, direction: AnnotationCursorDirection) u32 {
+    fn resolveCursorOffsetForAnnotations(self: *EditBuffer, target: u32, initial_direction: AnnotationCursorDirection) u32 {
         var resolved = target;
-        var remaining = self.tb.textAnnotations().count() +| 1;
+        var direction = initial_direction;
+        var remaining = self.tb.textAnnotations().count() *| 2 +| 1;
         while (remaining != 0) : (remaining -= 1) {
             const range = self.annotationRangeAtOffset(resolved) orelse break;
-            const next = if (direction == .forward) range.end else range.start -| 1;
-            if ((direction == .forward and next <= resolved) or (direction == .backward and next >= resolved)) break;
+            if (direction == .backward and range.start == 0) direction = .forward;
+            const next = if (direction == .forward) range.end else range.start - 1;
+            std.debug.assert(if (direction == .forward) next > resolved else next < resolved);
             resolved = next;
         }
+        std.debug.assert(self.annotationRangeAtOffset(resolved) == null);
         return resolved;
     }
 
@@ -308,8 +311,10 @@ pub const EditBuffer = struct {
                 self.resolveCursorOffsetForAnnotations(target, .forward)
             else if (target < current)
                 self.resolveCursorOffsetForAnnotations(target, .backward)
+            else if (range.start == 0 or target - (range.start - 1) >= range.end - target)
+                self.resolveCursorOffsetForAnnotations(target, .forward)
             else
-                target,
+                self.resolveCursorOffsetForAnnotations(target, .backward),
             .vertical_up, .vertical_down => blk: {
                 const distance_to_start = target - range.start;
                 const distance_to_end = range.end - target;

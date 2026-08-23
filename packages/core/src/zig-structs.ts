@@ -198,7 +198,8 @@ export const AnnotationOperationStruct = defineStruct([
   ["startGravity", "u32", { default: 0 }],
   ["endGravity", "u32", { default: 0 }],
   ["splicePolicy", "u32", { default: 0 }],
-  ["reserved", "u32", { default: 0 }],
+  ["highlightRef", "u16", { default: 0 }],
+  ["hasHighlightRef", "u16", { default: 0 }],
 ])
 
 export const AnnotationQueryStruct = defineStruct([
@@ -226,6 +227,8 @@ export const AnnotationRecordStruct = defineStruct([
   ["priority", "u32"],
   ["splicePolicy", "u32"],
   ["internal", "u32"],
+  ["highlightRef", "u16"],
+  ["hasHighlightRef", "u16"],
 ])
 
 export const AnnotationBatchResultStruct = defineStruct([

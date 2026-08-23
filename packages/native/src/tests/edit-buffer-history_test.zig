@@ -205,7 +205,41 @@ test "virtual annotation policy ignores points and empty ranges without looping 
     _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
     try eb.setCursorByOffset(5);
     try eb.setCursorByOffset(0);
-    try std.testing.expectEqual(@as(u32, 0), eb.getPrimaryCursor().offset);
+    try std.testing.expectEqual(@as(u32, 2), eb.getPrimaryCursor().offset);
+}
+
+test "virtual annotation direct placement and zero-start chains always resolve outside" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    try eb.setText("0123456789");
+    try eb.setCursorByOffset(3);
+    const annotations = eb.getTextBuffer().textAnnotations();
+    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    eb.setVirtualAnnotationPolicy(true);
+    try eb.setCursorByOffset(3);
+    try std.testing.expectEqual(@as(u32, 5), eb.getPrimaryCursor().offset);
+
+    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 4, .end_byte = 8 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 6 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    try eb.setCursorByOffset(9);
+    try eb.setCursorByOffset(1);
+    try std.testing.expectEqual(@as(u32, 8), eb.getPrimaryCursor().offset);
+
+    try std.testing.expectEqual(@as(usize, 5), try annotations.clearNamespace(1));
+    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 4, .end_byte = 7 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 6, .end_byte = 9 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    try eb.setCursorByOffset(10);
+    try eb.setCursorByOffset(7);
+    try std.testing.expectEqual(@as(u32, 9), eb.getPrimaryCursor().offset);
 }
 
 test "explicit annotation removals are purged from text history" {

@@ -41,6 +41,7 @@ test "TextAnnotations CRUD keeps payload and position identity" {
     const reversed = try owner.addRange(.{ .start_byte = 12, .end_byte = 3 }, .{
         .namespace = 7,
         .style_id = 41,
+        .highlight_ref = 61_000,
         .priority = 9,
         .internal = true,
         .kind_flags = 0x12,
@@ -56,6 +57,7 @@ test "TextAnnotations CRUD keeps payload and position identity" {
     try std.testing.expectEqual(@as(u64, 1), owner.get(reversed).?.payload.sequence);
     try std.testing.expectEqual(@as(u64, 2), owner.get(point).?.payload.sequence);
     try std.testing.expect(owner.get(reversed).?.payload.internal);
+    try std.testing.expectEqual(@as(?u16, 61_000), owner.get(reversed).?.payload.highlight_ref);
     try std.testing.expectEqual(TextAnnotations.SplicePolicy.invalidate, owner.get(reversed).?.payload.splice_policy);
 
     try std.testing.expect(try owner.updateRange(reversed, .{ .start_byte = 20, .end_byte = 10 }));
@@ -81,6 +83,7 @@ test "TextAnnotations payload updates preserve sequence and MarkTree generation"
     try std.testing.expect(try owner.updatePayload(id, .{
         .namespace = 2,
         .style_id = 30,
+        .highlight_ref = 62_000,
         .priority = 7,
         .internal = true,
         .kind_flags = 4,
@@ -91,6 +94,7 @@ test "TextAnnotations payload updates preserve sequence and MarkTree generation"
     try std.testing.expectEqual(sequence, updated.sequence);
     try std.testing.expectEqual(@as(u32, 2), updated.namespace);
     try std.testing.expectEqual(@as(u32, 30), updated.style_id);
+    try std.testing.expectEqual(@as(?u16, 62_000), updated.highlight_ref);
     try std.testing.expectEqual(@as(u8, 7), updated.priority);
     try std.testing.expect(updated.internal);
     try std.testing.expectEqual(@as(u32, 4), updated.kind_flags);
@@ -615,6 +619,7 @@ fn randomPayload(random: std.Random, namespace: u32) PayloadInput {
     return .{
         .namespace = namespace,
         .style_id = random.int(u32),
+        .highlight_ref = if (random.boolean()) random.int(u16) else null,
         .priority = random.int(u8),
         .internal = random.boolean(),
         .kind_flags = random.int(u32),
@@ -626,6 +631,7 @@ fn modelPayload(input: PayloadInput, sequence: u64) TextAnnotations.Payload {
     return .{
         .namespace = input.namespace,
         .style_id = input.style_id,
+        .highlight_ref = input.highlight_ref,
         .priority = input.priority,
         .sequence = sequence,
         .internal = input.internal,

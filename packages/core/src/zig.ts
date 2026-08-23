@@ -175,6 +175,7 @@ export type TextAnnotationSplicePolicy = "retain" | "invalidate" | "deleteWhenCo
 export type TextAnnotationPayload = {
   namespace: number
   styleId?: number
+  highlightRef?: number
   priority?: number
   internal?: boolean
   kindFlags?: number
@@ -274,9 +275,17 @@ function annotationSplicePolicy(policy: TextAnnotationSplicePolicy | undefined):
 }
 
 function annotationPayload(payload: Partial<TextAnnotationPayload>) {
+  if (
+    payload.highlightRef !== undefined &&
+    (!Number.isInteger(payload.highlightRef) || payload.highlightRef < 0 || payload.highlightRef > 0xffff)
+  ) {
+    throw new RangeError("Annotation highlightRef must be an unsigned 16-bit integer")
+  }
   return {
     namespace: payload.namespace ?? 0,
     styleId: payload.styleId ?? 0,
+    highlightRef: payload.highlightRef ?? 0,
+    hasHighlightRef: payload.highlightRef === undefined ? 0 : 1,
     priority: payload.priority ?? 0,
     internal: payload.internal ? 1 : 0,
     kindFlags: payload.kindFlags ?? 0,
@@ -374,6 +383,7 @@ function unpackAnnotation(record: Record<string, number | bigint>): TextAnnotati
     endByte: record.endByte as number,
     namespace: record.namespace as number,
     styleId: record.styleId as number,
+    highlightRef: record.hasHighlightRef === 0 ? undefined : (record.highlightRef as number),
     priority: record.priority as number,
     internal: record.internal !== 0,
     kindFlags: record.kindFlags as number,
