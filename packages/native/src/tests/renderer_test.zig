@@ -21,6 +21,10 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+const DiscardTerminalWriter = struct {
+    pub fn writeAll(_: *DiscardTerminalWriter, _: []const u8) !void {}
+};
+
 fn lastSixelFrame(output: []const u8) ![]const u8 {
     const start = std.mem.findLast(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
     const end = std.mem.findPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
@@ -598,6 +602,35 @@ test "renderer preserves terminal semantics when replaying cells over Sixel" {
     try std.testing.expect(std.mem.find(u8, replay, "\x1b]8;;\x1b\\") != null);
     try std.testing.expect(std.mem.find(u8, replay, "\x1b]66;w=2;界\x1b\\") != null);
     try std.testing.expect(std.mem.find(u8, replay, "\x1b[0m\x1b[1;3H") != null);
+}
+
+test "renderer preserves Malayalam report after Ghostty probe replies" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 80, 1, pool);
+    defer test_renderer.deinit();
+
+    var writer = DiscardTerminalWriter{};
+    try test_renderer.renderer.terminal.queryTerminalSend(&writer);
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;5R");
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R");
+    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R\x1bP>|ghostty 1.3.1\x1b\\");
+
+    const report = "OpenCode search configuration പരിശോധിക്കൽ";
+    try test_renderer.renderer.getNextBuffer().drawText(
+        report,
+        0,
+        0,
+        ansi.rgbColor(255, 255, 255, 255),
+        ansi.rgbColor(0, 0, 0, 255),
+        0,
+    );
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.find(u8, output, report) != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b]66;") == null);
 }
 
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
