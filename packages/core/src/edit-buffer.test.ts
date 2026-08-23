@@ -1248,10 +1248,12 @@ describe("EditBuffer Events", () => {
 
       const id = new DataView(payload).getUint16(0, true)
       const epoch = new DataView(payload).getBigUint64(2, true)
+      const lastChange = testBuffer.getLastChange()
 
       expect(payload.byteLength).toBe(2 + 48)
       expect(id).toBe(testBuffer.id)
-      expect(epoch).toBe(testBuffer.getLastChange()?.epoch)
+      expect(lastChange).not.toBeNull()
+      expect(epoch).toBe(lastChange!.epoch)
 
       testBuffer.destroy()
     })
