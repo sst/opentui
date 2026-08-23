@@ -83,7 +83,9 @@ mkdirSync(attemptsDir, { recursive: true })
 mkdirSync(reportsDir, { recursive: true })
 
 const nodeRuntime = readNodeRuntime()
-if (nodeRuntime.version !== "v26.4.0") throw new Error(`Node v26.4.0 is required, got ${nodeRuntime.version}`)
+if (!isSupportedNode26Version(nodeRuntime.version)) {
+  throw new Error(`Node v26.4.0 or later is required, got ${nodeRuntime.version}`)
+}
 if (nodeRuntime.arch !== "x64") throw new Error(`Node x64 is required, got ${nodeRuntime.arch}`)
 
 buildNodeScenario()
@@ -166,7 +168,7 @@ for (let attemptIndex = 0; attemptIndex < runs; attemptIndex++) {
       payload.schemaVersion === 1 &&
       payload.scenario.name === scenario &&
       payload.sample.runtime.name === "node" &&
-      payload.sample.runtime.version === "v26.4.0" &&
+      isSupportedNode26Version(payload.sample.runtime.version) &&
       payload.sample.runtime.arch === "x64" &&
       payload.sample.operations > 0 &&
       payload.sample.elapsedNs > 0 &&
@@ -244,6 +246,18 @@ if (
   (!allowCrashes && (manifest.summary.targetCrashes > 0 || manifest.summary.otherCrashes > 0))
 )
   process.exit(1)
+
+function isSupportedNode26Version(version: string): boolean {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version)
+  if (match === null) return false
+
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  const patch = Number(match[3])
+  if (major !== 26) return major > 26
+  if (minor !== 4) return minor > 4
+  return patch >= 0
+}
 
 function readNodeRuntime(): {
   version: string
