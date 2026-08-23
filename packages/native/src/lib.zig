@@ -2191,6 +2191,7 @@ export fn textBufferRegisterMemBuffer(tb_handle: NativeHandle, dataPtr: ?[*]cons
 
 export fn textBufferReplaceMemBuffer(tb_handle: NativeHandle, id: u8, dataPtr: ?[*]const u8, dataLen: u32, owned: bool) bool {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return false;
     const data = sliceFromPtrLen(dataPtr, dataLen);
     object_ptr.replaceMemBuffer(id, data, owned) catch return false;
     return true;
@@ -2198,6 +2199,7 @@ export fn textBufferReplaceMemBuffer(tb_handle: NativeHandle, id: u8, dataPtr: ?
 
 export fn textBufferClearMemRegistry(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr) != null) return;
     object_ptr.clearMemRegistry();
 }
 
@@ -4631,6 +4633,11 @@ test "borrowed EditBuffer text handles reject unjournaled mutations" {
     textBufferReset(tb_handle);
     textBufferAppend(tb_handle, "x".ptr, 1);
     const owner = acquireEditBuffer(edit_handle).?;
+    const mem_id = textBufferRegisterMemBuffer(tb_handle, "seed".ptr, 4, false);
+    try std.testing.expect(mem_id != 0xFFFF);
+    try std.testing.expect(!textBufferReplaceMemBuffer(tb_handle, @intCast(mem_id), "changed".ptr, 7, false));
+    textBufferClearMemRegistry(tb_handle);
+    try std.testing.expect(owner.getTextBuffer().memRegistry().get(@intCast(mem_id)) != null);
     var output: [3]u8 = undefined;
     try std.testing.expectEqualStrings("abc", output[0..owner.getText(&output)]);
 
