@@ -50,6 +50,7 @@ import * as fullUnicodeExample from "./full-unicode-demo.js"
 import * as textNodeDemo from "./text-node-demo.js"
 import * as textWrapExample from "./text-wrap.js"
 import * as editorDemo from "./editor-demo.js"
+import * as nativeHighlightedEditorDemo from "./native-highlighted-editor-demo.js"
 import * as sliderDemo from "./slider-demo.js"
 import * as terminalDemo from "./terminal.js"
 import * as terminalTitleDemo from "./terminal-title.js"
@@ -362,6 +363,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Virtual extmarks - text ranges that the cursor jumps over, with deletion handling",
       run: extmarksDemo.run,
       destroy: extmarksDemo.destroy,
+    },
+    {
+      name: "Native Highlighted Editor",
+      description: "Editable code whose syntax highlights are native edit-following extmarks created once",
+      run: nativeHighlightedEditorDemo.run,
+      destroy: nativeHighlightedEditorDemo.destroy,
     },
     {
       name: "Input Demo",
