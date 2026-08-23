@@ -28,6 +28,8 @@ Renderable options accept a catch-all `onMouse` handler and these specific handl
 | `onMouseScroll`  | `"scroll"`   | The terminal reported wheel input.                |
 
 OpenTUI does not synthesize a `click` event. A click produces `down` and `up`. A double click produces two such pairs.
+Mouse handlers receive these raw pairs. Text selection also counts repeated left-button downs, but `MouseEvent` has no
+click-count field.
 
 `MouseButton.LEFT`, `MIDDLE`, and `RIGHT` are `0`, `1`, and `2`. For wheel input, read `event.scroll.direction` and `event.scroll.delta` instead of `event.button`.
 
@@ -111,7 +113,40 @@ Use `focused_renderable` for renderable focus changes. See [Terminal capabilitie
 
 Text-buffer renderables are selectable by default. Set `selectable: false` on [Text](/docs/components/text) or related content to disable selection.
 
-A left-button down on selectable content starts a global selection. Dragging extends it across selectable descendants in the active container.
+A left-button down on selectable content starts a global selection. Dragging updates its endpoints and extends the
+selection across selectable descendants in the active container.
+
+Text-buffer renderables, including Text, Code, Input, and Textarea, use repeated left-button presses for these selection
+behaviors:
+
+| Gesture                     | Result                                                       |
+| --------------------------- | ------------------------------------------------------------ |
+| First press and drag        | Start at zero width, then select by cells                    |
+| Second press                | Select the word at the pointer                               |
+| Third press                 | Select the logical source line, including its soft wraps     |
+| Drag after the second press | Extend by words and include the text between the outer words |
+| Drag after the third press  | Extend by logical source lines                               |
+
+Each repeated press must hit the same renderable within 500 ms. Its x and y coordinates can each differ by at most one
+cell from the prior press. OpenTUI does not expose options for this interval or for the selection-word boundary set.
+
+OpenTUI groups adjacent graphemes by whether their first code point is in this boundary set:
+
+```text
+space tab ' " │ ` | : ; , ( ) [ ] { } < > $
+```
+
+Adjacent boundary graphemes form one selectable run. Adjacent non-boundary graphemes form another. Thus, double-clicking
+a run of spaces or tabs selects that run. `/`, `\`, `-`, and `.` are not boundaries, so `foo/bar` is one selection word.
+The same rule treats `日本語abc` as one selection word. A hard line break ends a word, but a soft wrap does not.
+
+These boundaries apply only to pointer selection. Textarea word movement and word deletion use editor boundaries, so
+they can stop at different positions.
+
+Line selection excludes the line break. It trims leading and trailing ASCII spaces and tabs, unless the complete line
+contains only spaces and tabs.
+
+ASCII Font, TextTable, and Embedded Terminal keep their component-specific cell selection behavior.
 
 The active container expands to an ancestor when the pointer leaves its current subtree.
 
@@ -125,9 +160,13 @@ Use these public values:
 
 - `renderer.hasSelection` reports whether a global selection object exists.
 - `renderer.getSelection()` returns that `Selection` or `null`.
-- `Selection.anchor`, `focus`, and `bounds` use global renderer cells. The rectangular `bounds` includes both endpoint cells.
+- `Selection.behavior` is `"cell"`, `"word"`, or `"line"` and records how the selection expands its endpoints.
+- `Selection.anchor`, `focus`, and `bounds` use global gesture cells. The rectangular `bounds` includes both endpoint cells.
 - `Selection.selectedRenderables` lists renderables with selected text.
 - `Selection.getSelectedText()` joins selected text in top-to-bottom, left-to-right order.
+
+A word or line selection can extend beyond `Selection.bounds`. The bounds describe the pointer gesture, not the expanded
+text range.
 
 Each text buffer converts the global cell rectangle to local coordinates. `TextBufferRenderable.getSelection()` then returns `{ start, end }`.
 

@@ -369,6 +369,24 @@ describe("TextBufferView", () => {
       expect(changed).toBe(true)
       expect(view.getSelectedText()).toBe("World")
     })
+
+    it("should select a word with word behavior on the same cell", () => {
+      const styledText = stringToStyledText("alpha beta gamma")
+      buffer.setStyledText(styledText)
+
+      const changed = view.setLocalSelection(6, 0, 6, 0, undefined, undefined, "word")
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("beta")
+    })
+
+    it("should keep a cell press zero-width", () => {
+      const styledText = stringToStyledText("alpha beta")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(6, 0, 6, 0)
+      expect(view.getSelectedText()).toBe("")
+      expect(view.hasSelection()).toBe(false)
+    })
   })
 
   describe("getPlainText", () => {

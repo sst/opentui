@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { ManualClock } from "../../testing/manual-clock.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { RGBA } from "../../lib/RGBA.js"
 import { OptimizedBuffer } from "../../buffer.js"
@@ -21,6 +22,7 @@ describe("Textarea - Selection Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      clock: new ManualClock(),
     }))
   })
 
@@ -2003,6 +2005,86 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.plainText).toBe("hello my good ")
       expect(editor.visualCursor.visualRow).toBe(0)
       expect(editor.visualCursor.visualCol).toBe(14)
+    })
+
+    it("double-click selects the word and keeps the cursor on that grapheme", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta")
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("shift+right after a word click extends by cell not by word", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("beta")
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta ")
+    })
+
+    it("shift+right after a word click extends by cell in boundary occupancy", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "alpha beta gamma",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionOccupancy: "boundary",
+      })
+
+      await currentMouse.doubleClick(editor.x + 6, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("beta")
+
+      editor.focus()
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("beta ")
+    })
+
+    it("shift+right after a line click keeps an off-screen line start", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 5,
+        height: 1,
+        wrapMode: "char",
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.cursorOffset = editor.plainText.length
+      await renderOnce()
+
+      await currentMouse.click(editor.x, editor.y)
+      await currentMouse.click(editor.x, editor.y)
+      await currentMouse.click(editor.x, editor.y)
+      await renderOnce()
+      expect(editor.getSelectedText()).toBe("hello world")
+
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("hello world")
     })
 
     it("keeps cell visual End on a grapheme boundary", async () => {
