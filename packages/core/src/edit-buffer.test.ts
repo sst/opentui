@@ -2061,7 +2061,11 @@ describe("EditBuffer exact content changes", () => {
   it("copies each native payload before queued delivery and exposes the same last change over FFI", async () => {
     const testBuffer = EditBuffer.create("unicode")
     const changes: EditChange[] = []
-    testBuffer.on("content-changed", (change: EditChange) => changes.push(change))
+    const snapshots: string[] = []
+    testBuffer.on("content-changed", (change: EditChange, content: string) => {
+      changes.push(change)
+      snapshots.push(content)
+    })
 
     try {
       expect(testBuffer.getLastChange()).toBeNull()
@@ -2074,6 +2078,7 @@ describe("EditBuffer exact content changes", () => {
       expectExactChange(changes[1]!, "A", 1, 1, "界")
       expect(changes[1]!.epoch).toBeGreaterThan(changes[0]!.epoch)
       expect(testBuffer.getLastChange()).toEqual(changes[1])
+      expect(snapshots).toEqual(["A", "A界"])
     } finally {
       testBuffer.destroy()
     }

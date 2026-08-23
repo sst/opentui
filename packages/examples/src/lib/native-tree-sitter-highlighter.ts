@@ -44,6 +44,7 @@ export interface NativeTreeSitterHighlighterOptions {
   client: IncrementalHighlightClient | TreeSitterClient
   requestRender: () => void
   initialContent: string
+  onFailure?: (error: Error) => void
 }
 
 let nextBufferId = 0x7fffffff
@@ -52,7 +53,6 @@ let nextMergedStyleName = 1
 const allocatedNamespaces = new Set<number>()
 const mergedStyleCaches = new WeakMap<SyntaxStyle, Map<string, number>>()
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 function allocateBufferId(client: IncrementalHighlightClient): number {
   while (nextBufferId > 0) {
@@ -91,9 +91,19 @@ function overlaps(startByte: number, endByte: number, windowStart: number, windo
   return startByte < windowEnd && endByte > windowStart
 }
 
-function applyUtf8Splice(previousContent: string, currentSnapshot: string, change: EditChange): string {
+function validatesUtf8Splice(previousContent: string, currentSnapshot: string, change: EditChange): boolean {
   const previousBytes = encoder.encode(previousContent)
   const snapshotBytes = encoder.encode(currentSnapshot)
+  if (
+    change.startIndex < 0 ||
+    change.oldEndIndex < change.startIndex ||
+    change.oldEndIndex > previousBytes.byteLength ||
+    change.newEndIndex < change.startIndex ||
+    change.newEndIndex > snapshotBytes.byteLength
+  ) {
+    return false
+  }
+
   const insertedBytes = snapshotBytes.subarray(change.startIndex, change.newEndIndex)
   const nextBytes = new Uint8Array(
     change.startIndex + insertedBytes.byteLength + previousBytes.byteLength - change.oldEndIndex,
@@ -101,7 +111,9 @@ function applyUtf8Splice(previousContent: string, currentSnapshot: string, chang
   nextBytes.set(previousBytes.subarray(0, change.startIndex))
   nextBytes.set(insertedBytes, change.startIndex)
   nextBytes.set(previousBytes.subarray(change.oldEndIndex), change.startIndex + insertedBytes.byteLength)
-  return decoder.decode(nextBytes)
+  return (
+    nextBytes.byteLength === snapshotBytes.byteLength && nextBytes.every((byte, index) => byte === snapshotBytes[index])
+  )
 }
 
 export class NativeTreeSitterHighlighter {
@@ -112,14 +124,18 @@ export class NativeTreeSitterHighlighter {
   private readonly syntaxStyle: SyntaxStyle
   private readonly client: IncrementalHighlightClient
   private readonly requestRender: () => void
+  private readonly onFailure?: (error: Error) => void
   private readonly mergedStyleIds: Map<string, number>
   private generation = 1
-  private readonly activeGeneration = this.generation
   private active = true
+  private listenersAttached = true
+  private namespaceAllocated = true
   private latestContent: string
   private latestVersion = 1
+  private latestEpoch?: bigint
   private operationQueue: Promise<void>
   private disposePromise?: Promise<void>
+  private removePromise?: Promise<void>
   private stats: IncrementalHighlightStats = {
     parseKind: "pending",
     queryKind: "pending",
@@ -132,12 +148,7 @@ export class NativeTreeSitterHighlighter {
   }
 
   private readonly handleHighlightResponse = (bufferId: number, version: number, response: HighlightResponse): void => {
-    if (
-      !this.active ||
-      this.generation !== this.activeGeneration ||
-      bufferId !== this.bufferId ||
-      version !== this.latestVersion
-    ) {
+    if (!this.active || bufferId !== this.bufferId || version !== this.latestVersion) {
       return
     }
 
@@ -196,32 +207,33 @@ export class NativeTreeSitterHighlighter {
     this.requestRender()
   }
 
-  private readonly handleContentChange = (change: EditChange): void => {
-    if (!this.active || this.generation !== this.activeGeneration) return
+  private readonly handleContentChange = (change: EditChange, contentSnapshot?: string): void => {
+    if (!this.active) return
 
-    const currentSnapshot = this.editBuffer.getText()
-    this.latestContent =
-      change.kind === "reset" ? currentSnapshot : applyUtf8Splice(this.latestContent, currentSnapshot, change)
-    const content = this.latestContent
+    const content = contentSnapshot ?? this.editBuffer.getText()
+    const hasEpochGap = this.latestEpoch !== undefined && change.epoch !== this.latestEpoch + 1n
+    const useReset = change.kind === "reset" || hasEpochGap || !validatesUtf8Splice(this.latestContent, content, change)
+    this.latestContent = content
+    this.latestEpoch = change.epoch
     const version = ++this.latestVersion
     const generation = this.generation
     this.stats = {
       ...this.stats,
-      incrementalCount: this.stats.incrementalCount + Number(change.kind === "splice"),
-      resetCount: this.stats.resetCount + Number(change.kind === "reset"),
+      incrementalCount: this.stats.incrementalCount + Number(!useReset),
+      resetCount: this.stats.resetCount + Number(useReset),
       version,
     }
 
     this.operationQueue = this.operationQueue
       .then(async () => {
         if (!this.active || this.generation !== generation) return
-        if (change.kind === "reset") {
+        if (useReset) {
           await this.client.resetBuffer(this.bufferId, version, content)
         } else {
           await this.client.updateBufferUtf8(this.bufferId, [change], content, version)
         }
       })
-      .catch((error) => this.recordError(error))
+      .catch((error) => this.fail(error, generation))
   }
 
   constructor(options: NativeTreeSitterHighlighterOptions) {
@@ -229,24 +241,25 @@ export class NativeTreeSitterHighlighter {
     this.syntaxStyle = options.syntaxStyle
     this.client = options.client
     this.requestRender = options.requestRender
+    this.onFailure = options.onFailure
     this.mergedStyleIds = mergedStyleCaches.get(this.syntaxStyle) ?? new Map<string, number>()
     mergedStyleCaches.set(this.syntaxStyle, this.mergedStyleIds)
     this.latestContent = options.initialContent
+    this.latestEpoch = this.editBuffer.getLastChange()?.epoch
     this.bufferId = allocateBufferId(this.client)
     this.namespace = allocateNamespace(this.editBuffer)
 
     this.client.on("highlights:response", this.handleHighlightResponse)
     this.editBuffer.on("content-changed", this.handleContentChange)
-    this.operationQueue = this.client
-      .createBuffer(this.bufferId, this.latestContent, "typescript", 1)
-      .then((hasParser) => {
-        if (!hasParser) throw new Error("TypeScript Tree-sitter parser is unavailable")
-      })
-      .catch((error) => this.recordError(error))
+    this.operationQueue = this.initialize(this.generation)
   }
 
   public getStats(): IncrementalHighlightStats {
     return { ...this.stats }
+  }
+
+  public isActive(): boolean {
+    return this.active
   }
 
   public getRangeCount(): number {
@@ -260,21 +273,70 @@ export class NativeTreeSitterHighlighter {
 
   public dispose(): Promise<void> {
     if (this.disposePromise) return this.disposePromise
-    this.active = false
-    this.generation++
-    this.client.off("highlights:response", this.handleHighlightResponse)
-    this.editBuffer.off("content-changed", this.handleContentChange)
-    this.editBuffer.applyAnnotationOperations([{ kind: "clearNamespace", namespace: this.namespace }])
+    if (this.active) {
+      this.active = false
+      this.generation++
+      this.releaseLocalState()
+    }
 
     this.disposePromise = this.operationQueue
       .catch(() => {})
-      .then(() => this.client.removeBuffer(this.bufferId))
-      .catch((error) => this.recordError(error))
+      .then(() => this.removeBuffer())
+      .catch((error) => this.recordError(error, true))
     return this.disposePromise
   }
 
-  private recordError(error: unknown): void {
-    if (!this.active) return
-    this.stats = { ...this.stats, error: error instanceof Error ? error.message : String(error) }
+  private async initialize(generation: number): Promise<void> {
+    try {
+      const hasParser = await this.client.createBuffer(this.bufferId, this.latestContent, "typescript", 1)
+      if (!hasParser) throw new Error("TypeScript Tree-sitter parser is unavailable")
+    } catch (error) {
+      await this.fail(error, generation)
+    }
+  }
+
+  private async fail(error: unknown, generation: number): Promise<void> {
+    if (!this.active || this.generation !== generation) return
+    const failure = error instanceof Error ? error : new Error(String(error))
+    this.recordError(failure)
+    this.active = false
+    this.generation++
+    this.releaseLocalState()
+    await this.removeBuffer().catch((removeError) => this.recordError(removeError, true))
+    this.requestRender()
+    try {
+      this.onFailure?.(failure)
+    } catch (callbackError) {
+      this.recordError(callbackError, true)
+    }
+  }
+
+  private releaseLocalState(): void {
+    if (this.listenersAttached) {
+      this.listenersAttached = false
+      this.client.off("highlights:response", this.handleHighlightResponse)
+      this.editBuffer.off("content-changed", this.handleContentChange)
+    }
+    if (this.namespaceAllocated) {
+      this.namespaceAllocated = false
+      allocatedNamespaces.delete(this.namespace)
+      try {
+        this.editBuffer.applyAnnotationOperations([{ kind: "clearNamespace", namespace: this.namespace }])
+      } catch (error) {
+        this.recordError(error, true)
+      }
+    }
+  }
+
+  private removeBuffer(): Promise<void> {
+    this.removePromise ??= Promise.resolve().then(() => this.client.removeBuffer(this.bufferId))
+    return this.removePromise
+  }
+
+  private recordError(error: unknown, includeExisting = false): void {
+    const message = error instanceof Error ? error.message : String(error)
+    const existing = includeExisting ? this.stats.error : undefined
+    this.stats = { ...this.stats, error: message }
+    if (existing) this.stats.error = `${existing}; cleanup failed: ${message}`
   }
 }

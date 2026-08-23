@@ -36,6 +36,7 @@ export class EditBuffer extends EventEmitter {
   public readonly id: number
   private _destroyed: boolean = false
   private _syntaxStyle?: SyntaxStyle
+  private readonly contentSnapshots = new Map<bigint, string>()
 
   constructor(lib: RenderLib, ptr: EditBufferHandle) {
     super()
@@ -69,10 +70,24 @@ export class EditBuffer extends EventEmitter {
           // Strip the "eb_" prefix and forward the event
           const eventName = name.slice(3)
           const eventData = data.slice(2)
-          instance.emit(eventName, eventName === "content-changed" ? decodeEditChange(eventData) : eventData)
+          if (eventName === "content-changed") {
+            const change = decodeEditChange(eventData)
+            const content = instance.contentSnapshots.get(change.epoch) ?? instance.getText()
+            instance.contentSnapshots.delete(change.epoch)
+            instance.emit(eventName, change, content)
+          } else {
+            instance.emit(eventName, eventData)
+          }
         }
       }
     })
+  }
+
+  private captureContentSnapshot(): void {
+    if (this.listenerCount("content-changed") === 0) return
+    const change = this.lib.editBufferGetLastChange(this.bufferPtr)
+    if (!change || this.contentSnapshots.has(change.epoch)) return
+    this.contentSnapshots.set(change.epoch, this.getText())
   }
 
   private guard(): void {
@@ -97,6 +112,7 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.lib.editBufferSetText(this.bufferPtr, textBytes)
+    this.captureContentSnapshot()
     this.emitAnnotationsReset()
   }
 
@@ -108,6 +124,7 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.lib.editBufferSetText(this.bufferPtr, textBytes)
+    this.captureContentSnapshot()
     this.emitAnnotationsReset()
   }
 
@@ -119,6 +136,7 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.lib.editBufferReplaceText(this.bufferPtr, textBytes)
+    this.captureContentSnapshot()
   }
 
   /**
@@ -129,6 +147,7 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.lib.editBufferReplaceText(this.bufferPtr, textBytes)
+    this.captureContentSnapshot()
   }
 
   public getLineCount(): number {
@@ -174,36 +193,43 @@ export class EditBuffer extends EventEmitter {
   public insertChar(char: string): void {
     this.guard()
     this.lib.editBufferInsertChar(this.bufferPtr, char)
+    this.captureContentSnapshot()
   }
 
   public insertText(text: string): void {
     this.guard()
     this.lib.editBufferInsertText(this.bufferPtr, text)
+    this.captureContentSnapshot()
   }
 
   public deleteChar(): void {
     this.guard()
     this.lib.editBufferDeleteChar(this.bufferPtr)
+    this.captureContentSnapshot()
   }
 
   public deleteCharBackward(): void {
     this.guard()
     this.lib.editBufferDeleteCharBackward(this.bufferPtr)
+    this.captureContentSnapshot()
   }
 
   public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
     this.guard()
     this.lib.editBufferDeleteRange(this.bufferPtr, startLine, startCol, endLine, endCol)
+    this.captureContentSnapshot()
   }
 
   public newLine(): void {
     this.guard()
     this.lib.editBufferNewLine(this.bufferPtr)
+    this.captureContentSnapshot()
   }
 
   public deleteLine(): void {
     this.guard()
     this.lib.editBufferDeleteLine(this.bufferPtr)
+    this.captureContentSnapshot()
   }
 
   public moveCursorLeft(): void {
@@ -343,6 +369,7 @@ export class EditBuffer extends EventEmitter {
     const maxSize = 256
     const metaBytes = this.lib.editBufferUndo(this.bufferPtr, maxSize)
     if (!metaBytes) return null
+    this.captureContentSnapshot()
     return this.lib.decoder.decode(metaBytes)
   }
 
@@ -351,6 +378,7 @@ export class EditBuffer extends EventEmitter {
     const maxSize = 256
     const metaBytes = this.lib.editBufferRedo(this.bufferPtr, maxSize)
     if (!metaBytes) return null
+    this.captureContentSnapshot()
     return this.lib.decoder.decode(metaBytes)
   }
 
@@ -444,6 +472,7 @@ export class EditBuffer extends EventEmitter {
   public clear(): void {
     this.guard()
     this.lib.editBufferClear(this.bufferPtr)
+    this.captureContentSnapshot()
     this.emit("annotations-reset")
   }
 
@@ -452,6 +481,7 @@ export class EditBuffer extends EventEmitter {
 
     this._destroyed = true
     EditBuffer.registry.delete(this.id)
+    this.contentSnapshots.clear()
     this.lib.destroyEditBuffer(this.bufferPtr)
   }
 }
