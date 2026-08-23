@@ -217,6 +217,11 @@ pub const AnnotationBatchResult = struct {
     deleted_count: usize,
 };
 
+pub const AnnotationOperationEffect = struct {
+    before: ?TextAnnotations.Annotation,
+    after: ?TextAnnotations.Annotation,
+};
+
 const InternalStyleSlot = struct {
     definition: ss.StyleDefinition,
     resolved_syntax_style: ?*const SyntaxStyle,
@@ -643,6 +648,27 @@ pub const UnifiedTextBuffer = struct {
         created_ids: []u64,
         deleted_ids: []u64,
     ) TextBufferError!AnnotationBatchResult {
+        return self.applyAnnotationOperationsInternal(operations, created_ids, deleted_ids, null);
+    }
+
+    pub fn applyAnnotationOperationsWithEffects(
+        self: *Self,
+        operations: []const AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+        effects: []AnnotationOperationEffect,
+    ) TextBufferError!AnnotationBatchResult {
+        if (effects.len < operations.len) return TextBufferError.InvalidDimensions;
+        return self.applyAnnotationOperationsInternal(operations, created_ids, deleted_ids, effects);
+    }
+
+    fn applyAnnotationOperationsInternal(
+        self: *Self,
+        operations: []const AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+        effects: ?[]AnnotationOperationEffect,
+    ) TextBufferError!AnnotationBatchResult {
         var created_count: usize = 0;
         for (operations) |operation| created_count += @intFromBool(operation.kind == .add_range or operation.kind == .add_point);
         if (created_ids.len < created_count) return TextBufferError.InvalidDimensions;
@@ -668,6 +694,7 @@ pub const UnifiedTextBuffer = struct {
                     .start_gravity = operation.start_gravity,
                     .end_gravity = operation.end_gravity,
                 }, operation.payload) catch |err| return annotationMutationError(err);
+                if (effects) |items| items[0] = .{ .before = null, .after = self.annotations.get(created_ids[0]) };
                 self.markPaintDirty();
                 return .{ .created_count = 1, .deleted_count = 0 };
             },
@@ -679,11 +706,13 @@ pub const UnifiedTextBuffer = struct {
                     .byte = operation.start_byte,
                     .gravity = operation.start_gravity,
                 }, operation.payload) catch |err| return annotationMutationError(err);
+                if (effects) |items| items[0] = .{ .before = null, .after = self.annotations.get(created_ids[0]) };
                 self.markPaintDirty();
                 return .{ .created_count = 1, .deleted_count = 0 };
             },
             .remove => {
                 const operation = operations[0];
+                if (effects) |items| items[0] = .{ .before = null, .after = null };
                 const existing = self.annotations.get(operation.id) orelse return .{ .created_count = 0, .deleted_count = 0 };
                 if (deleted_ids.len < 1) return TextBufferError.InvalidDimensions;
                 if (!(self.annotations.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
@@ -704,7 +733,7 @@ pub const UnifiedTextBuffer = struct {
         defer prepared_deleted.deinit(self.global_allocator);
 
         var created_index: usize = 0;
-        for (operations) |operation| switch (operation.kind) {
+        for (operations, 0..) |operation, operation_index| switch (operation.kind) {
             .add_range => {
                 prepared_created[created_index] = candidate.addRange(.{
                     .start_byte = operation.start_byte,
@@ -712,6 +741,7 @@ pub const UnifiedTextBuffer = struct {
                     .start_gravity = operation.start_gravity,
                     .end_gravity = operation.end_gravity,
                 }, operation.payload) catch |err| return annotationMutationError(err);
+                if (effects) |items| items[operation_index] = .{ .before = null, .after = candidate.get(prepared_created[created_index]) };
                 created_index += 1;
             },
             .add_point => {
@@ -719,25 +749,40 @@ pub const UnifiedTextBuffer = struct {
                     .byte = operation.start_byte,
                     .gravity = operation.start_gravity,
                 }, operation.payload) catch |err| return annotationMutationError(err);
+                if (effects) |items| items[operation_index] = .{ .before = null, .after = candidate.get(prepared_created[created_index]) };
                 created_index += 1;
             },
-            .update_range => if (!(candidate.updateRange(operation.id, .{
-                .start_byte = operation.start_byte,
-                .end_byte = operation.end_byte,
-                .start_gravity = operation.start_gravity,
-                .end_gravity = operation.end_gravity,
-            }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
-            .update_point => if (!(candidate.updatePoint(operation.id, .{
-                .byte = operation.start_byte,
-                .gravity = operation.start_gravity,
-            }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
-            .update_payload => if (!(candidate.updatePayload(operation.id, operation.payload) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
+            .update_range => {
+                const before = candidate.get(operation.id);
+                if (!(candidate.updateRange(operation.id, .{
+                    .start_byte = operation.start_byte,
+                    .end_byte = operation.end_byte,
+                    .start_gravity = operation.start_gravity,
+                    .end_gravity = operation.end_gravity,
+                }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
+                if (effects) |items| items[operation_index] = .{ .before = before, .after = candidate.get(operation.id) };
+            },
+            .update_point => {
+                const before = candidate.get(operation.id);
+                if (!(candidate.updatePoint(operation.id, .{
+                    .byte = operation.start_byte,
+                    .gravity = operation.start_gravity,
+                }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
+                if (effects) |items| items[operation_index] = .{ .before = before, .after = candidate.get(operation.id) };
+            },
+            .update_payload => {
+                const before = candidate.get(operation.id);
+                if (!(candidate.updatePayload(operation.id, operation.payload) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
+                if (effects) |items| items[operation_index] = .{ .before = before, .after = candidate.get(operation.id) };
+            },
             .remove => {
+                if (effects) |items| items[operation_index] = .{ .before = null, .after = null };
                 if (candidate.get(operation.id) == null) continue;
                 prepared_deleted.append(self.global_allocator, operation.id) catch return TextBufferError.OutOfMemory;
                 if (!(candidate.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
             },
             .clear_namespace => {
+                if (effects) |items| items[operation_index] = .{ .before = null, .after = null };
                 var iterator = candidate.iterator();
                 while (iterator.next() catch return TextBufferError.InvalidDimensions) |annotation| {
                     if (annotation.payload.namespace == operation.payload.namespace) {

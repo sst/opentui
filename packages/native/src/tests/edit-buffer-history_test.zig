@@ -399,6 +399,176 @@ fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !vo
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 }
 
+const OrderedAnnotationBatch = enum {
+    clear_then_add,
+    add_then_clear,
+    repeated_clears,
+    mixed_namespaces,
+};
+
+fn exerciseOrderedAnnotationBatch(batch: OrderedAnnotationBatch, branch: NamespacePurgeBranch) !void {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    const tb = eb.getTextBuffer();
+    tb.setSyntaxStyle(syntax);
+    try eb.setText("abcdefghij");
+
+    var primary_id: u64 = 0;
+    var stale_id: u64 = 0;
+    var retained_id: u64 = 0;
+    var removed_id: u64 = 0;
+    var linked_style: u32 = 0;
+    var before_retained: ?TextAnnotations.Annotation = null;
+    var after_retained: ?TextAnnotations.Annotation = null;
+
+    switch (batch) {
+        .repeated_clears => {
+            primary_id = try eb.addAnnotationRange(.{ .start_byte = 2, .end_byte = 5 }, .{ .namespace = 1, .style_id = 20 });
+        },
+        .mixed_namespaces => {
+            stale_id = try eb.addAnnotationRange(.{ .start_byte = 1, .end_byte = 2 }, .{ .namespace = 10, .style_id = 30 });
+            retained_id = try eb.addAnnotationPoint(.{ .byte = 4, .gravity = .left }, .{ .namespace = 20, .style_id = 31 });
+
+            const linked_url = "https://history.test/ordered";
+            const linked_value: text_buffer.StyledChunk = .{
+                .text_ptr = "".ptr,
+                .text_len = 0,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 1,
+                .link_ptr = linked_url.ptr,
+                .link_len = linked_url.len,
+            };
+            const holder = try tb.createStyleValueRange(90, 0, 1, linked_value, 1);
+            linked_style = tb.textAnnotations().get(holder).?.payload.style_id;
+            removed_id = try eb.addAnnotationRange(.{ .start_byte = 5, .end_byte = 7 }, .{
+                .namespace = 30,
+                .style_id = linked_style,
+                .internal = true,
+                .kind_flags = text_buffer.annotation_kind_style,
+            });
+            try std.testing.expect(try tb.removeStyleRange(holder));
+            before_retained = tb.textAnnotations().get(retained_id).?;
+        },
+        else => {},
+    }
+
+    try eb.setCursorByOffset(0);
+    try eb.insertText("X");
+    if (batch == .mixed_namespaces) after_retained = tb.textAnnotations().get(retained_id).?;
+    if (branch == .redo) _ = try eb.undo();
+
+    var operations: [6]text_buffer.AnnotationOperation = undefined;
+    const operation_count: usize = switch (batch) {
+        .clear_then_add => blk: {
+            operations[0] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 7 } };
+            operations[1] = .{ .kind = .add_point, .start_byte = 2, .start_gravity = .left, .payload = .{ .namespace = 7, .style_id = 11 } };
+            break :blk 2;
+        },
+        .add_then_clear => blk: {
+            operations[0] = .{ .kind = .add_range, .start_byte = 1, .end_byte = 3, .payload = .{ .namespace = 8, .style_id = 12 } };
+            operations[1] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 8 } };
+            break :blk 2;
+        },
+        .repeated_clears => blk: {
+            operations[0] = .{ .kind = .update_range, .id = primary_id, .start_byte = 7, .end_byte = 3, .start_gravity = .left, .end_gravity = .right };
+            operations[1] = .{ .kind = .update_payload, .id = primary_id, .payload = .{ .namespace = 2, .style_id = 21 } };
+            operations[2] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 1 } };
+            operations[3] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 3 } };
+            operations[4] = .{ .kind = .update_payload, .id = primary_id, .payload = .{ .namespace = 3, .style_id = 22 } };
+            break :blk 5;
+        },
+        .mixed_namespaces => blk: {
+            operations[0] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 10 } };
+            operations[1] = .{
+                .kind = .add_range,
+                .start_byte = 2,
+                .end_byte = 6,
+                .payload = .{
+                    .namespace = 10,
+                    .style_id = linked_style,
+                    .internal = true,
+                    .kind_flags = text_buffer.annotation_kind_style,
+                },
+            };
+            operations[2] = .{ .kind = .update_point, .id = retained_id, .start_byte = 7, .start_gravity = .right };
+            operations[3] = .{ .kind = .update_payload, .id = retained_id, .payload = .{ .namespace = 20, .style_id = 32, .priority = 6 } };
+            operations[4] = .{ .kind = .remove, .id = removed_id };
+            operations[5] = .{ .kind = .clear_namespace, .payload = .{ .namespace = 99 } };
+            break :blk 6;
+        },
+    };
+
+    var created: [1]u64 = undefined;
+    var deleted: [8]u64 = undefined;
+    _ = try eb.applyAnnotationOperations(operations[0..operation_count], &created, &deleted);
+    const expected_batch_count: usize = switch (batch) {
+        .clear_then_add, .repeated_clears => 1,
+        .add_then_clear => 0,
+        .mixed_namespaces => 2,
+    };
+    try std.testing.expectEqual(expected_batch_count, tb.textAnnotations().count());
+
+    const batch_primary = if (batch == .repeated_clears) tb.textAnnotations().get(primary_id).? else null;
+    const batch_retained = if (batch == .mixed_namespaces) tb.textAnnotations().get(retained_id).? else null;
+    const batch_created = if (batch == .clear_then_add or batch == .mixed_namespaces) tb.textAnnotations().get(created[0]).? else null;
+    if (batch == .repeated_clears) {
+        try std.testing.expectEqual(@as(u32, 3), batch_primary.?.payload.namespace);
+        try std.testing.expectEqual(@as(u32, 22), batch_primary.?.payload.style_id);
+    }
+    if (batch == .mixed_namespaces) {
+        try std.testing.expect(tb.textAnnotations().get(stale_id) == null);
+        try std.testing.expect(tb.textAnnotations().get(removed_id) == null);
+        _ = tb.getLineHighlights(0);
+        const linked_slot = &tb.internal_style_slots.items[linked_style & ~text_buffer.TextBuffer.internal_style_base];
+        try std.testing.expect(linked_slot.link_id != 0);
+        try std.testing.expectEqualStrings("https://history.test/ordered", try link_pool.get(linked_slot.link_id));
+    }
+
+    if (branch == .undo) {
+        _ = try eb.undo();
+    } else {
+        _ = try eb.redo();
+    }
+    const expected_transition_count: usize = if (batch == .mixed_namespaces) 1 else 0;
+    try std.testing.expectEqual(expected_transition_count, tb.textAnnotations().count());
+    switch (batch) {
+        .clear_then_add => try std.testing.expect(tb.textAnnotations().get(created[0]) == null),
+        .add_then_clear => {},
+        .repeated_clears => try std.testing.expect(tb.textAnnotations().get(primary_id) == null),
+        .mixed_namespaces => {
+            try std.testing.expectEqualDeep(if (branch == .undo) before_retained.? else after_retained.?, tb.textAnnotations().get(retained_id).?);
+            try std.testing.expect(tb.textAnnotations().get(created[0]) == null);
+            try std.testing.expect(tb.textAnnotations().get(stale_id) == null);
+            try std.testing.expect(tb.textAnnotations().get(removed_id) == null);
+        },
+    }
+
+    if (branch == .undo) {
+        _ = try eb.redo();
+    } else {
+        _ = try eb.undo();
+    }
+    try std.testing.expectEqual(expected_batch_count, tb.textAnnotations().count());
+    switch (batch) {
+        .clear_then_add => try std.testing.expectEqualDeep(batch_created.?, tb.textAnnotations().get(created[0]).?),
+        .add_then_clear => try std.testing.expect(tb.textAnnotations().get(created[0]) == null),
+        .repeated_clears => try std.testing.expectEqualDeep(batch_primary.?, tb.textAnnotations().get(primary_id).?),
+        .mixed_namespaces => {
+            try std.testing.expectEqualDeep(batch_retained.?, tb.textAnnotations().get(retained_id).?);
+            try std.testing.expectEqualDeep(batch_created.?, tb.textAnnotations().get(created[0]).?);
+            try std.testing.expect(tb.textAnnotations().get(stale_id) == null);
+            try std.testing.expect(tb.textAnnotations().get(removed_id) == null);
+        },
+    }
+}
+
 test "failed edits preserve exact cursor annotations history and redo branch" {
     for (std.enums.values(FailedEdit)) |operation| {
         const allocations = try exerciseFailedHistoryEdit(operation, null);
@@ -614,6 +784,13 @@ test "namespace clear preserves opposite side of active undo annotation delta" {
 test "namespace clear preserves opposite side of active redo annotation delta" {
     try exerciseNamespacePurgeSides(.redo, 1);
     try exerciseNamespacePurgeSides(.redo, 2);
+}
+
+test "ordered annotation batches reconcile active history sides in operation order" {
+    for (std.enums.values(OrderedAnnotationBatch)) |batch| {
+        try exerciseOrderedAnnotationBatch(batch, .undo);
+        try exerciseOrderedAnnotationBatch(batch, .redo);
+    }
 }
 
 test "sparse annotation delta restores policy deletions and exact affected shapes" {

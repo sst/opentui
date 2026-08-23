@@ -822,43 +822,35 @@ pub const EditBuffer = struct {
         const undo_journal = self.tb.undoJournal();
         const redo_journal = self.tb.currentJournal();
         const history_active = undo_journal != null or redo_journal != null;
-        var old_states: []?TextAnnotations.Annotation = &.{};
-        if (history_active) old_states = self.allocator.alloc(?TextAnnotations.Annotation, operations.len) catch return tb.TextBufferError.OutOfMemory;
-        defer if (history_active) self.allocator.free(old_states);
+        var effects: []tb.AnnotationOperationEffect = &.{};
+        if (history_active) effects = self.allocator.alloc(tb.AnnotationOperationEffect, operations.len) catch return tb.TextBufferError.OutOfMemory;
+        defer if (history_active) self.allocator.free(effects);
         if (history_active) {
-            for (operations, old_states) |operation, *old_state| old_state.* = switch (operation.kind) {
-                .update_range, .update_point, .update_payload => self.tb.textAnnotations().get(operation.id),
-                .add_range, .add_point, .remove, .clear_namespace => null,
-            };
             if (undo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
             if (redo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
         }
-        const result = try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
+        const result = if (history_active)
+            try self.tb.applyAnnotationOperationsWithEffects(operations, created_ids, deleted_ids, effects)
+        else
+            try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
         if (history_active) {
-            var created_index: usize = 0;
-            for (operations, old_states) |operation, old_state| {
-                const id = switch (operation.kind) {
-                    .add_range, .add_point => blk: {
-                        defer created_index += 1;
-                        break :blk created_ids[created_index];
-                    },
-                    .update_range, .update_point, .update_payload => operation.id,
-                    .remove, .clear_namespace => continue,
-                };
-                const new_state = self.tb.textAnnotations().get(id);
-                if (old_state == null and new_state == null) continue;
-                if (undo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .after, old_state, new_state);
-                if (redo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .before, old_state, new_state);
-            }
-        }
-        // Explicit removal is authoritative even when the ID exists only in an
-        // undo delta, so a later undo cannot resurrect controller-owned state.
-        for (operations) |operation| {
-            if (operation.kind == .clear_namespace) {
-                self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace);
-            }
-            if (operation.kind != .remove) continue;
-            self.tb.purgeAnnotationHistory(&.{operation.id});
+            for (operations, effects) |operation, effect| switch (operation.kind) {
+                .add_range, .add_point, .update_range, .update_point, .update_payload => {
+                    if (effect.before == null and effect.after == null) continue;
+                    if (undo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .after, effect.before, effect.after);
+                    if (redo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .before, effect.before, effect.after);
+                },
+                // Explicit removals are authoritative even when their state
+                // exists only in history, so replay cannot resurrect it.
+                .remove => self.tb.purgeAnnotationHistory(&.{operation.id}),
+                .clear_namespace => self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace),
+            };
+        } else {
+            for (operations) |operation| switch (operation.kind) {
+                .remove => self.tb.purgeAnnotationHistory(&.{operation.id}),
+                .clear_namespace => self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace),
+                else => {},
+            };
         }
         return result;
     }
