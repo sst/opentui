@@ -33,7 +33,6 @@ const BrandedTextRenderable: unique symbol = Symbol.for("@opentui/core/TextRende
 let nextTextDocumentOwner = 1
 let textDocumentMutationDepth = 0
 const deferredDocumentOwners = new Set<TextRenderable>()
-const simpleRunStyles = new Map<number, TextStyle>()
 
 type TextRun = {
   text: string
@@ -850,7 +849,12 @@ export class TextRenderable extends TextBufferRenderable {
         this.children = nextChildren
         for (const child of children) child._compatibilityOwner = this
       } catch (error) {
-        this.destroyDetachedCompatibilityChildren(children)
+        const committed = children.every((child, childIndex) => this.children[insertIndex + childIndex] === child)
+        if (committed) {
+          for (const child of children) child._compatibilityOwner = this
+        } else {
+          this.destroyDetachedCompatibilityChildren(children)
+        }
         throw error
       }
       return firstIndex
@@ -884,7 +888,15 @@ export class TextRenderable extends TextBufferRenderable {
       this.children = nextChildren
       for (const child of styledChildren) child._compatibilityOwner = this
     } catch (error) {
-      this.destroyDetachedCompatibilityChildren(styledChildren)
+      const committedChildren = this.children
+      const committed =
+        committedChildren.length === nextChildren.length &&
+        committedChildren.every((child, childIndex) => child === nextChildren[childIndex])
+      if (committed) {
+        for (const child of styledChildren) child._compatibilityOwner = this
+      } else {
+        this.destroyDetachedCompatibilityChildren(styledChildren)
+      }
       throw error
     }
   }
@@ -1147,69 +1159,88 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   private replaceManualStyledText(content: StyledText, requestRender: boolean): void {
+    const chunks = [...content.chunks]
     const previousRuns = this._styledText === null ? null : (this._entries as TextRun[])
-    const nextRuns = new Array<TextRun>(content.chunks.length)
-    const stableRuns = previousRuns !== null && previousRuns.length === content.chunks.length
+    const plannedRuns = new Array<TextRun>(chunks.length)
+    const styles = new Map<string, TextStyle>()
+    const stableRuns = previousRuns !== null && previousRuns.length === chunks.length
     let unchangedText = stableRuns
     let changedTextPayloadEligible = true
     let hasStyleChanges = false
     let syntaxStyle: SyntaxStyle | null = null
-    for (let index = 0; index < content.chunks.length; index++) {
-      const chunk = content.chunks[index]!
-      if ((chunk.styleId === undefined) !== (chunk.styleSource === undefined)) {
-        throw new Error("Registered text styles require both styleId and styleSource")
-      }
-      if (chunk.styleSource) {
-        if (syntaxStyle && syntaxStyle !== chunk.styleSource) {
-          throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
-        }
-        syntaxStyle = chunk.styleSource
+    const validatedStyleIds = new Set<number>()
+    const colorKey = (color: RGBA | undefined): string =>
+      color ? `${color.buffer[0]},${color.buffer[1]},${color.buffer[2]},${color.buffer[3]}` : ""
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index]!
+      const text = chunk.text
+      const styleId = chunk.styleId
+      const styleSource = chunk.styleSource
+      const fg = chunk.fg === undefined ? undefined : parseColor(chunk.fg)
+      const bg = chunk.bg === undefined ? undefined : parseColor(chunk.bg)
+      const attributes = chunk.attributes ?? 0
+      const sourceLink = chunk.link
+      const linkUrl = sourceLink && typeof sourceLink === "object" ? sourceLink.url : undefined
+      if (typeof text !== "string") throw new Error("StyledText chunks require string text")
+      if (!Number.isInteger(attributes) || attributes < 0 || attributes > 0xffffffff) {
+        throw new Error("Text attributes must be an unsigned 32-bit integer")
       }
       if (
-        chunk.styleId !== undefined &&
-        (!Number.isInteger(chunk.styleId) || chunk.styleId <= 0 || !chunk.styleSource?.getStyleById(chunk.styleId))
+        sourceLink !== undefined &&
+        (sourceLink === null || typeof sourceLink !== "object" || typeof linkUrl !== "string")
       ) {
-        throw new Error(`Unknown registered text style ID ${chunk.styleId}`)
+        throw new Error("Text links require a string url")
       }
-      const attributes = chunk.attributes ?? 0
-      let style = simpleRunStyles.get(attributes)
-      if (chunk.fg !== undefined || chunk.bg !== undefined || chunk.link !== undefined || chunk.styleId !== undefined) {
-        style = {
-          fg: chunk.fg ? parseColor(chunk.fg) : undefined,
-          bg: chunk.bg ? parseColor(chunk.bg) : undefined,
-          attributes,
-          link: chunk.link,
-          styleId: chunk.styleId,
-          styleSource: chunk.styleSource,
+      if ((styleId === undefined) !== (styleSource === undefined)) {
+        throw new Error("Registered text styles require both styleId and styleSource")
+      }
+      if (styleSource) {
+        if (syntaxStyle && syntaxStyle !== styleSource) {
+          throw new Error("A text document cannot mix registered styles from different SyntaxStyle instances")
         }
-      } else if (!style) {
-        style = { attributes }
-        simpleRunStyles.set(attributes, style)
+        syntaxStyle = styleSource
       }
+      if (
+        styleId !== undefined &&
+        (!Number.isInteger(styleId) ||
+          styleId <= 0 ||
+          (!validatedStyleIds.has(styleId) && !styleSource?.getStyleById(styleId)))
+      ) {
+        throw new Error(`Unknown registered text style ID ${styleId}`)
+      }
+      if (styleId !== undefined) validatedStyleIds.add(styleId)
+
+      const styleKey = `${colorKey(fg)}|${colorKey(bg)}|${attributes}|${styleId ?? 0}|${sourceLink ? `1:${linkUrl}` : "0"}`
+      let style = styles.get(styleKey)
+      if (!style) {
+        style = {
+          fg,
+          bg,
+          attributes,
+          link: sourceLink === undefined ? undefined : { url: linkUrl as string },
+          styleId,
+          styleSource,
+        }
+        styles.set(styleKey, style)
+      }
+
       const previous = previousRuns?.[index]
       if (previous) {
         const styleChanged = !textStylesEqual(previous.style!, style)
-        if (previous.text !== chunk.text) {
+        if (previous.text !== text) {
           changedTextPayloadEligible &&=
-            previous.text.length === chunk.text.length &&
-            /^[\x20-\x7e]+$/.test(previous.text) &&
-            /^[\x20-\x7e]+$/.test(chunk.text)
+            previous.text.length === text.length && /^[\x20-\x7e]+$/.test(previous.text) && /^[\x20-\x7e]+$/.test(text)
         }
-        unchangedText &&= previous.rangeId !== null && previous.text === chunk.text
+        unchangedText &&= previous.rangeId !== null && previous.text === text
         hasStyleChanges ||= styleChanged
-        previous.text = chunk.text
-        previous.style = style
-        previous.styleDirty ||= styleChanged
-        nextRuns[index] = previous
+        plannedRuns[index] = {
+          text,
+          style,
+          rangeId: previous.rangeId,
+          styleDirty: previous.styleDirty || styleChanged,
+        }
       } else {
-        nextRuns[index] = textRun(chunk.text, style)
-      }
-    }
-    if (previousRuns) {
-      const owner = this.getDocumentOwner()
-      for (let index = nextRuns.length; index < previousRuns.length; index++) {
-        const id = previousRuns[index]!.rangeId
-        if (owner && id !== null) owner._pendingRemovedRangeIds.add(id)
+        plannedRuns[index] = textRun(text, style)
       }
     }
     const payloadOnly =
@@ -1218,24 +1249,47 @@ export class TextRenderable extends TextBufferRenderable {
       !hasStyleChanges &&
       changedTextPayloadEligible &&
       previousRuns.every((run, index) => {
-        const text = content.chunks[index]!.text
+        const text = plannedRuns[index]!.text
         return run.rangeId !== null && /^[\x20-\x7e]+$/.test(text)
       })
+
+    const dirtyBeforeScheduling = this._dirty
+    if (requestRender) {
+      try {
+        this.requestRender()
+      } catch (error) {
+        this._dirty = dirtyBeforeScheduling
+        throw error
+      }
+    }
 
     const hadPublicContent = this._styledText === null && this._entries.length > 0
     if (hadPublicContent) textDocumentMutationDepth += 1
     try {
       if (hadPublicContent) this.children = []
+      const nextRuns = plannedRuns
+      if (previousRuns) {
+        const owner = this.getDocumentOwner()
+        for (let index = 0; index < previousRuns.length; index++) {
+          const previous = previousRuns[index]!
+          const planned = plannedRuns[index]
+          if (planned) {
+            previous.text = planned.text
+            previous.style = planned.style
+            previous.styleDirty = planned.styleDirty
+            nextRuns[index] = previous
+          } else if (owner && previous.rangeId !== null) {
+            owner._pendingRemovedRangeIds.add(previous.rangeId)
+          }
+        }
+      }
       this._entries = nextRuns
       this._styledText = content
       this._manualTextOnly = payloadOnly
       this._textDocumentPending = !unchangedText
-      if (hasStyleChanges && unchangedText) this.invalidateManualStyleDiff(requestRender)
-      if (requestRender) {
-        if (!unchangedText) this.invalidateTextDocument()
-        else if (!hasStyleChanges) this.requestRender()
-        if (this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
-      }
+      if (hasStyleChanges && unchangedText) this.invalidateManualStyleDiff(false)
+      if (!unchangedText) this.invalidateTextDocument(false)
+      if (requestRender && this.hasTextDocumentState && this.lastLocalSelection) this.flushTextDocument()
     } finally {
       if (hadPublicContent) {
         textDocumentMutationDepth -= 1

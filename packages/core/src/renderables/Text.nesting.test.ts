@@ -1187,6 +1187,21 @@ describe("nested TextRenderable", () => {
     expect(() => root.add(root)).toThrow("itself")
   })
 
+  test("destroys deeply nested text without recursive stack growth", () => {
+    const root = new TextRenderable({}, false)
+    let current = root
+    for (let index = 0; index < 12_000; index++) {
+      const child = new TextRenderable({}, false)
+      ;(current as any)._entries.push(child)
+      child.parent = current
+      current = child
+    }
+
+    root.destroyRecursively()
+    expect(root.isDestroyed).toBe(true)
+    expect(current.isDestroyed).toBe(true)
+  }, 15_000)
+
   test("preserves StyledText identity and refreshes when the same object is assigned again", () => {
     const styled = new StyledText([{ __isChunk: true, text: "before" }])
     const text = new TextRenderable(renderer, { content: styled })
@@ -1586,6 +1601,203 @@ describe("nested TextRenderable", () => {
       expect(text.plainText).toBe("old")
     } finally {
       text.destroy()
+    }
+  })
+
+  test("rejects a late invalid styled chunk without changing runs, identity, ranges, styles, or pending state", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({ keyword: { fg: "#ff0000", bold: true } })
+    const keywordId = syntaxStyle.getStyleId("keyword")!
+    const original = new StyledText([
+      { __isChunk: true, text: "first", attributes: TextAttributes.BOLD },
+      { __isChunk: true, text: " second", styleId: keywordId, styleSource: syntaxStyle },
+    ])
+    const text = new TextRenderable(renderer, { content: original })
+    renderer.root.add(text)
+    await renderOnce()
+    const entries = (text as any)._entries
+    const runState = entries.map((run: any) => ({
+      run,
+      text: run.text,
+      style: run.style,
+      rangeId: run.rangeId,
+      styleDirty: run.styleDirty,
+    }))
+    const pendingState = {
+      documentPending: (text as any)._textDocumentPending,
+      manualTextOnly: (text as any)._manualTextOnly,
+      manualStyleDiffOnly: (text as any)._manualStyleDiffOnly,
+      dirty: (text as any)._dirty,
+      documentRoots: (text as any)._pendingDocumentRoots,
+      styleRoots: (text as any)._pendingStyleRoots,
+      removedRangeIds: (text as any)._pendingRemovedRangeIds,
+      nativeMoves: (text as any)._pendingNativeMoves,
+    }
+
+    try {
+      expect(() => {
+        text.content = new StyledText([
+          { __isChunk: true, text: "changed", fg: RGBA.fromHex("#00ff00") },
+          { __isChunk: true, text: " invalid", styleId: 999_999, styleSource: syntaxStyle },
+        ])
+      }).toThrow("Unknown registered text style ID 999999")
+      expect(text.content).toBe(original)
+      expect((text as any)._entries).toBe(entries)
+      expect(
+        entries.map((run: any) => ({
+          run,
+          text: run.text,
+          style: run.style,
+          rangeId: run.rangeId,
+          styleDirty: run.styleDirty,
+        })),
+      ).toEqual(runState)
+      expect({
+        documentPending: (text as any)._textDocumentPending,
+        manualTextOnly: (text as any)._manualTextOnly,
+        manualStyleDiffOnly: (text as any)._manualStyleDiffOnly,
+        dirty: (text as any)._dirty,
+        documentRoots: (text as any)._pendingDocumentRoots,
+        styleRoots: (text as any)._pendingStyleRoots,
+        removedRangeIds: (text as any)._pendingRemovedRangeIds,
+        nativeMoves: (text as any)._pendingNativeMoves,
+      }).toEqual(pendingState)
+      expect(text.plainText).toBe("first second")
+    } finally {
+      text.destroy()
+      syntaxStyle.destroy()
+    }
+  })
+
+  test("leaves styled runs unchanged when render scheduling fails", async () => {
+    const original = new StyledText([
+      { __isChunk: true, text: "first", fg: RGBA.fromHex("#ff0000") },
+      { __isChunk: true, text: " second", attributes: TextAttributes.BOLD },
+    ])
+    const text = new TextRenderable(renderer, { content: original })
+    renderer.root.add(text)
+    await renderOnce()
+    const entries = (text as any)._entries
+    const runState = entries.map((run: any) => ({ ...run }))
+    const request = spyOn(text, "requestRender").mockImplementationOnce(() => {
+      throw new Error("injected styled scheduling failure")
+    })
+    try {
+      expect(() => {
+        text.content = new StyledText([
+          { __isChunk: true, text: "changed", fg: RGBA.fromHex("#00ff00") },
+          { __isChunk: true, text: " content", attributes: TextAttributes.UNDERLINE },
+        ])
+      }).toThrow("injected styled scheduling failure")
+      expect(text.content).toBe(original)
+      expect((text as any)._entries).toBe(entries)
+      expect(entries.map((run: any) => ({ ...run }))).toEqual(runState)
+      expect(text.plainText).toBe("first second")
+    } finally {
+      request.mockRestore()
+      text.destroy()
+    }
+  })
+
+  test("reuses one normalized style object for repeated styled chunks", () => {
+    const color = RGBA.fromHex("#ff0000")
+    const link = { url: "https://example.test/repeated" }
+    const text = new TextRenderable({
+      content: new StyledText(
+        Array.from({ length: 100_000 }, (_, index) => ({
+          __isChunk: true as const,
+          text: String(index % 10),
+          fg: color,
+          attributes: TextAttributes.BOLD,
+          link,
+        })),
+      ),
+    })
+    try {
+      expect(new Set((text as any)._entries.map((run: any) => run.style)).size).toBe(1)
+    } finally {
+      text.destroy()
+    }
+  }, 15_000)
+
+  test("retains generated ownership when replacement cleanup throws", () => {
+    const createRootWithCleanupFailure = () => {
+      const root = new TextRenderable({}, false)
+      root.add(new StyledText([{ __isChunk: true, text: "old" }]))
+      const oldChild = root.getTextChildren()[0]!
+      const destroyOld = oldChild.destroyRecursively.bind(oldChild)
+      oldChild.destroyRecursively = () => {
+        destroyOld()
+        throw new Error("injected generated cleanup failure")
+      }
+      expect(() => {
+        root.replace(new StyledText([{ __isChunk: true, text: "new" }]), 0)
+      }).toThrow("injected generated cleanup failure")
+      const generated = root.getTextChildren()[0]!
+      expect(generated.parent).toBe(root)
+      expect((generated as any)._compatibilityOwner).toBe(root)
+      return { root, generated }
+    }
+
+    const removed = createRootWithCleanupFailure()
+    removed.root.remove(removed.generated)
+    expect(removed.generated.parent).toBeNull()
+    expect(removed.generated.isDestroyed).toBe(true)
+    removed.root.destroy()
+
+    const recursive = createRootWithCleanupFailure()
+    recursive.root.destroyRecursively()
+    expect(recursive.root.isDestroyed).toBe(true)
+    expect(recursive.generated.isDestroyed).toBe(true)
+  })
+
+  test("restores generated ownership after a later cross-parent adoption fails", () => {
+    const source = new TextRenderable({}, false)
+    const target = new TextRenderable({}, false)
+    const blocker = new TextRenderable({}, false)
+    source.add(new StyledText([{ __isChunk: true, text: "generated" }]))
+    const generated = source.getTextChildren()[0]!
+    target.add(blocker)
+    const detach = spyOn(blocker as any, "detachTextDocumentState").mockImplementationOnce(() => {
+      throw new Error("injected cross-parent adoption failure")
+    })
+    try {
+      expect(() => {
+        target.children = [generated, blocker]
+      }).toThrow("injected cross-parent adoption failure")
+      expect(source.getTextChildren()).toEqual([generated])
+      expect(generated.parent).toBe(source)
+      expect((generated as any)._compatibilityOwner).toBe(source)
+      expect(target.getTextChildren()).toEqual([blocker])
+      expect(blocker.parent).toBe(target)
+
+      source.remove(generated)
+      expect(generated.isDestroyed).toBe(true)
+    } finally {
+      detach.mockRestore()
+      source.destroyRecursively()
+      target.destroyRecursively()
+    }
+  })
+
+  test("destroys detached generated children when their setter rolls back", () => {
+    const root = new TextRenderable({}, false)
+    const generated = new TextRenderable({}, false)
+    const create = spyOn(root as any, "styledTextToChildren").mockReturnValueOnce([generated])
+    const request = spyOn(root, "requestRender").mockImplementationOnce(() => {
+      throw new Error("injected generated scheduling failure")
+    })
+    try {
+      expect(() => {
+        root.add(new StyledText([{ __isChunk: true, text: "generated" }]))
+      }).toThrow("injected generated scheduling failure")
+      expect(root.getTextChildren()).toEqual([])
+      expect(generated.parent).toBeNull()
+      expect((generated as any)._compatibilityOwner).toBeNull()
+      expect(generated.isDestroyed).toBe(true)
+    } finally {
+      request.mockRestore()
+      create.mockRestore()
+      root.destroy()
     }
   })
 
