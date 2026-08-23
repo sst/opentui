@@ -400,6 +400,72 @@ test "MarkTree moveRegion preserves IDs and annotations inside moved text" {
     try tree.validateIntegrity();
 }
 
+test "MarkTree affected-only move matches every endpoint and gravity combination" {
+    var source = testTree();
+    defer source.deinit();
+    for (0..9) |position| {
+        _ = try source.addPoint(.{ .byte = @intCast(position), .gravity = .left });
+        _ = try source.addPoint(.{ .byte = @intCast(position), .gravity = .right });
+    }
+    for (0..9) |start| for (0..9) |end| {
+        inline for ([_]Gravity{ .left, .right }) |start_gravity| {
+            inline for ([_]Gravity{ .left, .right }) |end_gravity| {
+                _ = try source.addRange(.{
+                    .start_byte = @intCast(start),
+                    .end_byte = @intCast(end),
+                    .start_gravity = start_gravity,
+                    .end_gravity = end_gravity,
+                });
+            }
+        }
+    };
+
+    for (0..9) |start| for (0..9 - start) |len| for (0..9 - len) |destination| {
+        var tree = try source.clone(std.testing.allocator);
+        defer tree.deinit();
+        var expected = source.iterator();
+        try tree.moveRegion(@intCast(start), @intCast(len), @intCast(destination));
+        while (try expected.next()) |mark| {
+            const transformed = if (len == 0 or destination == start)
+                mark
+            else
+                try MarkTree.movedMark(mark, @intCast(start), @intCast(start + len), @intCast(len), @intCast(destination));
+            try std.testing.expectEqualDeep(
+                transformed,
+                tree.get(mark.id()).?,
+            );
+        }
+        try tree.validateIntegrity();
+    };
+}
+
+test "MarkTree prepared move is atomic and real moves invalidate without affected marks" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var tree = MarkTree.initWithSeed(failing.allocator(), 1);
+    defer tree.deinit();
+    const id = try tree.addRange(.{ .start_byte = 5, .end_byte = 6 });
+    const original = tree.get(id).?;
+    const original_generation = tree.generation;
+    var iterator = tree.iterator();
+
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, tree.prepareMoveRegion(0, 10, 20));
+    try std.testing.expectEqualDeep(original, tree.get(id).?);
+    try std.testing.expectEqual(original_generation, tree.generation);
+    _ = try iterator.next();
+
+    failing.fail_index = std.math.maxInt(usize);
+    var prepared = try tree.prepareMoveRegion(20, 10, 40);
+    defer prepared.deinit();
+    try std.testing.expectEqual(@as(usize, 0), prepared.affected_ids.len);
+    try std.testing.expectEqualDeep(original, tree.get(id).?);
+    tree.commitPreparedMove(&prepared);
+    try std.testing.expectEqual(original_generation + 1, tree.generation);
+    try std.testing.expectError(error.IteratorInvalidated, iterator.next());
+    try std.testing.expectEqualDeep(original, tree.get(id).?);
+    try tree.validateIntegrity();
+}
+
 const MutationVisitor = struct {
     tree: *MarkTree,
     attempted: bool = false,

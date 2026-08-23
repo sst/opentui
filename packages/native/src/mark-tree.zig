@@ -626,7 +626,7 @@ pub const MarkTree = struct {
             ) catch unreachable;
             if (!std.meta.eql(node.mark, replacement)) self.reindexNode(node, replacement) catch unreachable;
         }
-        if (prepared.affected_ids.len != 0) self.finishMutation();
+        if (prepared.len != 0 and prepared.destination_byte != prepared.start_byte) self.finishMutation();
         prepared.committed = true;
     }
 
@@ -637,25 +637,6 @@ pub const MarkTree = struct {
         var prepared = try self.prepareMoveRegion(start_byte, len, destination_byte);
         defer prepared.deinit();
         self.commitPreparedMove(&prepared);
-    }
-
-    /// Replaces every mark value while retaining IDs, priorities, and nodes.
-    /// Storage and membership are prepared before the infallible sorted rebuild.
-    pub fn replaceMarks(self: *Self, marks: []const Mark) !void {
-        try self.checkCanMutate();
-        if (marks.len != self.len) return error.CountMismatch;
-        const nodes = try self.allocator.alloc(*Node, marks.len);
-        defer self.allocator.free(nodes);
-        for (marks, 0..) |mark, index| {
-            nodes[index] = self.ids.get(mark.id()) orelse return error.InvalidId;
-        }
-        for (marks, nodes) |mark, node| {
-            node.mark = mark;
-            resetDetached(node);
-        }
-        std.mem.sort(*Node, nodes, {}, movedNodeLessThan);
-        self.root = rebuildSortedNodes(nodes);
-        self.finishMutation();
     }
 
     /// Visits forward, non-empty paired ranges overlapping the half-open query.
@@ -1223,10 +1204,6 @@ pub const MarkTree = struct {
         return result;
     }
 
-    fn movedNodeLessThan(_: void, left: *Node, right: *Node) bool {
-        return keyLess(lowerByte(left.mark), left.mark.id(), lowerByte(right.mark), right.mark.id());
-    }
-
     fn countIntersecting(maybe_node: ?*Node, start_byte: u32, end_byte: u32) usize {
         const node = maybe_node orelse return 0;
         if (node.max_byte < start_byte) return 0;
@@ -1247,33 +1224,6 @@ pub const MarkTree = struct {
             index.* += 1;
         }
         if (lowerByte(node.mark) <= end_byte) fillIntersecting(node.right, start_byte, end_byte, output, index);
-    }
-
-    /// Build the unique treap for sorted keys and existing priorities in linear
-    /// time. Parent pointers temporarily form the Cartesian stack.
-    fn rebuildSortedNodes(nodes: []*Node) ?*Node {
-        var top: ?*Node = null;
-        for (nodes) |node| {
-            var last: ?*Node = null;
-            while (top) |current| {
-                if (!priorityBefore(node, current)) break;
-                top = current.parent;
-                pull(current);
-                last = current;
-            }
-            setLeft(node, last);
-            if (top) |current| setRight(current, node) else node.parent = null;
-            top = node;
-        }
-
-        var root: ?*Node = null;
-        while (top) |current| {
-            top = current.parent;
-            pull(current);
-            root = current;
-        }
-        if (root) |value| value.parent = null;
-        return root;
     }
 
     fn deletionClassification(mark: Mark, start_byte: u32, old_end: u32, old_len: u32) struct { affected: bool, covered: bool } {

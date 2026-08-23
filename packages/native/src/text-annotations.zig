@@ -134,6 +134,22 @@ pub const TextAnnotations = struct {
         }
     };
 
+    pub const PreparedMove = struct {
+        owner: *Self,
+        tree_move: MarkTree.PreparedMove,
+        source_generation: u64,
+        committed: bool = false,
+
+        pub fn affectedIds(self: *const PreparedMove) []const u64 {
+            return self.tree_move.affected_ids;
+        }
+
+        pub fn deinit(self: *PreparedMove) void {
+            self.tree_move.deinit();
+            self.* = undefined;
+        }
+    };
+
     pub const PreparedDeltaApply = struct {
         owner: *Self,
         start_byte: u32,
@@ -750,45 +766,27 @@ pub const TextAnnotations = struct {
         prepared.committed = true;
     }
 
-    pub fn moveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !void {
+    pub fn prepareMoveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !PreparedMove {
         try self.checkCanMutate(1);
+        return .{
+            .owner = self,
+            .tree_move = try self.tree.prepareMoveRegion(start_byte, len, destination_byte),
+            .source_generation = self.generation,
+        };
+    }
+
+    pub fn commitPreparedMove(self: *Self, prepared: *PreparedMove) void {
+        std.debug.assert(prepared.owner == self and !prepared.committed and prepared.source_generation == self.generation);
         const before = self.tree.generation;
-        try self.tree.moveRegion(start_byte, len, destination_byte);
+        self.tree.commitPreparedMove(&prepared.tree_move);
         if (self.tree.generation != before) self.finishMutation();
+        prepared.committed = true;
     }
 
-    /// Applies one move to a detached annotation snapshot. Document ranges that
-    /// enclose the complete affected window retain their explicit parent extent.
-    pub fn transformMoveSnapshot(
-        annotations: []Annotation,
-        target_id: u64,
-        start_byte: u32,
-        len: u32,
-        destination_byte: u32,
-        affected_start: u32,
-        affected_end: u32,
-        preserve_kind_flags: u32,
-    ) !void {
-        const end_byte = std.math.add(u32, start_byte, len) catch return error.PositionOverflow;
-        for (annotations) |*annotation| {
-            if (annotation.id() != target_id and annotation.payload.kind_flags & preserve_kind_flags != 0 and annotation.mark == .range) {
-                const range = annotation.mark.range;
-                if (range.start_byte <= affected_start and range.end_byte >= affected_end) continue;
-            }
-            annotation.mark = try MarkTree.movedMark(annotation.mark, start_byte, end_byte, len, destination_byte);
-        }
-    }
-
-    /// Publishes positions from a complete detached snapshot in one MarkTree
-    /// rebuild. Payloads and membership remain unchanged.
-    pub fn replaceSnapshotMarks(self: *Self, annotations: []const Annotation) !void {
-        try self.checkCanMutate(1);
-        if (annotations.len != self.count()) return error.CountMismatch;
-        const marks = try self.allocator.alloc(Mark, annotations.len);
-        defer self.allocator.free(marks);
-        for (annotations, marks) |annotation, *mark| mark.* = annotation.mark;
-        try self.tree.replaceMarks(marks);
-        self.finishMutation();
+    pub fn moveRegion(self: *Self, start_byte: u32, len: u32, destination_byte: u32) !void {
+        var prepared = try self.prepareMoveRegion(start_byte, len, destination_byte);
+        defer prepared.deinit();
+        self.commitPreparedMove(&prepared);
     }
 
     /// Visits highest priority first; newer equal-priority annotations win.

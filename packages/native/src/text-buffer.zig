@@ -4119,52 +4119,39 @@ pub const UnifiedTextBuffer = struct {
                     const affected_start = @min(source_start, desired);
                     const affected_end = @max(source_end, desired);
 
+                    var annotation_move = candidate_annotations.prepareMoveRegion(source_start, len, destination) catch |err| switch (err) {
+                        error.OutOfMemory => return TextBufferError.OutOfMemory,
+                        else => return TextBufferError.InvalidDimensions,
+                    };
+                    defer annotation_move.deinit();
+
                     const EnclosingRange = struct {
                         id: u64,
                         input: TextAnnotations.RangeInput,
                     };
-                    const EnclosingContext = struct {
-                        allocator: Allocator,
-                        output: *std.ArrayListUnmanaged(EnclosingRange),
-                        target_id: u64,
-                        affected_start: u32,
-                        affected_end: u32,
-
-                        fn visit(ctx: *@This(), annotation: TextAnnotations.Annotation) !void {
-                            if (annotation.id() == ctx.target_id or annotation.payload.kind_flags & document_range_kind == 0 or annotation.mark != .range) return;
-                            const range = annotation.mark.range;
-                            if (range.start_byte > ctx.affected_start or range.end_byte < ctx.affected_end) return;
-                            try ctx.output.append(ctx.allocator, .{ .id = annotation.id(), .input = .{
-                                .start_byte = range.start_byte,
-                                .end_byte = range.end_byte,
-                                .start_gravity = range.start_gravity,
-                                .end_gravity = range.end_gravity,
-                            } });
-                        }
-                    };
                     var enclosing_ranges: std.ArrayListUnmanaged(EnclosingRange) = .empty;
                     defer enclosing_ranges.deinit(self.global_allocator);
-                    var enclosing_context: EnclosingContext = .{
-                        .allocator = self.global_allocator,
-                        .output = &enclosing_ranges,
-                        .target_id = operation.target_id,
-                        .affected_start = affected_start,
-                        .affected_end = affected_end,
-                    };
-                    candidate_annotations.visitOverlapping(affected_start, affected_end, &enclosing_context, EnclosingContext.visit) catch return TextBufferError.OutOfMemory;
-
-                    candidate_annotations.moveRegion(source_start, len, destination) catch |err| switch (err) {
-                        error.OutOfMemory => return TextBufferError.OutOfMemory,
-                        else => return TextBufferError.InvalidDimensions,
-                    };
-                    for (enclosing_ranges.items) |enclosing| {
-                        if (!(candidate_annotations.updateRange(enclosing.id, enclosing.input) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
+                    for (annotation_move.affectedIds()) |id| {
+                        const annotation = candidate_annotations.get(id).?;
+                        if (id == operation.target_id or annotation.payload.kind_flags & document_range_kind == 0 or annotation.mark != .range) continue;
+                        const range = annotation.mark.range;
+                        if (range.start_byte > affected_start or range.end_byte < affected_end) continue;
+                        try enclosing_ranges.append(self.global_allocator, .{ .id = id, .input = .{
+                            .start_byte = range.start_byte,
+                            .end_byte = range.end_byte,
+                            .start_gravity = range.start_gravity,
+                            .end_gravity = range.end_gravity,
+                        } });
                     }
-                    const prepared = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
+                    const prepared_rope = candidate_buffer._rope.prepareMoveRegionByMetric(source_start, len, destination, &candidate_buffer.byte_splitter) catch |err| switch (err) {
                         error.OutOfMemory => return TextBufferError.OutOfMemory,
                         error.OutOfBounds => return TextBufferError.InvalidByteOffset,
                     };
-                    candidate_buffer._rope.commitPreparedRoot(prepared);
+                    candidate_annotations.commitPreparedMove(&annotation_move);
+                    for (enclosing_ranges.items) |enclosing| {
+                        if (!(candidate_annotations.updateRange(enclosing.id, enclosing.input) catch return TextBufferError.InvalidDimensions)) return TextBufferError.InvalidIndex;
+                    }
+                    candidate_buffer._rope.commitPreparedRoot(prepared_rope);
                     content_changed = true;
                     annotations_changed = true;
                 },

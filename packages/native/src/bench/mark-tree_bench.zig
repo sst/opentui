@@ -252,5 +252,75 @@ pub fn run(
         }
     }
 
+    const move_scaling_cases = [_]struct { name: []const u8, distance: u32 }{
+        .{ .name = "move locality: 100 moves across 16 bytes with 20k marks", .distance = 16 },
+        .{ .name = "move locality: 100 moves across 160 bytes with 20k marks", .distance = 160 },
+        .{ .name = "move locality: 100 moves across 1.6k bytes with 20k marks", .distance = 1_600 },
+        .{ .name = "move locality: 100 moves across 16k bytes with 20k marks", .distance = 16_000 },
+        .{ .name = "move locality: 100 moves across 80k bytes with 20k marks", .distance = 80_000 },
+    };
+    for (move_scaling_cases) |case| {
+        if (bench_utils.matchesBenchFilter(case.name, bench_filter)) {
+            var stats: bench_utils.BenchStats = .{};
+            for (0..iterations) |iteration| {
+                var tree = initTree(allocator, 0x7000 + iteration);
+                defer tree.deinit();
+                for (0..10_000) |index| {
+                    const start_byte: u32 = @intCast(index * 16);
+                    _ = try tree.addRange(.{ .start_byte = start_byte, .end_byte = start_byte + 12 });
+                    _ = try tree.addPoint(.{ .byte = start_byte + 4 });
+                }
+                const start_byte: u32 = 40_000;
+                const destination_byte = start_byte + case.distance;
+                const timer = bench_utils.BenchTimer.start(io);
+                for (0..50) |_| {
+                    try tree.moveRegion(start_byte, 16, destination_byte);
+                    try tree.moveRegion(destination_byte, 16, start_byte);
+                }
+                stats.record(timer.read());
+                std.mem.doNotOptimizeAway(try checksumTree(&tree));
+            }
+            try addResult(&results, allocator, case.name, stats);
+        }
+    }
+
+    if (bench_utils.matchesBenchFilter("move phases: 100 regions with 20k mixed marks", bench_filter)) {
+        var prepare_stats: bench_utils.BenchStats = .{};
+        var commit_stats: bench_utils.BenchStats = .{};
+        var release_stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |iteration| {
+            var tree = initTree(allocator, 0x8000 + iteration);
+            defer tree.deinit();
+            for (0..10_000) |index| {
+                const start_byte: u32 = @intCast(index * 16);
+                _ = try tree.addRange(.{ .start_byte = start_byte, .end_byte = start_byte + 12 });
+                _ = try tree.addPoint(.{ .byte = start_byte + 4 });
+            }
+            var prepare_ns: u64 = 0;
+            var commit_ns: u64 = 0;
+            var release_ns: u64 = 0;
+            for (0..100) |move| {
+                const start_byte: u32 = @intCast((move * 997) % 140_000);
+                const destination_byte: u32 = @intCast((move * 1543) % 140_000);
+                var timer = bench_utils.BenchTimer.start(io);
+                var prepared = try tree.prepareMoveRegion(start_byte, 2_000, destination_byte);
+                prepare_ns += timer.read();
+                timer = bench_utils.BenchTimer.start(io);
+                tree.commitPreparedMove(&prepared);
+                commit_ns += timer.read();
+                timer = bench_utils.BenchTimer.start(io);
+                prepared.deinit();
+                release_ns += timer.read();
+            }
+            prepare_stats.record(prepare_ns);
+            commit_stats.record(commit_ns);
+            release_stats.record(release_ns);
+            std.mem.doNotOptimizeAway(try checksumTree(&tree));
+        }
+        try addResult(&results, allocator, "move phases: prepare affected IDs", prepare_stats);
+        try addResult(&results, allocator, "move phases: commit reindex", commit_stats);
+        try addResult(&results, allocator, "move phases: release IDs", release_stats);
+    }
+
     return results.toOwnedSlice(allocator);
 }
