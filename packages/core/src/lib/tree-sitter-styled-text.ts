@@ -2,7 +2,7 @@ import type { TextChunk } from "../text-buffer.js"
 import { StyledText } from "./styled-text.js"
 import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
 import { TreeSitterClient } from "./tree-sitter/client.js"
-import type { SimpleHighlight } from "./tree-sitter/types.js"
+import type { HighlightRange, SimpleHighlight } from "./tree-sitter/types.js"
 import { createTextAttributes } from "../utils.js"
 import { registerEnvVar, env } from "./env.js"
 
@@ -36,6 +36,91 @@ function shouldSuppressInInjection(group: string, meta: any): boolean {
   return group === "markup.raw.block"
 }
 
+export interface ResolvedHighlightRange {
+  startIndex: number
+  endIndex: number
+  /** Ordered least-specific to most-specific, matching the style merge order. */
+  groupStack: string[]
+  /** The exact merged definition. Consumers must use this when styleId is absent. */
+  definition?: StyleDefinition
+  styleId?: number
+}
+
+export interface ResolveHighlightRangesOptions {
+  baseHighlight?: string
+}
+
+export function resolveTreeSitterHighlightRanges(
+  highlights: readonly (SimpleHighlight | HighlightRange)[],
+  syntaxStyle: SyntaxStyle,
+  options?: ResolveHighlightRangesOptions,
+): ResolvedHighlightRange[] {
+  const orderedHighlights: SimpleHighlight[] = highlights.map((highlight) =>
+    Array.isArray(highlight) ? highlight : [highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta],
+  )
+  const boundaries: Boundary[] = []
+  const injectionContainerRanges: Array<{ start: number; end: number }> = []
+  const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
+  const defaultStyle = syntaxStyle.getStyle("default")
+
+  for (let index = 0; index < orderedHighlights.length; index++) {
+    const [start, end, , meta] = orderedHighlights[index]!
+    if (start >= end) continue
+    if (meta?.containsInjection) injectionContainerRanges.push({ start, end })
+    boundaries.push({ offset: start, type: "start", highlightIndex: index })
+    boundaries.push({ offset: end, type: "end", highlightIndex: index })
+  }
+  boundaries.sort((a, b) => {
+    if (a.offset !== b.offset) return a.offset - b.offset
+    if (a.type === b.type) return 0
+    return a.type === "end" ? -1 : 1
+  })
+
+  const result: ResolvedHighlightRange[] = []
+  const active = new Set<number>()
+  let currentOffset = boundaries[0]?.offset ?? 0
+  for (const boundary of boundaries) {
+    if (currentOffset < boundary.offset && active.size > 0) {
+      const insideInjectionContainer = injectionContainerRanges.some(
+        (range) => currentOffset >= range.start && currentOffset < range.end,
+      )
+      const groups = Array.from(active)
+        .map((index) => {
+          const [, , group, meta] = orderedHighlights[index]!
+          return { group, meta, index }
+        })
+        .filter(({ group, meta }) => !insideInjectionContainer || !shouldSuppressInInjection(group, meta))
+        .sort((a, b) => getSpecificity(a.group) - getSpecificity(b.group) || a.index - b.index)
+      const definition: StyleDefinition = baseStyle ? { ...baseStyle } : {}
+      for (const { group } of groups) {
+        const style = syntaxStyle.getStyle(group)
+        if (!style) continue
+        if (style.fg !== undefined) definition.fg = style.fg
+        if (style.bg !== undefined) definition.bg = style.bg
+        if (style.bold !== undefined) definition.bold = style.bold
+        if (style.italic !== undefined) definition.italic = style.italic
+        if (style.underline !== undefined) definition.underline = style.underline
+        if (style.dim !== undefined) definition.dim = style.dim
+      }
+      const resolvedDefinition = Object.keys(definition).length > 0 ? definition : defaultStyle
+      result.push({
+        startIndex: currentOffset,
+        endIndex: boundary.offset,
+        groupStack: groups.map(({ group }) => group),
+        definition: resolvedDefinition ? { ...resolvedDefinition } : undefined,
+        styleId:
+          !baseStyle && groups.length === 1 ? (syntaxStyle.getStyleId(groups[0]!.group) ?? undefined) : undefined,
+      })
+    }
+
+    if (boundary.type === "start") active.add(boundary.highlightIndex)
+    else active.delete(boundary.highlightIndex)
+    currentOffset = boundary.offset
+  }
+
+  return result
+}
+
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
@@ -48,16 +133,25 @@ export function treeSitterToTextChunks(
   const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
   const baseStyleId = options?.baseHighlight ? (syntaxStyle.getStyleId(options.baseHighlight) ?? undefined) : undefined
   const defaultStyleId = syntaxStyle.getStyleId("default") ?? undefined
+  if (env.OTUI_TS_STYLE_WARN) {
+    for (const group of new Set(highlights.map((highlight) => highlight[2]))) {
+      if (!syntaxStyle.getStyle(group)) {
+        console.warn(`Syntax style not found for group "${group}", using default style`)
+      }
+    }
+  }
+  const resolvedRanges = resolveTreeSitterHighlightRanges(highlights, syntaxStyle, {
+    baseHighlight: options?.baseHighlight,
+  })
+  const resolvedRangeByBounds = new Map(
+    resolvedRanges.map((range) => [`${range.startIndex}:${range.endIndex}`, range] as const),
+  )
 
-  const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
 
   for (let i = 0; i < highlights.length; i++) {
     const [start, end, , meta] = highlights[i]
     if (start === end) continue // Skip zero-length ranges
-    if (meta?.containsInjection) {
-      injectionContainerRanges.push({ start, end })
-    }
     boundaries.push({ offset: start, type: "start", highlightIndex: i })
     boundaries.push({ offset: end, type: "end", highlightIndex: i })
   }
@@ -122,73 +216,9 @@ export function treeSitterToTextChunks(
           })
         }
       } else {
-        const insideInjectionContainer = injectionContainerRanges.some(
-          (range) => currentOffset >= range.start && currentOffset < range.end,
-        )
-
-        // Filter out highlights that should be suppressed
-        // Suppress highlights when we're inside an injection container
-        const validGroups = activeGroups.filter((h) => {
-          // If we're inside an injection container, suppress all markup.raw.block highlights
-          // This includes both the container itself and any nested markup.raw.block
-          if (insideInjectionContainer && shouldSuppressInInjection(h.group, h.meta)) {
-            return false
-          }
-          return true
-        })
-
-        // Sort groups by specificity (least to most), then by index (earlier to later)
-        // This ensures we merge styles in the correct order: parent styles first, then child overrides
-        const sortedGroups = validGroups.sort((a, b) => {
-          const aSpec = getSpecificity(a.group)
-          const bSpec = getSpecificity(b.group)
-          if (aSpec !== bSpec) return aSpec - bSpec // Lower specificity first
-          return a.index - b.index // Earlier index first
-        })
-
-        // Merge all active styles in order (like CSS cascade)
-        // Later/more specific styles override earlier/less specific ones
-        const mergedStyle: StyleDefinition = baseStyle ? { ...baseStyle } : {}
-
-        for (const { group } of sortedGroups) {
-          let styleForGroup = syntaxStyle.getStyle(group)
-
-          if (!styleForGroup && group.includes(".")) {
-            // Fallback to base scope
-            const baseName = group.split(".")[0]
-            styleForGroup = syntaxStyle.getStyle(baseName)
-          }
-
-          if (styleForGroup) {
-            // Merge properties - later styles override earlier ones
-            if (styleForGroup.fg !== undefined) mergedStyle.fg = styleForGroup.fg
-            if (styleForGroup.bg !== undefined) mergedStyle.bg = styleForGroup.bg
-            if (styleForGroup.bold !== undefined) mergedStyle.bold = styleForGroup.bold
-            if (styleForGroup.italic !== undefined) mergedStyle.italic = styleForGroup.italic
-            if (styleForGroup.underline !== undefined) mergedStyle.underline = styleForGroup.underline
-            if (styleForGroup.dim !== undefined) mergedStyle.dim = styleForGroup.dim
-          } else {
-            if (group.includes(".")) {
-              const baseName = group.split(".")[0]
-              if (env.OTUI_TS_STYLE_WARN) {
-                console.warn(
-                  `Syntax style not found for group "${group}" or base scope "${baseName}", using default style`,
-                )
-              }
-            } else {
-              if (env.OTUI_TS_STYLE_WARN) {
-                console.warn(`Syntax style not found for group "${group}", using default style`)
-              }
-            }
-          }
-        }
-
-        // Use merged style, falling back to default if nothing was merged
-        const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
-        const authoritativeStyleId =
-          !baseStyle && sortedGroups.length === 1
-            ? (syntaxStyle.getStyleId(sortedGroups[0]!.group) ?? undefined)
-            : undefined
+        const resolved = resolvedRangeByBounds.get(`${currentOffset}:${boundary.offset}`)
+        const finalStyle = resolved?.definition ?? baseStyle ?? defaultStyle
+        const authoritativeStyleId = resolved?.styleId
 
         chunks.push({
           __isChunk: true,

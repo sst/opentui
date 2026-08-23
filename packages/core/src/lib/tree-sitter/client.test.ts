@@ -9,6 +9,46 @@ import { clearEnvCache } from "../env.js"
 import { destroySingleton } from "../singleton.js"
 import { destroyTreeSitterClient, getTreeSitterClient } from "./index.js"
 import { getParsers } from "./default-parsers.js"
+import type { Edit, HighlightResponse, TreeSitterWorkerRequest } from "./types.js"
+
+function pointAt(content: string, index: number): { row: number; column: number } {
+  const before = content.slice(0, index).split("\n")
+  return { row: before.length - 1, column: before.at(-1)!.length }
+}
+
+function replacementEdit(
+  content: string,
+  startIndex: number,
+  oldEndIndex: number,
+  replacement: string,
+): {
+  content: string
+  edit: Edit
+} {
+  const newContent = content.slice(0, startIndex) + replacement + content.slice(oldEndIndex)
+  return {
+    content: newContent,
+    edit: {
+      startIndex,
+      oldEndIndex,
+      newEndIndex: startIndex + replacement.length,
+      startPosition: pointAt(content, startIndex),
+      oldEndPosition: pointAt(content, oldEndIndex),
+      newEndPosition: pointAt(newContent, startIndex + replacement.length),
+    },
+  }
+}
+
+function nextHighlightResponse(client: TreeSitterClient, version: number): Promise<HighlightResponse> {
+  return new Promise((resolve) => {
+    const listener = (_bufferId: number, responseVersion: number, response: HighlightResponse) => {
+      if (responseVersion !== version) return
+      client.off("highlights:response", listener)
+      resolve(response)
+    }
+    client.on("highlights:response", listener)
+  })
+}
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient
@@ -245,6 +285,122 @@ describe("TreeSitterClient", () => {
     expect(highlightReceived).toBe(true)
     expect(receivedBufferId).toBe(1)
     expect(receivedVersion).toBe(2)
+  })
+
+  test("returns complete UTF-8 capture and replacement ranges for multiline incremental edits", async () => {
+    await client.initialize()
+    const initial = "const text = `alpha\nनमस्ते omega`;\nconst tail = 1;"
+    await client.createBuffer(1, initial, "javascript")
+    const insertionIndex = initial.indexOf("alpha") + "alpha".length
+    const update = replacementEdit(initial, insertionIndex, insertionIndex, "!")
+    const responsePromise = nextHighlightResponse(client, 2)
+
+    await client.updateBuffer(1, [update.edit], update.content, 2)
+    const response = await responsePromise
+    const encoded = new TextEncoder().encode(update.content)
+    const insertionByte = new TextEncoder().encode(update.content.slice(0, insertionIndex)).length
+    const crossingCapture = response.highlights.find(
+      (highlight) => highlight.startIndex < insertionByte && highlight.endIndex > insertionByte,
+    )
+
+    expect(response.parseKind).toBe("incremental")
+    expect(crossingCapture).toBeDefined()
+    expect(
+      response.replacementRanges.some(
+        (range) => range.startIndex <= crossingCapture!.startIndex && range.endIndex >= crossingCapture!.endIndex,
+      ),
+    ).toBe(true)
+    expect(new TextDecoder().decode(encoded.slice(crossingCapture!.startIndex, crossingCapture!.endIndex))).toContain(
+      "नमस्ते",
+    )
+  })
+
+  test("completes every incremental version, including an empty highlight result", async () => {
+    await client.initialize()
+    const initial = "const value = 1"
+    await client.createBuffer(1, initial, "javascript")
+
+    const second = replacementEdit(initial, initial.indexOf("1"), initial.indexOf("1") + 1, "2")
+    const secondResponse = nextHighlightResponse(client, 2)
+    await client.updateBuffer(1, [second.edit], second.content, 2)
+    expect((await secondResponse).parseKind).toBe("incremental")
+
+    const third = replacementEdit(second.content, 0, second.content.length, " ")
+    const thirdResponse = nextHighlightResponse(client, 3)
+    await client.updateBuffer(1, [third.edit], third.content, 3)
+    const response = await thirdResponse
+    expect(response.highlights).toEqual([])
+    expect(response.replacementRanges.length).toBeGreaterThan(0)
+    expect(response.parseKind).toBe("incremental")
+  })
+
+  test("keeps local incremental query coverage below the document size", async () => {
+    await client.initialize()
+    const initial = Array.from({ length: 300 }, (_, index) => `const value${index} = ${index};`).join("\n")
+    await client.createBuffer(1, initial, "javascript")
+    const target = initial.indexOf("150;", initial.indexOf("value150"))
+    const update = replacementEdit(initial, target, target + 3, "151")
+    const responsePromise = nextHighlightResponse(client, 2)
+
+    await client.updateBuffer(1, [update.edit], update.content, 2)
+    const response = await responsePromise
+
+    expect(response.parseKind).toBe("incremental")
+    expect(response.changedByteCount).toBeLessThan(new TextEncoder().encode(update.content).length)
+    expect(response.queriedByteCount).toBeLessThan(new TextEncoder().encode(update.content).length)
+  })
+
+  test("sends rapid versions as HANDLE_EDITS and ignores stale completions without resetting", async () => {
+    await client.initialize()
+    const initial = "const value = 1"
+    await client.createBuffer(1, initial, "javascript")
+    const internals = client as unknown as {
+      worker: { postMessage: (message: TreeSitterWorkerRequest) => void }
+      handleWorkerMessage: (event: { data: unknown }) => void
+    }
+    const messages: TreeSitterWorkerRequest[] = []
+    const postMessage = internals.worker.postMessage.bind(internals.worker)
+    internals.worker.postMessage = (message) => {
+      messages.push(message)
+      postMessage(message)
+    }
+    const second = replacementEdit(initial, initial.length - 1, initial.length, "2")
+    const third = replacementEdit(second.content, second.content.length - 1, second.content.length, "3")
+
+    await client.updateBuffer(1, [second.edit], second.content, 2)
+    await client.updateBuffer(1, [third.edit], third.content, 3)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    internals.handleWorkerMessage({
+      data: {
+        type: "HIGHLIGHT_RESPONSE",
+        bufferId: 1,
+        version: 2,
+        highlights: [],
+        replacementRanges: [],
+        parseKind: "incremental",
+        changedByteCount: 0,
+        queriedByteCount: 0,
+      },
+    })
+
+    expect(messages.filter((message) => message.type === "HANDLE_EDITS")).toHaveLength(2)
+    expect(messages.some((message) => message.type === "RESET_BUFFER")).toBe(false)
+  })
+
+  test("does not revive a removed buffer when an incremental response races disposal", async () => {
+    await client.initialize()
+    const initial = "const value = 1"
+    await client.createBuffer(1, initial, "javascript")
+    const update = replacementEdit(initial, initial.length - 1, initial.length, "2")
+    let responseCount = 0
+    client.on("highlights:response", () => responseCount++)
+
+    await client.updateBuffer(1, [update.edit], update.content, 2)
+    await client.removeBuffer(1)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(client.getBuffer(1)).toBeUndefined()
+    expect(responseCount).toBe(0)
   })
 
   test("should handle buffer removal", async () => {

@@ -1,6 +1,10 @@
 import { test, expect, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient } from "./tree-sitter/client.js"
-import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text.js"
+import {
+  resolveTreeSitterHighlightRanges,
+  treeSitterToStyledText,
+  treeSitterToTextChunks,
+} from "./tree-sitter-styled-text.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA } from "./RGBA.js"
 import { createTextAttributes } from "../utils.js"
@@ -97,6 +101,25 @@ describe("TreeSitter Styled Text", () => {
       baseHighlight: "comment",
     })
     expect(based[0]?.styleId).toBeUndefined()
+  })
+
+  test("resolves overlapping capture stacks without inventing a registered style ID", () => {
+    const ranges = resolveTreeSitterHighlightRanges(
+      [[0, 8, "markup.strong"], [2, 6, "string"], { startIndex: 4, endIndex: 8, group: "keyword" }],
+      syntaxStyle,
+    )
+
+    expect(ranges.map(({ startIndex, endIndex }) => [startIndex, endIndex])).toEqual([
+      [0, 2],
+      [2, 4],
+      [4, 6],
+      [6, 8],
+    ])
+    expect(ranges[2]?.groupStack).toEqual(["string", "keyword", "markup.strong"])
+    expect(ranges[2]?.definition?.bold).toBe(true)
+    expect(ranges[2]?.definition?.fg).toEqual(syntaxStyle.getStyle("keyword")?.fg)
+    expect(ranges[2]?.styleId).toBeUndefined()
+    expect(ranges[0]?.styleId).toBe(syntaxStyle.getStyleId("markup.strong") ?? undefined)
   })
 
   test("should handle unsupported filetype gracefully", async () => {

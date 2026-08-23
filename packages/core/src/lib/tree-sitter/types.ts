@@ -1,13 +1,19 @@
-export interface HighlightRange {
-  startCol: number
-  endCol: number
+export interface ByteRange {
+  startIndex: number
+  endIndex: number
+}
+
+export interface HighlightRange extends ByteRange {
   group: string
+  meta?: HighlightMeta
 }
 
 export interface HighlightResponse {
-  line: number
   highlights: HighlightRange[]
-  droppedHighlights: HighlightRange[]
+  replacementRanges: ByteRange[]
+  parseKind: "incremental" | "reset"
+  changedByteCount: number
+  queriedByteCount: number
 }
 
 export interface HighlightMeta {
@@ -82,7 +88,7 @@ export type TreeSitterWorkerResponse =
       warning?: string
       error?: string
     }
-  | { type: "HIGHLIGHT_RESPONSE"; bufferId: number; version: number; highlights: HighlightResponse[] }
+  | ({ type: "HIGHLIGHT_RESPONSE"; bufferId: number; version: number } & HighlightResponse)
   | { type: "PRELOAD_PARSER_RESPONSE"; messageId: string; hasParser: boolean }
   | { type: "BUFFER_DISPOSED"; bufferId: number }
   | { type: "PERFORMANCE_RESPONSE"; performance: PerformanceStats; messageId: string }
@@ -101,7 +107,7 @@ export type TreeSitterWorkerResponse =
   | { type: "WORKER_LOG"; logType: TreeSitterWorkerLogType; data: unknown[] }
 
 export interface TreeSitterClientEvents {
-  "highlights:response": [bufferId: number, version: number, highlights: HighlightResponse[]]
+  "highlights:response": [bufferId: number, version: number, response: HighlightResponse]
   "buffer:initialized": [bufferId: number, hasParser: boolean]
   "buffer:disposed": [bufferId: number]
   "worker:log": [logType: TreeSitterWorkerLogType, message: string]

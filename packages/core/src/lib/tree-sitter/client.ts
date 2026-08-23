@@ -431,12 +431,25 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           return
         }
 
-        if (buffer.version !== message.version) {
+        if (message.version < buffer.version) {
+          // Rapid edits can make an otherwise valid completion stale before it reaches the client.
+          // The worker processes versions in order, so the current version will follow without a reset.
+          return
+        }
+
+        if (message.version > buffer.version) {
+          // A response from the future means the client and worker no longer share buffer state.
           this.resetBuffer(message.bufferId, buffer.version, buffer.content)
           return
         }
 
-        this.emit("highlights:response", message.bufferId, message.version, message.highlights)
+        this.emit("highlights:response", message.bufferId, message.version, {
+          highlights: message.highlights,
+          replacementRanges: message.replacementRanges,
+          parseKind: message.parseKind,
+          changedByteCount: message.changedByteCount,
+          queriedByteCount: message.queriedByteCount,
+        })
         return
       }
 

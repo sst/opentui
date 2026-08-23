@@ -3,6 +3,8 @@ import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir } from "fs/promises"
 import * as path from "path"
 import type {
+  ByteRange,
+  HighlightMeta,
   HighlightRange,
   HighlightResponse,
   SimpleHighlight,
@@ -32,7 +34,70 @@ type ParserState = {
   }
   filetype: string
   content: string
+  version: number
+  highlights: InternalHighlight[]
   injectionMapping?: InjectionMapping
+}
+
+interface InternalHighlight {
+  startIndex: number
+  endIndex: number
+  group: string
+  meta?: HighlightMeta
+}
+
+function rangesOverlap(a: ByteRange, b: ByteRange): boolean {
+  return a.startIndex < b.endIndex && b.startIndex < a.endIndex
+}
+
+function normalizeRanges(ranges: ByteRange[], contentLength: number): ByteRange[] {
+  const sorted = ranges
+    .map((range) => ({
+      startIndex: Math.max(0, Math.min(range.startIndex, contentLength)),
+      endIndex: Math.max(0, Math.min(range.endIndex, contentLength)),
+    }))
+    .filter((range) => range.startIndex < range.endIndex)
+    .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex)
+  const normalized: ByteRange[] = []
+
+  for (const range of sorted) {
+    const previous = normalized.at(-1)
+    if (previous && range.startIndex <= previous.endIndex) {
+      previous.endIndex = Math.max(previous.endIndex, range.endIndex)
+    } else {
+      normalized.push(range)
+    }
+  }
+
+  return normalized
+}
+
+function sameRanges(a: ByteRange[], b: ByteRange[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((range, index) => range.startIndex === b[index]?.startIndex && range.endIndex === b[index]?.endIndex)
+  )
+}
+
+function createUtf8OffsetMap(content: string): Uint32Array {
+  const offsets = new Uint32Array(content.length + 1)
+  let utf16Index = 0
+  let byteIndex = 0
+
+  for (const character of content) {
+    offsets[utf16Index] = byteIndex
+    const utf16Length = character.length
+    const codePoint = character.codePointAt(0)!
+    const byteLength = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
+    for (let offset = 1; offset < utf16Length; offset++) {
+      offsets[utf16Index + offset] = byteIndex
+    }
+    utf16Index += utf16Length
+    byteIndex += byteLength
+    offsets[utf16Index] = byteIndex
+  }
+
+  return offsets
 }
 
 interface FiletypeParser {
@@ -363,6 +428,8 @@ class ParserWorker {
       queries: filetypeParser.queries,
       filetype,
       content,
+      version,
+      highlights: [],
       injectionMapping: filetypeParser.injectionMapping,
     }
     this.bufferParsers.set(bufferId, parserState)
@@ -382,7 +449,7 @@ class ParserWorker {
     })
   }
 
-  private async initialQuery(parserState: ParserState) {
+  private async initialQuery(parserState: ParserState): Promise<HighlightResponse> {
     const query = parserState.queries.highlights
     const matches: QueryCapture[] = query.captures(parserState.tree.rootNode)
     let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
@@ -393,7 +460,15 @@ class ParserWorker {
       injectionRanges = injectionResult.injectionRanges
     }
 
-    return this.getHighlights(parserState, matches, injectionRanges)
+    parserState.highlights = this.getInternalHighlights(matches, injectionRanges)
+    const contentByteLength = createUtf8OffsetMap(parserState.content)[parserState.content.length]!
+    return this.createHighlightResponse(
+      parserState,
+      parserState.highlights,
+      contentByteLength > 0 ? [{ startIndex: 0, endIndex: parserState.content.length }] : [],
+      "reset",
+      contentByteLength,
+    )
   }
 
   private getNodeText(node: any, content: string): string {
@@ -547,23 +622,31 @@ class ParserWorker {
 
   async handleEdits(
     bufferId: number,
+    version: number,
     content: string,
     edits: Edit[],
-  ): Promise<{ highlights?: HighlightResponse[]; warning?: string; error?: string }> {
+  ): Promise<{ response?: HighlightResponse; warning?: string; error?: string }> {
     const parserState = this.bufferParsers.get(bufferId)
     if (!parserState) {
       return { warning: "No parser state found for buffer" }
     }
 
+    if (version <= parserState.version) {
+      return { error: `Out-of-order buffer version ${version}; current version is ${parserState.version}` }
+    }
+
+    const oldContent = parserState.content
+    const oldTree = parserState.tree
+    parserState.highlights = this.applyEditsToHighlights(parserState.highlights, edits)
     parserState.content = content
 
     for (const edit of edits) {
-      parserState.tree.edit(edit)
+      oldTree.edit(edit)
     }
 
     const startParse = performance.now()
 
-    const newTree = parserState.parser.parse(content, parserState.tree)
+    const newTree = parserState.parser.parse(content, oldTree)
 
     const endParse = performance.now()
     const parseTime = endParse - startParse
@@ -578,12 +661,11 @@ class ParserWorker {
       return { error: "Failed to parse buffer" }
     }
 
-    const changedRanges = parserState.tree.getChangedRanges(newTree)
+    const changedRanges = oldTree.getChangedRanges(newTree)
     parserState.tree = newTree
+    oldTree.delete()
 
     const startQuery = performance.now()
-    const matches: QueryCapture[] = []
-
     if (changedRanges.length === 0) {
       edits.forEach((edit) => {
         const range = this.editToRange(edit)
@@ -591,52 +673,27 @@ class ParserWorker {
       })
     }
 
-    for (const range of changedRanges) {
-      let node = parserState.tree.rootNode.descendantForPosition(range.startPosition, range.endPosition)
-
-      if (!node) {
-        continue
-      }
-
-      // If we got the root node, query with range to limit scope
-      if (node.equals(parserState.tree.rootNode)) {
-        // WHY ARE RANGES NOT WORKING!?
-        // The changed ranges are not returning anything in some cases
-        // Even this shit somehow returns many lines before the actual range,
-        // and even though expanded by 1000 bytes it does not capture much beyond the actual range.
-        // So freaking weird.
-        const rangeCaptures = parserState.queries.highlights.captures(
-          node,
-          // WTF!?
-          {
-            startIndex: range.startIndex - 100,
-            endIndex: range.endIndex + 1000,
-          },
-        )
-        matches.push(...rangeCaptures)
-        continue
-      }
-
-      while (node && !this.nodeContainsRange(node, range)) {
-        node = node.parent
-      }
-
-      if (!node) {
-        node = parserState.tree.rootNode
-      }
-
-      const nodeCaptures = parserState.queries.highlights.captures(node)
-      matches.push(...nodeCaptures)
-    }
-
     let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+    let injectionCaptures: QueryCapture[] = []
     if (parserState.queries.injections) {
       const injectionResult = await this.processInjections(parserState)
-      // Only add injection matches that are in the changed ranges
-      // This is a simplification - ideally we'd only process injections in changed ranges
-      matches.push(...injectionResult.captures)
+      injectionCaptures = injectionResult.captures
       injectionRanges = injectionResult.injectionRanges
     }
+
+    const initialWindows = changedRanges.map((range) => this.getQueryWindow(parserState.tree, range))
+    const { windows, highlights } = this.queryReplacementWindows(
+      parserState,
+      initialWindows,
+      injectionCaptures,
+      injectionRanges,
+    )
+
+    parserState.highlights = [
+      ...parserState.highlights.filter((highlight) => !windows.some((window) => rangesOverlap(highlight, window))),
+      ...highlights,
+    ].sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex)
+    parserState.version = version
 
     const endQuery = performance.now()
     const queryTime = endQuery - startQuery
@@ -647,67 +704,213 @@ class ParserWorker {
     this.performance.averageQueryTime =
       this.performance.queryTimes.reduce((acc, time) => acc + time, 0) / this.performance.queryTimes.length
 
-    return this.getHighlights(parserState, matches, injectionRanges)
+    return {
+      response: this.createHighlightResponse(
+        parserState,
+        highlights,
+        windows,
+        "incremental",
+        this.getChangedByteCount(oldContent, content, changedRanges, edits),
+      ),
+    }
   }
 
-  private nodeContainsRange(node: any, range: any): boolean {
-    return (
-      node.startPosition.row <= range.startPosition.row &&
-      node.endPosition.row >= range.endPosition.row &&
-      (node.startPosition.row < range.startPosition.row || node.startPosition.column <= range.startPosition.column) &&
-      (node.endPosition.row > range.endPosition.row || node.endPosition.column >= range.endPosition.column)
-    )
+  private getQueryWindow(tree: Tree, range: Range): ByteRange {
+    const contentLength = tree.rootNode.endIndex
+    const startIndex = Math.max(0, Math.min(range.startIndex, contentLength))
+    const endIndex = Math.max(startIndex, Math.min(range.endIndex, contentLength))
+    const lookupEnd = Math.max(startIndex, endIndex - 1)
+    let node = tree.rootNode.namedDescendantForIndex(startIndex, lookupEnd)
+
+    while (node && node.startIndex === node.endIndex) {
+      node = node.parent
+    }
+
+    if (!node) {
+      return { startIndex: 0, endIndex: contentLength }
+    }
+
+    return { startIndex: node.startIndex, endIndex: node.endIndex }
   }
 
-  private getHighlights(
+  /**
+   * Query byte ranges are evaluated from the root so patterns rooted above the changed node remain visible.
+   * Each range is repeatedly expanded by old and new captures crossing its edges. Once stable, every returned
+   * capture is wholly enclosed and the range can safely replace overlapping native annotations atomically.
+   */
+  private queryReplacementWindows(
     parserState: ParserState,
-    matches: QueryCapture[],
-    injectionRanges?: Map<string, Array<{ start: number; end: number }>>,
-  ): { highlights: HighlightResponse[] } {
-    const lineHighlights: Map<number, Map<number, HighlightRange>> = new Map()
-    const droppedHighlights: Map<number, Map<number, HighlightRange>> = new Map()
+    initialWindows: ByteRange[],
+    injectionCaptures: QueryCapture[],
+    injectionRanges: Map<string, Array<{ start: number; end: number }>>,
+  ): { windows: ByteRange[]; highlights: InternalHighlight[] } {
+    const contentLength = parserState.tree.rootNode.endIndex
+    let windows = normalizeRanges(initialWindows, contentLength)
+    if (windows.length === 0 && contentLength > 0) {
+      windows = [{ startIndex: 0, endIndex: contentLength }]
+    }
 
-    for (const match of matches) {
-      const node = match.node
-      const startLine = node.startPosition.row
-      const endLine = node.endPosition.row
+    let highlights: InternalHighlight[] = []
+    for (;;) {
+      const matches = this.queryWindows(parserState, windows, injectionCaptures)
+      highlights = this.getInternalHighlights(matches, injectionRanges)
+      const expanded = normalizeRanges(
+        [
+          ...windows,
+          ...parserState.highlights.filter((highlight) => windows.some((window) => rangesOverlap(highlight, window))),
+          ...highlights,
+        ],
+        contentLength,
+      )
 
-      const highlight = {
-        startCol: node.startPosition.column,
-        endCol: node.endPosition.column,
-        group: match.name,
+      if (sameRanges(windows, expanded)) {
+        break
       }
-
-      if (!lineHighlights.has(startLine)) {
-        lineHighlights.set(startLine, new Map())
-        droppedHighlights.set(startLine, new Map())
-      }
-      if (lineHighlights.get(startLine)?.has(node.id)) {
-        droppedHighlights.get(startLine)?.set(node.id, lineHighlights.get(startLine)?.get(node.id)!)
-      }
-      lineHighlights.get(startLine)?.set(node.id, highlight)
-
-      if (startLine !== endLine) {
-        for (let line = startLine + 1; line <= endLine; line++) {
-          if (!lineHighlights.has(line)) {
-            lineHighlights.set(line, new Map())
-          }
-          const hl: HighlightRange = {
-            startCol: 0,
-            endCol: node.endPosition.column,
-            group: match.name,
-          }
-          lineHighlights.get(line)?.set(node.id, hl)
-        }
-      }
+      windows = expanded
     }
 
     return {
-      highlights: Array.from(lineHighlights.entries()).map(([line, lineHighlights]) => ({
-        line,
-        highlights: Array.from(lineHighlights.values()),
-        droppedHighlights: droppedHighlights.get(line) ? Array.from(droppedHighlights.get(line)!.values()) : [],
-      })),
+      windows,
+      highlights: highlights.filter((highlight) =>
+        windows.some((window) => highlight.startIndex >= window.startIndex && highlight.endIndex <= window.endIndex),
+      ),
+    }
+  }
+
+  private queryWindows(
+    parserState: ParserState,
+    windows: ByteRange[],
+    injectionCaptures: QueryCapture[],
+  ): QueryCapture[] {
+    const captures: QueryCapture[] = []
+    for (const window of windows) {
+      captures.push(
+        ...parserState.queries.highlights.captures(parserState.tree.rootNode, {
+          startIndex: window.startIndex,
+          endIndex: window.endIndex,
+        }),
+      )
+    }
+    captures.push(
+      ...injectionCaptures.filter((capture) =>
+        windows.some((window) =>
+          rangesOverlap(window, { startIndex: capture.node.startIndex, endIndex: capture.node.endIndex }),
+        ),
+      ),
+    )
+    return captures
+  }
+
+  private getInternalHighlights(
+    matches: QueryCapture[],
+    injectionRanges: Map<string, Array<{ start: number; end: number }>>,
+  ): InternalHighlight[] {
+    const flatInjectionRanges = Array.from(injectionRanges.entries()).flatMap(([lang, ranges]) =>
+      ranges.map((range) => ({ ...range, lang })),
+    )
+
+    return matches.map((match) => {
+      const node = match.node
+      let isInjection = false
+      let injectionLang: string | undefined
+      let containsInjection = false
+      for (const injectionRange of flatInjectionRanges) {
+        if (node.startIndex >= injectionRange.start && node.endIndex <= injectionRange.end) {
+          isInjection = true
+          injectionLang = injectionRange.lang
+          break
+        }
+        if (node.startIndex <= injectionRange.start && node.endIndex >= injectionRange.end) {
+          containsInjection = true
+        }
+      }
+
+      const matchQuery = (match as QueryCapture & { _injectedQuery?: Query })._injectedQuery
+      const patternProperties = matchQuery?.setProperties?.[match.patternIndex]
+      const conceal = patternProperties?.conceal ?? match.setProperties?.conceal
+      const concealLines = patternProperties?.conceal_lines ?? match.setProperties?.conceal_lines
+      const meta: HighlightMeta = {}
+      if (isInjection && injectionLang) {
+        meta.isInjection = true
+        meta.injectionLang = injectionLang
+      }
+      if (containsInjection) meta.containsInjection = true
+      if (conceal !== undefined) meta.conceal = conceal
+      if (concealLines !== undefined) meta.concealLines = concealLines
+
+      return {
+        startIndex: node.startIndex,
+        endIndex: node.endIndex,
+        group: match.name,
+        ...(Object.keys(meta).length > 0 ? { meta } : {}),
+      }
+    })
+  }
+
+  private applyEditsToHighlights(highlights: InternalHighlight[], edits: Edit[]): InternalHighlight[] {
+    return edits.reduce(
+      (current, edit) => current.map((highlight) => this.applyEditToHighlight(highlight, edit)),
+      highlights,
+    )
+  }
+
+  private applyEditToHighlight(highlight: InternalHighlight, edit: Edit): InternalHighlight {
+    const delta = edit.newEndIndex - edit.oldEndIndex
+    const insertion = edit.startIndex === edit.oldEndIndex
+    const transformStart = (index: number): number => {
+      if (index < edit.startIndex) return index
+      if (index > edit.oldEndIndex || index === edit.oldEndIndex) return index + delta
+      return edit.startIndex
+    }
+    const transformEnd = (index: number): number => {
+      if (index <= edit.startIndex) return index
+      if (index > edit.oldEndIndex || (insertion && index === edit.oldEndIndex)) return index + delta
+      return edit.newEndIndex
+    }
+    return {
+      ...highlight,
+      startIndex: transformStart(highlight.startIndex),
+      endIndex: transformEnd(highlight.endIndex),
+    }
+  }
+
+  private getChangedByteCount(oldContent: string, content: string, changedRanges: Range[], edits: Edit[]): number {
+    const newOffsets = createUtf8OffsetMap(content)
+    const changedBytes = normalizeRanges(
+      changedRanges.map((range) => ({ startIndex: range.startIndex, endIndex: range.endIndex })),
+      content.length,
+    ).reduce((total, range) => total + newOffsets[range.endIndex]! - newOffsets[range.startIndex]!, 0)
+    if (changedBytes > 0) return changedBytes
+
+    const oldOffsets = createUtf8OffsetMap(oldContent)
+    return edits.reduce((total, edit) => {
+      const oldStart = Math.min(edit.startIndex, oldContent.length)
+      const oldEnd = Math.min(edit.oldEndIndex, oldContent.length)
+      const newStart = Math.min(edit.startIndex, content.length)
+      const newEnd = Math.min(edit.newEndIndex, content.length)
+      return total + Math.max(oldOffsets[oldEnd]! - oldOffsets[oldStart]!, newOffsets[newEnd]! - newOffsets[newStart]!)
+    }, 0)
+  }
+
+  private createHighlightResponse(
+    parserState: ParserState,
+    highlights: InternalHighlight[],
+    replacementRanges: ByteRange[],
+    parseKind: "incremental" | "reset",
+    changedByteCount: number,
+  ): HighlightResponse {
+    const offsets = createUtf8OffsetMap(parserState.content)
+    const toByteRange = (range: ByteRange): ByteRange => ({
+      startIndex: offsets[range.startIndex]!,
+      endIndex: offsets[range.endIndex]!,
+    })
+    const byteReplacementRanges = replacementRanges.map(toByteRange)
+    return {
+      highlights: highlights.map((highlight): HighlightRange => ({ ...highlight, ...toByteRange(highlight) })),
+      replacementRanges: byteReplacementRanges,
+      parseKind,
+      changedByteCount,
+      queriedByteCount: byteReplacementRanges.reduce((total, range) => total + range.endIndex - range.startIndex, 0),
     }
   }
 
@@ -778,12 +981,13 @@ class ParserWorker {
     bufferId: number,
     version: number,
     content: string,
-  ): Promise<{ highlights?: HighlightResponse[]; warning?: string; error?: string }> {
+  ): Promise<{ response?: HighlightResponse; warning?: string; error?: string }> {
     const parserState = this.bufferParsers.get(bufferId)
     if (!parserState) {
       return { warning: "No parser state found for buffer" }
     }
 
+    const oldTree = parserState.tree
     parserState.content = content
 
     const newTree = parserState.parser.parse(content)
@@ -793,6 +997,8 @@ class ParserWorker {
     }
 
     parserState.tree = newTree
+    oldTree.delete()
+    parserState.version = version
     const matches = parserState.queries.highlights.captures(parserState.tree.rootNode)
 
     let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
@@ -802,7 +1008,17 @@ class ParserWorker {
       injectionRanges = injectionResult.injectionRanges
     }
 
-    return this.getHighlights(parserState, matches, injectionRanges)
+    parserState.highlights = this.getInternalHighlights(matches, injectionRanges)
+    const contentByteLength = createUtf8OffsetMap(content)[content.length]!
+    return {
+      response: this.createHighlightResponse(
+        parserState,
+        parserState.highlights,
+        content.length > 0 ? [{ startIndex: 0, endIndex: content.length }] : [],
+        "reset",
+        contentByteLength,
+      ),
+    }
   }
 
   disposeBuffer(bufferId: number): void {
@@ -857,6 +1073,8 @@ class ParserWorker {
           queries: reusableState.filetypeParser.queries,
           filetype,
           content,
+          version: 0,
+          highlights: [],
           injectionMapping: reusableState.filetypeParser.injectionMapping,
         }
         const injectionResult = await this.processInjections(parserState)
@@ -934,6 +1152,7 @@ function postWorkerError(bufferId: number | undefined, messageId: string | undef
 
 if (isWorkerRuntime) {
   const worker = new ParserWorker()
+  const bufferQueues = new Map<number, Promise<void>>()
 
   console.log = (...args) => logMessage("log", ...args)
   console.error = (...args) => logMessage("error", ...args)
@@ -942,6 +1161,25 @@ if (isWorkerRuntime) {
   setWorkerMessageHandler<TreeSitterWorkerRequest>(async (event: WorkerMessageEvent<TreeSitterWorkerRequest>) => {
     const message = event.data
     const messageType = String((event.data as { type?: unknown }).type ?? "unknown")
+    const queuedBufferId =
+      message.type === "INITIALIZE_PARSER" ||
+      message.type === "HANDLE_EDITS" ||
+      message.type === "RESET_BUFFER" ||
+      message.type === "DISPOSE_BUFFER"
+        ? message.bufferId
+        : undefined
+    const previous = queuedBufferId === undefined ? undefined : bufferQueues.get(queuedBufferId)
+    let releaseQueue: (() => void) | undefined
+    const queueEntry =
+      queuedBufferId === undefined
+        ? undefined
+        : new Promise<void>((resolve) => {
+            releaseQueue = resolve
+          })
+    if (queuedBufferId !== undefined && queueEntry) {
+      bufferQueues.set(queuedBufferId, queueEntry)
+      await previous
+    }
 
     try {
       switch (message.type) {
@@ -982,25 +1220,25 @@ if (isWorkerRuntime) {
           break
 
         case "HANDLE_EDITS": {
-          const response = await worker.handleEdits(message.bufferId, message.content, message.edits)
-          if (response.highlights && response.highlights.length > 0) {
+          const result = await worker.handleEdits(message.bufferId, message.version, message.content, message.edits)
+          if (result.response) {
             postWorkerMessage({
               type: "HIGHLIGHT_RESPONSE",
               bufferId: message.bufferId,
               version: message.version,
-              highlights: response.highlights,
+              ...result.response,
             } satisfies TreeSitterWorkerResponse)
-          } else if (response.warning) {
+          } else if (result.warning) {
             postWorkerMessage({
               type: "WARNING",
               bufferId: message.bufferId,
-              warning: response.warning,
+              warning: result.warning,
             } satisfies TreeSitterWorkerResponse)
-          } else if (response.error) {
+          } else if (result.error) {
             postWorkerMessage({
               type: "ERROR",
               bufferId: message.bufferId,
-              error: response.error,
+              error: result.error,
             } satisfies TreeSitterWorkerResponse)
           }
           break
@@ -1016,12 +1254,12 @@ if (isWorkerRuntime) {
 
         case "RESET_BUFFER": {
           const resetResponse = await worker.handleResetBuffer(message.bufferId, message.version, message.content)
-          if (resetResponse.highlights && resetResponse.highlights.length > 0) {
+          if (resetResponse.response) {
             postWorkerMessage({
               type: "HIGHLIGHT_RESPONSE",
               bufferId: message.bufferId,
               version: message.version,
-              highlights: resetResponse.highlights,
+              ...resetResponse.response,
             } satisfies TreeSitterWorkerResponse)
           } else if (resetResponse.warning) {
             postWorkerMessage({
@@ -1095,6 +1333,11 @@ if (isWorkerRuntime) {
         postWorkerError(message.bufferId, messageId, error)
       } else {
         postWorkerError(undefined, messageId, error)
+      }
+    } finally {
+      releaseQueue?.()
+      if (queuedBufferId !== undefined && bufferQueues.get(queuedBufferId) === queueEntry) {
+        bufferQueues.delete(queuedBufferId)
       }
     }
   })
