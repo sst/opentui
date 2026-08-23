@@ -6,6 +6,7 @@ import { getDataPaths } from "../data-paths.js"
 export * from "./client.js"
 export * from "../tree-sitter-styled-text.js"
 export * from "./types.js"
+export * from "./utf8-index.js"
 export * from "./resolve-ft.js"
 
 const TREE_SITTER_CLIENT_KEY = "tree-sitter-client"

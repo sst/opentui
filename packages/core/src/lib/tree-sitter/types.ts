@@ -12,6 +12,7 @@ export interface HighlightResponse {
   highlights: HighlightRange[]
   replacementRanges: ByteRange[]
   parseKind: "incremental" | "reset"
+  queryKind: "partial" | "full"
   changedByteCount: number
   queriedByteCount: number
 }
@@ -70,10 +71,17 @@ export type TreeSitterWorkerRequest =
       filetype: string
       messageId: string
     }
-  | { type: "HANDLE_EDITS"; bufferId: number; version: number; content: string; edits: Edit[] }
+  | {
+      type: "HANDLE_EDITS"
+      bufferId: number
+      version: number
+      content: string
+      edits: TreeSitterEdit[]
+      messageId: string
+    }
   | { type: "GET_PERFORMANCE"; messageId: string }
-  | { type: "RESET_BUFFER"; bufferId: number; version: number; content: string; edits: Edit[] }
-  | { type: "DISPOSE_BUFFER"; bufferId: number }
+  | { type: "RESET_BUFFER"; bufferId: number; version: number; content: string; messageId: string }
+  | { type: "DISPOSE_BUFFER"; bufferId: number; messageId: string }
   | { type: "ONESHOT_HIGHLIGHT"; content: string; filetype: string; messageId: string }
   | { type: "UPDATE_DATA_PATH"; dataPath: string; messageId: string }
   | { type: "CLEAR_CACHE"; messageId: string }
@@ -88,9 +96,9 @@ export type TreeSitterWorkerResponse =
       warning?: string
       error?: string
     }
-  | ({ type: "HIGHLIGHT_RESPONSE"; bufferId: number; version: number } & HighlightResponse)
+  | ({ type: "HIGHLIGHT_RESPONSE"; bufferId: number; version: number; messageId?: string } & HighlightResponse)
   | { type: "PRELOAD_PARSER_RESPONSE"; messageId: string; hasParser: boolean }
-  | { type: "BUFFER_DISPOSED"; bufferId: number }
+  | { type: "BUFFER_DISPOSED"; bufferId: number; messageId: string }
   | { type: "PERFORMANCE_RESPONSE"; performance: PerformanceStats; messageId: string }
   | {
       type: "ONESHOT_HIGHLIGHT_RESPONSE"
@@ -121,13 +129,31 @@ export interface TreeSitterClientOptions {
   initTimeout?: number // Timeout in milliseconds for worker initialization, defaults to 10000
 }
 
-export interface Edit {
+export interface EditPoint {
+  row: number
+  column: number
+}
+
+/** Native edit-delta coordinates: UTF-8 byte offsets and byte columns. */
+export interface Utf8EditChange {
   startIndex: number
   oldEndIndex: number
   newEndIndex: number
-  startPosition: { row: number; column: number }
-  oldEndPosition: { row: number; column: number }
-  newEndPosition: { row: number; column: number }
+  startPosition: EditPoint
+  oldEndPosition: EditPoint
+  newEndPosition: EditPoint
+  readonly coordinateSpace?: never
+}
+
+/** web-tree-sitter string coordinates: UTF-16 code-unit offsets and columns. */
+export interface TreeSitterEdit {
+  startIndex: number
+  oldEndIndex: number
+  newEndIndex: number
+  startPosition: EditPoint
+  oldEndPosition: EditPoint
+  newEndPosition: EditPoint
+  readonly coordinateSpace: "utf16"
 }
 
 export interface PerformanceStats {

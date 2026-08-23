@@ -9,7 +9,8 @@ import { clearEnvCache } from "../env.js"
 import { destroySingleton } from "../singleton.js"
 import { destroyTreeSitterClient, getTreeSitterClient } from "./index.js"
 import { getParsers } from "./default-parsers.js"
-import type { Edit, HighlightResponse, TreeSitterWorkerRequest } from "./types.js"
+import type { HighlightResponse, TreeSitterEdit, TreeSitterWorkerRequest, Utf8EditChange } from "./types.js"
+import { createTreeSitterEdit, Utf8ContentIndex } from "./utf8-index.js"
 
 function pointAt(content: string, index: number): { row: number; column: number } {
   const before = content.slice(0, index).split("\n")
@@ -23,19 +24,19 @@ function replacementEdit(
   replacement: string,
 ): {
   content: string
-  edit: Edit
+  edit: TreeSitterEdit
 } {
   const newContent = content.slice(0, startIndex) + replacement + content.slice(oldEndIndex)
   return {
     content: newContent,
-    edit: {
+    edit: createTreeSitterEdit({
       startIndex,
       oldEndIndex,
       newEndIndex: startIndex + replacement.length,
       startPosition: pointAt(content, startIndex),
       oldEndPosition: pointAt(content, oldEndIndex),
       newEndPosition: pointAt(newContent, startIndex + replacement.length),
-    },
+    }),
   }
 }
 
@@ -48,6 +49,42 @@ function nextHighlightResponse(client: TreeSitterClient, version: number): Promi
     }
     client.on("highlights:response", listener)
   })
+}
+
+function utf8ReplacementEdit(
+  content: string,
+  startIndex: number,
+  oldEndIndex: number,
+  replacement: string,
+): { content: string; edit: Utf8EditChange } {
+  const next = content.slice(0, startIndex) + replacement + content.slice(oldEndIndex)
+  const encoder = new TextEncoder()
+  const point = (value: string, index: number) => {
+    const lines = value.slice(0, index).split("\n")
+    return { row: lines.length - 1, column: encoder.encode(lines.at(-1)!).length }
+  }
+  return {
+    content: next,
+    edit: {
+      startIndex: encoder.encode(content.slice(0, startIndex)).length,
+      oldEndIndex: encoder.encode(content.slice(0, oldEndIndex)).length,
+      newEndIndex: encoder.encode(next.slice(0, startIndex + replacement.length)).length,
+      startPosition: point(content, startIndex),
+      oldEndPosition: point(content, oldEndIndex),
+      newEndPosition: point(next, startIndex + replacement.length),
+    },
+  }
+}
+
+function uniqueHighlights(highlights: Array<{ startIndex: number; endIndex: number; group: string; meta?: unknown }>) {
+  return Array.from(
+    new Map(
+      highlights.map((highlight) => [
+        `${highlight.startIndex}:${highlight.endIndex}:${highlight.group}:${JSON.stringify(highlight.meta ?? {})}`,
+        highlight,
+      ]),
+    ).values(),
+  ).sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex || a.group.localeCompare(b.group))
 }
 
 describe("TreeSitterClient", () => {
@@ -268,14 +305,14 @@ describe("TreeSitterClient", () => {
 
     const newCode = 'const hello = "world";\nconst foo = 42;'
     const edits = [
-      {
+      createTreeSitterEdit({
         startIndex: jsCode.length,
         oldEndIndex: jsCode.length,
         newEndIndex: newCode.length,
         startPosition: { row: 0, column: jsCode.length },
         oldEndPosition: { row: 0, column: jsCode.length },
         newEndPosition: { row: 1, column: 14 },
-      },
+      }),
     ]
 
     await client.updateBuffer(1, edits, newCode, 2)
@@ -304,6 +341,7 @@ describe("TreeSitterClient", () => {
     )
 
     expect(response.parseKind).toBe("incremental")
+    expect(response.queryKind).toBe("partial")
     expect(crossingCapture).toBeDefined()
     expect(
       response.replacementRanges.some(
@@ -334,7 +372,23 @@ describe("TreeSitterClient", () => {
     expect(response.parseKind).toBe("incremental")
   })
 
-  test("keeps local incremental query coverage below the document size", async () => {
+  test("clears the full capture cache when an edit empties the document", async () => {
+    await client.initialize()
+    const initial = "const value = `😀 é 漢字`"
+    await client.createBuffer(1, initial, "typescript")
+    const update = replacementEdit(initial, 0, initial.length, "")
+    const responsePromise = nextHighlightResponse(client, 2)
+
+    await client.updateBuffer(1, [update.edit], update.content, 2)
+    const response = await responsePromise
+
+    expect(response.highlights).toEqual([])
+    expect(response.replacementRanges).toEqual([{ startIndex: 0, endIndex: 0 }])
+    expect(response.queryKind).toBe("full")
+    expect(response.queriedByteCount).toBe(0)
+  })
+
+  test("reports actual partial query coverage for the local JavaScript query", async () => {
     await client.initialize()
     const initial = Array.from({ length: 300 }, (_, index) => `const value${index} = ${index};`).join("\n")
     await client.createBuffer(1, initial, "javascript")
@@ -346,8 +400,154 @@ describe("TreeSitterClient", () => {
     const response = await responsePromise
 
     expect(response.parseKind).toBe("incremental")
+    expect(response.queryKind).toBe("partial")
     expect(response.changedByteCount).toBeLessThan(new TextEncoder().encode(update.content).length)
     expect(response.queriedByteCount).toBeLessThan(new TextEncoder().encode(update.content).length)
+  })
+
+  test("keeps the TypeScript UTF-8 incremental cache equal to full highlighting after randomized Unicode edits", async () => {
+    await client.initialize()
+    let content = Array.from(
+      { length: 40 },
+      (_, index) => `const value${index} = \`😀 é 漢字 \${user${index}.name}\`;\r\n`,
+    ).join("")
+    await client.createBuffer(1, content, "typescript")
+
+    const toByteHighlights = async () => {
+      const full = await client.highlightOnce(content, "typescript")
+      const index = new Utf8ContentIndex(content)
+      return uniqueHighlights(
+        (full.highlights ?? []).map(([startIndex, endIndex, group, meta]) => ({
+          startIndex: index.byteIndexAtUtf16Index(startIndex),
+          endIndex: index.byteIndexAtUtf16Index(endIndex),
+          group,
+          meta,
+        })),
+      )
+    }
+
+    let cache = await toByteHighlights()
+    let seed = 0x5eed1234
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 0x1_0000_0000
+    }
+    const replacements = ["🧑🏽‍💻", "界", "ä", "😀", "文"]
+    let sawPartial = false
+    let sawFull = false
+
+    for (let version = 2; version <= 31; version++) {
+      const targets = ["😀", "é", "漢字", "界", "ä", "🧑🏽‍💻", "文"].flatMap((target) => {
+        const indices: Array<{ start: number; end: number }> = []
+        for (let from = 0; ; ) {
+          const start = content.indexOf(target, from)
+          if (start < 0) break
+          indices.push({ start, end: start + target.length })
+          from = start + target.length
+        }
+        return indices
+      })
+      const target = targets[Math.floor(random() * targets.length)]!
+      const replacement = replacements[Math.floor(random() * replacements.length)]!
+      const update = utf8ReplacementEdit(content, target.start, target.end, replacement)
+      const responsePromise = nextHighlightResponse(client, version)
+      await client.updateBufferUtf8(1, [update.edit], update.content, version)
+      const response = await responsePromise
+      content = update.content
+      sawPartial ||= response.queryKind === "partial"
+      sawFull ||= response.queryKind === "full"
+
+      const delta = update.edit.newEndIndex - update.edit.oldEndIndex
+      cache = cache.map((highlight) => ({
+        ...highlight,
+        startIndex:
+          highlight.startIndex < update.edit.startIndex
+            ? highlight.startIndex
+            : highlight.startIndex >= update.edit.oldEndIndex
+              ? highlight.startIndex + delta
+              : update.edit.startIndex,
+        endIndex:
+          highlight.endIndex <= update.edit.startIndex
+            ? highlight.endIndex
+            : highlight.endIndex >= update.edit.oldEndIndex
+              ? highlight.endIndex + delta
+              : update.edit.newEndIndex,
+      }))
+
+      cache = uniqueHighlights([
+        ...cache.filter(
+          (highlight) =>
+            !response.replacementRanges.some(
+              (range) => highlight.startIndex < range.endIndex && range.startIndex < highlight.endIndex,
+            ),
+        ),
+        ...response.highlights,
+      ])
+      expect(cache).toEqual(await toByteHighlights())
+    }
+
+    expect(sawPartial).toBe(true)
+    expect(sawFull).toBe(false)
+  }, 20_000)
+
+  test("counts every full-query pass for injection highlighting", async () => {
+    await client.initialize()
+    const initial = "# title\r\n\r\nText with `code`.\r\n"
+    await client.createBuffer(1, initial, "markdown")
+    const start = initial.indexOf("code")
+    const update = replacementEdit(initial, start, start + 4, "界😀")
+    const responsePromise = nextHighlightResponse(client, 2)
+
+    await client.updateBuffer(1, [update.edit], update.content, 2)
+    const response = await responsePromise
+    const documentBytes = new TextEncoder().encode(update.content).length
+
+    expect(response.parseKind).toBe("incremental")
+    expect(response.queryKind).toBe("full")
+    expect(response.changedByteCount).toBeLessThan(documentBytes)
+    expect(response.queriedByteCount).toBeGreaterThan(documentBytes)
+    expect(response.replacementRanges).toEqual([{ startIndex: 0, endIndex: documentBytes }])
+  })
+
+  test("orders rapid reset and edit operations and cannot rewind with a stale reset", async () => {
+    await client.initialize()
+    const initial = "const value = 1"
+    await client.createBuffer(1, initial, "typescript")
+    const second = replacementEdit(initial, initial.length - 1, initial.length, "2")
+    const resetContent = "const value = `😀 é 漢字`"
+    const fourth = replacementEdit(resetContent, resetContent.indexOf("漢字"), resetContent.indexOf("漢字") + 2, "界")
+    const fourthResponse = nextHighlightResponse(client, 4)
+
+    const editing = client.updateBuffer(1, [second.edit], second.content, 2)
+    const resetting = client.resetBuffer(1, 3, resetContent)
+    const editingAfterReset = client.updateBuffer(1, [fourth.edit], fourth.content, 4)
+    await Promise.all([editing, resetting, editingAfterReset])
+    expect((await fourthResponse).parseKind).toBe("incremental")
+    expect(client.getBuffer(1)?.content).toBe(fourth.content)
+    expect(client.getBuffer(1)?.version).toBe(4)
+
+    await expect(client.resetBuffer(1, 3, "const rewound = true")).rejects.toThrow(
+      "Buffer version 3 must be newer than 4",
+    )
+    expect(client.getBuffer(1)?.content).toBe(fourth.content)
+  })
+
+  test("queues remove after rapid reset and edit without reviving the buffer", async () => {
+    await client.initialize()
+    const initial = "const value = 1"
+    await client.createBuffer(1, initial, "javascript")
+    const resetContent = "const value = 2"
+    const update = replacementEdit(resetContent, resetContent.length - 1, resetContent.length, "3")
+    let responseCount = 0
+    client.on("highlights:response", () => responseCount++)
+
+    const resetting = client.resetBuffer(1, 2, resetContent)
+    const editing = client.updateBuffer(1, [update.edit], update.content, 3)
+    await client.removeBuffer(1)
+    await Promise.all([resetting, editing])
+
+    expect(client.getBuffer(1)).toBeUndefined()
+    expect(responseCount).toBe(0)
   })
 
   test("sends rapid versions as HANDLE_EDITS and ignores stale completions without resetting", async () => {
@@ -378,6 +578,7 @@ describe("TreeSitterClient", () => {
         highlights: [],
         replacementRanges: [],
         parseKind: "incremental",
+        queryKind: "full",
         changedByteCount: 0,
         queriedByteCount: 0,
       },
@@ -395,8 +596,9 @@ describe("TreeSitterClient", () => {
     let responseCount = 0
     client.on("highlights:response", () => responseCount++)
 
-    await client.updateBuffer(1, [update.edit], update.content, 2)
+    const updating = client.updateBuffer(1, [update.edit], update.content, 2)
     await client.removeBuffer(1)
+    await updating
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     expect(client.getBuffer(1)).toBeUndefined()

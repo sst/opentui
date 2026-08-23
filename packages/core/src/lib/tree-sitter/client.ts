@@ -7,12 +7,14 @@ import type {
   BufferState,
   ParsedBuffer,
   FiletypeParserOptions,
-  Edit,
+  TreeSitterEdit,
+  Utf8EditChange,
   PerformanceStats,
   SimpleHighlight,
   TreeSitterWorkerRequest,
   TreeSitterWorkerResponse,
 } from "./types.js"
+import { convertUtf8EditChanges, Utf8ContentIndex } from "./utf8-index.js"
 import { getParsers } from "./default-parsers.js"
 import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
@@ -38,10 +40,12 @@ declare global {
 }
 
 interface EditQueueItem {
-  edits: Edit[]
+  type: "edit" | "reset" | "dispose"
+  edits: TreeSitterEdit[]
   newContent: string
   version: number
-  isReset?: boolean
+  resolve: () => void
+  reject: (error: Error) => void
 }
 
 type TreeSitterWorkerPath = string | URL
@@ -82,6 +86,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private messageCallbacks = new Map<string, PendingRequest>()
   private messageIdCounter: number = 0
   private editQueues: Map<number, ProcessQueue<EditQueueItem>> = new Map()
+  private utf8Indexes: Map<number, Utf8ContentIndex> = new Map()
   private debouncer: DebounceController
   private options: TreeSitterClientOptions
   private destroyCallbacks = new Set<() => void>()
@@ -187,6 +192,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.rejectActiveInitialization(error)
     this.rejectPendingRequests(error)
     this.editQueues.clear()
+    this.utf8Indexes.clear()
     this.buffers.clear()
     this.debouncer.clear()
 
@@ -426,6 +432,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     switch (message.type) {
       case "HIGHLIGHT_RESPONSE": {
+        if (message.messageId) {
+          const callback = this.messageCallbacks.get(message.messageId)
+          if (callback) {
+            this.messageCallbacks.delete(message.messageId)
+            callback.resolve(message)
+          }
+        }
         const buffer = this.buffers.get(message.bufferId)
         if (!buffer || !buffer.hasParser) {
           return
@@ -439,7 +452,12 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
         if (message.version > buffer.version) {
           // A response from the future means the client and worker no longer share buffer state.
-          this.resetBuffer(message.bufferId, buffer.version, buffer.content)
+          void this.enqueueBufferOperation(message.bufferId, {
+            type: "reset",
+            edits: [],
+            newContent: buffer.content,
+            version: buffer.version,
+          }).catch((error) => this.emitError(error.message, message.bufferId))
           return
         }
 
@@ -447,6 +465,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           highlights: message.highlights,
           replacementRanges: message.replacementRanges,
           parseKind: message.parseKind,
+          queryKind: message.queryKind,
           changedByteCount: message.changedByteCount,
           queriedByteCount: message.queriedByteCount,
         })
@@ -490,9 +509,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }
 
       case "BUFFER_DISPOSED": {
-        const callback = this.messageCallbacks.get(`dispose_${message.bufferId}`)
+        const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
-          this.messageCallbacks.delete(`dispose_${message.bufferId}`)
+          this.messageCallbacks.delete(message.messageId)
           callback.resolve(true)
         }
 
@@ -604,6 +623,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     // Set buffer state immediately to avoid race conditions
     this.buffers.set(id, { id, content, filetype, version, hasParser: false })
+    this.utf8Indexes.set(id, new Utf8ContentIndex(content))
 
     const messageId = `init_${this.messageIdCounter++}`
     const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve, reject) => {
@@ -624,6 +644,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     })
 
     if (!response.hasParser) {
+      this.utf8Indexes.delete(id)
       this.emit("buffer:initialized", id, false)
       if (filetype !== "plaintext") {
         this.emitWarning(response.warning || response.error || "Buffer has no parser", id)
@@ -639,7 +660,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     return true
   }
 
-  public async updateBuffer(id: number, edits: Edit[], newContent: string, version: number): Promise<void> {
+  public async updateBuffer(id: number, edits: TreeSitterEdit[], newContent: string, version: number): Promise<void> {
     if (!this.initialized) {
       return
     }
@@ -648,37 +669,90 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (!buffer || !buffer.hasParser) {
       return
     }
+    if (version <= buffer.version) {
+      throw new RangeError(`Buffer version ${version} must be newer than ${buffer.version}`)
+    }
 
     // Update buffer state
     this.buffers.set(id, { ...buffer, content: newContent, version })
+    this.utf8Indexes.set(id, new Utf8ContentIndex(newContent))
 
+    return this.enqueueBufferOperation(id, { type: "edit", edits, newContent, version })
+  }
+
+  public async updateBufferUtf8(
+    id: number,
+    edits: readonly Utf8EditChange[],
+    newContent: string,
+    version: number,
+  ): Promise<void> {
+    if (!this.initialized) return
+    const buffer = this.buffers.get(id)
+    if (!buffer || !buffer.hasParser) return
+    if (version <= buffer.version) {
+      throw new RangeError(`Buffer version ${version} must be newer than ${buffer.version}`)
+    }
+    const previousIndex = this.utf8Indexes.get(id) ?? new Utf8ContentIndex(buffer.content)
+    const converted = convertUtf8EditChanges(buffer.content, newContent, edits, previousIndex)
+    this.utf8Indexes.set(id, converted.index)
+    this.buffers.set(id, { ...buffer, content: newContent, version })
+    return this.enqueueBufferOperation(id, {
+      type: "edit",
+      edits: converted.edits,
+      newContent,
+      version,
+    })
+  }
+
+  private enqueueBufferOperation(
+    id: number,
+    operation: Pick<EditQueueItem, "type" | "edits" | "newContent" | "version">,
+  ): Promise<void> {
     if (!this.editQueues.has(id)) {
-      this.editQueues.set(
-        id,
-        new ProcessQueue<EditQueueItem>((item) =>
-          this.processEdit(id, item.edits, item.newContent, item.version, item.isReset),
-        ),
-      )
+      this.editQueues.set(id, new ProcessQueue<EditQueueItem>((item) => this.processBufferOperation(id, item)))
     }
 
     const bufferQueue = this.editQueues.get(id)!
-    bufferQueue.enqueue({ edits, newContent, version })
+    return new Promise<void>((resolve, reject) => {
+      bufferQueue.enqueue({ ...operation, resolve, reject })
+    })
   }
 
-  private async processEdit(
-    bufferId: number,
-    edits: Edit[],
-    newContent: string,
-    version: number,
-    isReset = false,
-  ): Promise<void> {
-    this.sendWorkerMessage({
-      type: isReset ? "RESET_BUFFER" : "HANDLE_EDITS",
-      bufferId,
-      version,
-      content: newContent,
-      edits,
-    })
+  private async processBufferOperation(bufferId: number, item: EditQueueItem): Promise<void> {
+    const messageId = `buffer_${bufferId}_${this.messageIdCounter++}`
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.messageCallbacks.set(messageId, { resolve, reject })
+        try {
+          if (item.type === "dispose") {
+            this.sendWorkerMessage({ type: "DISPOSE_BUFFER", bufferId, messageId })
+          } else if (item.type === "reset") {
+            this.sendWorkerMessage({
+              type: "RESET_BUFFER",
+              bufferId,
+              version: item.version,
+              content: item.newContent,
+              messageId,
+            })
+          } else {
+            this.sendWorkerMessage({
+              type: "HANDLE_EDITS",
+              bufferId,
+              version: item.version,
+              content: item.newContent,
+              edits: item.edits,
+              messageId,
+            })
+          }
+        } catch (error) {
+          this.messageCallbacks.delete(messageId)
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+      item.resolve()
+    } catch (error) {
+      item.reject(error instanceof Error ? error : new Error(String(error)))
+    }
   }
 
   public async removeBuffer(bufferId: number): Promise<void> {
@@ -687,37 +761,14 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     this.buffers.delete(bufferId)
-
-    if (this.editQueues.has(bufferId)) {
-      this.editQueues.get(bufferId)?.clear()
-      this.editQueues.delete(bufferId)
-    }
+    this.utf8Indexes.delete(bufferId)
 
     if (this.worker) {
-      await new Promise<boolean>((resolve, reject) => {
-        const messageId = `dispose_${bufferId}`
-        this.messageCallbacks.set(messageId, { resolve, reject })
-        try {
-          this.sendWorkerMessage({
-            type: "DISPOSE_BUFFER",
-            bufferId,
-          })
-        } catch (error) {
-          console.error("Error disposing buffer", error)
-          this.messageCallbacks.delete(messageId)
-          resolve(false)
-        }
-
-        // Add a timeout in case the worker doesn't respond
-        setTimeout(() => {
-          if (this.messageCallbacks.has(messageId)) {
-            this.messageCallbacks.delete(messageId)
-            console.warn({ bufferId }, "Timed out waiting for buffer to be disposed")
-            resolve(false)
-          }
-        }, 3000)
-      })
+      await this.enqueueBufferOperation(bufferId, { type: "dispose", edits: [], newContent: "", version: 0 })
     }
+
+    this.editQueues.get(bufferId)?.clear()
+    this.editQueues.delete(bufferId)
 
     this.debouncer.clearDebounce(`reset-${bufferId}`)
   }
@@ -755,6 +806,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.debouncer.clear()
 
     this.editQueues.clear()
+    this.utf8Indexes.clear()
     this.buffers.clear()
 
     void this.stopWorker().then(
@@ -786,12 +838,14 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       this.emitError("Cannot reset buffer with no parser", bufferId)
       return
     }
+    if (version <= buffer.version) {
+      throw new RangeError(`Buffer version ${version} must be newer than ${buffer.version}`)
+    }
 
     // Update buffer state
     this.buffers.set(bufferId, { ...buffer, content, version })
-
-    // Use debouncer to avoid excessive resets
-    this.debouncer.debounce(`reset-${bufferId}`, 10, () => this.processEdit(bufferId, [], content, version, true))
+    this.utf8Indexes.set(bufferId, new Utf8ContentIndex(content))
+    return this.enqueueBufferOperation(bufferId, { type: "reset", edits: [], newContent: content, version })
   }
 
   public getBuffer(bufferId: number): BufferState | undefined {
