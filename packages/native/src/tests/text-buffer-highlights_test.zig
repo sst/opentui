@@ -92,7 +92,7 @@ fn collectReferenceAnnotations(
 
 fn resolvedReferenceStyle(tb: *TextBuffer, style_id: u32) u32 {
     if (style_id & TextBuffer.internal_style_base == 0) return style_id;
-    const slot_index: usize = style_id & ~TextBuffer.internal_style_base;
+    const slot_index = tb.internalStyleSlotIndex(style_id) orelse return 0;
     return tb.internal_style_slots.items[slot_index].resolved_style_id;
 }
 
@@ -531,7 +531,7 @@ test "line projection matches ordered reference for randomized paint and positio
         const start = random.intRangeAtMost(u32, 0, text_len);
         const end = if (index % 19 == 0) start else random.intRangeAtMost(u32, 0, text_len);
         const paints = index % 5 == 0;
-        _ = try tb.textAnnotations().addRange(.{ .start_byte = start, .end_byte = end }, .{
+        _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = start, .end_byte = end }, .{
             .namespace = @intCast(index % 9),
             .style_id = registered_styles[index % registered_styles.len],
             .highlight_ref = if (index % 7 == 0) @intCast(1000 + index) else null,
@@ -540,7 +540,7 @@ test "line projection matches ordered reference for randomized paint and positio
             .kind_flags = if (paints) text_buffer.annotation_kind_style else 1 << 1,
         });
         if (index % 31 == 0) {
-            _ = try tb.textAnnotations().addPoint(.{ .byte = start }, .{ .namespace = 77, .kind_flags = text_buffer.annotation_kind_virtual });
+            _ = try tb.textAnnotationsForTesting().addPoint(.{ .byte = start }, .{ .namespace = 77, .kind_flags = text_buffer.annotation_kind_virtual });
         }
     }
 
@@ -558,17 +558,17 @@ test "line projection matches ordered reference for randomized paint and positio
     _ = try tb.createStyleRange(91, 20, 50, registered_styles[1], 40);
     _ = try tb.createStyleRange(91, 8, 24, registered_styles[2], 200);
     _ = try tb.createStyleRange(91, 8, 24, registered_styles[3], 200);
-    _ = try tb.textAnnotations().addRange(.{ .start_byte = 30, .end_byte = 10 }, .{
+    _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 30, .end_byte = 10 }, .{
         .namespace = 91,
         .style_id = registered_styles[4],
         .kind_flags = text_buffer.annotation_kind_style,
     });
-    _ = try tb.textAnnotations().addRange(.{ .start_byte = 12, .end_byte = 12 }, .{
+    _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 12, .end_byte = 12 }, .{
         .namespace = 91,
         .style_id = registered_styles[5],
         .kind_flags = text_buffer.annotation_kind_style,
     });
-    _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = text_len }, .{
+    _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 0, .end_byte = text_len }, .{
         .namespace = 91,
         .kind_flags = 1 << 1,
     });
@@ -624,7 +624,7 @@ test "line projection filters exactly 4k positional ranges before precedence sor
     const line_len: u32 = @intCast(line.len);
 
     for (0..4000) |index| {
-        _ = try tb.textAnnotations().addRange(.{ .start_byte = 0, .end_byte = line_len }, .{
+        _ = try tb.textAnnotationsForTesting().addRange(.{ .start_byte = 0, .end_byte = line_len }, .{
             .namespace = @intCast(index % 17),
             .kind_flags = 1 << 1,
         });
