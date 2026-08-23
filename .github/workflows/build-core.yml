@@ -68,6 +68,7 @@ jobs:
     name: Test (${{ matrix.os }})
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: blacksmith-12vcpu-macos-15
