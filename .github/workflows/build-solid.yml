@@ -62,9 +62,21 @@ jobs:
         working-directory: packages/solid
         run: bun run build --ci
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         working-directory: packages/solid
-        run: bun run test
+        run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
+          bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-solid-${{ matrix.os }}-${{ github.run_attempt }}
 
   node-source:
     name: Node Source Lane

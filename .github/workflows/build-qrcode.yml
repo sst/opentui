@@ -62,10 +62,21 @@ jobs:
           cd packages/qrcode
           bun run build
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
           cd packages/qrcode
           bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-qrcode-${{ matrix.os }}-${{ github.run_attempt }}
 
   build-complete:
     name: QRCode - Build and Test
