@@ -230,6 +230,43 @@ fn localEditAllocationCount(mark_count: usize, max_undo_depth: ?usize) !usize {
     return failing.alloc_index - before;
 }
 
+fn exerciseHighlightClearAllocationFailure(clear_all: bool, fail_offset: ?usize) !usize {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(failing.allocator(), pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    try eb.setText("aa\nbb\ncc");
+    const id = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 8 }, .{
+        .namespace = 9,
+        .style_id = 17,
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+    try eb.setCursorByOffset(0);
+    try eb.insertText("X");
+    const tb = eb.getTextBuffer();
+    try tb.addHighlight(1, 0, 1, 19, 1, 33);
+    const before = tb.textAnnotations().get(id).?;
+    const before_changes = tb.undoJournal().?.annotation_splice.?.changes.items.len;
+    const before_alloc = failing.alloc_index;
+    if (fail_offset) |offset| failing.fail_index = before_alloc + offset;
+
+    const result = if (clear_all) eb.clearAllHighlights() else eb.clearLineHighlights(1);
+    if (fail_offset != null) {
+        try std.testing.expectError(error.OutOfMemory, result);
+        try std.testing.expectEqualDeep(before, tb.textAnnotations().get(id).?);
+        try std.testing.expectEqual(before_changes, tb.undoJournal().?.annotation_splice.?.changes.items.len);
+        try std.testing.expectEqual(@as(usize, 1), tb.external_line_highlights.items[1].items.len);
+        try std.testing.expect(eb.canUndo());
+        try std.testing.expect(!eb.canRedo());
+    } else {
+        try result;
+    }
+    return failing.alloc_index - before_alloc;
+}
+
 const NamespacePurgeBranch = enum { undo, redo };
 
 fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !void {
@@ -304,9 +341,9 @@ fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !vo
     try std.testing.expectEqualDeep(if (branch == .undo) after.mark else before.mark, second_live.mark);
     _ = tb.getLineHighlights(0);
     try std.testing.expect(try tb.removeStyleRange(second_holder));
-    try std.testing.expectEqual(@as(u32, 1), tb.internal_style_slots.items[first_style & ~text_buffer.TextBuffer.internal_style_base].refs);
-    try std.testing.expectEqual(@as(u32, 2), tb.internal_style_slots.items[second_style & ~text_buffer.TextBuffer.internal_style_base].refs);
-    const second_link = tb.internal_style_slots.items[second_style & ~text_buffer.TextBuffer.internal_style_base].link_id;
+    try std.testing.expectEqual(@as(u32, 1), tb.internal_style_slots.items[tb.internalStyleSlotIndex(first_style).?].refs);
+    try std.testing.expectEqual(@as(u32, 2), tb.internal_style_slots.items[tb.internalStyleSlotIndex(second_style).?].refs);
+    const second_link = tb.internal_style_slots.items[tb.internalStyleSlotIndex(second_style).?].link_id;
     try std.testing.expect(second_link != 0);
     try std.testing.expectEqualStrings(second_url, try link_pool.get(second_link));
     try std.testing.expectEqual(@as(u32, 1), try link_pool.getRefcount(second_link));
@@ -334,8 +371,8 @@ fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !vo
         try std.testing.expect(change.before == null);
         try std.testing.expectEqualDeep(after, change.after.?);
     }
-    try std.testing.expectEqual(@as(u32, if (namespace == 1) 0 else 1), tb.internal_style_slots.items[first_style & ~text_buffer.TextBuffer.internal_style_base].refs);
-    try std.testing.expectEqual(@as(u32, if (namespace == 1) 2 else 0), tb.internal_style_slots.items[second_style & ~text_buffer.TextBuffer.internal_style_base].refs);
+    try std.testing.expectEqual(@as(u32, if (namespace == 1) 0 else 1), tb.internal_style_slots.items[tb.internalStyleSlotIndex(first_style).?].refs);
+    try std.testing.expectEqual(@as(u32, if (namespace == 1) 2 else 0), tb.internal_style_slots.items[tb.internalStyleSlotIndex(second_style).?].refs);
     try std.testing.expectEqual(@as(u64, if (namespace == 1) 1 else 0), link_pool.getLiveSlotCount());
     if (namespace == 1) try std.testing.expectEqual(@as(u32, 1), try link_pool.getRefcount(second_link));
 
@@ -372,8 +409,8 @@ fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !vo
     _ = try eb.applyAnnotationOperations(&clear_first, &.{}, &deleted);
     _ = try eb.applyAnnotationOperations(&clear_second, &.{}, &deleted);
     eb.clearHistory();
-    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[first_style & ~text_buffer.TextBuffer.internal_style_base].refs);
-    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[second_style & ~text_buffer.TextBuffer.internal_style_base].refs);
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[tb.internalStyleSlotIndex(first_style).?].refs);
+    try std.testing.expectEqual(@as(u32, 0), tb.internal_style_slots.items[tb.internalStyleSlotIndex(second_style).?].refs);
     try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
 
     const reused_url = "https://history.test/reused";
@@ -387,9 +424,9 @@ fn exerciseNamespacePurgeSides(branch: NamespacePurgeBranch, namespace: u32) !vo
         .link_len = reused_url.len,
     };
     const reused = try tb.createStyleValueRange(3, 0, 1, reused_value, 1);
-    try std.testing.expectEqual(first_style, tb.textAnnotations().get(reused).?.payload.style_id);
+    try std.testing.expect(first_style != tb.textAnnotations().get(reused).?.payload.style_id);
     _ = tb.getLineHighlights(0);
-    const reused_link = tb.internal_style_slots.items[first_style & ~text_buffer.TextBuffer.internal_style_base].link_id;
+    const reused_link = tb.internal_style_slots.items[tb.internalStyleSlotIndex(tb.textAnnotations().get(reused).?.payload.style_id).?].link_id;
     try std.testing.expect(reused_link != 0);
     try std.testing.expect(reused_link != second_link);
     try std.testing.expectEqual(second_link & 0xffff, reused_link & 0xffff);
@@ -526,7 +563,7 @@ fn exerciseOrderedAnnotationBatch(batch: OrderedAnnotationBatch, branch: Namespa
         try std.testing.expect(tb.textAnnotations().get(stale_id) == null);
         try std.testing.expect(tb.textAnnotations().get(removed_id) == null);
         _ = tb.getLineHighlights(0);
-        const linked_slot = &tb.internal_style_slots.items[linked_style & ~text_buffer.TextBuffer.internal_style_base];
+        const linked_slot = &tb.internal_style_slots.items[tb.internalStyleSlotIndex(linked_style).?];
         try std.testing.expect(linked_slot.link_id != 0);
         try std.testing.expectEqualStrings("https://history.test/ordered", try link_pool.get(linked_slot.link_id));
     }
@@ -790,6 +827,144 @@ test "ordered annotation batches reconcile active history sides in operation ord
     for (std.enums.values(OrderedAnnotationBatch)) |batch| {
         try exerciseOrderedAnnotationBatch(batch, .undo);
         try exerciseOrderedAnnotationBatch(batch, .redo);
+    }
+}
+
+test "transient annotation payload styles validate before live or history publication" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    const tb = eb.getTextBuffer();
+    tb.setSyntaxStyle(syntax);
+    try eb.setText("abcdef");
+
+    const url = "https://history.test/stale";
+    const value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const holder = try tb.createStyleValueRange(90, 0, 1, value, 1);
+    const stale_style = tb.textAnnotations().get(holder).?.payload.style_id;
+    try std.testing.expect(try tb.removeStyleRange(holder));
+    const replacement = try tb.createStyleValueRange(90, 0, 1, value, 1);
+    const replacement_style = tb.textAnnotations().get(replacement).?.payload.style_id;
+    try std.testing.expect(stale_style != replacement_style);
+
+    const stable = try eb.addAnnotationRange(.{ .start_byte = 1, .end_byte = 3 }, .{ .namespace = 1, .style_id = replacement_style });
+    try std.testing.expect(try tb.removeStyleRange(replacement));
+    const foreign = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer foreign.deinit();
+    foreign.getTextBuffer().setSyntaxStyle(syntax);
+    try foreign.setText("x");
+    const foreign_holder = try foreign.getTextBuffer().createStyleValueRange(90, 0, 1, value, 1);
+    const foreign_style = foreign.getTextBuffer().textAnnotations().get(foreign_holder).?.payload.style_id;
+    try eb.insertText("X");
+    const before = tb.textAnnotations().get(stable).?;
+    const before_changes = tb.undoJournal().?.annotation_splice.?.changes.items.len;
+    const invalid_styles = [_]u32{ text_buffer.TextBuffer.internal_style_base | 0x7fff_ffff, stale_style, foreign_style };
+    for (invalid_styles) |style_id| {
+        const operations = [_]text_buffer.AnnotationOperation{
+            .{ .kind = .update_payload, .id = stable, .payload = .{ .namespace = 2, .style_id = style_id } },
+            .{ .kind = .clear_namespace, .payload = .{ .namespace = 2 } },
+        };
+        var deleted: [1]u64 = undefined;
+        try std.testing.expectError(error.InvalidDimensions, eb.applyAnnotationOperations(&operations, &.{}, &deleted));
+        try std.testing.expectEqualDeep(before, tb.textAnnotations().get(stable).?);
+        try std.testing.expectEqual(before_changes, tb.undoJournal().?.annotation_splice.?.changes.items.len);
+    }
+
+    try eb.insertText("Y");
+    const after_second_edit = tb.textAnnotations().get(stable).?;
+    _ = try eb.undo();
+    try std.testing.expect(tb.undoJournal() != null);
+    try std.testing.expect(tb.currentJournal() != null);
+    const redo_before = tb.textAnnotations().get(stable).?;
+    const redo_changes = tb.currentJournal().?.annotation_splice.?.changes.items.len;
+    const transient = [_]text_buffer.AnnotationOperation{
+        .{ .kind = .add_range, .start_byte = 0, .end_byte = 1, .payload = .{ .namespace = 3, .style_id = stale_style } },
+        .{ .kind = .clear_namespace, .payload = .{ .namespace = 3 } },
+    };
+    var created: [1]u64 = undefined;
+    var deleted: [1]u64 = undefined;
+    try std.testing.expectError(error.InvalidDimensions, eb.applyAnnotationOperations(&transient, &created, &deleted));
+    try std.testing.expectEqualDeep(redo_before, tb.textAnnotations().get(stable).?);
+    try std.testing.expectEqual(redo_changes, tb.currentJournal().?.annotation_splice.?.changes.items.len);
+    _ = try eb.redo();
+    try std.testing.expectEqualDeep(after_second_edit, tb.textAnnotations().get(stable).?);
+}
+
+test "EditBuffer highlight clears remain authoritative across text history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    const syntax = try syntax_style.SyntaxStyle.init(std.testing.allocator);
+    defer syntax.deinit();
+    eb.getTextBuffer().setSyntaxStyle(syntax);
+    try eb.setText("aa\nbb\ncc");
+    const url = "https://history.test/clear-split";
+    const value: text_buffer.StyledChunk = .{
+        .text_ptr = "".ptr,
+        .text_len = 0,
+        .fg_ptr = null,
+        .bg_ptr = null,
+        .attributes = 1,
+        .link_ptr = url.ptr,
+        .link_len = url.len,
+    };
+    const holder = try eb.getTextBuffer().createStyleValueRange(90, 0, 1, value, 1);
+    const style_id = eb.getTextBuffer().textAnnotations().get(holder).?.payload.style_id;
+    const original = try eb.addAnnotationRange(.{ .start_byte = 0, .end_byte = 8 }, .{
+        .namespace = 9,
+        .style_id = style_id,
+        .internal = true,
+        .kind_flags = text_buffer.annotation_kind_style,
+    });
+    try std.testing.expect(try eb.getTextBuffer().removeStyleRange(holder));
+    try eb.setCursorByOffset(0);
+    try eb.insertText("X");
+
+    try eb.clearLineHighlights(1);
+    try std.testing.expect(eb.getTextBuffer().textAnnotations().get(original) == null);
+    try std.testing.expectEqual(@as(usize, 2), eb.getTextBuffer().textAnnotations().count());
+    _ = eb.getTextBuffer().getLineHighlights(0);
+    try std.testing.expectEqual(@as(u64, 1), link_pool.getLiveSlotCount());
+    for (0..2) |_| {
+        const start = try eb.getTextBuffer().normalizedLineStart(1);
+        const end = try eb.getTextBuffer().normalizedLineStart(2);
+        var annotations = eb.getTextBuffer().textAnnotations().iterator();
+        while (try annotations.next()) |annotation| {
+            const range = annotation.mark.range;
+            try std.testing.expect(range.end_byte <= start or range.start_byte >= end);
+        }
+        try std.testing.expectEqual(@as(usize, 2), eb.getTextBuffer().textAnnotations().count());
+        _ = if (eb.canUndo()) try eb.undo() else try eb.redo();
+    }
+
+    try eb.clearAllHighlights();
+    try std.testing.expectEqual(@as(usize, 0), eb.getTextBuffer().textAnnotations().count());
+    try std.testing.expectEqual(@as(u64, 0), link_pool.getLiveSlotCount());
+    while (eb.canRedo()) _ = try eb.redo();
+    while (eb.canUndo()) _ = try eb.undo();
+    try std.testing.expectEqual(@as(usize, 0), eb.getTextBuffer().textAnnotations().count());
+}
+
+test "EditBuffer highlight clears leave live and history state unchanged on allocation failure" {
+    for ([_]bool{ false, true }) |clear_all| {
+        const allocation_count = try exerciseHighlightClearAllocationFailure(clear_all, null);
+        for (0..allocation_count) |offset| _ = try exerciseHighlightClearAllocationFailure(clear_all, offset);
     }
 }
 

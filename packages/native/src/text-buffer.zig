@@ -13,6 +13,8 @@ const TextAnnotations = @import("text-annotations.zig").TextAnnotations;
 const MarkTree = @import("mark-tree.zig").MarkTree;
 pub const AnnotationEditDelta = TextAnnotations.AnnotationEditDelta;
 
+var next_internal_style_nonce = std.atomic.Value(u32).init(1);
+
 /// Payload owned by one physical Rope history node. Annotation splices are the
 /// first transaction kind; document, move, and style journals can be added here
 /// without changing Rope history ownership.
@@ -222,7 +224,10 @@ pub const AnnotationOperationEffect = struct {
     after: ?TextAnnotations.Annotation,
 };
 
+pub const AnnotationJournalAction = AnnotationOperationEffect;
+
 const InternalStyleSlot = struct {
+    id: u32,
     definition: ss.StyleDefinition,
     resolved_syntax_style: ?*const SyntaxStyle,
     resolved_style_id: u32,
@@ -572,9 +577,9 @@ pub const UnifiedTextBuffer = struct {
         if (self.link_tracker) |*tracker| {
             tracker.deinit();
         }
-        for (self.internal_style_slots.items, 0..) |*slot, index| if (slot.refs != 0) {
+        for (self.internal_style_slots.items) |*slot| if (slot.refs != 0) {
             slot.refs = 1;
-            self.releaseInternalStyle(internal_style_base | @as(u32, @intCast(index)));
+            self.releaseInternalStyle(slot.id);
         };
         self.internal_style_slots.deinit(self.global_allocator);
 
@@ -662,12 +667,44 @@ pub const UnifiedTextBuffer = struct {
         return self.applyAnnotationOperationsInternal(operations, created_ids, deleted_ids, effects);
     }
 
+    pub fn applyAnnotationOperationsWithHistory(
+        self: *Self,
+        operations: []const AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+        effects: []AnnotationOperationEffect,
+        undo_delta: ?*AnnotationEditDelta,
+        redo_delta: ?*AnnotationEditDelta,
+    ) TextBufferError!AnnotationBatchResult {
+        if (effects.len < operations.len) return TextBufferError.InvalidDimensions;
+        return self.applyAnnotationOperationsInternalWithHistory(
+            operations,
+            created_ids,
+            deleted_ids,
+            effects,
+            undo_delta,
+            redo_delta,
+        );
+    }
+
     fn applyAnnotationOperationsInternal(
         self: *Self,
         operations: []const AnnotationOperation,
         created_ids: []u64,
         deleted_ids: []u64,
         effects: ?[]AnnotationOperationEffect,
+    ) TextBufferError!AnnotationBatchResult {
+        return self.applyAnnotationOperationsInternalWithHistory(operations, created_ids, deleted_ids, effects, null, null);
+    }
+
+    fn applyAnnotationOperationsInternalWithHistory(
+        self: *Self,
+        operations: []const AnnotationOperation,
+        created_ids: []u64,
+        deleted_ids: []u64,
+        effects: ?[]AnnotationOperationEffect,
+        undo_delta: ?*AnnotationEditDelta,
+        redo_delta: ?*AnnotationEditDelta,
     ) TextBufferError!AnnotationBatchResult {
         var created_count: usize = 0;
         for (operations) |operation| created_count += @intFromBool(operation.kind == .add_range or operation.kind == .add_point);
@@ -683,7 +720,18 @@ pub const UnifiedTextBuffer = struct {
             .update_payload, .remove, .clear_namespace => {},
         };
 
-        if (operations.len == 1) switch (operations[0].kind) {
+        // Payloads are ordered inputs, not merely a description of the final
+        // candidate. Validate every style owner even when a later operation
+        // removes or overwrites the value.
+        for (operations) |operation| switch (operation.kind) {
+            .add_range, .add_point, .update_payload => {
+                try self.retainInternalStyle(operation.payload.style_id);
+                self.releaseInternalStyle(operation.payload.style_id);
+            },
+            .update_range, .update_point, .remove, .clear_namespace => {},
+        };
+
+        if (operations.len == 1 and undo_delta == null and redo_delta == null) switch (operations[0].kind) {
             .add_range => {
                 const operation = operations[0];
                 try self.retainInternalStyle(operation.payload.style_id);
@@ -794,10 +842,77 @@ pub const UnifiedTextBuffer = struct {
         };
         if (deleted_ids.len < prepared_deleted.items.len) return TextBufferError.InvalidDimensions;
 
+        var journal_actions: std.ArrayListUnmanaged(AnnotationJournalAction) = .empty;
+        defer journal_actions.deinit(self.global_allocator);
+        var prepared_journal: ?PreparedAnnotationJournalActions = null;
+        defer if (prepared_journal) |*prepared| prepared.deinit();
+        const journal_copy_count: usize = @intFromBool(undo_delta != null) + @intFromBool(redo_delta != null);
+        if (journal_copy_count != 0) {
+            try journal_actions.ensureTotalCapacity(self.global_allocator, operations.len);
+            for (operations, effects.?) |operation, effect| switch (operation.kind) {
+                .add_range, .add_point, .update_range, .update_point, .update_payload => {
+                    const id = if (effect.before) |annotation| annotation.id() else if (effect.after) |annotation| annotation.id() else continue;
+                    var existing: ?*AnnotationJournalAction = null;
+                    for (journal_actions.items) |*action| {
+                        const action_id = if (action.before) |annotation| annotation.id() else if (action.after) |annotation| annotation.id() else continue;
+                        if (action_id == id) {
+                            existing = action;
+                            break;
+                        }
+                    }
+                    if (existing) |action| {
+                        action.after = effect.after;
+                    } else {
+                        journal_actions.appendAssumeCapacity(.{ .before = effect.before, .after = effect.after });
+                    }
+                },
+                .remove => for (journal_actions.items) |*action| {
+                    const action_id = if (action.before) |annotation| annotation.id() else if (action.after) |annotation| annotation.id() else continue;
+                    if (action_id == operation.id) action.* = .{ .before = null, .after = null };
+                },
+                .clear_namespace => for (journal_actions.items) |*action| {
+                    if (action.before) |annotation| if (annotation.payload.namespace == operation.payload.namespace) {
+                        action.before = null;
+                    };
+                    if (action.after) |annotation| if (annotation.payload.namespace == operation.payload.namespace) {
+                        action.after = null;
+                    };
+                },
+            };
+            var write: usize = 0;
+            for (journal_actions.items) |action| {
+                if (action.before == null and action.after == null) continue;
+                if (action.before != null and action.after != null and std.meta.eql(action.before.?, action.after.?)) continue;
+                journal_actions.items[write] = action;
+                write += 1;
+            }
+            journal_actions.shrinkRetainingCapacity(write);
+            if (undo_delta) |delta| delta.ensureJournalCapacity(journal_actions.items.len) catch return TextBufferError.OutOfMemory;
+            if (redo_delta) |delta| delta.ensureJournalCapacity(journal_actions.items.len) catch return TextBufferError.OutOfMemory;
+            prepared_journal = try self.prepareAnnotationJournalActions(journal_actions.items, journal_copy_count);
+        }
+
         candidate_owned = false;
         try self.publishAnnotationCandidate(candidate);
         @memcpy(created_ids[0..created_count], prepared_created);
         @memcpy(deleted_ids[0..prepared_deleted.items.len], prepared_deleted.items);
+        if (journal_copy_count != 0) {
+            // Explicit clears/removes are authoritative across every physical
+            // history node. Final adjacent sides are installed afterward so
+            // values added after an ordered clear remain present.
+            for (operations) |operation| switch (operation.kind) {
+                .remove => self.purgeAnnotationHistory(&.{operation.id}),
+                .clear_namespace => self.purgeAnnotationHistoryNamespace(operation.payload.namespace),
+                else => {},
+            };
+            if (undo_delta) |delta| for (journal_actions.items) |action| {
+                self.commitAnnotationJournalAction(delta, .after, action.before, action.after);
+            };
+            if (redo_delta) |delta| for (journal_actions.items) |action| {
+                self.commitAnnotationJournalAction(delta, .before, action.before, action.after);
+            };
+            finishAnnotationJournalActions(&prepared_journal.?);
+        }
         return .{ .created_count = created_count, .deleted_count = prepared_deleted.items.len };
     }
 
@@ -881,7 +996,47 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
-    pub fn journalAnnotationDelta(
+    pub const PreparedAnnotationJournalActions = struct {
+        owner: *Self,
+        acquired: std.ArrayListUnmanaged(u32) = .empty,
+        committed: bool = false,
+
+        pub fn deinit(self: *PreparedAnnotationJournalActions) void {
+            if (!self.committed) for (self.acquired.items) |style_id| self.owner.releaseInternalStyle(style_id);
+            self.acquired.deinit(self.owner.global_allocator);
+            self.* = undefined;
+        }
+    };
+
+    pub fn prepareAnnotationJournalActions(
+        self: *Self,
+        actions: []const AnnotationJournalAction,
+        copies: usize,
+    ) TextBufferError!PreparedAnnotationJournalActions {
+        var acquired: std.ArrayListUnmanaged(u32) = .empty;
+        errdefer {
+            for (acquired.items) |style_id| self.releaseInternalStyle(style_id);
+            acquired.deinit(self.global_allocator);
+        }
+        const state_count = std.math.mul(usize, actions.len, 2) catch return TextBufferError.InvalidDimensions;
+        try acquired.ensureTotalCapacity(self.global_allocator, std.math.mul(usize, state_count, copies) catch return TextBufferError.InvalidDimensions);
+        for (0..copies) |_| for (actions) |action| {
+            if (action.before) |annotation| {
+                try self.retainInternalStyle(annotation.payload.style_id);
+                acquired.appendAssumeCapacity(annotation.payload.style_id);
+            }
+            if (action.after) |annotation| {
+                try self.retainInternalStyle(annotation.payload.style_id);
+                acquired.appendAssumeCapacity(annotation.payload.style_id);
+            }
+        };
+        return .{ .owner = self, .acquired = acquired };
+    }
+
+    /// Reconciles one final side using references acquired by
+    /// prepareAnnotationJournalActions. No failure is possible after the live
+    /// annotation candidate has been published.
+    pub fn commitAnnotationJournalAction(
         self: *Self,
         delta: *AnnotationEditDelta,
         side: TextAnnotations.DeltaSide,
@@ -891,8 +1046,8 @@ pub const UnifiedTextBuffer = struct {
         const id = if (old_state) |annotation| annotation.id() else new_state.?.id();
         if (delta.findChange(id)) |change| {
             const state = if (side == .before) &change.before else &change.after;
+            if (old_state) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
             if (state.*) |annotation| self.releaseInternalStyle(annotation.payload.style_id);
-            if (new_state) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
             state.* = new_state;
             return;
         }
@@ -903,12 +1058,14 @@ pub const UnifiedTextBuffer = struct {
             else
                 MarkTree.splicedMark(annotation.mark, delta.start_byte, delta.old_len, delta.new_len) catch unreachable;
         }
-        if (opposite) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
-        if (new_state) |annotation| self.retainInternalStyle(annotation.payload.style_id) catch unreachable;
         delta.changes.appendAssumeCapacity(if (side == .before)
             .{ .before = new_state, .after = opposite }
         else
             .{ .before = opposite, .after = new_state });
+    }
+
+    pub fn finishAnnotationJournalActions(prepared: *PreparedAnnotationJournalActions) void {
+        prepared.committed = true;
     }
 
     pub const PreparedAnnotationDeltaApply = struct {
@@ -1106,7 +1263,7 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
-    fn normalizedLineStart(self: *const Self, row: u32) TextBufferError!u32 {
+    pub fn normalizedLineStart(self: *const Self, row: u32) TextBufferError!u32 {
         if (row >= self.getLineCount()) return TextBufferError.InvalidByteOffset;
         if (row == 0) return 0;
         return normalizedLineStartInNode(self._rope.root, row - 1, 0) orelse TextBufferError.InvalidByteOffset;
@@ -1728,9 +1885,9 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn clearInternalStyleRefs(self: *Self) void {
-        for (self.internal_style_slots.items, 0..) |*slot, index| if (slot.refs != 0) {
+        for (self.internal_style_slots.items) |*slot| if (slot.refs != 0) {
             slot.refs = 1;
-            self.releaseInternalStyle(internal_style_base | @as(u32, @intCast(index)));
+            self.releaseInternalStyle(slot.id);
         };
     }
 
@@ -2566,10 +2723,9 @@ pub const UnifiedTextBuffer = struct {
         var projected_index = external.len;
         while (projected_index < projected.items.len) : (projected_index += 1) {
             const slot_id = projected.items[projected_index].style_id;
-            const slot_index: usize = slot_id & ~internal_style_base;
-            const was_resolved = slot_id & internal_style_base != 0 and
-                slot_index < self.internal_style_slots.items.len and
-                self.internal_style_slots.items[slot_index].resolved_syntax_style == self.syntax_style;
+            const slot_index = self.internalStyleSlotIndex(slot_id);
+            const was_resolved = slot_index != null and
+                self.internal_style_slots.items[slot_index.?].resolved_syntax_style == self.syntax_style;
             projected.items[projected_index].style_id = self.resolveAnnotationStyle(slot_id) catch |err| {
                 var rollback_index = newly_resolved.items.len;
                 while (rollback_index != 0) {
@@ -2580,11 +2736,10 @@ pub const UnifiedTextBuffer = struct {
             };
             if (!was_resolved and
                 self.syntax_style != null and
-                slot_id & internal_style_base != 0 and
-                slot_index < self.internal_style_slots.items.len and
-                self.internal_style_slots.items[slot_index].resolved_syntax_style == self.syntax_style)
+                slot_index != null and
+                self.internal_style_slots.items[slot_index.?].resolved_syntax_style == self.syntax_style)
             {
-                newly_resolved.appendAssumeCapacity(slot_index);
+                newly_resolved.appendAssumeCapacity(slot_index.?);
             }
         }
 
@@ -2883,6 +3038,10 @@ pub const UnifiedTextBuffer = struct {
             };
             self.publishAnnotationCandidate(candidate) catch return;
         }
+        self.clearExternalLineHighlights(line_idx);
+    }
+
+    pub fn clearExternalLineHighlights(self: *Self, line_idx: usize) void {
         var external_changed = false;
         if (line_idx < self.external_line_highlights.items.len) {
             external_changed = self.external_line_highlights.items[line_idx].items.len != 0;
@@ -2891,7 +3050,7 @@ pub const UnifiedTextBuffer = struct {
             }
             self.external_line_highlights.items[line_idx].clearRetainingCapacity();
         }
-        if (line_idx >= self.getLineCount() and external_changed) self.markPaintDirty();
+        if (external_changed) self.markPaintDirty();
         if (self.highlight_batch_depth != 0) self.markLineSpansDirty(line_idx);
     }
 
@@ -2915,7 +3074,16 @@ pub const UnifiedTextBuffer = struct {
             return;
         };
         self.publishAnnotationCandidate(candidate) catch return;
-        for (self.external_line_highlights.items) |*hl_list| hl_list.clearRetainingCapacity();
+        self.clearAllExternalHighlights();
+    }
+
+    pub fn clearAllExternalHighlights(self: *Self) void {
+        var changed = false;
+        for (self.external_line_highlights.items) |*hl_list| {
+            changed = changed or hl_list.items.len != 0;
+            hl_list.clearRetainingCapacity();
+        }
+        if (changed) self.markPaintDirty();
         self.internal_highlight_count = 0;
         for (self.line_spans.items) |*span_list| span_list.clearRetainingCapacity();
     }
@@ -3058,7 +3226,7 @@ pub const UnifiedTextBuffer = struct {
         else
             return TextBufferError.InvalidDimensions;
         const definition: ss.StyleDefinition = .{ .fg = fg, .bg = bg, .attributes = chunk.attributes };
-        for (self.internal_style_slots.items, 0..) |*slot, index| {
+        for (self.internal_style_slots.items) |*slot| {
             const links_equal = if (slot.link_url) |existing|
                 link_url != null and std.mem.eql(u8, existing, link_url.?)
             else
@@ -3066,15 +3234,19 @@ pub const UnifiedTextBuffer = struct {
             if (slot.refs != 0 and std.meta.eql(slot.definition, definition) and links_equal) {
                 if (slot.refs == std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
                 slot.refs += 1;
-                return internal_style_base | @as(u32, @intCast(index));
+                return slot.id;
             }
         }
 
         const owned_link = if (link_url) |url| self.global_allocator.dupe(u8, url) catch return TextBufferError.OutOfMemory else null;
         errdefer if (owned_link) |url| self.global_allocator.free(url);
-        for (self.internal_style_slots.items, 0..) |*slot, index| {
+        const nonce = next_internal_style_nonce.fetchAdd(1, .monotonic);
+        if (nonce == 0 or nonce >= internal_style_base) return TextBufferError.InvalidDimensions;
+        const slot_id = internal_style_base | nonce;
+        for (self.internal_style_slots.items) |*slot| {
             if (slot.refs != 0) continue;
             slot.* = .{
+                .id = slot_id,
                 .definition = definition,
                 .resolved_syntax_style = null,
                 .resolved_style_id = 0,
@@ -3082,13 +3254,12 @@ pub const UnifiedTextBuffer = struct {
                 .link_id = 0,
                 .refs = 1,
             };
-            return internal_style_base | @as(u32, @intCast(index));
+            return slot_id;
         }
 
-        if (self.internal_style_slots.items.len >= internal_style_base) return TextBufferError.InvalidDimensions;
         try self.internal_style_slots.ensureUnusedCapacity(self.global_allocator, 1);
-        const slot_id = internal_style_base | @as(u32, @intCast(self.internal_style_slots.items.len));
         self.internal_style_slots.appendAssumeCapacity(.{
+            .id = slot_id,
             .definition = definition,
             .resolved_syntax_style = null,
             .resolved_style_id = 0,
@@ -3101,8 +3272,7 @@ pub const UnifiedTextBuffer = struct {
 
     fn releaseInternalStyle(self: *Self, slot_id: u32) void {
         if (slot_id & internal_style_base == 0) return;
-        const index: usize = slot_id & ~internal_style_base;
-        if (index >= self.internal_style_slots.items.len) return;
+        const index = self.internalStyleSlotIndex(slot_id) orelse return;
         const slot = &self.internal_style_slots.items[index];
         if (slot.refs == 0) return;
         slot.refs -= 1;
@@ -3114,19 +3284,26 @@ pub const UnifiedTextBuffer = struct {
 
     fn retainInternalStyle(self: *Self, slot_id: u32) TextBufferError!void {
         if (slot_id & internal_style_base == 0) return;
-        const index: usize = slot_id & ~internal_style_base;
-        if (index >= self.internal_style_slots.items.len) return TextBufferError.InvalidDimensions;
+        const index = self.internalStyleSlotIndex(slot_id) orelse return TextBufferError.InvalidDimensions;
         const slot = &self.internal_style_slots.items[index];
         if (slot.refs == 0 or slot.refs == std.math.maxInt(u32)) return TextBufferError.InvalidDimensions;
         slot.refs += 1;
     }
 
+    pub fn internalStyleSlotIndex(self: *const Self, slot_id: u32) ?usize {
+        if (slot_id & internal_style_base == 0) return null;
+        for (self.internal_style_slots.items, 0..) |slot, index| {
+            if (slot.id == slot_id) return index;
+        }
+        return null;
+    }
+
     fn resolveAnnotationStyle(self: *Self, slot_id: u32) TextBufferError!u32 {
         if (slot_id & internal_style_base == 0) return slot_id;
-        const index: usize = slot_id & ~internal_style_base;
-        if (index >= self.internal_style_slots.items.len) return 0;
+        const index = self.internalStyleSlotIndex(slot_id) orelse return 0;
         const style = self.syntax_style orelse return 0;
         const slot = &self.internal_style_slots.items[index];
+        if (slot.refs == 0) return 0;
         if (slot.resolved_syntax_style == style) return slot.resolved_style_id;
         var definition = slot.definition;
         if (slot.link_url) |url| {

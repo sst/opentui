@@ -825,27 +825,18 @@ pub const EditBuffer = struct {
         var effects: []tb.AnnotationOperationEffect = &.{};
         if (history_active) effects = self.allocator.alloc(tb.AnnotationOperationEffect, operations.len) catch return tb.TextBufferError.OutOfMemory;
         defer if (history_active) self.allocator.free(effects);
-        if (history_active) {
-            if (undo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
-            if (redo_journal) |journal| journal.annotation_splice.?.ensureJournalCapacity(operations.len) catch return tb.TextBufferError.OutOfMemory;
-        }
         const result = if (history_active)
-            try self.tb.applyAnnotationOperationsWithEffects(operations, created_ids, deleted_ids, effects)
+            try self.tb.applyAnnotationOperationsWithHistory(
+                operations,
+                created_ids,
+                deleted_ids,
+                effects,
+                if (undo_journal) |journal| &journal.annotation_splice.? else null,
+                if (redo_journal) |journal| &journal.annotation_splice.? else null,
+            )
         else
             try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
-        if (history_active) {
-            for (operations, effects) |operation, effect| switch (operation.kind) {
-                .add_range, .add_point, .update_range, .update_point, .update_payload => {
-                    if (effect.before == null and effect.after == null) continue;
-                    if (undo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .after, effect.before, effect.after);
-                    if (redo_journal) |journal| self.tb.journalAnnotationDelta(&journal.annotation_splice.?, .before, effect.before, effect.after);
-                },
-                // Explicit removals are authoritative even when their state
-                // exists only in history, so replay cannot resurrect it.
-                .remove => self.tb.purgeAnnotationHistory(&.{operation.id}),
-                .clear_namespace => self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace),
-            };
-        } else {
+        if (!history_active) {
             for (operations) |operation| switch (operation.kind) {
                 .remove => self.tb.purgeAnnotationHistory(&.{operation.id}),
                 .clear_namespace => self.tb.purgeAnnotationHistoryNamespace(operation.payload.namespace),
@@ -853,6 +844,87 @@ pub const EditBuffer = struct {
             };
         }
         return result;
+    }
+
+    fn annotationPayloadInput(payload: TextAnnotations.Payload) TextAnnotations.PayloadInput {
+        return .{
+            .namespace = payload.namespace,
+            .style_id = payload.style_id,
+            .highlight_ref = payload.highlight_ref,
+            .priority = payload.priority,
+            .internal = payload.internal,
+            .kind_flags = payload.kind_flags,
+            .splice_policy = payload.splice_policy,
+        };
+    }
+
+    pub fn clearLineHighlights(self: *EditBuffer, line_idx: usize) tb.TextBufferError!void {
+        if (line_idx >= self.tb.getLineCount()) {
+            self.tb.clearExternalLineHighlights(line_idx);
+            return;
+        }
+        const line_start = try self.tb.normalizedLineStart(@intCast(line_idx));
+        const line_end = if (line_idx + 1 < self.tb.getLineCount())
+            try self.tb.normalizedLineStart(@intCast(line_idx + 1))
+        else
+            self.tb.getByteSize();
+        var operations: std.ArrayListUnmanaged(tb.AnnotationOperation) = .empty;
+        defer operations.deinit(self.allocator);
+        var created_count: usize = 0;
+        var deleted_count: usize = 0;
+        var annotations = self.tb.textAnnotations().iterator();
+        while (annotations.next() catch return tb.TextBufferError.InvalidDimensions) |annotation| {
+            if (annotation.payload.kind_flags & tb.annotation_kind_style == 0 or annotation.mark != .range) continue;
+            const range = annotation.mark.range;
+            if (range.start_byte >= range.end_byte or range.start_byte >= line_end or range.end_byte <= line_start) continue;
+            try operations.append(self.allocator, .{ .kind = .remove, .id = annotation.id() });
+            deleted_count += 1;
+            if (range.start_byte < line_start) {
+                try operations.append(self.allocator, .{
+                    .kind = .add_range,
+                    .start_byte = range.start_byte,
+                    .end_byte = line_start,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                    .payload = annotationPayloadInput(annotation.payload),
+                });
+                created_count += 1;
+            }
+            if (range.end_byte > line_end) {
+                try operations.append(self.allocator, .{
+                    .kind = .add_range,
+                    .start_byte = line_end,
+                    .end_byte = range.end_byte,
+                    .start_gravity = range.start_gravity,
+                    .end_gravity = range.end_gravity,
+                    .payload = annotationPayloadInput(annotation.payload),
+                });
+                created_count += 1;
+            }
+        }
+        const created = self.allocator.alloc(u64, created_count) catch return tb.TextBufferError.OutOfMemory;
+        defer self.allocator.free(created);
+        const deleted = self.allocator.alloc(u64, deleted_count) catch return tb.TextBufferError.OutOfMemory;
+        defer self.allocator.free(deleted);
+        _ = try self.tb.applyAnnotationOperations(operations.items, created, deleted);
+        self.tb.purgeAnnotationHistory(deleted);
+        self.tb.clearExternalLineHighlights(line_idx);
+    }
+
+    pub fn clearAllHighlights(self: *EditBuffer) tb.TextBufferError!void {
+        var operations: std.ArrayListUnmanaged(tb.AnnotationOperation) = .empty;
+        defer operations.deinit(self.allocator);
+        var annotations = self.tb.textAnnotations().iterator();
+        while (annotations.next() catch return tb.TextBufferError.InvalidDimensions) |annotation| {
+            if (annotation.payload.kind_flags & tb.annotation_kind_style != 0) {
+                try operations.append(self.allocator, .{ .kind = .remove, .id = annotation.id() });
+            }
+        }
+        const deleted = self.allocator.alloc(u64, operations.items.len) catch return tb.TextBufferError.OutOfMemory;
+        defer self.allocator.free(deleted);
+        _ = try self.tb.applyAnnotationOperations(operations.items, &.{}, deleted);
+        self.tb.purgeAnnotationHistory(deleted);
+        self.tb.clearAllExternalHighlights();
     }
 
     pub fn clear(self: *EditBuffer) !void {

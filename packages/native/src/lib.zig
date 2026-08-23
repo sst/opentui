@@ -4130,11 +4130,19 @@ export fn textBufferRemoveHighlightsByRef(tb_handle: NativeHandle, hl_ref: u16) 
 
 export fn textBufferClearLineHighlights(tb_handle: NativeHandle, line_idx: u32) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr)) |owner| {
+        owner.clearLineHighlights(line_idx) catch {};
+        return;
+    }
     object_ptr.clearLineHighlights(line_idx);
 }
 
 export fn textBufferClearAllHighlights(tb_handle: NativeHandle) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    if (borrowedEditBufferOwner(tb_handle, object_ptr)) |owner| {
+        owner.clearAllHighlights() catch {};
+        return;
+    }
     object_ptr.clearAllHighlights();
 }
 
@@ -4662,6 +4670,69 @@ test "borrowed EditBuffer text handles reject unjournaled mutations" {
         null,
         0,
     ));
+}
+
+test "borrowed TextBuffer annotation mutators are guarded or owner-routed" {
+    const Mutation = enum {
+        apply_annotations,
+        add_line_highlight,
+        add_range_highlight,
+        remove_highlight_ref,
+        clear_line_highlights,
+        clear_all_highlights,
+    };
+    for (std.enums.values(Mutation)) |mutation| {
+        const edit_handle = createEditBuffer(1, INVALID_HANDLE);
+        try std.testing.expect(edit_handle != INVALID_HANDLE);
+        defer destroyEditBuffer(edit_handle);
+        editBufferSetText(edit_handle, "abc".ptr, 3);
+        const tb_handle = editBufferGetTextBuffer(edit_handle);
+        const owner = acquireEditBuffer(edit_handle).?;
+        const annotation = try owner.addAnnotationRange(.{ .start_byte = 0, .end_byte = 3 }, .{
+            .namespace = 7,
+            .style_id = 11,
+            .kind_flags = text_buffer.annotation_kind_style,
+        });
+        try owner.setCursorByOffset(0);
+        try owner.insertText("X");
+
+        const highlight: ExternalHighlight = .{ .start = 0, .end = 1, .style_id = 12, .priority = 1, .hl_ref = 44 };
+        switch (mutation) {
+            .apply_annotations => {
+                const operation = [_]ExternalAnnotationOperation{.{
+                    .kind = @intFromEnum(text_buffer.AnnotationOperationKind.remove),
+                    .id = annotation,
+                }};
+                var result: ExternalAnnotationBatchResult = undefined;
+                var deleted: [1]u64 = undefined;
+                try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferApplyAnnotationOperations(
+                    tb_handle,
+                    &operation,
+                    1,
+                    null,
+                    0,
+                    &deleted,
+                    1,
+                    &result,
+                ));
+            },
+            .add_line_highlight => textBufferAddHighlight(tb_handle, 0, @ptrCast(&highlight)),
+            .add_range_highlight => textBufferAddHighlightByCharRange(tb_handle, @ptrCast(&highlight)),
+            .remove_highlight_ref => {
+                textBufferAddHighlight(tb_handle, 0, @ptrCast(&highlight));
+                textBufferRemoveHighlightsByRef(tb_handle, highlight.hl_ref);
+            },
+            .clear_line_highlights => textBufferClearLineHighlights(tb_handle, 0),
+            .clear_all_highlights => textBufferClearAllHighlights(tb_handle),
+        }
+
+        const clears_annotations = mutation == .apply_annotations or mutation == .clear_line_highlights or mutation == .clear_all_highlights;
+        try std.testing.expectEqual(!clears_annotations, owner.getTextBuffer().textAnnotations().get(annotation) != null);
+        _ = try owner.undo();
+        try std.testing.expectEqual(!clears_annotations, owner.getTextBuffer().textAnnotations().get(annotation) != null);
+        _ = try owner.redo();
+        try std.testing.expectEqual(!clears_annotations, owner.getTextBuffer().textAnnotations().get(annotation) != null);
+    }
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
