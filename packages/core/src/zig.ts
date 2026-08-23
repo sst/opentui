@@ -16,6 +16,7 @@ import {
   type CursorStyle,
   type CursorStyleOptions,
   type SelectionOccupancy,
+  type SelectionBehavior,
   type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
@@ -353,6 +354,14 @@ function rgbaBuffer(value: RGBA): Uint16Array {
 
 function optionalRgbaBuffer(value: RGBA | null | undefined): Uint16Array | null {
   return value ? rgbaBuffer(value) : null
+}
+
+function selectionBehaviorByte(behavior?: SelectionBehavior): number {
+  return behavior === "word" ? 1 : behavior === "line" ? 2 : 0
+}
+
+function editorLocalSelectionFlags(updateCursor: boolean, followCursor: boolean, behavior?: SelectionBehavior): number {
+  return ffiBool(updateCursor) | (ffiBool(followCursor) << 1) | (selectionBehaviorByte(behavior) << 2)
 }
 
 function getOpenTUILib(libPath?: string) {
@@ -1109,7 +1118,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     textBufferViewSetLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     textBufferViewUpdateSelection: {
@@ -1117,7 +1126,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewUpdateLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     textBufferViewResetLocalSelection: {
@@ -1423,7 +1432,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -1431,12 +1440,16 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
+      args: ["u32", "i32", "i32", "i32", "i32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
       args: ["u32"],
       returns: "void",
+    },
+    editorViewConvertSelectionToCell: {
+      args: ["u32"],
+      returns: "bool",
     },
     editorViewSetSelectionOccupancy: {
       args: ["u32", "u8"],
@@ -2820,6 +2833,7 @@ export interface RenderLib extends AudioEngineLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    behavior?: SelectionBehavior,
   ) => boolean
   textBufferViewUpdateSelection: (
     view: TextBufferViewHandle,
@@ -2835,6 +2849,7 @@ export interface RenderLib extends AudioEngineLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    behavior?: SelectionBehavior,
   ) => boolean
   textBufferViewResetLocalSelection: (view: TextBufferViewHandle) => void
   textBufferViewSetSelectionOccupancy: (view: TextBufferViewHandle, occupancy: SelectionOccupancy) => void
@@ -2963,6 +2978,7 @@ export interface RenderLib extends AudioEngineLib {
     fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
+    behavior?: SelectionBehavior,
   ) => boolean
 
   editorViewUpdateSelection: (view: EditorViewHandle, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
@@ -2976,9 +2992,11 @@ export interface RenderLib extends AudioEngineLib {
     fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
+    behavior?: SelectionBehavior,
   ) => boolean
 
   editorViewResetLocalSelection: (view: EditorViewHandle) => void
+  editorViewConvertSelectionToCell: (view: EditorViewHandle) => boolean
   editorViewSetSelectionOccupancy: (view: EditorViewHandle, occupancy: SelectionOccupancy) => void
   editorViewSetSelectionInclusive: (
     view: EditorViewHandle,
@@ -5116,10 +5134,22 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    behavior?: SelectionBehavior,
   ): boolean {
     const bg = optionalRgbaBuffer(bgColor)
     const fg = optionalRgbaBuffer(fgColor)
-    return Boolean(this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg))
+    return Boolean(
+      this.opentui.symbols.textBufferViewSetLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        selectionBehaviorByte(behavior),
+      ),
+    )
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -5136,11 +5166,21 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    behavior?: SelectionBehavior,
   ): boolean {
     const bg = optionalRgbaBuffer(bgColor)
     const fg = optionalRgbaBuffer(fgColor)
     return Boolean(
-      this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg),
+      this.opentui.symbols.textBufferViewUpdateLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        selectionBehaviorByte(behavior),
+      ),
     )
   }
 
@@ -5751,6 +5791,7 @@ class FFIRenderLib implements RenderLib {
     fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
+    behavior?: SelectionBehavior,
   ): boolean {
     const bg = optionalRgbaBuffer(bgColor)
     const fg = optionalRgbaBuffer(fgColor)
@@ -5763,8 +5804,7 @@ class FFIRenderLib implements RenderLib {
         focusY,
         bg,
         fg,
-        ffiBool(updateCursor),
-        ffiBool(followCursor),
+        editorLocalSelectionFlags(updateCursor, followCursor, behavior),
       ),
     )
   }
@@ -5785,6 +5825,7 @@ class FFIRenderLib implements RenderLib {
     fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
+    behavior?: SelectionBehavior,
   ): boolean {
     const bg = optionalRgbaBuffer(bgColor)
     const fg = optionalRgbaBuffer(fgColor)
@@ -5797,14 +5838,17 @@ class FFIRenderLib implements RenderLib {
         focusY,
         bg,
         fg,
-        ffiBool(updateCursor),
-        ffiBool(followCursor),
+        editorLocalSelectionFlags(updateCursor, followCursor, behavior),
       ),
     )
   }
 
   public editorViewResetLocalSelection(view: Pointer): void {
     this.opentui.symbols.editorViewResetLocalSelection(view)
+  }
+
+  public editorViewConvertSelectionToCell(view: Pointer): boolean {
+    return Boolean(this.opentui.symbols.editorViewConvertSelectionToCell(view))
   }
 
   public editorViewSetSelectionOccupancy(view: Pointer, occupancy: SelectionOccupancy): void {

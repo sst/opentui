@@ -39,6 +39,11 @@ export type CursorStyle = "block" | "line" | "underline" | "default"
  * range `[min, max)`. */
 export type SelectionOccupancy = "cell" | "boundary"
 
+/** How local cell coordinates expand into a highlight range.
+ * `cell` is the current inclusive press/drag. `word` and `line` expand
+ * each endpoint through native selectWord / selectLine. */
+export type SelectionBehavior = "cell" | "word" | "line"
+
 export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 
 export interface CursorStyleOptions {
@@ -144,7 +149,7 @@ export interface RenderContext extends EventEmitter {
   keyInput: KeyHandler
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
-  startSelection: (renderable: Renderable, x: number, y: number) => void
+  startSelection: (renderable: Renderable, x: number, y: number, behavior?: SelectionBehavior) => void
   updateSelection: (
     currentRenderable: Renderable | undefined,
     x: number,

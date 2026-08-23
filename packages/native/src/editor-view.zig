@@ -335,7 +335,11 @@ pub const EditorView = struct {
     }
 
     pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
-        const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        return self.setLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, bgColor, fgColor, updateCursor, .cell);
+    }
+
+    pub fn setLocalSelectionBehavior(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool, behavior: tbv.SelectionBehavior) bool {
+        const changed = self.text_buffer_view.setLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, bgColor, fgColor, behavior);
         self.selection_updates_cursor = updateCursor;
 
         if (updateCursor and self.text_buffer_view.selection_endpoints != null) {
@@ -347,8 +351,12 @@ pub const EditorView = struct {
     }
 
     pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
+        return self.updateLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, bgColor, fgColor, updateCursor, .cell);
+    }
+
+    pub fn updateLocalSelectionBehavior(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool, behavior: tbv.SelectionBehavior) bool {
         const had_endpoints = self.text_buffer_view.selection_endpoints != null;
-        const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        const changed = self.text_buffer_view.updateLocalSelectionBehavior(anchorX, anchorY, focusX, focusY, bgColor, fgColor, behavior);
         if (!had_endpoints) {
             self.selection_updates_cursor = updateCursor;
         } else if (updateCursor) {
@@ -361,6 +369,13 @@ pub const EditorView = struct {
         }
 
         return changed;
+    }
+
+    pub fn convertSelectionToCell(self: *EditorView) bool {
+        if (!self.text_buffer_view.convertSelectionToCell()) return false;
+        self.selection_updates_cursor = true;
+        self.syncCursorToSelectionFocus();
+        return true;
     }
 
     pub fn resetLocalSelection(self: *EditorView) void {

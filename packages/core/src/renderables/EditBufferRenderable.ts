@@ -493,6 +493,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this._selectionBg,
       this._selectionFg,
       false,
+      false,
+      localSelection.behavior,
     )
   }
 
@@ -527,6 +529,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        localSelection.behavior,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -538,6 +541,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        localSelection.behavior,
       )
     }
 
@@ -1165,6 +1169,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection || !this.hasSelection()) {
         this._ctx.startSelection(this, cursorX, cursorY)
+      } else if (this._ctx.getSelection()?.behavior !== "cell") {
+        if (this.editorView.convertSelectionToCell()) {
+          const selection = this._ctx.getSelection()
+          if (selection) selection.behavior = "cell"
+        }
       }
       return
     }

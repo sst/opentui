@@ -139,6 +139,10 @@ textarea.gotoBufferEnd({ select: true })
 
 ### Selection
 
+Textarea uses the repeated-click behavior from [Text selection](/docs/core-concepts/interaction#text-selection). After a
+double-click or triple-click, the cursor stays on the clicked grapheme. A later Shift+Arrow keeps the selected text and
+continues the selection by cells, not by words or lines.
+
 ```typescript
 textarea.setSelection(start, end) // half-open [start, end) in both occupancy modes
 textarea.setSelectionInclusive(start, end) // also selects the grapheme at end in cell mode
