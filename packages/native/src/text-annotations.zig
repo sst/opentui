@@ -27,7 +27,6 @@ pub const TextAnnotations = struct {
     pub const PayloadInput = struct {
         namespace: u32,
         style_id: u32 = 0,
-        client_token: u64 = 0,
         priority: u8 = 0,
         internal: bool = false,
         kind_flags: u32 = 0,
@@ -37,7 +36,6 @@ pub const TextAnnotations = struct {
     pub const Payload = struct {
         namespace: u32,
         style_id: u32,
-        client_token: u64,
         priority: u8,
         sequence: u64,
         internal: bool,
@@ -622,6 +620,40 @@ pub const TextAnnotations = struct {
         for (annotations.items) |annotation| try visitor(context, annotation);
     }
 
+    pub const UnorderedVisitMode = enum { overlapping, starting, points };
+
+    /// Visits directly in tree order for callers that sort complete output themselves.
+    pub fn visitUnordered(self: *Self, mode: UnorderedVisitMode, first_byte: u32, second_byte: u32, context: anytype, visitor: anytype) !void {
+        const Adapter = struct {
+            owner: *Self,
+            target: @TypeOf(context),
+
+            fn range(adapter: *@This(), value: MarkTree.Range) !void {
+                const annotation: Annotation = .{
+                    .mark = .{ .range = value },
+                    .payload = adapter.owner.payloads.get(value.id).?,
+                };
+                try visitor(adapter.target, annotation);
+            }
+
+            fn point(adapter: *@This(), value: MarkTree.Point) !void {
+                const annotation: Annotation = .{
+                    .mark = .{ .point = value },
+                    .payload = adapter.owner.payloads.get(value.id).?,
+                };
+                try visitor(adapter.target, annotation);
+            }
+        };
+        var adapter: Adapter = .{ .owner = self, .target = context };
+        self.active_visits += 1;
+        defer self.active_visits -= 1;
+        switch (mode) {
+            .overlapping => try self.tree.visitOverlapping(first_byte, second_byte, &adapter, Adapter.range),
+            .starting => try self.tree.visitStartingAt(first_byte, &adapter, Adapter.range),
+            .points => try self.tree.visitPointsAt(first_byte, &adapter, Adapter.point),
+        }
+    }
+
     /// Finds the highest-precedence overlapping range with any requested kind
     /// without allocating query storage.
     pub fn findOverlappingKind(self: *Self, first_byte: u32, second_byte: u32, kind_mask: u32) ?Annotation {
@@ -748,7 +780,6 @@ pub const TextAnnotations = struct {
         return .{
             .namespace = input.namespace,
             .style_id = input.style_id,
-            .client_token = input.client_token,
             .priority = input.priority,
             .sequence = sequence,
             .internal = input.internal,
@@ -761,7 +792,6 @@ pub const TextAnnotations = struct {
         return .{
             .namespace = payload.namespace,
             .style_id = payload.style_id,
-            .client_token = payload.client_token,
             .priority = payload.priority,
             .internal = payload.internal,
             .kind_flags = payload.kind_flags,

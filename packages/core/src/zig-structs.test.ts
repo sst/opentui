@@ -12,14 +12,13 @@ import {
 
 describe("annotation ABI", () => {
   test("matches native fixed-width sizes and offsets", () => {
-    expect(AnnotationOperationStruct.size).toBe(64)
+    expect(AnnotationOperationStruct.size).toBe(56)
     expect(AnnotationOperationStruct.layoutByName.get("id")?.offset).toBe(8)
-    expect(AnnotationOperationStruct.layoutByName.get("clientToken")?.offset).toBe(16)
     expect(AnnotationQueryStruct.size).toBe(32)
     expect(AnnotationQueryStruct.layoutByName.get("id")?.offset).toBe(8)
-    expect(AnnotationRecordStruct.size).toBe(72)
-    expect(AnnotationRecordStruct.layoutByName.get("sequence")?.offset).toBe(16)
-    expect(AnnotationRecordStruct.layoutByName.get("kindFlags")?.offset).toBe(40)
+    expect(AnnotationRecordStruct.size).toBe(64)
+    expect(AnnotationRecordStruct.layoutByName.get("sequence")?.offset).toBe(8)
+    expect(AnnotationRecordStruct.layoutByName.get("kindFlags")?.offset).toBe(32)
     expect(AnnotationBatchResultStruct.size).toBe(8)
     expect(DisplayPointStruct.size).toBe(12)
   })

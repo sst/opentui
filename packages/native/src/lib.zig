@@ -3164,7 +3164,6 @@ pub const ExternalAnnotationOperation = extern struct {
     kind: u32,
     internal: u32 = 0,
     id: u64 = 0,
-    client_token: u64 = 0,
     start_byte: u32 = 0,
     end_byte: u32 = 0,
     namespace: u32 = 0,
@@ -3189,7 +3188,6 @@ pub const ExternalAnnotationQuery = extern struct {
 
 pub const ExternalAnnotationRecord = extern struct {
     id: u64,
-    client_token: u64,
     sequence: u64,
     start_byte: u32,
     end_byte: u32,
@@ -3301,14 +3299,13 @@ pub const ExternalTextSpliceResult = extern struct {
 };
 
 comptime {
-    std.debug.assert(@sizeOf(ExternalAnnotationOperation) == 64);
+    std.debug.assert(@sizeOf(ExternalAnnotationOperation) == 56);
     std.debug.assert(@offsetOf(ExternalAnnotationOperation, "id") == 8);
-    std.debug.assert(@offsetOf(ExternalAnnotationOperation, "client_token") == 16);
     std.debug.assert(@sizeOf(ExternalAnnotationQuery) == 32);
     std.debug.assert(@offsetOf(ExternalAnnotationQuery, "id") == 8);
-    std.debug.assert(@sizeOf(ExternalAnnotationRecord) == 72);
-    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "sequence") == 16);
-    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "kind_flags") == 40);
+    std.debug.assert(@sizeOf(ExternalAnnotationRecord) == 64);
+    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "sequence") == 8);
+    std.debug.assert(@offsetOf(ExternalAnnotationRecord, "kind_flags") == 32);
     std.debug.assert(@sizeOf(ExternalAnnotationBatchResult) == 8);
     std.debug.assert(@sizeOf(ExternalDisplayPoint) == 12);
     std.debug.assert(@sizeOf(ExternalStyledChunk32) == 64);
@@ -3353,7 +3350,7 @@ const AnnotationQueryMode = enum(u32) {
 };
 
 fn externalAnnotationPayloadIsZero(operation: ExternalAnnotationOperation) bool {
-    return operation.internal == 0 and operation.client_token == 0 and operation.namespace == 0 and
+    return operation.internal == 0 and operation.namespace == 0 and
         operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0;
 }
 
@@ -3380,8 +3377,7 @@ fn validExternalAnnotationOperation(operation: ExternalAnnotationOperation) bool
             operation.start_gravity == 0 and operation.end_gravity == 0 and externalAnnotationPayloadIsZero(operation),
         .clear_namespace => operation.id == 0 and operation.start_byte == 0 and operation.end_byte == 0 and
             operation.start_gravity == 0 and operation.end_gravity == 0 and operation.internal == 0 and
-            operation.client_token == 0 and operation.style_id == 0 and operation.kind_flags == 0 and
-            operation.priority == 0 and operation.splice_policy == 0,
+            operation.style_id == 0 and operation.kind_flags == 0 and operation.priority == 0 and operation.splice_policy == 0,
     };
 }
 
@@ -3396,7 +3392,6 @@ fn decodeAnnotationOperation(operation: ExternalAnnotationOperation) text_buffer
         .payload = .{
             .namespace = operation.namespace,
             .style_id = operation.style_id,
-            .client_token = operation.client_token,
             .priority = @intCast(operation.priority),
             .internal = operation.internal != 0,
             .kind_flags = operation.kind_flags,
@@ -3447,7 +3442,6 @@ fn annotationMatches(annotation: anytype, query: ExternalAnnotationQuery) bool {
 fn externalAnnotationRecord(annotation: anytype) ExternalAnnotationRecord {
     var result: ExternalAnnotationRecord = .{
         .id = annotation.id(),
-        .client_token = annotation.payload.client_token,
         .sequence = annotation.payload.sequence,
         .start_byte = 0,
         .end_byte = 0,
@@ -3478,6 +3472,15 @@ fn externalAnnotationRecord(annotation: anytype) ExternalAnnotationRecord {
         },
     }
     return result;
+}
+
+fn sortExternalAnnotationRecords(records: []ExternalAnnotationRecord) void {
+    std.mem.sort(ExternalAnnotationRecord, records, {}, struct {
+        fn lessThan(_: void, a: ExternalAnnotationRecord, b: ExternalAnnotationRecord) bool {
+            if (a.start_byte != b.start_byte) return a.start_byte < b.start_byte;
+            return a.id < b.id;
+        }
+    }.lessThan);
 }
 
 export fn textBufferApplyAnnotationOperations(
@@ -3548,8 +3551,7 @@ export fn textBufferQueryAnnotations(
         fn visit(self: *@This(), annotation: anytype) !void {
             if (!annotationMatches(annotation, self.query)) return;
             if (self.records) |records| {
-                if (self.count >= records.len) return error.BufferTooSmall;
-                records[self.count] = externalAnnotationRecord(annotation);
+                if (self.count < records.len) records[self.count] = externalAnnotationRecord(annotation);
             }
             self.count += 1;
         }
@@ -3560,23 +3562,24 @@ export fn textBufferQueryAnnotations(
     };
     const annotations = object_ptr.textAnnotations();
     switch (@as(AnnotationQueryMode, @enumFromInt(query.mode))) {
-        .by_id => if (annotations.get(query.id)) |annotation| collector.visit(annotation) catch return @intFromEnum(TextDocumentStatus.buffer_too_small),
-        .overlap => annotations.visitOverlapping(query.start_byte, query.end_byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .by_id => if (annotations.get(query.id)) |annotation| collector.visit(annotation) catch unreachable,
+        .overlap => annotations.visitUnordered(.overlapping, query.start_byte, query.end_byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
         .containing_byte => if (query.byte != std.math.maxInt(u32)) {
-            annotations.visitOverlapping(query.byte, query.byte + 1, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
+            annotations.visitUnordered(.overlapping, query.byte, query.byte + 1, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory);
         },
-        .starts_at => annotations.visitStartingAt(query.byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
-        .points_at => annotations.visitPointsAt(query.byte, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .starts_at => annotations.visitUnordered(.starting, query.byte, 0, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
+        .points_at => annotations.visitUnordered(.points, query.byte, 0, &collector, Collector.visit) catch return @intFromEnum(TextDocumentStatus.out_of_memory),
         .all, .namespace, .kind_mask => {
             var iterator = annotations.iterator();
             while (iterator.next() catch return @intFromEnum(TextDocumentStatus.invalid_argument)) |annotation| {
-                collector.visit(annotation) catch return @intFromEnum(TextDocumentStatus.buffer_too_small);
+                collector.visit(annotation) catch unreachable;
             }
         },
     }
     count_output.* = collector.count;
     if (out_records == null) return @intFromEnum(TextDocumentStatus.ok);
     if (record_capacity < collector.count) return @intFromEnum(TextDocumentStatus.buffer_too_small);
+    sortExternalAnnotationRecords(out_records.?[0..collector.count]);
     return @intFromEnum(TextDocumentStatus.ok);
 }
 
@@ -4156,7 +4159,6 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
     var add = [_]ExternalAnnotationOperation{
         .{
             .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_range),
-            .client_token = 99,
             .start_byte = 1,
             .end_byte = 5,
             .namespace = 7,
@@ -4168,7 +4170,6 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
         },
         .{
             .kind = @intFromEnum(text_buffer.AnnotationOperationKind.add_point),
-            .client_token = 100,
             .start_byte = 1,
             .namespace = 8,
             .kind_flags = text_buffer.annotation_kind_virtual,
@@ -4200,7 +4201,6 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
     var records: [2]ExternalAnnotationRecord = undefined;
     try std.testing.expectEqual(@intFromEnum(TextDocumentStatus.ok), textBufferQueryAnnotations(handle, &all_query, &records, records.len, &count));
     try std.testing.expectEqualSlices(u64, &created, &.{ records[0].id, records[1].id });
-    try std.testing.expectEqual(@as(u64, 99), records[0].client_token);
     try std.testing.expectEqual(@as(u32, 1), records[0].kind);
     try std.testing.expectEqual(@as(u32, 2), records[1].kind);
     try std.testing.expectEqual(@as(u32, 1), records[1].point_gravity);
@@ -4223,7 +4223,7 @@ test "annotation FFI batch CRUD and bulk queries preserve deterministic records"
     var mutate = [_]ExternalAnnotationOperation{
         .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_range), .id = created[0], .start_byte = 2, .end_byte = 6, .start_gravity = 1 },
         .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_point), .id = created[1], .start_byte = 3 },
-        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_payload), .id = created[0], .client_token = 101, .namespace = 9, .kind_flags = text_buffer.annotation_kind_style },
+        .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.update_payload), .id = created[0], .namespace = 9, .kind_flags = text_buffer.annotation_kind_style },
         .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.remove), .id = created[1] },
         .{ .kind = @intFromEnum(text_buffer.AnnotationOperationKind.clear_namespace), .namespace = 9 },
     };

@@ -189,7 +189,6 @@ export const AnnotationOperationStruct = defineStruct([
   ["kind", "u32"],
   ["internal", "u32", { default: 0 }],
   ["id", "u64", { default: 0n }],
-  ["clientToken", "u64", { default: 0n }],
   ["startByte", "u32", { default: 0 }],
   ["endByte", "u32", { default: 0 }],
   ["namespace", "u32", { default: 0 }],
@@ -214,7 +213,6 @@ export const AnnotationQueryStruct = defineStruct([
 
 export const AnnotationRecordStruct = defineStruct([
   ["id", "u64"],
-  ["clientToken", "u64"],
   ["sequence", "u64"],
   ["startByte", "u32"],
   ["endByte", "u32"],

@@ -1801,7 +1801,7 @@ fn exerciseAnnotationBatchFailure(fail_offset: ?usize) !usize {
         .kind = .add_range,
         .start_byte = 1,
         .end_byte = 4,
-        .payload = .{ .namespace = 1, .client_token = 7 },
+        .payload = .{ .namespace = 1 },
     }}, &initial_created, &.{});
     const before = tb.textAnnotations().get(initial_created[0]).?;
     const epoch_before = tb.getAnnotationEpoch();
@@ -1810,7 +1810,7 @@ fn exerciseAnnotationBatchFailure(fail_offset: ?usize) !usize {
 
     const operations = [_]text_buffer.AnnotationOperation{
         .{ .kind = .update_range, .id = initial_created[0], .start_byte = 2, .end_byte = 5 },
-        .{ .kind = .add_point, .start_byte = 3, .payload = .{ .namespace = 2, .client_token = 8 } },
+        .{ .kind = .add_point, .start_byte = 3, .payload = .{ .namespace = 2 } },
     };
     var created = [_]u64{std.math.maxInt(u64)};
     const result = tb.applyAnnotationOperations(&operations, &created, &.{});
@@ -1827,7 +1827,7 @@ fn exerciseAnnotationBatchFailure(fail_offset: ?usize) !usize {
 
     try std.testing.expectEqual(@as(usize, 2), tb.textAnnotations().count());
     try std.testing.expectEqual(@as(u32, 2), tb.textAnnotations().get(initial_created[0]).?.mark.range.start_byte);
-    try std.testing.expectEqual(@as(u64, 8), tb.textAnnotations().get(created[0]).?.payload.client_token);
+    try std.testing.expectEqual(@as(u32, 2), tb.textAnnotations().get(created[0]).?.payload.namespace);
     try std.testing.expectEqual(epoch_before + 1, tb.getAnnotationEpoch());
     try tb.textAnnotations().validateIntegrity();
     return operation_allocations;

@@ -362,6 +362,19 @@ describe("ExtmarksController observable migration contract", () => {
     }
   })
 
+  it("clear purges owned marks that currently exist only in undo history", async () => {
+    const { textarea, extmarks } = await mount("abcdef")
+    const id = extmarks.create({ start: 2, end: 4, virtual: true, styleId: 7 })
+    textarea.cursorOffset = 4
+    textarea.deleteCharBackward()
+    expect(extmarks.get(id)).toBeNull()
+
+    extmarks.clear()
+    textarea.undo()
+    expect(extmarks.get(id)).toBeNull()
+    expect(textarea.getLineHighlights(0)).toEqual([])
+  })
+
   it("treats virtual marks atomically for horizontal and vertical cursor movement", async () => {
     {
       const { textarea, extmarks } = await mount("abcdefgh")
@@ -400,6 +413,63 @@ describe("ExtmarksController observable migration contract", () => {
         end: testCase.expected,
       })
     }
+  })
+
+  it("resolves overlapping virtual chains monotonically for direct and horizontal movement", async () => {
+    const { textarea, extmarks } = await mount("0123456789abcdef")
+    extmarks.create({ start: 2, end: 5, virtual: true })
+    extmarks.create({ start: 4, end: 8, virtual: true })
+    extmarks.create({ start: 7, end: 10, virtual: true })
+    extmarks.create({ start: 3, end: 6, virtual: true })
+    extmarks.create({ start: 3, end: 6, virtual: true })
+    extmarks.create({ start: 4, end: 5, virtual: true })
+    extmarks.create({ start: 4, end: 4, virtual: true })
+
+    textarea.cursorOffset = 0
+    textarea.editBuffer.setCursor(0, 4)
+    expect(textarea.cursorOffset).toBe(10)
+
+    textarea.cursorOffset = 12
+    textarea.editBuffer.setCursorByOffset(7)
+    expect(textarea.cursorOffset).toBe(1)
+
+    textarea.cursorOffset = 1
+    textarea.moveCursorRight()
+    expect(textarea.cursorOffset).toBe(10)
+    textarea.moveCursorLeft()
+    expect(textarea.cursorOffset).toBe(1)
+  })
+
+  it("resolves overlapping virtual chains for visual up and down movement", async () => {
+    const { textarea, extmarks } = await mount("0123456789\nabcdefghij\nABCDEFGHIJ")
+    extmarks.create({ start: 13, end: 16, virtual: true })
+    extmarks.create({ start: 15, end: 19, virtual: true })
+    extmarks.create({ start: 18, end: 21, virtual: true })
+
+    textarea.cursorOffset = 7
+    textarea.moveCursorDown()
+    expect(textarea.cursorOffset).toBe(21)
+
+    textarea.cursorOffset = 27
+    textarea.moveCursorUp()
+    expect(textarea.cursorOffset).toBe(12)
+  })
+
+  it("resolves overlap chains across tabs, Unicode, and normalized line boundaries", async () => {
+    const { textarea, extmarks } = await mount("A\t界\r\nBCDEF")
+    extmarks.create({ start: 1, end: 5, virtual: true })
+    extmarks.create({ start: 4, end: 8, virtual: true })
+
+    textarea.cursorOffset = 0
+    textarea.cursorOffset = 3
+    expect(textarea.cursorOffset).toBe(8)
+    textarea.cursorOffset = 0
+    textarea.editBuffer.setCursor(0, 2)
+    expect(textarea.cursorOffset).toBe(8)
+
+    textarea.cursorOffset = 10
+    textarea.cursorOffset = 4
+    expect(textarea.cursorOffset).toBe(0)
   })
 
   it("uses whole-mark deletion only at the atomic boundaries", async () => {
@@ -513,6 +583,26 @@ describe("ExtmarksController observable migration contract", () => {
     textarea.cursorOffset = 2
     textarea.moveCursorRight()
     expect(textarea.cursorOffset).toBe(3)
+  })
+
+  it("replaces a destroyed cached controller and isolates controller ownership", async () => {
+    const { textarea, extmarks } = await mount("abcdefgh")
+    const firstId = extmarks.create({ start: 1, end: 3 })
+    const second = createExtmarksController(textarea.editBuffer, textarea.editorView)
+    const secondId = second.create({ start: 4, end: 6 })
+
+    expect(extmarks.getAll().map(({ id }) => id)).toEqual([firstId])
+    expect(second.getAll().map(({ id }) => id)).toEqual([secondId])
+    extmarks.destroy()
+    expect(extmarks.isDestroyed).toBe(true)
+    expect(second.get(secondId)).not.toBeNull()
+
+    const fresh = textarea.extmarks
+    expect(fresh).not.toBe(extmarks)
+    expect(fresh.isDestroyed).toBe(false)
+    expect(fresh.getAll()).toEqual([])
+    fresh.destroy()
+    second.destroy()
   })
 
   it("uses display-cell offsets for tabs, wide and composed graphemes, and normalized line endings", async () => {

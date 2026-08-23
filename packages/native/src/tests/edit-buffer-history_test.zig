@@ -182,6 +182,32 @@ test "virtual annotation policy is native and reference counted" {
     try std.testing.expectEqual(@as(u32, 3), eb.getPrimaryCursor().offset);
 }
 
+test "virtual annotation policy ignores points and empty ranges without looping at buffer start" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abcdef");
+    const annotations = eb.getTextBuffer().textAnnotations();
+    _ = try annotations.addPoint(.{ .byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    _ = try annotations.addRange(.{ .start_byte = 3, .end_byte = 3 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    eb.setVirtualAnnotationPolicy(true);
+
+    try eb.setCursorByOffset(0);
+    try eb.setCursorByOffset(2);
+    try std.testing.expectEqual(@as(u32, 2), eb.getPrimaryCursor().offset);
+    try eb.setCursorByOffset(3);
+    try std.testing.expectEqual(@as(u32, 3), eb.getPrimaryCursor().offset);
+
+    _ = try annotations.addRange(.{ .start_byte = 0, .end_byte = 2 }, .{ .namespace = 1, .kind_flags = @import("../text-buffer.zig").annotation_kind_virtual });
+    try eb.setCursorByOffset(5);
+    try eb.setCursorByOffset(0);
+    try std.testing.expectEqual(@as(u32, 0), eb.getPrimaryCursor().offset);
+}
+
 test "explicit annotation removals are purged from text history" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -216,6 +242,25 @@ test "explicit annotation removals are purged from text history" {
     _ = try eb.undo();
     try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[0]) == null);
     try std.testing.expect(eb.getTextBuffer().textAnnotations().get(created[1]) != null);
+}
+
+test "bounded edit history trims annotation checkpoints with repeated edits" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    try eb.setText("abcdefghij");
+    eb.setMaxUndoDepth(4);
+    _ = try eb.getTextBuffer().textAnnotations().addRange(.{ .start_byte = 2, .end_byte = 8 }, .{ .namespace = 1 });
+    for (0..40) |_| try eb.insertText("x");
+
+    try std.testing.expectEqual(@as(usize, 4), eb.annotation_undo.items.len);
+    for (eb.annotation_undo.items) |checkpoint| try std.testing.expectEqual(@as(usize, 1), checkpoint.count());
+    eb.clearHistory();
+    try std.testing.expectEqual(@as(usize, 0), eb.annotation_undo.items.len);
 }
 
 test "EditBuffer - basic undo/redo with insertText" {

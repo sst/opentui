@@ -20,7 +20,6 @@ describe("TextBuffer native annotations", () => {
         endByte: 5,
         namespace: 7,
         styleId: 11,
-        clientToken: 99n,
         priority: 3,
         kindFlags: TEXT_ANNOTATION_KIND_STYLE,
         splicePolicy: "invalidate",
@@ -30,7 +29,6 @@ describe("TextBuffer native annotations", () => {
         byte: 1,
         gravity: "right",
         namespace: 8,
-        clientToken: 100n,
         kindFlags: TEXT_ANNOTATION_KIND_VIRTUAL,
       },
     ])
@@ -46,14 +44,13 @@ describe("TextBuffer native annotations", () => {
       endByte: 5,
       startGravity: "right",
       endGravity: "left",
-      clientToken: 99n,
       namespace: 7,
       styleId: 11,
       priority: 3,
       kindFlags: TEXT_ANNOTATION_KIND_STYLE,
       splicePolicy: "invalidate",
     })
-    expect(all[1]).toMatchObject({ kind: "point", pointGravity: "right", clientToken: 100n })
+    expect(all[1]).toMatchObject({ kind: "point", pointGravity: "right" })
     expect(all[1].sequence).toBeGreaterThan(all[0].sequence)
 
     expect(buffer.queryAnnotations({ kind: "byId", id: rangeId }).map((value) => value.id)).toEqual([rangeId])
@@ -75,7 +72,6 @@ describe("TextBuffer native annotations", () => {
         kind: "updatePayload",
         id: rangeId,
         namespace: 9,
-        clientToken: 101n,
         kindFlags: TEXT_ANNOTATION_KIND_STYLE,
       },
       { kind: "remove", id: pointId },
@@ -95,6 +91,29 @@ describe("TextBuffer native annotations", () => {
 
     expect(buffer.queryAnnotations({ kind: "byId", id: createdIds[0] })[0]).toMatchObject({ startByte: 4 })
     expect(buffer.queryAnnotations({ kind: "byId", id: createdIds[1] })).toEqual([])
+  })
+
+  test("orders every multi-result query by lower byte then native ID", () => {
+    const { createdIds: ids } = buffer.applyAnnotationOperations([
+      { kind: "addRange", startByte: 4, endByte: 6, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+      { kind: "addRange", startByte: 1, endByte: 4, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+      { kind: "addRange", startByte: 1, endByte: 3, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+      { kind: "addPoint", byte: 1, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+      { kind: "addPoint", byte: 1, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+      { kind: "addRange", startByte: 0, endByte: 6, namespace: 7, kindFlags: TEXT_ANNOTATION_KIND_STYLE },
+    ])
+    const ordered = [ids[5], ids[1], ids[2], ids[3], ids[4], ids[0]]
+    const ranges = [ids[5], ids[1], ids[2], ids[0]]
+
+    expect(buffer.queryAnnotations().map(({ id }) => id)).toEqual(ordered)
+    expect(buffer.queryAnnotations({ kind: "namespace", namespace: 7 }).map(({ id }) => id)).toEqual(ordered)
+    expect(
+      buffer.queryAnnotations({ kind: "kindMask", kindMask: TEXT_ANNOTATION_KIND_STYLE }).map(({ id }) => id),
+    ).toEqual(ordered)
+    expect(buffer.queryAnnotations({ kind: "overlap", startByte: 1, endByte: 5 }).map(({ id }) => id)).toEqual(ranges)
+    expect(buffer.queryAnnotations({ kind: "containingByte", byte: 2 }).map(({ id }) => id)).toEqual(ranges.slice(0, 3))
+    expect(buffer.queryAnnotations({ kind: "startsAt", byte: 1 }).map(({ id }) => id)).toEqual([ids[1], ids[2]])
+    expect(buffer.queryAnnotations({ kind: "pointsAt", byte: 1 }).map(({ id }) => id)).toEqual([ids[3], ids[4]])
   })
 
   test("converts Unicode display points with explicit affinity", () => {

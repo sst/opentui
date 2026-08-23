@@ -43,6 +43,7 @@ const UINT32_MAX = 0xffffffff
 export class ExtmarksController {
   private readonly editBuffer: EditBuffer
   private readonly sidecars = new Map<number, ExtmarkSidecar>()
+  private readonly nativeToPublic = new Map<bigint, number>()
   private nextId = 1
   private destroyed = false
   private readonly typeNameToId = new Map<string, number>()
@@ -50,6 +51,7 @@ export class ExtmarksController {
   private nextTypeId = 1
   private readonly handleAnnotationsReset = (): void => {
     this.sidecars.clear()
+    this.nativeToPublic.clear()
   }
 
   constructor(editBuffer: EditBuffer, _editorView: EditorView) {
@@ -78,15 +80,12 @@ export class ExtmarksController {
     return this.editBuffer
       .queryAnnotations(query)
       .filter((annotation) => annotation.kindFlags & TEXT_ANNOTATION_KIND_EXTMARK)
-      .filter((annotation) => {
-        const publicId = Number(annotation.clientToken)
-        return Number.isSafeInteger(publicId) && this.sidecars.get(publicId)?.nativeId === annotation.id
-      })
-      .sort((a, b) => Number(a.clientToken - b.clientToken))
+      .filter((annotation) => this.nativeToPublic.has(annotation.id))
+      .sort((a, b) => this.nativeToPublic.get(a.id)! - this.nativeToPublic.get(b.id)!)
   }
 
   private toExtmark(annotation: TextAnnotation): Extmark {
-    const id = Number(annotation.clientToken)
+    const id = this.nativeToPublic.get(annotation.id)!
     const sidecar = this.sidecars.get(id)!
     const start = this.byteToDisplayOffset(annotation.startByte, "before")
     const empty = (annotation.kindFlags & TEXT_ANNOTATION_KIND_EXTMARK_EMPTY) !== 0
@@ -141,7 +140,6 @@ export class ExtmarksController {
         namespace: typeId,
         styleId: options.styleId,
         priority: options.priority,
-        clientToken: BigInt(id),
         kindFlags,
         splicePolicy: "deleteWhenCovered",
       },
@@ -150,6 +148,7 @@ export class ExtmarksController {
     if (nativeId === undefined) throw new Error("Native extmark creation returned no ID")
 
     this.sidecars.set(id, { nativeId, data: options.data, metadata: options.metadata })
+    this.nativeToPublic.set(nativeId, id)
     this.nextId++
     return id
   }
@@ -160,6 +159,7 @@ export class ExtmarksController {
     if (!sidecar || this.editBuffer.queryAnnotations({ kind: "byId", id: sidecar.nativeId }).length === 0) return false
     this.editBuffer.applyAnnotationOperations([{ kind: "remove", id: sidecar.nativeId }])
     this.sidecars.delete(id)
+    this.nativeToPublic.delete(sidecar.nativeId)
     return true
   }
 
@@ -201,13 +201,13 @@ export class ExtmarksController {
 
   public clear(): void {
     if (this.destroyed) return
-    const annotations = this.query({ kind: "kindMask", kindMask: TEXT_ANNOTATION_KIND_EXTMARK })
-    if (annotations.length > 0) {
+    if (this.sidecars.size > 0) {
       this.editBuffer.applyAnnotationOperations(
-        annotations.map((annotation) => ({ kind: "remove", id: annotation.id })),
+        Array.from(this.sidecars.values(), ({ nativeId }) => ({ kind: "remove" as const, id: nativeId })),
       )
     }
     this.sidecars.clear()
+    this.nativeToPublic.clear()
   }
 
   public registerType(typeName: string): number {
@@ -235,6 +235,10 @@ export class ExtmarksController {
   public getMetadataFor(extmarkId: number): any {
     if (this.destroyed || !this.get(extmarkId)) return undefined
     return this.sidecars.get(extmarkId)?.metadata
+  }
+
+  public get isDestroyed(): boolean {
+    return this.destroyed
   }
 
   public destroy(): void {

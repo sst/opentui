@@ -273,7 +273,7 @@ export class EditorView {
   }
 
   public get extmarks(): any {
-    if (!this._extmarksController) {
+    if (!this._extmarksController || this._extmarksController.isDestroyed) {
       this._extmarksController = createExtmarksController(this.editBuffer, this)
     }
     return this._extmarksController

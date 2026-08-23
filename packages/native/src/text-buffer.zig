@@ -595,8 +595,8 @@ pub const UnifiedTextBuffer = struct {
             },
             .remove => {
                 const operation = operations[0];
+                const existing = self.annotations.get(operation.id) orelse return .{ .created_count = 0, .deleted_count = 0 };
                 if (deleted_ids.len < 1) return TextBufferError.InvalidDimensions;
-                const existing = self.annotations.get(operation.id) orelse return TextBufferError.InvalidIndex;
                 if (!(self.annotations.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
                 self.releaseInternalStyle(existing.payload.style_id);
                 deleted_ids[0] = operation.id;
@@ -644,7 +644,7 @@ pub const UnifiedTextBuffer = struct {
             }) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
             .update_payload => if (!(candidate.updatePayload(operation.id, operation.payload) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex,
             .remove => {
-                if (candidate.get(operation.id) == null) return TextBufferError.InvalidIndex;
+                if (candidate.get(operation.id) == null) continue;
                 prepared_deleted.append(self.global_allocator, operation.id) catch return TextBufferError.OutOfMemory;
                 if (!(candidate.remove(operation.id) catch |err| return annotationMutationError(err))) return TextBufferError.InvalidIndex;
             },
@@ -905,6 +905,12 @@ pub const UnifiedTextBuffer = struct {
             const chunk_bytes = chunk.getBytes(&self.mem_registry);
             const chunk_end = bytes_in_line +| @as(u32, @intCast(chunk_bytes.len));
             if (location.byte_in_line <= chunk_end) {
+                if (chunk.isAsciiOnly()) {
+                    return .{
+                        .point = .{ .row = location.row, .col = columns +| location.byte_in_line - bytes_in_line },
+                        .exact = true,
+                    };
+                }
                 const mapped = utf8.byteOffsetToDisplayColumn(
                     chunk_bytes,
                     location.byte_in_line - bytes_in_line,
@@ -2261,7 +2267,7 @@ pub const UnifiedTextBuffer = struct {
                 .col_end = end_col,
                 .style_id = annotation.annotation.payload.style_id,
                 .priority = annotation.annotation.payload.priority,
-                .hl_ref = std.math.cast(u16, annotation.annotation.payload.client_token) orelse 0,
+                .hl_ref = std.math.cast(u16, annotation.annotation.id() & std.math.maxInt(u32)) orelse 0,
                 .internal = true,
             });
         }

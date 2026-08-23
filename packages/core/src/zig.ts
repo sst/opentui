@@ -175,7 +175,6 @@ export type TextAnnotationSplicePolicy = "retain" | "invalidate" | "deleteWhenCo
 export type TextAnnotationPayload = {
   namespace: number
   styleId?: number
-  clientToken?: bigint
   priority?: number
   internal?: boolean
   kindFlags?: number
@@ -216,7 +215,6 @@ export type TextAnnotationQuery =
 
 export type TextAnnotation = TextAnnotationPayload & {
   id: bigint
-  clientToken: bigint
   sequence: bigint
   kind: "range" | "point"
   startByte: number
@@ -279,7 +277,6 @@ function annotationPayload(payload: Partial<TextAnnotationPayload>) {
   return {
     namespace: payload.namespace ?? 0,
     styleId: payload.styleId ?? 0,
-    clientToken: payload.clientToken ?? 0n,
     priority: payload.priority ?? 0,
     internal: payload.internal ? 1 : 0,
     kindFlags: payload.kindFlags ?? 0,
@@ -336,35 +333,33 @@ function packAnnotationOperations(operations: TextAnnotationOperation[]): Uint8A
   )
 }
 
-function packAnnotationQuery(query: TextAnnotationQuery): Uint8Array {
-  let packed: ArrayBuffer
+function annotationQueryFields(query: TextAnnotationQuery): {
+  mode: number
+  kindMask?: number
+  id?: bigint
+  namespace?: number
+  startByte?: number
+  endByte?: number
+  byte?: number
+} {
   switch (query.kind) {
     case "byId":
-      packed = AnnotationQueryStruct.pack({ mode: 0, id: query.id })
-      break
+      return { mode: 0, id: query.id }
     case "all":
-      packed = AnnotationQueryStruct.pack({ mode: 1 })
-      break
+      return { mode: 1 }
     case "namespace":
-      packed = AnnotationQueryStruct.pack({ mode: 2, namespace: query.namespace })
-      break
+      return { mode: 2, namespace: query.namespace }
     case "kindMask":
-      packed = AnnotationQueryStruct.pack({ mode: 3, kindMask: query.kindMask })
-      break
+      return { mode: 3, kindMask: query.kindMask }
     case "overlap":
-      packed = AnnotationQueryStruct.pack({ mode: 4, startByte: query.startByte, endByte: query.endByte })
-      break
+      return { mode: 4, startByte: query.startByte, endByte: query.endByte }
     case "containingByte":
-      packed = AnnotationQueryStruct.pack({ mode: 5, byte: query.byte })
-      break
+      return { mode: 5, byte: query.byte }
     case "startsAt":
-      packed = AnnotationQueryStruct.pack({ mode: 6, byte: query.byte })
-      break
+      return { mode: 6, byte: query.byte }
     case "pointsAt":
-      packed = AnnotationQueryStruct.pack({ mode: 7, byte: query.byte })
-      break
+      return { mode: 7, byte: query.byte }
   }
-  return new Uint8Array(packed)
 }
 
 function unpackAnnotation(record: Record<string, number | bigint>): TextAnnotation {
@@ -373,7 +368,6 @@ function unpackAnnotation(record: Record<string, number | bigint>): TextAnnotati
     record.splicePolicy === 1 ? "invalidate" : record.splicePolicy === 2 ? "deleteWhenCovered" : "retain"
   const result: TextAnnotation = {
     id: record.id as bigint,
-    clientToken: record.clientToken as bigint,
     sequence: record.sequence as bigint,
     kind: record.kind === 1 ? "range" : "point",
     startByte: record.startByte as number,
@@ -3660,7 +3654,13 @@ class FFIRenderLib implements RenderLib {
     },
     imageDrawOptions: allocStruct(ImageDrawOptionsStruct),
     gridDrawOptions: allocStruct(GridDrawOptionsStruct),
+    annotationQuery: (() => {
+      const storage = allocStruct(AnnotationQueryStruct)
+      return { ...storage, bytes: new Uint8Array(storage.buffer) }
+    })(),
   }
+  private readonly annotationQueryCount = new Uint32Array(1)
+  private annotationQueryRecords = new Uint8Array(16 * AnnotationRecordStruct.size)
   private disposed = false
   private clipboardServices = new Set<ClipboardServiceHandle>()
   public readonly encoder: TextEncoder = new TextEncoder()
@@ -5443,9 +5443,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   private textBufferAnnotationCount(buffer: TextBufferHandle): number {
-    const count = new Uint32Array(1)
+    const query = this.ffiStructStorage.annotationQuery
+    AnnotationQueryStruct.packInto(annotationQueryFields({ kind: "all" }), query.view, 0)
+    const count = this.annotationQueryCount
     checkTextDocumentStatus(
-      this.opentui.symbols.textBufferQueryAnnotations(buffer, packAnnotationQuery({ kind: "all" }), null, 0, count),
+      this.opentui.symbols.textBufferQueryAnnotations(buffer, query.bytes, null, 0, count),
       "queryAnnotations",
     )
     return count[0]
@@ -5487,19 +5489,30 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferQueryAnnotations(buffer: TextBufferHandle, query: TextAnnotationQuery): TextAnnotation[] {
-    const packed = packAnnotationQuery(query)
-    const count = new Uint32Array(1)
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferQueryAnnotations(buffer, packed, null, 0, count),
-      "queryAnnotations",
+    const packed = this.ffiStructStorage.annotationQuery
+    AnnotationQueryStruct.packInto(annotationQueryFields(query), packed.view, 0)
+    const count = this.annotationQueryCount
+    let capacity = this.annotationQueryRecords.byteLength / AnnotationRecordStruct.size
+    let status = this.opentui.symbols.textBufferQueryAnnotations(
+      buffer,
+      packed.bytes,
+      this.annotationQueryRecords,
+      capacity,
+      count,
     )
-    if (count[0] === 0) return []
-    const records = new Uint8Array(count[0] * AnnotationRecordStruct.size)
-    checkTextDocumentStatus(
-      this.opentui.symbols.textBufferQueryAnnotations(buffer, packed, records, count[0], count),
-      "queryAnnotations",
-    )
-    return AnnotationRecordStruct.unpackList(records.buffer, count[0]).map((record) =>
+    if (status === 5) {
+      capacity = count[0]
+      this.annotationQueryRecords = new Uint8Array(capacity * AnnotationRecordStruct.size)
+      status = this.opentui.symbols.textBufferQueryAnnotations(
+        buffer,
+        packed.bytes,
+        this.annotationQueryRecords,
+        capacity,
+        count,
+      )
+    }
+    checkTextDocumentStatus(status, "queryAnnotations")
+    return AnnotationRecordStruct.unpackList(this.annotationQueryRecords.buffer, count[0]).map((record) =>
       unpackAnnotation(record as Record<string, number | bigint>),
     )
   }

@@ -214,18 +214,20 @@ pub const EditBuffer = struct {
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
         const line_count = self.tb.lineCount();
         const clamped_row = @min(row, line_count -| 1);
-
         const line_width = iter_mod.lineWidthAt(self.tb.rope(), clamped_row);
         const clamped_col = @min(col, line_width);
-
         const offset = iter_mod.coordsToOffset(self.tb.rope(), clamped_row, clamped_col) orelse 0;
+        const adjusted = self.adjustCursorOffsetForAnnotations(offset, .direct);
+        const coords = iter_mod.offsetToCoords(self.tb.rope(), adjusted) orelse iter_mod.Coords{ .row = 0, .col = 0 };
+        try self.setCursorRaw(coords.row, coords.col, adjusted);
+    }
 
+    fn setCursorRaw(self: *EditBuffer, row: u32, col: u32, offset: u32) !void {
         if (self.cursors.items.len == 0) {
-            try self.cursors.append(self.allocator, .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col, .offset = offset });
+            try self.cursors.append(self.allocator, .{ .row = row, .col = col, .desired_col = col, .offset = offset });
         } else {
-            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col, .offset = offset };
+            self.cursors.items[0] = .{ .row = row, .col = col, .desired_col = col, .offset = offset };
         }
-
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
     }
@@ -233,12 +235,13 @@ pub const EditBuffer = struct {
     pub fn setCursorByOffset(self: *EditBuffer, offset: u32) !void {
         const adjusted = self.adjustCursorOffsetForAnnotations(offset, .direct);
         const coords = iter_mod.offsetToCoords(self.tb.rope(), adjusted) orelse iter_mod.Coords{ .row = 0, .col = 0 };
-        try self.setCursor(coords.row, coords.col);
+        try self.setCursorRaw(coords.row, coords.col, adjusted);
     }
 
     pub const AnnotationCursorMove = enum { direct, vertical_up, vertical_down };
 
     const AnnotationDisplayRange = struct { start: u32, end: u32 };
+    const AnnotationCursorDirection = enum { backward, forward };
 
     pub fn setVirtualAnnotationPolicy(self: *EditBuffer, enabled: bool) void {
         if (enabled) self.annotation_cursor_policy_references +|= 1 else self.annotation_cursor_policy_references -|= 1;
@@ -257,36 +260,63 @@ pub const EditBuffer = struct {
         const coords = iter_mod.offsetToCoords(self.tb.rope(), offset) orelse return null;
         const byte = self.tb.displayPointToNormalizedByteOffset(.{ .row = coords.row, .col = coords.col }, .before) catch return null;
         if (byte == std.math.maxInt(u32)) return null;
-        const annotation = self.tb.textAnnotations().findOverlappingKind(byte, byte + 1, tb.annotation_kind_virtual) orelse return null;
-        const range = switch (annotation.mark) {
-            .range => |value| value,
-            .point => return null,
+        const Context = struct {
+            owner: *EditBuffer,
+            target: u32,
+            result: ?AnnotationDisplayRange = null,
+
+            fn visit(context: *@This(), annotation: TextAnnotations.Annotation) !void {
+                if (annotation.payload.kind_flags & tb.annotation_kind_virtual == 0) return;
+                const range = switch (annotation.mark) {
+                    .range => |value| value,
+                    .point => return,
+                };
+                const start_point = (context.owner.tb.normalizedByteOffsetToDisplayPoint(range.start_byte, .before) catch return).point;
+                const end_point = (context.owner.tb.normalizedByteOffsetToDisplayPoint(range.end_byte, .after) catch return).point;
+                const start = iter_mod.coordsToOffset(context.owner.tb.rope(), start_point.row, start_point.col) orelse return;
+                const end = iter_mod.coordsToOffset(context.owner.tb.rope(), end_point.row, end_point.col) orelse return;
+                if (start >= end or context.target < start or context.target >= end) return;
+                if (context.result) |current| {
+                    context.result = .{ .start = @min(current.start, start), .end = @max(current.end, end) };
+                } else {
+                    context.result = .{ .start = start, .end = end };
+                }
+            }
         };
-        const start_point = (self.tb.normalizedByteOffsetToDisplayPoint(range.start_byte, .before) catch return null).point;
-        const end_point = (self.tb.normalizedByteOffsetToDisplayPoint(range.end_byte, .after) catch return null).point;
-        const start = iter_mod.coordsToOffset(self.tb.rope(), start_point.row, start_point.col) orelse return null;
-        const end = iter_mod.coordsToOffset(self.tb.rope(), end_point.row, end_point.col) orelse return null;
-        if (start >= end or offset < start or offset >= end) return null;
-        return .{ .start = start, .end = end };
+        var context: Context = .{ .owner = self, .target = offset };
+        self.tb.textAnnotations().visitUnordered(.overlapping, byte, byte + 1, &context, Context.visit) catch return null;
+        return context.result;
+    }
+
+    fn resolveCursorOffsetForAnnotations(self: *EditBuffer, target: u32, direction: AnnotationCursorDirection) u32 {
+        var resolved = target;
+        var remaining = self.tb.textAnnotations().count() +| 1;
+        while (remaining != 0) : (remaining -= 1) {
+            const range = self.annotationRangeAtOffset(resolved) orelse break;
+            const next = if (direction == .forward) range.end else range.start -| 1;
+            if ((direction == .forward and next <= resolved) or (direction == .backward and next >= resolved)) break;
+            resolved = next;
+        }
+        return resolved;
     }
 
     pub fn adjustCursorOffsetForAnnotations(self: *EditBuffer, target: u32, move: AnnotationCursorMove) u32 {
         const current = self.getPrimaryCursor().offset;
         const range = self.annotationRangeAtOffset(target) orelse return target;
         return switch (move) {
-            .direct => if (target > current and current <= range.start)
-                range.end
-            else if (target < current and current >= range.end)
-                range.start -| 1
+            .direct => if (target > current)
+                self.resolveCursorOffsetForAnnotations(target, .forward)
+            else if (target < current)
+                self.resolveCursorOffsetForAnnotations(target, .backward)
             else
                 target,
             .vertical_up, .vertical_down => blk: {
                 const distance_to_start = target - range.start;
                 const distance_to_end = range.end - target;
-                if (distance_to_start >= distance_to_end) break :blk range.end;
+                if (distance_to_start >= distance_to_end) break :blk self.resolveCursorOffsetForAnnotations(target, .forward);
                 const before = range.start -| 1;
-                if (move == .vertical_down and before <= current) break :blk range.end;
-                break :blk before;
+                if (move == .vertical_down and before <= current) break :blk self.resolveCursorOffsetForAnnotations(target, .forward);
+                break :blk self.resolveCursorOffsetForAnnotations(target, .backward);
             },
         };
     }
@@ -767,9 +797,20 @@ pub const EditBuffer = struct {
         deleted_ids: []u64,
     ) tb.TextBufferError!tb.AnnotationBatchResult {
         const result = try self.tb.applyAnnotationOperations(operations, created_ids, deleted_ids);
-        const deleted = deleted_ids[0..result.deleted_count];
-        for (self.annotation_undo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
-        for (self.annotation_redo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
+        // Explicit removal is authoritative even when the ID exists only in an
+        // undo checkpoint, so a later undo cannot resurrect controller-owned state.
+        var cleared_namespace = false;
+        for (operations) |operation| {
+            cleared_namespace = cleared_namespace or operation.kind == .clear_namespace;
+            if (operation.kind != .remove) continue;
+            for (self.annotation_undo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, &.{operation.id});
+            for (self.annotation_redo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, &.{operation.id});
+        }
+        if (cleared_namespace) {
+            const deleted = deleted_ids[0..result.deleted_count];
+            for (self.annotation_undo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
+            for (self.annotation_redo.items) |*checkpoint| self.tb.purgeAnnotationCheckpoint(checkpoint, deleted);
+        }
         return result;
     }
 
