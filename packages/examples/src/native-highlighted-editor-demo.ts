@@ -39,6 +39,16 @@ let incrementalHighlighter: NativeTreeSitterHighlighter | null = null
 let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let mode: HighlightMode = "static"
 let installedRangeCount = 0
+let lastStatusContent: string | undefined
+
+export function setContentIfChanged(
+  target: { content: string },
+  content: string,
+  previous: string | undefined,
+): string {
+  if (content !== previous) target.content = content
+  return content
+}
 
 function createDemoSyntaxStyle(): SyntaxStyle {
   return SyntaxStyle.fromStyles({
@@ -155,6 +165,7 @@ export function run(renderer: CliRenderer): void {
   renderer.configureDebugOverlay({ corner: DebugOverlayCorner.bottomLeft })
   syntaxStyle = createDemoSyntaxStyle()
   mode = "static"
+  lastStatusContent = undefined
 
   container = new BoxRenderable(renderer, {
     id: "native-highlighted-editor",
@@ -225,15 +236,15 @@ export function run(renderer: CliRenderer): void {
   renderer.setFrameCallback(async () => {
     if (!editor || editor.isDestroyed || !status) return
     const cursor = editor.logicalCursor
+    let nextStatus: string
     if (mode === "static") {
-      const rangeCount = extmarks?.getAll().length ?? 0
-      status.content = `mode=static | native ranges=${rangeCount}/${installedRangeCount} | parse=static | query=static\nedits incremental/reset=0/0 | changed=0B | queried=0B | highlight publications=1\nline=${cursor.row + 1} col=${cursor.col + 1}`
-      return
+      nextStatus = `mode=static | native ranges=${installedRangeCount}/${installedRangeCount} | parse=static | query=static\nedits incremental/reset=0/0 | changed=0B | queried=0B | highlight publications=1\nline=${cursor.row + 1} col=${cursor.col + 1}`
+    } else {
+      const stats = incrementalHighlighter?.getStats()
+      const rangeCount = incrementalHighlighter?.getRangeCount() ?? 0
+      nextStatus = `mode=incremental | native ranges=${rangeCount} | parse=${stats?.parseKind ?? "pending"} | query=${stats?.queryKind ?? "pending"}\nedits received/incremental/reset/coalesced=${stats?.receivedEditCount ?? 0}/${stats?.incrementalCount ?? 0}/${stats?.resetCount ?? 0}/${stats?.coalescedEditCount ?? 0} | queue=${stats?.queueDepth ?? 0}/${stats?.maxQueueDepth ?? 0} | changed=${stats?.changedByteCount ?? 0}B | queried=${stats?.queriedByteCount ?? 0}B | publications=${stats?.publicationCount ?? 0}\nline=${cursor.row + 1} col=${cursor.col + 1}${stats?.error ? ` | error=${stats.error}` : ""}`
     }
-
-    const stats = incrementalHighlighter?.getStats()
-    const rangeCount = incrementalHighlighter?.getRangeCount() ?? 0
-    status.content = `mode=incremental | native ranges=${rangeCount} | parse=${stats?.parseKind ?? "pending"} | query=${stats?.queryKind ?? "pending"}\nedits incremental/reset=${stats?.incrementalCount ?? 0}/${stats?.resetCount ?? 0} | changed=${stats?.changedByteCount ?? 0}B | queried=${stats?.queriedByteCount ?? 0}B | highlight publications=${stats?.publicationCount ?? 0}\nline=${cursor.row + 1} col=${cursor.col + 1}${stats?.error ? ` | error=${stats.error}` : ""}`
+    lastStatusContent = setContentIfChanged(status, nextStatus, lastStatusContent)
   })
 
   editor.focus()
@@ -256,6 +267,7 @@ export async function destroy(renderer: CliRenderer): Promise<void> {
   status = null
   syntaxStyle = null
   installedRangeCount = 0
+  lastStatusContent = undefined
   mode = "static"
 }
 
