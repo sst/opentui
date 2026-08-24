@@ -2084,6 +2084,57 @@ describe("EditBuffer exact content changes", () => {
     }
   })
 
+  it("delivers synchronous latest snapshots without retaining queued snapshots", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const snapshots: Array<{ change: EditChange; content: string }> = []
+    const unsubscribe = testBuffer.subscribeContentSnapshots((change, content) => snapshots.push({ change, content }))
+
+    try {
+      testBuffer.insertChar("A")
+      expect(snapshots.map(({ content }) => content)).toEqual(["A"])
+      expect((testBuffer as any).contentSnapshots.size).toBe(0)
+
+      testBuffer.insertChar("界")
+      expect(snapshots.map(({ content }) => content)).toEqual(["A", "A界"])
+      expect(snapshots[1]!.change.epoch).toBeGreaterThan(snapshots[0]!.change.epoch)
+      expect((testBuffer as any).contentSnapshots.size).toBe(0)
+
+      unsubscribe()
+      unsubscribe()
+      testBuffer.insertChar("B")
+      expect(snapshots.map(({ content }) => content)).toEqual(["A", "A界"])
+      await flushNativeEvents()
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("computes one snapshot for synchronous and queued content consumers", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const originalGetText = testBuffer.getText.bind(testBuffer)
+    const synchronous: string[] = []
+    const queued: string[] = []
+    let getTextCount = 0
+    testBuffer.getText = () => {
+      getTextCount++
+      return originalGetText()
+    }
+    testBuffer.subscribeContentSnapshots((_change, content) => synchronous.push(content))
+    testBuffer.on("content-changed", (_change: EditChange, content: string) => queued.push(content))
+
+    try {
+      testBuffer.insertText("snapshot")
+      expect(synchronous).toEqual(["snapshot"])
+      expect(queued).toEqual([])
+      expect(getTextCount).toBe(1)
+      await flushNativeEvents()
+      expect(queued).toEqual(["snapshot"])
+      expect(getTextCount).toBe(1)
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
   it("does not depend on the 1 MiB getText snapshot limit", async () => {
     const testBuffer = EditBuffer.create("unicode")
     const changes: EditChange[] = []

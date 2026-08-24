@@ -20,6 +20,8 @@ import type { SyntaxStyle } from "./syntax-style.js"
 
 export type { EditChange, LogicalCursor }
 
+export type ContentSnapshotSubscriber = (change: EditChange, content: string) => void
+
 /**
  * EditBuffer provides a text editing buffer with cursor management,
  * incremental editing, and grapheme-aware operations.
@@ -37,6 +39,8 @@ export class EditBuffer extends EventEmitter {
   private _destroyed: boolean = false
   private _syntaxStyle?: SyntaxStyle
   private readonly contentSnapshots = new Map<bigint, string>()
+  private readonly contentSnapshotSubscribers = new Set<ContentSnapshotSubscriber>()
+  private lastCapturedContentEpoch?: bigint
 
   constructor(lib: RenderLib, ptr: EditBufferHandle) {
     super()
@@ -84,10 +88,27 @@ export class EditBuffer extends EventEmitter {
   }
 
   private captureContentSnapshot(): void {
-    if (this.listenerCount("content-changed") === 0) return
+    const hasQueuedListeners = this.listenerCount("content-changed") > 0
+    if (!hasQueuedListeners && this.contentSnapshotSubscribers.size === 0) return
     const change = this.lib.editBufferGetLastChange(this.bufferPtr)
-    if (!change || this.contentSnapshots.has(change.epoch)) return
-    this.contentSnapshots.set(change.epoch, this.getText())
+    if (!change || change.epoch === this.lastCapturedContentEpoch) return
+    this.lastCapturedContentEpoch = change.epoch
+    const content = this.getText()
+    if (hasQueuedListeners) this.contentSnapshots.set(change.epoch, content)
+    for (const subscriber of this.contentSnapshotSubscribers) subscriber(change, content)
+  }
+
+  /**
+   * Subscribes to exact post-commit content snapshots. Unlike `content-changed`, subscribers run synchronously and
+   * should only retain the latest snapshot they still need.
+   */
+  public subscribeContentSnapshots(subscriber: ContentSnapshotSubscriber): () => void {
+    this.guard()
+    if (this.contentSnapshotSubscribers.size === 0) {
+      this.lastCapturedContentEpoch = this.lib.editBufferGetLastChange(this.bufferPtr)?.epoch
+    }
+    this.contentSnapshotSubscribers.add(subscriber)
+    return () => this.contentSnapshotSubscribers.delete(subscriber)
   }
 
   private guard(): void {
@@ -482,6 +503,7 @@ export class EditBuffer extends EventEmitter {
     this._destroyed = true
     EditBuffer.registry.delete(this.id)
     this.contentSnapshots.clear()
+    this.contentSnapshotSubscribers.clear()
     this.lib.destroyEditBuffer(this.bufferPtr)
   }
 }
