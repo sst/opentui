@@ -4,19 +4,58 @@ const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
 pub const std_options: std.Options = .{
-    .logFn = discardStdLog,
+    .log_level = .debug,
+    .logFn = handleStdLog,
 };
 
-fn discardStdLog(
+fn handleStdLog(
     comptime message_level: std.log.Level,
     comptime scope: @EnumLiteral(),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    _ = message_level;
-    _ = scope;
-    _ = format;
-    _ = args;
+    const ghostty_scope = switch (scope) {
+        .parser,
+        .stream,
+        .stream_terminal,
+        .screen,
+        .terminal,
+        .terminal_mem,
+        .terminal_apc,
+        .terminal_dcs,
+        .osc,
+        .osc_color,
+        .osc_iterm2,
+        .kitty_gfx,
+        .key_encode,
+        .mouse_encode,
+        .render_state_c,
+        => true,
+        else => false,
+    };
+    if (!ghostty_scope) return;
+    const configured = ghosttyLogLevel() orelse return;
+    if (@intFromEnum(message_level) > @intFromEnum(configured)) return;
+
+    const level: logger.LogLevel = switch (message_level) {
+        .err => .err,
+        .warn => .warn,
+        .info => .info,
+        .debug => .debug,
+    };
+    logger.logMessage(level, "(" ++ @tagName(scope) ++ ") " ++ format, args);
+}
+
+fn ghosttyLogLevel() ?std.log.Level {
+    const Environment = struct {
+        extern "c" fn getenv(name: [*:0]const u8) ?[*:0]const u8;
+    };
+    const value = std.mem.span(Environment.getenv("OTUI_GHOSTTY_LOG_LEVEL") orelse return null);
+    if (std.ascii.eqlIgnoreCase(value, "error") or std.ascii.eqlIgnoreCase(value, "err")) return .err;
+    if (std.ascii.eqlIgnoreCase(value, "warning") or std.ascii.eqlIgnoreCase(value, "warn")) return .warn;
+    if (std.ascii.eqlIgnoreCase(value, "info")) return .info;
+    if (std.ascii.eqlIgnoreCase(value, "debug")) return .debug;
+    return null;
 }
 
 var io_threaded: std.Io.Threaded = .init_single_threaded;
