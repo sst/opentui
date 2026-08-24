@@ -39,6 +39,9 @@ let incrementalHighlighter: NativeTreeSitterHighlighter | null = null
 let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let mode: HighlightMode = "static"
 let installedRangeCount = 0
+let displayedIncrementalRangeCount = 0
+let displayedPublicationCount: number | undefined
+let displayedResetCount: number | undefined
 let lastStatusContent: string | undefined
 
 export function setContentIfChanged(
@@ -133,6 +136,9 @@ function enterStaticMode(): void {
   void retiring?.dispose()
   extmarks = target.extmarks
   installedRangeCount = installStaticHighlights(target, extmarks, style)
+  displayedIncrementalRangeCount = 0
+  displayedPublicationCount = undefined
+  displayedResetCount = undefined
   mode = "static"
 }
 
@@ -144,6 +150,9 @@ function enterIncrementalMode(renderer: CliRenderer): void {
   extmarks?.destroy()
   extmarks = null
   installedRangeCount = 0
+  displayedIncrementalRangeCount = 0
+  displayedPublicationCount = undefined
+  displayedResetCount = undefined
   mode = "incremental"
   incrementalHighlighter = new NativeTreeSitterHighlighter({
     editBuffer: target.editBuffer,
@@ -165,6 +174,9 @@ export function run(renderer: CliRenderer): void {
   renderer.configureDebugOverlay({ corner: DebugOverlayCorner.bottomLeft })
   syntaxStyle = createDemoSyntaxStyle()
   mode = "static"
+  displayedIncrementalRangeCount = 0
+  displayedPublicationCount = undefined
+  displayedResetCount = undefined
   lastStatusContent = undefined
 
   container = new BoxRenderable(renderer, {
@@ -241,8 +253,14 @@ export function run(renderer: CliRenderer): void {
       nextStatus = `mode=static | native ranges=${installedRangeCount}/${installedRangeCount} | parse=static | query=static\nedits incremental/reset=0/0 | changed=0B | queried=0B | highlight publications=1\nline=${cursor.row + 1} col=${cursor.col + 1}`
     } else {
       const stats = incrementalHighlighter?.getStats()
-      const rangeCount = incrementalHighlighter?.getRangeCount() ?? 0
-      nextStatus = `mode=incremental | native ranges=${rangeCount} | parse=${stats?.parseKind ?? "pending"} | query=${stats?.queryKind ?? "pending"}\nedits received/incremental/reset/coalesced=${stats?.receivedEditCount ?? 0}/${stats?.incrementalCount ?? 0}/${stats?.resetCount ?? 0}/${stats?.coalescedEditCount ?? 0} | queue=${stats?.queueDepth ?? 0}/${stats?.maxQueueDepth ?? 0} | changed=${stats?.changedByteCount ?? 0}B | queried=${stats?.queriedByteCount ?? 0}B | publications=${stats?.publicationCount ?? 0}\nline=${cursor.row + 1} col=${cursor.col + 1}${stats?.error ? ` | error=${stats.error}` : ""}`
+      const publicationCount = stats?.publicationCount ?? 0
+      const resetCount = stats?.resetCount ?? 0
+      if (publicationCount !== displayedPublicationCount || resetCount !== displayedResetCount) {
+        displayedIncrementalRangeCount = incrementalHighlighter?.getRangeCount() ?? 0
+        displayedPublicationCount = publicationCount
+        displayedResetCount = resetCount
+      }
+      nextStatus = `mode=incremental | native ranges=${displayedIncrementalRangeCount} | parse=${stats?.parseKind ?? "pending"} | query=${stats?.queryKind ?? "pending"}\nedits received/incremental/reset/coalesced=${stats?.receivedEditCount ?? 0}/${stats?.incrementalCount ?? 0}/${resetCount}/${stats?.coalescedEditCount ?? 0} | queue=${stats?.queueDepth ?? 0}/${stats?.maxQueueDepth ?? 0} | changed=${stats?.changedByteCount ?? 0}B | queried=${stats?.queriedByteCount ?? 0}B | publications=${publicationCount}\nline=${cursor.row + 1} col=${cursor.col + 1}${stats?.error ? ` | error=${stats.error}` : ""}`
     }
     lastStatusContent = setContentIfChanged(status, nextStatus, lastStatusContent)
   })
@@ -267,6 +285,9 @@ export async function destroy(renderer: CliRenderer): Promise<void> {
   status = null
   syntaxStyle = null
   installedRangeCount = 0
+  displayedIncrementalRangeCount = 0
+  displayedPublicationCount = undefined
+  displayedResetCount = undefined
   lastStatusContent = undefined
   mode = "static"
 }

@@ -2109,6 +2109,119 @@ describe("EditBuffer exact content changes", () => {
     }
   })
 
+  it("serializes reentrant snapshots so every subscriber observes the same order", () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const first: string[] = []
+    const highlighter: string[] = []
+    testBuffer.subscribeContentSnapshots((_change, content) => {
+      first.push(content)
+      if (content === "A") testBuffer.insertChar("B")
+    })
+    testBuffer.subscribeContentSnapshots((_change, content) => highlighter.push(content))
+
+    try {
+      testBuffer.insertChar("A")
+      expect(first).toEqual(["A", "AB"])
+      expect(highlighter).toEqual(["A", "AB"])
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("uses a stable subscriber snapshot when listeners are added or removed during dispatch", () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const deliveries: string[] = []
+    const added = (_change: EditChange, content: string): void => {
+      deliveries.push(`added:${content}`)
+    }
+    const removed = (_change: EditChange, content: string): void => {
+      deliveries.push(`removed:${content}`)
+    }
+    let unsubscribeRemoved = (): void => {}
+    testBuffer.subscribeContentSnapshots((_change, content) => {
+      deliveries.push(`first:${content}`)
+      if (content === "A") {
+        unsubscribeRemoved()
+        testBuffer.subscribeContentSnapshots(added)
+      }
+    })
+    unsubscribeRemoved = testBuffer.subscribeContentSnapshots(removed)
+
+    try {
+      testBuffer.insertChar("A")
+      testBuffer.insertChar("B")
+      expect(deliveries).toEqual(["first:A", "removed:A", "first:AB", "added:AB"])
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("drains deeply nested edits without recursively dispatching subscribers", () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const observedLengths: number[] = []
+    let activeDepth = 0
+    let maxDepth = 0
+    testBuffer.subscribeContentSnapshots((_change, content) => {
+      activeDepth++
+      maxDepth = Math.max(maxDepth, activeDepth)
+      if (content.length < 1_000) testBuffer.insertChar("x")
+      activeDepth--
+    })
+    testBuffer.subscribeContentSnapshots((_change, content) => observedLengths.push(content.length))
+
+    try {
+      testBuffer.insertChar("x")
+      expect(maxDepth).toBe(1)
+      expect(observedLengths).toHaveLength(1_000)
+      expect(observedLengths[0]).toBe(1)
+      expect(observedLengths.at(-1)).toBe(1_000)
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
+  it("finishes the active subscriber snapshot when a subscriber destroys the buffer", () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const deliveries: string[] = []
+    testBuffer.subscribeContentSnapshots((_change, content) => {
+      deliveries.push(`first:${content}`)
+      testBuffer.insertChar("B")
+      testBuffer.destroy()
+    })
+    testBuffer.subscribeContentSnapshots((_change, content) => deliveries.push(`second:${content}`))
+
+    testBuffer.insertChar("A")
+    expect(deliveries).toEqual(["first:A", "second:A"])
+  })
+
+  it("propagates subscriber errors, releases the drain, and preserves queued native snapshots", async () => {
+    const testBuffer = EditBuffer.create("unicode")
+    const synchronous: string[] = []
+    const queued: string[] = []
+    const unsubscribe = testBuffer.subscribeContentSnapshots((_change, content) => {
+      synchronous.push(content)
+      if (content === "A") testBuffer.insertChar("B")
+      throw new Error("snapshot failed")
+    })
+    testBuffer.subscribeContentSnapshots((_change, content) => synchronous.push(`later:${content}`))
+    testBuffer.on("content-changed", (_change: EditChange, content: string) => queued.push(content))
+
+    try {
+      expect(() => testBuffer.insertChar("A")).toThrow("snapshot failed")
+      expect(synchronous).toEqual(["A"])
+      await flushNativeEvents()
+      expect(queued).toEqual(["A", "AB"])
+
+      unsubscribe()
+      testBuffer.insertChar("C")
+      expect(synchronous).toEqual(["A", "later:AB", "later:ABC"])
+      await flushNativeEvents()
+      expect(queued).toEqual(["A", "AB", "ABC"])
+    } finally {
+      testBuffer.destroy()
+    }
+  })
+
   it("computes one snapshot for synchronous and queued content consumers", async () => {
     const testBuffer = EditBuffer.create("unicode")
     const originalGetText = testBuffer.getText.bind(testBuffer)

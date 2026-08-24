@@ -22,6 +22,11 @@ export type { EditChange, LogicalCursor }
 
 export type ContentSnapshotSubscriber = (change: EditChange, content: string) => void
 
+interface ContentSnapshotDelivery {
+  change: EditChange
+  content: string
+}
+
 /**
  * EditBuffer provides a text editing buffer with cursor management,
  * incremental editing, and grapheme-aware operations.
@@ -40,6 +45,8 @@ export class EditBuffer extends EventEmitter {
   private _syntaxStyle?: SyntaxStyle
   private readonly contentSnapshots = new Map<bigint, string>()
   private readonly contentSnapshotSubscribers = new Set<ContentSnapshotSubscriber>()
+  private readonly contentSnapshotDeliveries: ContentSnapshotDelivery[] = []
+  private deliveringContentSnapshots = false
   private lastCapturedContentEpoch?: bigint
 
   constructor(lib: RenderLib, ptr: EditBufferHandle) {
@@ -95,12 +102,27 @@ export class EditBuffer extends EventEmitter {
     this.lastCapturedContentEpoch = change.epoch
     const content = this.getText()
     if (hasQueuedListeners) this.contentSnapshots.set(change.epoch, content)
-    for (const subscriber of this.contentSnapshotSubscribers) subscriber(change, content)
+    this.contentSnapshotDeliveries.push({ change, content })
+    if (this.deliveringContentSnapshots) return
+
+    this.deliveringContentSnapshots = true
+    let delivered = 0
+    try {
+      while (delivered < this.contentSnapshotDeliveries.length) {
+        const delivery = this.contentSnapshotDeliveries[delivered++]!
+        const subscribers = [...this.contentSnapshotSubscribers]
+        for (const subscriber of subscribers) subscriber(delivery.change, delivery.content)
+      }
+    } finally {
+      this.contentSnapshotDeliveries.splice(0, delivered)
+      this.deliveringContentSnapshots = false
+    }
   }
 
   /**
    * Subscribes to exact post-commit content snapshots. Unlike `content-changed`, subscribers run synchronously and
-   * should only retain the latest snapshot they still need.
+   * should only retain the latest snapshot they still need. Subscriber errors propagate to the editing call and stop
+   * the active subscriber snapshot; snapshots queued by reentrant edits remain ordered for the next drain.
    */
   public subscribeContentSnapshots(subscriber: ContentSnapshotSubscriber): () => void {
     this.guard()
@@ -504,6 +526,7 @@ export class EditBuffer extends EventEmitter {
     EditBuffer.registry.delete(this.id)
     this.contentSnapshots.clear()
     this.contentSnapshotSubscribers.clear()
+    this.contentSnapshotDeliveries.length = 0
     this.lib.destroyEditBuffer(this.bufferPtr)
   }
 }

@@ -96,11 +96,6 @@ function styleDefinitionKey(definition: StyleDefinition): string {
   ].join("|")
 }
 
-function overlaps(startByte: number, endByte: number, windowStart: number, windowEnd: number): boolean {
-  if (windowStart === windowEnd) return startByte <= windowStart && endByte >= windowEnd
-  return startByte < windowEnd && endByte > windowStart
-}
-
 function isIncrementalChange(change: EditChange, previousEpoch: bigint | undefined): boolean {
   return (
     change.kind === "splice" &&
@@ -138,7 +133,6 @@ export class NativeTreeSitterHighlighter {
   private unsubscribeContentSnapshots?: () => void
   private disposePromise?: Promise<void>
   private removePromise?: Promise<void>
-  private rangeCount = 0
   private stats: IncrementalHighlightStats = {
     parseKind: "pending",
     queryKind: "pending",
@@ -172,17 +166,13 @@ export class NativeTreeSitterHighlighter {
     } else {
       const removedIds = new Set<bigint>()
       for (const range of response.replacementRanges) {
-        const annotations = this.editBuffer.queryAnnotations({
-          kind: "overlap",
-          startByte: range.startIndex,
-          endByte: range.endIndex,
-        })
+        const annotations = this.editBuffer.queryAnnotations(
+          range.startIndex === range.endIndex
+            ? { kind: "containingByte", byte: range.startIndex }
+            : { kind: "overlap", startByte: range.startIndex, endByte: range.endIndex },
+        )
         for (const annotation of annotations) {
-          if (
-            annotation.namespace === this.namespace &&
-            !removedIds.has(annotation.id) &&
-            overlaps(annotation.startByte, annotation.endByte, range.startIndex, range.endIndex)
-          ) {
+          if (annotation.namespace === this.namespace && !removedIds.has(annotation.id)) {
             removedIds.add(annotation.id)
             operations.push({ kind: "remove", id: annotation.id })
           }
@@ -215,8 +205,7 @@ export class NativeTreeSitterHighlighter {
       })
     }
 
-    const result = this.editBuffer.applyAnnotationOperations(operations)
-    this.rangeCount += result.createdIds.length - result.deletedIds.length
+    this.editBuffer.applyAnnotationOperations(operations)
     this.stats = {
       ...this.stats,
       parseKind: response.parseKind,
@@ -247,10 +236,6 @@ export class NativeTreeSitterHighlighter {
     if (!this.draining) this.startDrain()
   }
 
-  private readonly handleAnnotationsReset = (): void => {
-    this.rangeCount = 0
-  }
-
   constructor(options: NativeTreeSitterHighlighterOptions) {
     this.editBuffer = options.editBuffer
     this.syntaxStyle = options.syntaxStyle
@@ -266,7 +251,6 @@ export class NativeTreeSitterHighlighter {
     this.namespace = allocateNamespace(this.editBuffer)
 
     this.client.on("highlights:response", this.handleHighlightResponse)
-    this.editBuffer.on("annotations-reset", this.handleAnnotationsReset)
     this.unsubscribeContentSnapshots = this.editBuffer.subscribeContentSnapshots(this.handleContentSnapshot)
     this.drainPromise = this.initializeAndDrain(this.generation)
   }
@@ -280,7 +264,7 @@ export class NativeTreeSitterHighlighter {
   }
 
   public getRangeCount(): number {
-    return this.active ? this.rangeCount : 0
+    return this.editBuffer.queryAnnotations({ kind: "namespace", namespace: this.namespace }).length
   }
 
   public whenIdle(): Promise<void> {
@@ -401,7 +385,6 @@ export class NativeTreeSitterHighlighter {
     if (this.listenersAttached) {
       this.listenersAttached = false
       this.client.off("highlights:response", this.handleHighlightResponse)
-      this.editBuffer.off("annotations-reset", this.handleAnnotationsReset)
       this.unsubscribeContentSnapshots?.()
       this.unsubscribeContentSnapshots = undefined
     }
@@ -410,7 +393,6 @@ export class NativeTreeSitterHighlighter {
       allocatedNamespaces.delete(this.namespace)
       try {
         this.editBuffer.applyAnnotationOperations([{ kind: "clearNamespace", namespace: this.namespace }])
-        this.rangeCount = 0
       } catch (error) {
         this.recordError(error, true)
       }

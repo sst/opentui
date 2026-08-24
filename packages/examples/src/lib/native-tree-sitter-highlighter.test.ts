@@ -217,7 +217,7 @@ describe("NativeTreeSitterHighlighter", () => {
 
     queryKinds.length = 0
     expect(value.getRangeCount()).toBe(2)
-    expect(queryKinds).toEqual([])
+    expect(queryKinds).toEqual(["namespace"])
 
     client.respond(
       value.bufferId,
@@ -231,6 +231,48 @@ describe("NativeTreeSitterHighlighter", () => {
     expect(value.getRangeCount()).toBe(1)
     expect(editBuffer.queryAnnotations({ kind: "namespace", namespace: 42 })).toHaveLength(1)
     expect(renderCount).toBe(3)
+  })
+
+  test("removes containing syntax ranges for deduplicated zero-width replacement windows", async () => {
+    const value = createHighlighter()
+    await value.whenIdle()
+    client.respond(
+      value.bufferId,
+      1,
+      response({
+        queryKind: "full",
+        highlights: [
+          { startIndex: 0, endIndex: 3, group: "keyword" },
+          { startIndex: 6, endIndex: 9, group: "string" },
+        ],
+      }),
+    )
+
+    const originalQueryAnnotations = editBuffer.queryAnnotations.bind(editBuffer)
+    const queryKinds: string[] = []
+    editBuffer.queryAnnotations = (query = { kind: "all" }) => {
+      queryKinds.push(query.kind)
+      return originalQueryAnnotations(query)
+    }
+    client.respond(
+      value.bufferId,
+      1,
+      response({
+        replacementRanges: [
+          { startIndex: 1, endIndex: 1 },
+          { startIndex: 2, endIndex: 2 },
+        ],
+      }),
+    )
+
+    expect(
+      originalQueryAnnotations({ kind: "namespace", namespace: value.namespace }).map(({ startByte, endByte }) => [
+        startByte,
+        endByte,
+      ]),
+    ).toEqual([[6, 9]])
+    expect(queryKinds).toEqual(["containingByte", "containingByte"])
+    expect(value.getRangeCount()).toBe(1)
   })
 
   test("rejects stale and disposed responses", async () => {
@@ -314,6 +356,26 @@ describe("NativeTreeSitterHighlighter", () => {
     ])
     expect(client.resetCalls).toEqual([])
     expect(client.getContent(value.bufferId)).toBe(editBuffer.getText())
+  })
+
+  test("observes reentrant edits after the active snapshot when subscribed second", async () => {
+    editBuffer.setText("")
+    await flushNativeEvents()
+    const unsubscribe = editBuffer.subscribeContentSnapshots((_change, content) => {
+      if (content === "A") editBuffer.insertChar("B")
+    })
+    const value = createHighlighter()
+    await value.whenIdle()
+
+    try {
+      editBuffer.insertChar("A")
+      await value.whenIdle()
+      expect(client.updateCalls.map(({ content }) => content)).toEqual(["A", "AB"])
+      expect(client.resetCalls).toEqual([])
+      expect(client.getContent(value.bufferId)).toBe("AB")
+    } finally {
+      unsubscribe()
+    }
   })
 
   test("coalesces rapid Unicode delete, undo, redo, reset, and edits to the exact final snapshot", async () => {
@@ -449,6 +511,58 @@ describe("NativeTreeSitterHighlighter", () => {
     client.resolveNextOperation()
     await value.whenIdle()
     expect(value.getRangeCount()).toBe(1)
+  })
+
+  test("reports the live namespace count after native splice deletion before a response", async () => {
+    const value = createHighlighter()
+    await value.whenIdle()
+    client.respond(
+      value.bufferId,
+      1,
+      response({
+        queryKind: "full",
+        highlights: [
+          { startIndex: 0, endIndex: 3, group: "keyword" },
+          { startIndex: 6, endIndex: 9, group: "string" },
+        ],
+      }),
+    )
+    expect(value.getRangeCount()).toBe(2)
+
+    editBuffer.deleteRange(0, 0, 0, 3)
+    expect(value.getRangeCount()).toBe(1)
+    await value.whenIdle()
+    client.respond(value.bufferId, 2, response())
+    expect(value.getRangeCount()).toBe(1)
+  })
+
+  test("keeps the exact live count when annotation publication fails", async () => {
+    const value = createHighlighter()
+    await value.whenIdle()
+    client.respond(
+      value.bufferId,
+      1,
+      response({ queryKind: "full", highlights: [{ startIndex: 0, endIndex: 3, group: "keyword" }] }),
+    )
+    expect(value.getRangeCount()).toBe(1)
+    const applyAnnotationOperations = editBuffer.applyAnnotationOperations.bind(editBuffer)
+    editBuffer.applyAnnotationOperations = () => {
+      throw new Error("annotation apply failed")
+    }
+
+    try {
+      expect(() =>
+        client.respond(
+          value.bufferId,
+          1,
+          response({ queryKind: "full", highlights: [{ startIndex: 6, endIndex: 9, group: "string" }] }),
+        ),
+      ).toThrow("annotation apply failed")
+      expect(value.getRangeCount()).toBe(1)
+      expect(value.getStats().publicationCount).toBe(1)
+    } finally {
+      editBuffer.applyAnnotationOperations = applyAnnotationOperations
+    }
   })
 
   test("uses authoritative style IDs and caches merged definitions", async () => {
