@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   CliRenderer,
+  DebugOverlayCorner,
   LineNumberRenderable,
   SyntaxStyle,
   TextareaRenderable,
@@ -151,6 +152,7 @@ function toggleMode(renderer: CliRenderer): void {
 
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0D1117")
+  renderer.configureDebugOverlay({ corner: DebugOverlayCorner.bottomLeft })
   syntaxStyle = createDemoSyntaxStyle()
   mode = "static"
 
@@ -199,7 +201,7 @@ export function run(renderer: CliRenderer): void {
 
   const help = new TextRenderable(renderer, {
     content:
-      "Ctrl+T toggles static/incremental highlighting. Edit, split, delete, undo, and redo to drive UTF-8 deltas.",
+      "Ctrl+T toggles highlighting. Press . for frame stats. Edit, split, delete, undo, and redo to drive UTF-8 deltas.",
     fg: "#FFA657",
     height: 1,
   })
@@ -212,6 +214,10 @@ export function run(renderer: CliRenderer): void {
       key.preventDefault()
       key.stopPropagation()
       toggleMode(renderer)
+    } else if (!key.ctrl && !key.meta && !key.shift && key.name === ".") {
+      key.preventDefault()
+      key.stopPropagation()
+      renderer.toggleDebugOverlay()
     }
   }
   renderer.keyInput.on("keypress", keyboardHandler)

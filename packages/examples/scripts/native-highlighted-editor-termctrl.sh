@@ -66,6 +66,11 @@ termctrl wait "${SESSION_NAME}" "mode=incremental" --timeout 15000
 sleep 3
 mark incremental-enabled
 
+termctrl send "${SESSION_NAME}" text:.
+termctrl wait "${SESSION_NAME}" "FPS:" --timeout 5000
+sleep 2
+mark debug-overlay-enabled
+
 # Move from the opening comment into the highlighted string on the const line.
 press_human down 7 0.12
 termctrl send "${SESSION_NAME}" ctrl-e
