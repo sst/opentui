@@ -25,17 +25,35 @@ OpenCode uses OpenTUI in production for millions of users.
 
 ## OpenTUI Core
 
-`@opentui/core` supplies the renderer and TypeScript API. It uses imperative renderables and events directly. The
+`@opentui/core` supplies the renderer and TypeScript API. You use imperative renderables and events directly. The
 TypeScript packages call native Zig through an internal foreign function interface (FFI) boundary.
 
-The native ABI and generated platform packages are internal distribution surfaces, not application APIs.
+```typescript
+import { TextRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer({ exitOnCtrlC: true })
+
+renderer.root.add(new TextRenderable(renderer, { content: "Hello, OpenTUI!" }))
+```
+
+`exitOnCtrlC: true` calls `renderer.destroy()` when the user presses Ctrl+C. The code that creates the renderer must
+call `renderer.destroy()` on every other shutdown path.
+
+Install the package:
 
 ```bash
 bun add @opentui/core
 ```
 
-Read the [quickstart](https://opentui.com/docs/getting-started/quickstart) for a simple example of how to use OpenTUI
-Core in your project.
+Then build your first app with the [quickstart](https://opentui.com/docs/getting-started/quickstart).
+
+## Runtime and platform support
+
+`@opentui/core` runs on Bun 1.3.0 or later, or on Node.js 26.4.0 or later with ECMAScript modules (ESM) and
+`--experimental-ffi`.
+
+The native ABI and the generated platform packages, such as `@opentui/core-linux-x64`, are internal distribution
+surfaces, not application APIs.
 
 ## AI agent skill
 
