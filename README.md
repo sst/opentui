@@ -68,6 +68,9 @@ bun run fmt:check
 bun run lint
 ```
 
+To link the source packages into a Bun-managed project, install that project's dependencies, then run
+`./scripts/link-opentui-dev.sh /path/to/project` from the repository root. Add `--react` or `--solid` when needed.
+
 ## Contributing
 
 OpenTUI is open for contributions.
