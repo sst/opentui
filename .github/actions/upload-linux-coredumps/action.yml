@@ -99,3 +99,4 @@ runs:
         if-no-files-found: ignore
         retention-days: 7
         compression-level: 9
+        include-hidden-files: true
