@@ -122,6 +122,31 @@ describe("TreeSitter Styled Text", () => {
     expect(ranges[0]?.styleId).toBe(syntaxStyle.getStyleId("markup.strong") ?? undefined)
   })
 
+  test("matches the general resolver for randomized disjoint and adjacent captures", () => {
+    let state = 0x51a7e
+    const random = (): number => {
+      state = (state * 1664525 + 1013904223) >>> 0
+      return state / 0x100000000
+    }
+    const groups = ["keyword", "string", "markup.strong", "missing"]
+
+    for (let iteration = 0; iteration < 250; iteration++) {
+      const captures: SimpleHighlight[] = []
+      let offset = 0
+      const count = 1 + Math.floor(random() * 80)
+      for (let index = 0; index < count; index++) {
+        offset += Math.floor(random() * 3)
+        const end = offset + 1 + Math.floor(random() * 6)
+        captures.push([offset, end, groups[Math.floor(random() * groups.length)]!, {}])
+        offset = end
+      }
+
+      const fast = resolveTreeSitterHighlightRanges(captures, syntaxStyle)
+      const general = resolveTreeSitterHighlightRanges([...captures].reverse(), syntaxStyle)
+      expect(fast).toEqual(general)
+    }
+  })
+
   test("should handle unsupported filetype gracefully", async () => {
     const content = "some random content"
 

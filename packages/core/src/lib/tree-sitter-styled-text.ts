@@ -19,6 +19,14 @@ interface Boundary {
   highlightIndex: number
 }
 
+interface OrderedHighlight {
+  start: number
+  end: number
+  group: string
+  meta: any
+  specificity: number
+}
+
 function getSpecificity(group: string): number {
   return group.split(".").length
 }
@@ -55,16 +63,61 @@ export function resolveTreeSitterHighlightRanges(
   syntaxStyle: SyntaxStyle,
   options?: ResolveHighlightRangesOptions,
 ): ResolvedHighlightRange[] {
-  const orderedHighlights: SimpleHighlight[] = highlights.map((highlight) =>
-    Array.isArray(highlight) ? highlight : [highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta],
-  )
-  const boundaries: Boundary[] = []
-  const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
   const defaultStyle = syntaxStyle.getStyle("default")
+  let previousEnd = -1
+  let simple = true
+
+  for (const highlight of highlights) {
+    const start = Array.isArray(highlight) ? highlight[0] : highlight.startIndex
+    const end = Array.isArray(highlight) ? highlight[1] : highlight.endIndex
+    const meta = Array.isArray(highlight) ? highlight[3] : highlight.meta
+    if (start >= end) continue
+    if (start < previousEnd || meta?.containsInjection) {
+      simple = false
+      break
+    }
+    previousEnd = end
+  }
+
+  if (simple) {
+    const result: ResolvedHighlightRange[] = []
+    for (const highlight of highlights) {
+      const [start, end, group] = Array.isArray(highlight)
+        ? highlight
+        : [highlight.startIndex, highlight.endIndex, highlight.group]
+      if (start >= end) continue
+      const definition: StyleDefinition = baseStyle ? { ...baseStyle } : {}
+      const style = syntaxStyle.getStyle(group)
+      if (style?.fg !== undefined) definition.fg = style.fg
+      if (style?.bg !== undefined) definition.bg = style.bg
+      if (style?.bold !== undefined) definition.bold = style.bold
+      if (style?.italic !== undefined) definition.italic = style.italic
+      if (style?.underline !== undefined) definition.underline = style.underline
+      if (style?.dim !== undefined) definition.dim = style.dim
+      const resolvedDefinition = Object.keys(definition).length > 0 ? definition : defaultStyle
+      result.push({
+        startIndex: start,
+        endIndex: end,
+        groupStack: [group],
+        definition: resolvedDefinition ? { ...resolvedDefinition } : undefined,
+        styleId: !baseStyle ? (syntaxStyle.getStyleId(group) ?? undefined) : undefined,
+      })
+    }
+    return result
+  }
+
+  const orderedHighlights: OrderedHighlight[] = highlights.map((highlight) => {
+    const [start, end, group, meta] = Array.isArray(highlight)
+      ? highlight
+      : [highlight.startIndex, highlight.endIndex, highlight.group, highlight.meta]
+    return { start, end, group, meta, specificity: getSpecificity(group) }
+  })
+  const boundaries: Boundary[] = []
+  const injectionContainerRanges: Array<{ start: number; end: number }> = []
 
   for (let index = 0; index < orderedHighlights.length; index++) {
-    const [start, end, , meta] = orderedHighlights[index]!
+    const { start, end, meta } = orderedHighlights[index]!
     if (start >= end) continue
     if (meta?.containsInjection) injectionContainerRanges.push({ start, end })
     boundaries.push({ offset: start, type: "start", highlightIndex: index })
@@ -86,11 +139,11 @@ export function resolveTreeSitterHighlightRanges(
       )
       const groups = Array.from(active)
         .map((index) => {
-          const [, , group, meta] = orderedHighlights[index]!
-          return { group, meta, index }
+          const { group, meta, specificity } = orderedHighlights[index]!
+          return { group, meta, specificity, index }
         })
         .filter(({ group, meta }) => !insideInjectionContainer || !shouldSuppressInInjection(group, meta))
-        .sort((a, b) => getSpecificity(a.group) - getSpecificity(b.group) || a.index - b.index)
+        .sort((a, b) => a.specificity - b.specificity || a.index - b.index)
       const definition: StyleDefinition = baseStyle ? { ...baseStyle } : {}
       for (const { group } of groups) {
         const style = syntaxStyle.getStyle(group)
