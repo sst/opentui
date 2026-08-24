@@ -175,6 +175,25 @@ describe("EmbeddedTerminalRenderable", () => {
     expect(new TextDecoder().decode(encoded)).toBe("\x1b[97;9u")
   })
 
+  test("re-encodes Kitty character and escape keys for nested terminals", () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>3u")
+
+    expect(
+      new TextDecoder().decode(
+        terminal.encodeKey(keyEvent({ name: "c", sequence: "c", raw: "\x1b[99;5u", source: "kitty", ctrl: true })),
+      ),
+    ).toBe("\x1b[99;5u")
+    expect(
+      new TextDecoder().decode(
+        terminal.encodeKey(
+          keyEvent({ name: "escape", sequence: "\x1b[27u", raw: "\x1b[27u", source: "kitty", code: "[27u" }),
+        ),
+      ),
+    ).toBe("\x1b[27u")
+  })
+
   test("drains the preserved response prefix after overflow", () => {
     const lib = resolveRenderLib()
     const handle = lib.createEmbeddedTerminal({ cols: 20, rows: 4 })
