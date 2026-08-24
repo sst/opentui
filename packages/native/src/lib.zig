@@ -50,7 +50,7 @@ fn ghosttyLogLevel() ?std.log.Level {
     const Environment = struct {
         extern "c" fn getenv(name: [*:0]const u8) ?[*:0]const u8;
     };
-    const value = std.mem.span(Environment.getenv("OTUI_GHOSTTY_LOGS") orelse return null);
+    const value = std.mem.span(Environment.getenv("OTUI_GHOSTTY_LOG_LEVEL") orelse return null);
     if (std.ascii.eqlIgnoreCase(value, "error") or std.ascii.eqlIgnoreCase(value, "err")) return .err;
     if (std.ascii.eqlIgnoreCase(value, "warning") or std.ascii.eqlIgnoreCase(value, "warn")) return .warn;
     if (std.ascii.eqlIgnoreCase(value, "info")) return .info;
