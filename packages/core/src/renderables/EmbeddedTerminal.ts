@@ -371,7 +371,7 @@ function modifiers(input: {
 }
 
 function physicalKey(key: KeyEvent) {
-  if (key.code) return key.code
+  if (key.code && !key.code.startsWith("[")) return key.code
   return (
     {
       backspace: "Backspace",

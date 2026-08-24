@@ -98,6 +98,12 @@ describe("EmbeddedTerminalRenderable", () => {
     )
     expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "😀", sequence: "😀" })))).toBe("😀")
     expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "space", sequence: " " })))).toBe(" ")
+    expect(new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "up", sequence: "\x1b[A", code: "[A" })))).toBe(
+      "\x1b[A",
+    )
+    expect(
+      new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "down", sequence: "\x1b[B", code: "[B" }))),
+    ).toBe("\x1b[B")
     expect(
       new TextDecoder().decode(terminal.encodeKey(keyEvent({ name: "a", sequence: "A", shift: true, raw: "A" }))),
     ).toBe("A")
