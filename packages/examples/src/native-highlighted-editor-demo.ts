@@ -240,7 +240,10 @@ export function run(renderer: CliRenderer): void {
     } else if (!key.ctrl && !key.meta && !key.shift && key.name === ".") {
       key.preventDefault()
       key.stopPropagation()
+      const enabling = !renderer.debugOverlay.enabled
       renderer.toggleDebugOverlay()
+      if (enabling) renderer.start()
+      else renderer.auto()
     }
   }
   renderer.keyInput.on("keypress", keyboardHandler)
