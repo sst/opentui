@@ -66,7 +66,7 @@ export enum TargetChannel {
   Both = 3,
 }
 
-export type WidthMethod = "wcwidth" | "unicode"
+export type WidthMethod = "wcwidth" | "unicode" | "unicode-wide"
 export type TerminalMultiplexer = "none" | "tmux" | "zellij" | "screen" | "unknown"
 export type TerminalCapabilityState = "unknown" | "supported" | "unsupported"
 export type ImageRenderProtocol = "auto" | "kitty" | "sixel" | "blocks"

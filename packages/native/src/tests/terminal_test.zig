@@ -512,8 +512,10 @@ test "remote detection - auto mode ignores local capabilities after forwarded SS
     try term.setHostEnvVar(testing.allocator, "SSH_CONNECTION", "192.0.2.1 54231 192.0.2.2 22");
     try term.setHostEnvVar(testing.allocator, "TERM", "xterm-256color");
     try term.setHostEnvVar(testing.allocator, "TERM_PROGRAM", "ghostty");
+    try term.setHostEnvVar(testing.allocator, "TERM_PROGRAM_VERSION", "1.3.1");
 
     try testing.expect(term.caps.remote);
+    try testing.expectEqual(utf8.WidthMethod.unicode, term.caps.unicode);
     try testing.expect(!term.caps.ansi256);
     try testing.expect(!term.caps.notifications);
     try testing.expectEqualStrings("", term.getTerminalName());
@@ -1707,6 +1709,71 @@ test "enableDetectedFeatures - sends initial theme queries" {
     try testing.expect(std.mem.find(u8, output, "\x1b]11;?\x07") != null);
     try testing.expect(std.mem.find(u8, output, "\x1b[?996n") == null);
     try testing.expect(term.state.theme_queries_sent);
+}
+
+const WidthEnv = struct { key: []const u8, value: []const u8 };
+
+fn expectWidthMethodForEnv(entries: []const WidthEnv, expected: utf8.WidthMethod) !void {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    for (entries) |entry| try env.put(entry.key, entry.value);
+    const term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(expected, term.caps.unicode);
+}
+
+test "Ghostty width profile requires a direct terminal" {
+    try expectWidthMethodForEnv(&.{.{ .key = "TERM_PROGRAM", .value = "WezTerm" }}, .unicode);
+    try expectWidthMethodForEnv(&.{
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+        .{ .key = "TERM_PROGRAM", .value = "ghostty" },
+        .{ .key = "TERM_PROGRAM_VERSION", .value = "1.3.1" },
+    }, .wcwidth);
+    try expectWidthMethodForEnv(&.{
+        .{ .key = "TERM_PROGRAM", .value = "ghostty" },
+        .{ .key = "TERM_PROGRAM_VERSION", .value = "1.2.3" },
+    }, .unicode);
+    try expectWidthMethodForEnv(&.{
+        .{ .key = "TERM_PROGRAM", .value = "ghostty" },
+        .{ .key = "TERM_PROGRAM_VERSION", .value = "0.0.0-20260223.r14707.gc61f184" },
+    }, .unicode);
+    try expectWidthMethodForEnv(&.{
+        .{ .key = "TERM_PROGRAM", .value = "ghostty" },
+        .{ .key = "TERM_PROGRAM_VERSION", .value = "0.0.0-20260224.r14762.gc51f0d7" },
+    }, .unicode_wide);
+}
+
+test "Ghostty width profile preserves explicit wcwidth override" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "ghostty");
+    try env.put("TERM_PROGRAM_VERSION", "1.3.1");
+    try env.put("OPENTUI_FORCE_WCWIDTH", "1");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(utf8.WidthMethod.wcwidth, term.caps.unicode);
+    term.processCapabilityResponse("\x1b[?2027;2$y\x1bP>|ghostty 1.3.1\x1b\\");
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.enableDetectedFeatures(&writer, false);
+    try testing.expectEqual(utf8.WidthMethod.wcwidth, term.caps.unicode);
+}
+
+test "Ghostty width profile enables mode 2027 and remains stable after setup starts" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "ghostty");
+    try env.put("TERM_PROGRAM_VERSION", "1.3.1");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(utf8.WidthMethod.unicode_wide, term.caps.unicode);
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.queryTerminalSend(&writer);
+
+    term.processCapabilityResponse("\x1b[?2027;2$y\x1bP>|WezTerm 20240203-110809-5046fc22\x1b\\");
+    try term.enableDetectedFeatures(&writer, false);
+    try testing.expectEqual(utf8.WidthMethod.unicode_wide, term.caps.unicode);
+    try testing.expect(std.mem.find(u8, writer.getWritten(), ansi.ANSI.unicodeSet) != null);
 }
 
 test "setMouseMode - enable without movement keeps click/drag only" {

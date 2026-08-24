@@ -1283,6 +1283,21 @@ export fn getCurrentBuffer(renderer_handle: NativeHandle) NativeHandle {
     return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(object_ptr.getCurrentBuffer()), renderer_handle) catch INVALID_HANDLE;
 }
 
+fn widthMethodFromInt(value: u8) utf8.WidthMethod {
+    return switch (value) {
+        @intFromEnum(utf8.WidthMethod.wcwidth) => .wcwidth,
+        @intFromEnum(utf8.WidthMethod.unicode_wide) => .unicode_wide,
+        else => .unicode,
+    };
+}
+
+test "widthMethodFromInt preserves legacy numeric inputs" {
+    try std.testing.expectEqual(utf8.WidthMethod.wcwidth, widthMethodFromInt(0));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode, widthMethodFromInt(1));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode, widthMethodFromInt(2));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode_wide, widthMethodFromInt(3));
+}
+
 export fn setHyperlinksCapability(renderer_handle: NativeHandle, enabled: bool) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.terminal.caps.hyperlinks = enabled;
@@ -1300,6 +1315,11 @@ export fn getBufferWidth(buffer_handle: NativeHandle) u32 {
 export fn getBufferHeight(buffer_handle: NativeHandle) u32 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
     return object_ptr.height;
+}
+
+export fn getBufferWidthMethod(buffer_handle: NativeHandle) u8 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return @intFromEnum(utf8.WidthMethod.unicode);
+    return @intFromEnum(object_ptr.width_method);
 }
 
 fn packRenderResult(result: renderer.RenderResult) u64 {
@@ -1377,7 +1397,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: u8, width
 
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
     const id = sliceFromPtrLen(idPtr, idLen);
 
     const bufferPtr = buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
@@ -1467,7 +1487,11 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .kitty_graphics = caps.kitty_graphics,
         .rgb = caps.rgb,
         .ansi256 = caps.ansi256,
-        .unicode = if (caps.unicode == .wcwidth) 0 else 1,
+        .unicode = switch (caps.unicode) {
+            .wcwidth => 0,
+            .unicode_wide => 3,
+            .unicode, .no_zwj => 1,
+        },
         .sgr_pixels = caps.sgr_pixels,
         .color_scheme_updates = caps.color_scheme_updates,
         .explicit_width = caps.explicit_width,
@@ -2105,7 +2129,7 @@ fn destroyTextBufferViewChildren(owner: NativeHandle) void {
 export fn createTextBuffer(widthMethod: u8) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
 
     const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return INVALID_HANDLE;
@@ -2454,7 +2478,7 @@ fn destroyEditorViewChildren(owner: NativeHandle) void {
 export fn createEditBuffer(widthMethod: u8, event_sink_handle: NativeHandle) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
     const event_sink_ptr = if (event_sink_handle == INVALID_HANDLE) null else acquireEventSink(event_sink_handle);
     const event_sink = if (event_sink_ptr) |object_ptr| object_ptr else null;
 
@@ -3625,7 +3649,7 @@ export fn encodeUnicode(
     }
 
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
 
     // Check if ASCII only for optimization
     const is_ascii_only = utf8.isAsciiOnly(text);

@@ -10,6 +10,7 @@ const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
 const image = @import("../image.zig");
 const handles = @import("../handles.zig");
+const ghostty_vt = @import("../ghostty-vt.zig");
 const test_renderer_mod = @import("test-renderer.zig");
 const terminal_image_test = @import("terminal-image_test.zig");
 
@@ -658,12 +659,14 @@ test "renderer preserves Malayalam report after Ghostty probe replies" {
     defer link.deinitGlobalLinkPool();
     var test_renderer = try TestRenderer.create(std.testing.allocator, 80, 1, pool);
     defer test_renderer.deinit();
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM", "ghostty"));
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM_VERSION", "1.3.1"));
 
     var writer = DiscardTerminalWriter{};
     try test_renderer.renderer.terminal.queryTerminalSend(&writer);
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;5R");
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R");
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R\x1bP>|ghostty 1.3.1\x1b\\");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;5R");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;1R");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;1R\x1bP>|ghostty 1.3.1\x1b\\");
 
     const report = "OpenCode search configuration പരിശോധിക്കൽ";
     try test_renderer.renderer.getNextBuffer().drawText(
@@ -674,11 +677,32 @@ test "renderer preserves Malayalam report after Ghostty probe replies" {
         ansi.rgbColor(0, 0, 0, 255),
         0,
     );
+    try test_renderer.renderer.getNextBuffer().drawText(
+        "|",
+        40,
+        0,
+        ansi.rgbColor(255, 255, 255, 255),
+        ansi.rgbColor(0, 0, 0, 255),
+        0,
+    );
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
 
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.find(u8, output, report) != null);
     try std.testing.expect(std.mem.find(u8, output, "\x1b]66;") == null);
+
+    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, std.testing.allocator, .{
+        .cols = 80,
+        .rows = 1,
+    });
+    defer terminal.deinit(std.testing.allocator);
+    var stream = terminal.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("\x1b[?2027h");
+    stream.nextSlice(output);
+
+    const screen = try terminal.plainString(std.testing.allocator);
+    defer std.testing.allocator.free(screen);
+    try std.testing.expectEqualStrings(report ++ "|", std.mem.trimEnd(u8, screen, " "));
 }
 
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
