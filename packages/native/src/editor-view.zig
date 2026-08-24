@@ -22,6 +22,12 @@ pub const EditorViewError = error{
 /// Visual coordinates (visual_row, visual_col) are VIEWPORT-RELATIVE.
 /// This means visual_row=0 is the first visible line in the viewport, not the first line in the document.
 /// Logical coordinates (logical_row, logical_col) are document-absolute.
+///
+/// visual_col convention:
+/// - Public paint APIs (`getVisualCursor`, `getVisualSOL`, `getVisualEOL`) include
+///   wrapIndent continuation pad so the column matches painted geometry.
+/// - Internal translation (`logicalToVisualCursor`, `visualToLogicalCursor`, affinity)
+///   is content-relative: 0 is the first content cell of the virtual line.
 pub const VisualCursor = struct {
     visual_row: u32, // Viewport-relative row (0 = top of viewport)
     visual_col: u32, // Viewport-relative column (0 = left edge of viewport when not wrapping)

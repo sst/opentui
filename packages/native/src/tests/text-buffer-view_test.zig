@@ -3792,6 +3792,37 @@ test "TextBufferView wrap indent - leading tab uses tab width" {
     try std.testing.expectEqual(@as(u32, 4), vlines[1].pad_cols);
 }
 
+test "TextBufferView wrap indent - mixed spaces and tab use fixed tab width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    tb.setTabWidth(4);
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Engine tab width is fixed (2 spaces + tab = 6), not a modulo tab stop (would be 4).
+    var text_buf: [83]u8 = undefined;
+    text_buf[0] = ' ';
+    text_buf[1] = ' ';
+    text_buf[2] = '\t';
+    @memset(text_buf[3..], 'd');
+    try tb.setText(&text_buf);
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(20);
+    view.setWrapIndent(.same);
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expect(vlines.len >= 2);
+    try std.testing.expectEqual(@as(u32, 0), vlines[0].pad_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].pad_cols);
+}
+
 test "TextBufferView wrap indent - short indented line has no pad" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

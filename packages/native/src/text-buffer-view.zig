@@ -1444,6 +1444,7 @@ pub const UnifiedTextBufferView = struct {
     /// Display-column width of a leading run of ASCII space/tab only.
     /// Returns finalized=true when a non-indent character is found.
     /// All-whitespace input leaves finalized=false (caller treats indent as 0).
+    /// Tabs use the same fixed `tab_width` as `utf8.charWidth`, not modulo tab stops.
     fn accumulateLeadingIndentCols(bytes: []const u8, tab_width: u8, start_indent: u32) struct { indent: u32, finalized: bool } {
         var indent = start_indent;
         var i: usize = 0;
