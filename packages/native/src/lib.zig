@@ -3,6 +3,22 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
+pub const std_options: std.Options = .{
+    .logFn = discardStdLog,
+};
+
+fn discardStdLog(
+    comptime message_level: std.log.Level,
+    comptime scope: @EnumLiteral(),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    _ = message_level;
+    _ = scope;
+    _ = format;
+    _ = args;
+}
+
 var io_threaded: std.Io.Threaded = .init_single_threaded;
 pub const io = io_threaded.io();
 
