@@ -25,6 +25,29 @@ send_kitty_ctrl() {
   printf '\033[%d;5u' "$1" | termctrl send "${SESSION_NAME}" --stdin
 }
 
+type_human() {
+  local text="$1"
+  local index character delay
+  local -a cadence=(0.055 0.075 0.065 0.095 0.060 0.080 0.070)
+  for ((index = 0; index < ${#text}; index++)); do
+    character="${text:index:1}"
+    termctrl send "${SESSION_NAME}" "text:${character}"
+    delay="${cadence[index % ${#cadence[@]}]}"
+    sleep "${delay}"
+  done
+}
+
+press_human() {
+  local key="$1"
+  local count="$2"
+  local delay="${3:-0.06}"
+  local index
+  for ((index = 0; index < count; index++)); do
+    termctrl send "${SESSION_NAME}" "${key}"
+    sleep "${delay}"
+  done
+}
+
 start_args=(start "${SESSION_NAME}" --host opentui --cols 132 --rows 30)
 if [[ -n "${RECORDING_PATH}" ]]; then
   mkdir -p "$(dirname "${RECORDING_PATH}")"
@@ -44,22 +67,23 @@ sleep 3
 mark incremental-enabled
 
 # Move from the opening comment into the highlighted string on the const line.
-termctrl send "${SESSION_NAME}" down down down down down down down ctrl-e
+press_human down 7 0.12
+termctrl send "${SESSION_NAME}" ctrl-e
 sleep 2
-for _ in $(seq 1 13); do termctrl send "${SESSION_NAME}" left; done
+press_human left 13 0.07
 mark string-edit-start
-termctrl send "${SESSION_NAME}" text:Open
-sleep 1
-termctrl send "${SESSION_NAME}" text:TUI
-sleep 1
-termctrl send "${SESSION_NAME}" text:" incremental"
+type_human "OpenTUO"
+sleep 0.7
+termctrl send "${SESSION_NAME}" backspace
+sleep 0.4
+type_human "I incremental"
 sleep 2
 mark string-expanded
 
 # Split inside the string, delete the whole temporary line in one edit, and rejoin it.
 termctrl send "${SESSION_NAME}" enter
 sleep 2
-termctrl send "${SESSION_NAME}" text:split
+type_human "split"
 sleep 2
 termctrl send "${SESSION_NAME}" ctrl-u
 sleep 2
@@ -75,12 +99,12 @@ sleep 2
 mark rejoin-undo-redo
 
 # Edit beside a highlighted keyword, then leave one small local edit as the final response.
-termctrl send "${SESSION_NAME}" up ctrl-a text:async
-sleep 1
-termctrl send "${SESSION_NAME}" text:" "
+termctrl send "${SESSION_NAME}" up ctrl-a
+type_human "async "
 sleep 3
 mark keyword-adjacent-edit
-termctrl send "${SESSION_NAME}" down ctrl-e text:" // partial"
+termctrl send "${SESSION_NAME}" down ctrl-e
+type_human " // partial"
 termctrl wait "${SESSION_NAME}" "parse=incremental | query=partial" --timeout 15000
 sleep 4
 mark incremental-partial
