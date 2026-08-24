@@ -705,6 +705,52 @@ test "renderer preserves Malayalam report after Ghostty probe replies" {
     try std.testing.expectEqualStrings(report ++ "|", std.mem.trimEnd(u8, screen, " "));
 }
 
+test "renderer preserves wide grapheme when continuation and next cell colors match" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 6, 1, pool);
+    defer test_renderer.deinit();
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM", "ghostty"));
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM_VERSION", "1.3.1"));
+
+    const text = "✅ X";
+    const foreground = ansi.rgbColor(255, 255, 255, 255);
+    const background = ansi.rgbColor(0, 0, 0, 255);
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.drawText(text, 0, 0, foreground, background, 0);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try next.drawText(text, 0, 0, foreground, background, 0);
+    const colors = [_]buffer.RGBA{
+        ansi.rgbColor(200, 0, 0, 255),
+        ansi.rgbColor(0, 200, 0, 255),
+        ansi.rgbColor(0, 200, 0, 255),
+        ansi.rgbColor(0, 0, 200, 255),
+    };
+    for (colors, 0..) |color, x| {
+        var cell = next.get(@intCast(x), 0).?;
+        cell.fg = color;
+        next.setRaw(@intCast(x), 0, cell);
+    }
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+
+    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, std.testing.allocator, .{
+        .cols = 6,
+        .rows = 1,
+    });
+    defer terminal.deinit(std.testing.allocator);
+    var stream = terminal.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("\x1b[?2027h");
+    stream.nextSlice(test_renderer.memory.bytes.items);
+
+    const screen = try terminal.plainString(std.testing.allocator);
+    defer std.testing.allocator.free(screen);
+    try std.testing.expectEqualStrings(text, std.mem.trimEnd(u8, screen, " "));
+}
+
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -2465,6 +2465,14 @@ pub const CliRenderer = struct {
                     continue;
                 }
 
+                if (cell_type == gp.CHAR_FLAG_CONTINUATION) {
+                    // A continuation has no bytes to emit. Starting a run here can
+                    // position the next printable cell inside the wide grapheme.
+                    self.currentRenderBuffer.syncCell(x, y, cell);
+                    cellsUpdated += 1;
+                    continue;
+                }
+
                 if (!frame_started) {
                     beginRenderFrame(writer);
                     frame_started = true;
