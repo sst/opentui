@@ -17,10 +17,13 @@ class FakeIncrementalClient extends EventEmitter implements IncrementalHighlight
   public readonly removeCalls: number[] = []
   public listenerWasRegisteredBeforeCreate = false
   public deferCreate = false
+  public deferOperations = false
+  public updateError?: Error
   public createResult = true
   public createError?: Error
   private readonly buffers = new Map<number, { content: string; version: number }>()
   private createResolver?: (value: boolean) => void
+  private readonly operationResolvers: Array<() => void> = []
 
   public createBuffer(id: number, content: string, filetype: string, version: number): Promise<boolean> {
     this.listenerWasRegisteredBeforeCreate = this.listenerCount("highlights:response") > 0
@@ -39,6 +42,11 @@ class FakeIncrementalClient extends EventEmitter implements IncrementalHighlight
     content: string,
     version: number,
   ): Promise<void> {
+    if (this.updateError) {
+      const error = this.updateError
+      this.updateError = undefined
+      throw error
+    }
     const previous = this.buffers.get(id)
     if (!previous || version !== previous.version + 1)
       throw new Error("update did not receive the prior client version")
@@ -56,13 +64,15 @@ class FakeIncrementalClient extends EventEmitter implements IncrementalHighlight
     if (expected !== content) throw new Error("update content does not match its edit and prior client content")
     this.updateCalls.push({ id, edits, content, version })
     this.buffers.set(id, { content, version })
+    if (this.deferOperations) await new Promise<void>((resolve) => this.operationResolvers.push(resolve))
   }
 
   public async resetBuffer(id: number, version: number, content: string): Promise<void> {
     const previous = this.buffers.get(id)
-    if (!previous || version !== previous.version + 1) throw new Error("reset did not receive the prior client version")
+    if (!previous || version <= previous.version) throw new Error("reset did not receive a newer client version")
     this.resetCalls.push({ id, content, version })
     this.buffers.set(id, { content, version })
+    if (this.deferOperations) await new Promise<void>((resolve) => this.operationResolvers.push(resolve))
   }
 
   public async removeBuffer(id: number): Promise<void> {
@@ -81,6 +91,10 @@ class FakeIncrementalClient extends EventEmitter implements IncrementalHighlight
 
   public getContent(id: number): string | undefined {
     return this.buffers.get(id)?.content
+  }
+
+  public resolveNextOperation(): void {
+    this.operationResolvers.shift()?.()
   }
 
   public respond(bufferId: number, version: number, response: HighlightResponse): void {
@@ -174,6 +188,13 @@ describe("NativeTreeSitterHighlighter", () => {
     )
     expect(value.getRangeCount()).toBe(2)
 
+    const originalQueryAnnotations = editBuffer.queryAnnotations.bind(editBuffer)
+    const queryKinds: string[] = []
+    editBuffer.queryAnnotations = (query = { kind: "all" }) => {
+      queryKinds.push(query.kind)
+      return originalQueryAnnotations(query)
+    }
+
     client.respond(
       value.bufferId,
       1,
@@ -191,6 +212,12 @@ describe("NativeTreeSitterHighlighter", () => {
       [6, 9],
     ])
     expect(editBuffer.queryAnnotations({ kind: "namespace", namespace: 42 })).toHaveLength(1)
+    expect(queryKinds.filter((kind) => kind === "overlap")).toHaveLength(1)
+    expect(queryKinds.filter((kind) => kind === "namespace")).toHaveLength(2)
+
+    queryKinds.length = 0
+    expect(value.getRangeCount()).toBe(2)
+    expect(queryKinds).toEqual([])
 
     client.respond(
       value.bufferId,
@@ -247,21 +274,30 @@ describe("NativeTreeSitterHighlighter", () => {
     expect(value.getStats()).toMatchObject({ incrementalCount: 1, resetCount: 1, version: 3 })
   })
 
-  test("reconstructs each version when character events are delivered after a burst", async () => {
+  test("coalesces character bursts to one incremental update and one latest reset", async () => {
     const value = createHighlighter()
     await value.whenIdle()
 
     editBuffer.insertChar("a")
     editBuffer.insertChar("b")
     editBuffer.insertChar("c")
-    await flushNativeEvents()
     await value.whenIdle()
 
-    expect(client.updateCalls.map(({ content }) => content)).toEqual(["aone + two", "abone + two", "abcone + two"])
-    expect(client.updateCalls.map(({ version }) => version)).toEqual([2, 3, 4])
+    expect(client.updateCalls.map(({ content, version }) => ({ content, version }))).toEqual([
+      { content: "aone + two", version: 2 },
+    ])
+    expect(client.resetCalls).toEqual([{ id: value.bufferId, content: "abcone + two", version: 3 }])
+    expect(value.getStats()).toMatchObject({
+      receivedEditCount: 3,
+      incrementalCount: 1,
+      resetCount: 1,
+      coalescedEditCount: 1,
+      maxQueueDepth: 2,
+      queueDepth: 0,
+    })
   })
 
-  test("captures exact versions for insert-before bursts", async () => {
+  test("submits an exact contiguous insert-before snapshot incrementally", async () => {
     editBuffer.setText("")
     await flushNativeEvents()
     const value = createHighlighter()
@@ -270,17 +306,17 @@ describe("NativeTreeSitterHighlighter", () => {
     editBuffer.insertChar("a")
     editBuffer.setCursor(0, 0)
     editBuffer.insertChar("b")
-    await flushNativeEvents()
     await value.whenIdle()
 
     expect(client.updateCalls.map(({ content, version }) => ({ content, version }))).toEqual([
       { content: "a", version: 2 },
       { content: "ba", version: 3 },
     ])
+    expect(client.resetCalls).toEqual([])
     expect(client.getContent(value.bufferId)).toBe(editBuffer.getText())
   })
 
-  test("serializes rapid Unicode delete, undo, redo, reset, and edit snapshots", async () => {
+  test("coalesces rapid Unicode delete, undo, redo, reset, and edits to the exact final snapshot", async () => {
     editBuffer.setText("A界\nB")
     await flushNativeEvents()
     const value = createHighlighter()
@@ -292,22 +328,20 @@ describe("NativeTreeSitterHighlighter", () => {
     editBuffer.setText("λ")
     editBuffer.setCursor(0, 1)
     editBuffer.insertText("界")
-    await flushNativeEvents()
     await value.whenIdle()
 
-    expect(client.updateCalls.map(({ content }) => content)).toEqual(["AB", "A界\nB", "AB", "λ界"])
-    expect(client.resetCalls).toEqual([{ id: value.bufferId, content: "λ", version: 5 }])
+    expect(client.updateCalls.map(({ content }) => content).slice(0, 1)).toEqual(["AB"])
+    expect(client.resetCalls).toEqual([{ id: value.bufferId, content: "λ界", version: 3 }])
     expect(client.getContent(value.bufferId)).toBe(editBuffer.getText())
-    expect(value.getStats()).toMatchObject({ incrementalCount: 4, resetCount: 1, version: 6 })
+    expect(value.getStats()).toMatchObject({ receivedEditCount: 5, incrementalCount: 1, resetCount: 1, version: 3 })
   })
 
-  test("uses an ordered reset when an epoch or snapshot cannot be validated", async () => {
+  test("uses an ordered reset when an epoch is not contiguous", async () => {
     const value = createHighlighter()
     await value.whenIdle()
     const lastEpoch = editBuffer.getLastChange()!.epoch
 
-    editBuffer.emit(
-      "content-changed",
+    ;(value as any).handleContentSnapshot(
       {
         kind: "splice",
         epoch: lastEpoch + 2n,
@@ -325,6 +359,96 @@ describe("NativeTreeSitterHighlighter", () => {
     expect(client.updateCalls).toEqual([])
     expect(client.resetCalls).toEqual([{ id: value.bufferId, content: "xone + two", version: 2 }])
     expect(value.getStats()).toMatchObject({ incrementalCount: 0, resetCount: 1, version: 2 })
+  })
+
+  test("recovers a failed incremental conversion with one ordered reset", async () => {
+    const value = createHighlighter()
+    await value.whenIdle()
+    client.updateError = new Error("invalid UTF-8 edit conversion")
+
+    editBuffer.insertChar("x")
+    await value.whenIdle()
+
+    expect(value.isActive()).toBe(true)
+    expect(client.updateCalls).toEqual([])
+    expect(client.resetCalls).toEqual([{ id: value.bufferId, content: "xone + two", version: 3 }])
+    expect(client.getContent(value.bufferId)).toBe(editBuffer.getText())
+    expect(value.getStats()).toMatchObject({ incrementalCount: 0, resetCount: 1, version: 3 })
+  })
+
+  test("keeps paced typing incremental without resets", async () => {
+    const value = createHighlighter()
+    await value.whenIdle()
+
+    for (const char of "paced") {
+      editBuffer.insertChar(char)
+      await value.whenIdle()
+    }
+
+    expect(client.updateCalls).toHaveLength(5)
+    expect(client.resetCalls).toEqual([])
+    expect(value.getStats()).toMatchObject({
+      receivedEditCount: 5,
+      incrementalCount: 5,
+      resetCount: 0,
+      coalescedEditCount: 0,
+      maxQueueDepth: 1,
+    })
+  })
+
+  test("bounds pending state and reaches the exact final content for 10, 100, 600, and 10k edit bursts", async () => {
+    for (const editCount of [10, 100, 600, 10_000]) {
+      await highlighter?.dispose()
+      editBuffer.destroy()
+      syntaxStyle.destroy()
+
+      editBuffer = EditBuffer.create("unicode")
+      editBuffer.setText("")
+      await flushNativeEvents()
+      syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: "#ffffff" }, keyword: { fg: "#ff0000" } })
+      editBuffer.setSyntaxStyle(syntaxStyle)
+      client = new FakeIncrementalClient()
+      const value = createHighlighter()
+      await value.whenIdle()
+
+      for (let index = 0; index < editCount; index++) {
+        if (index % 2 === 0) editBuffer.insertChar("x")
+        else editBuffer.deleteCharBackward()
+      }
+      await value.whenIdle()
+
+      expect(client.getContent(value.bufferId)).toBe(editBuffer.getText())
+      expect(client.updateCalls).toHaveLength(1)
+      expect(client.resetCalls).toHaveLength(1)
+      expect(value.getStats()).toMatchObject({
+        receivedEditCount: editCount,
+        coalescedEditCount: editCount - 2,
+        incrementalCount: 1,
+        resetCount: 1,
+        maxQueueDepth: 2,
+        queueDepth: 0,
+      })
+    }
+  }, 20_000)
+
+  test("does not publish an in-flight response after a newer editor snapshot", async () => {
+    client.deferOperations = true
+    const value = createHighlighter()
+    await value.whenIdle()
+
+    editBuffer.insertChar("a")
+    editBuffer.insertChar("b")
+    client.respond(value.bufferId, 2, response({ highlights: [{ startIndex: 0, endIndex: 1, group: "keyword" }] }))
+    expect(value.getStats().publicationCount).toBe(0)
+    expect(value.getRangeCount()).toBe(0)
+
+    client.resolveNextOperation()
+    await flushNativeEvents()
+    client.respond(value.bufferId, 3, response({ highlights: [{ startIndex: 0, endIndex: 2, group: "keyword" }] }))
+    expect(value.getStats().publicationCount).toBe(1)
+    client.resolveNextOperation()
+    await value.whenIdle()
+    expect(value.getRangeCount()).toBe(1)
   })
 
   test("uses authoritative style IDs and caches merged definitions", async () => {
@@ -390,7 +514,7 @@ describe("NativeTreeSitterHighlighter", () => {
     expect(failed.isActive()).toBe(false)
     expect(failed.getStats().error).toBe("TypeScript Tree-sitter parser is unavailable")
     expect(client.listenerCount("highlights:response")).toBe(0)
-    expect(editBuffer.listenerCount("content-changed")).toBe(0)
+    expect((editBuffer as any).contentSnapshotSubscribers.size).toBe(0)
     expect(client.removeCalls).toEqual([failed.bufferId])
     expect(client.getBuffer(failed.bufferId)).toBeUndefined()
     await failed.dispose()
@@ -401,7 +525,7 @@ describe("NativeTreeSitterHighlighter", () => {
     await retry.whenIdle()
     expect(retry.isActive()).toBe(true)
     expect(client.listenerCount("highlights:response")).toBe(1)
-    expect(editBuffer.listenerCount("content-changed")).toBe(1)
+    expect((editBuffer as any).contentSnapshotSubscribers.size).toBe(1)
   })
 
   test("cleans up a synchronous create throw without queueing updates", async () => {
@@ -412,7 +536,7 @@ describe("NativeTreeSitterHighlighter", () => {
     expect(value.isActive()).toBe(false)
     expect(value.getStats().error).toBe("create exploded")
     expect(client.listenerCount("highlights:response")).toBe(0)
-    expect(editBuffer.listenerCount("content-changed")).toBe(0)
+    expect((editBuffer as any).contentSnapshotSubscribers.size).toBe(0)
     expect(client.removeCalls).toEqual([value.bufferId])
 
     editBuffer.insertText("ignored")

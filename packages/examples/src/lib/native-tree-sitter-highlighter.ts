@@ -29,8 +29,13 @@ export interface IncrementalHighlightClient {
 export interface IncrementalHighlightStats {
   parseKind: HighlightResponse["parseKind"] | "pending"
   queryKind: HighlightResponse["queryKind"] | "pending"
+  receivedEditCount: number
   incrementalCount: number
   resetCount: number
+  coalescedEditCount: number
+  queueDepth: number
+  maxQueueDepth: number
+  queueLatencyMs: number
   changedByteCount: number
   queriedByteCount: number
   publicationCount: number
@@ -47,12 +52,17 @@ export interface NativeTreeSitterHighlighterOptions {
   onFailure?: (error: Error) => void
 }
 
+interface PendingSnapshot {
+  change: EditChange
+  content: string
+  receivedAt: number
+}
+
 let nextBufferId = 0x7fffffff
 let nextNamespace = 0xffffffff
 let nextMergedStyleName = 1
 const allocatedNamespaces = new Set<number>()
 const mergedStyleCaches = new WeakMap<SyntaxStyle, Map<string, number>>()
-const encoder = new TextEncoder()
 
 function allocateBufferId(client: IncrementalHighlightClient): number {
   while (nextBufferId > 0) {
@@ -91,28 +101,16 @@ function overlaps(startByte: number, endByte: number, windowStart: number, windo
   return startByte < windowEnd && endByte > windowStart
 }
 
-function validatesUtf8Splice(previousContent: string, currentSnapshot: string, change: EditChange): boolean {
-  const previousBytes = encoder.encode(previousContent)
-  const snapshotBytes = encoder.encode(currentSnapshot)
-  if (
-    change.startIndex < 0 ||
-    change.oldEndIndex < change.startIndex ||
-    change.oldEndIndex > previousBytes.byteLength ||
-    change.newEndIndex < change.startIndex ||
-    change.newEndIndex > snapshotBytes.byteLength
-  ) {
-    return false
-  }
-
-  const insertedBytes = snapshotBytes.subarray(change.startIndex, change.newEndIndex)
-  const nextBytes = new Uint8Array(
-    change.startIndex + insertedBytes.byteLength + previousBytes.byteLength - change.oldEndIndex,
-  )
-  nextBytes.set(previousBytes.subarray(0, change.startIndex))
-  nextBytes.set(insertedBytes, change.startIndex)
-  nextBytes.set(previousBytes.subarray(change.oldEndIndex), change.startIndex + insertedBytes.byteLength)
+function isIncrementalChange(change: EditChange, previousEpoch: bigint | undefined): boolean {
   return (
-    nextBytes.byteLength === snapshotBytes.byteLength && nextBytes.every((byte, index) => byte === snapshotBytes[index])
+    change.kind === "splice" &&
+    (previousEpoch === undefined || change.epoch === previousEpoch + 1n) &&
+    Number.isSafeInteger(change.startIndex) &&
+    Number.isSafeInteger(change.oldEndIndex) &&
+    Number.isSafeInteger(change.newEndIndex) &&
+    change.startIndex >= 0 &&
+    change.oldEndIndex >= change.startIndex &&
+    change.newEndIndex >= change.startIndex
   )
 }
 
@@ -130,17 +128,27 @@ export class NativeTreeSitterHighlighter {
   private active = true
   private listenersAttached = true
   private namespaceAllocated = true
-  private latestContent: string
+  private initialContent?: string
   private latestVersion = 1
-  private latestEpoch?: bigint
-  private operationQueue: Promise<void>
+  private latestReceivedEpoch?: bigint
+  private lastSubmittedEpoch?: bigint
+  private pending?: PendingSnapshot
+  private draining = true
+  private drainPromise: Promise<void>
+  private unsubscribeContentSnapshots?: () => void
   private disposePromise?: Promise<void>
   private removePromise?: Promise<void>
+  private rangeCount = 0
   private stats: IncrementalHighlightStats = {
     parseKind: "pending",
     queryKind: "pending",
+    receivedEditCount: 0,
     incrementalCount: 0,
     resetCount: 0,
+    coalescedEditCount: 0,
+    queueDepth: 1,
+    maxQueueDepth: 1,
+    queueLatencyMs: 0,
     changedByteCount: 0,
     queriedByteCount: 0,
     publicationCount: 0,
@@ -148,7 +156,13 @@ export class NativeTreeSitterHighlighter {
   }
 
   private readonly handleHighlightResponse = (bufferId: number, version: number, response: HighlightResponse): void => {
-    if (!this.active || bufferId !== this.bufferId || version !== this.latestVersion) {
+    if (
+      !this.active ||
+      bufferId !== this.bufferId ||
+      version !== this.latestVersion ||
+      this.pending !== undefined ||
+      this.latestReceivedEpoch !== this.lastSubmittedEpoch
+    ) {
       return
     }
 
@@ -156,14 +170,22 @@ export class NativeTreeSitterHighlighter {
     if (response.queryKind === "full") {
       operations.push({ kind: "clearNamespace", namespace: this.namespace })
     } else {
-      const annotations = this.editBuffer.queryAnnotations({ kind: "namespace", namespace: this.namespace })
-      for (const annotation of annotations) {
-        if (
-          response.replacementRanges.some((range) =>
-            overlaps(annotation.startByte, annotation.endByte, range.startIndex, range.endIndex),
-          )
-        ) {
-          operations.push({ kind: "remove", id: annotation.id })
+      const removedIds = new Set<bigint>()
+      for (const range of response.replacementRanges) {
+        const annotations = this.editBuffer.queryAnnotations({
+          kind: "overlap",
+          startByte: range.startIndex,
+          endByte: range.endIndex,
+        })
+        for (const annotation of annotations) {
+          if (
+            annotation.namespace === this.namespace &&
+            !removedIds.has(annotation.id) &&
+            overlaps(annotation.startByte, annotation.endByte, range.startIndex, range.endIndex)
+          ) {
+            removedIds.add(annotation.id)
+            operations.push({ kind: "remove", id: annotation.id })
+          }
         }
       }
     }
@@ -193,7 +215,8 @@ export class NativeTreeSitterHighlighter {
       })
     }
 
-    this.editBuffer.applyAnnotationOperations(operations)
+    const result = this.editBuffer.applyAnnotationOperations(operations)
+    this.rangeCount += result.createdIds.length - result.deletedIds.length
     this.stats = {
       ...this.stats,
       parseKind: response.parseKind,
@@ -207,33 +230,25 @@ export class NativeTreeSitterHighlighter {
     this.requestRender()
   }
 
-  private readonly handleContentChange = (change: EditChange, contentSnapshot?: string): void => {
+  private readonly handleContentSnapshot = (change: EditChange, content: string): void => {
     if (!this.active) return
 
-    const content = contentSnapshot ?? this.editBuffer.getText()
-    const hasEpochGap = this.latestEpoch !== undefined && change.epoch !== this.latestEpoch + 1n
-    const useReset = change.kind === "reset" || hasEpochGap || !validatesUtf8Splice(this.latestContent, content, change)
-    this.latestContent = content
-    this.latestEpoch = change.epoch
-    const version = ++this.latestVersion
-    const generation = this.generation
+    const coalesced = this.pending === undefined ? 0 : 1
+    this.pending = { change, content, receivedAt: performance.now() }
+    this.latestReceivedEpoch = change.epoch
+    const queueDepth = Number(this.draining) + 1
     this.stats = {
       ...this.stats,
-      incrementalCount: this.stats.incrementalCount + Number(!useReset),
-      resetCount: this.stats.resetCount + Number(useReset),
-      version,
+      receivedEditCount: this.stats.receivedEditCount + 1,
+      coalescedEditCount: this.stats.coalescedEditCount + coalesced,
+      queueDepth,
+      maxQueueDepth: Math.max(this.stats.maxQueueDepth, queueDepth),
     }
+    if (!this.draining) this.startDrain()
+  }
 
-    this.operationQueue = this.operationQueue
-      .then(async () => {
-        if (!this.active || this.generation !== generation) return
-        if (useReset) {
-          await this.client.resetBuffer(this.bufferId, version, content)
-        } else {
-          await this.client.updateBufferUtf8(this.bufferId, [change], content, version)
-        }
-      })
-      .catch((error) => this.fail(error, generation))
+  private readonly handleAnnotationsReset = (): void => {
+    this.rangeCount = 0
   }
 
   constructor(options: NativeTreeSitterHighlighterOptions) {
@@ -244,14 +259,16 @@ export class NativeTreeSitterHighlighter {
     this.onFailure = options.onFailure
     this.mergedStyleIds = mergedStyleCaches.get(this.syntaxStyle) ?? new Map<string, number>()
     mergedStyleCaches.set(this.syntaxStyle, this.mergedStyleIds)
-    this.latestContent = options.initialContent
-    this.latestEpoch = this.editBuffer.getLastChange()?.epoch
+    this.initialContent = options.initialContent
+    this.latestReceivedEpoch = this.editBuffer.getLastChange()?.epoch
+    this.lastSubmittedEpoch = this.latestReceivedEpoch
     this.bufferId = allocateBufferId(this.client)
     this.namespace = allocateNamespace(this.editBuffer)
 
     this.client.on("highlights:response", this.handleHighlightResponse)
-    this.editBuffer.on("content-changed", this.handleContentChange)
-    this.operationQueue = this.initialize(this.generation)
+    this.editBuffer.on("annotations-reset", this.handleAnnotationsReset)
+    this.unsubscribeContentSnapshots = this.editBuffer.subscribeContentSnapshots(this.handleContentSnapshot)
+    this.drainPromise = this.initializeAndDrain(this.generation)
   }
 
   public getStats(): IncrementalHighlightStats {
@@ -263,12 +280,11 @@ export class NativeTreeSitterHighlighter {
   }
 
   public getRangeCount(): number {
-    if (!this.active) return 0
-    return this.editBuffer.queryAnnotations({ kind: "namespace", namespace: this.namespace }).length
+    return this.active ? this.rangeCount : 0
   }
 
   public whenIdle(): Promise<void> {
-    return this.operationQueue
+    return this.drainPromise
   }
 
   public dispose(): Promise<void> {
@@ -276,23 +292,92 @@ export class NativeTreeSitterHighlighter {
     if (this.active) {
       this.active = false
       this.generation++
+      this.pending = undefined
+      this.stats = { ...this.stats, queueDepth: Number(this.draining) }
       this.releaseLocalState()
     }
 
-    this.disposePromise = this.operationQueue
+    this.disposePromise = this.drainPromise
       .catch(() => {})
       .then(() => this.removeBuffer())
       .catch((error) => this.recordError(error, true))
     return this.disposePromise
   }
 
-  private async initialize(generation: number): Promise<void> {
+  private startDrain(): void {
+    if (this.draining || !this.active) return
+    this.draining = true
+    this.drainPromise = this.drain(this.generation)
+  }
+
+  private async initializeAndDrain(generation: number): Promise<void> {
+    const content = this.initialContent ?? ""
+    this.initialContent = undefined
     try {
-      const hasParser = await this.client.createBuffer(this.bufferId, this.latestContent, "typescript", 1)
+      const hasParser = await this.client.createBuffer(this.bufferId, content, "typescript", 1)
       if (!hasParser) throw new Error("TypeScript Tree-sitter parser is unavailable")
+      await this.drainPending(generation)
     } catch (error) {
       await this.fail(error, generation)
+    } finally {
+      this.finishDrain()
     }
+  }
+
+  private async drain(generation: number): Promise<void> {
+    try {
+      await this.drainPending(generation)
+    } catch (error) {
+      await this.fail(error, generation)
+    } finally {
+      this.finishDrain()
+    }
+  }
+
+  private async drainPending(generation: number): Promise<void> {
+    while (this.active && this.generation === generation && this.pending) {
+      const snapshot = this.pending
+      this.pending = undefined
+      const incremental = isIncrementalChange(snapshot.change, this.lastSubmittedEpoch)
+      const version = ++this.latestVersion
+      this.lastSubmittedEpoch = snapshot.change.epoch
+      this.stats = {
+        ...this.stats,
+        queueDepth: 1,
+        queueLatencyMs: performance.now() - snapshot.receivedAt,
+        version,
+      }
+
+      if (incremental) {
+        try {
+          await this.client.updateBufferUtf8(this.bufferId, [snapshot.change], snapshot.content, version)
+          this.stats = { ...this.stats, incrementalCount: this.stats.incrementalCount + 1 }
+        } catch {
+          if (!this.active || this.generation !== generation) return
+          const resetSnapshot = this.pending ?? snapshot
+          this.pending = undefined
+          const resetVersion = ++this.latestVersion
+          this.lastSubmittedEpoch = resetSnapshot.change.epoch
+          this.stats = {
+            ...this.stats,
+            resetCount: this.stats.resetCount + 1,
+            queueDepth: 1,
+            queueLatencyMs: performance.now() - resetSnapshot.receivedAt,
+            version: resetVersion,
+          }
+          await this.client.resetBuffer(this.bufferId, resetVersion, resetSnapshot.content)
+        }
+      } else {
+        this.stats = { ...this.stats, resetCount: this.stats.resetCount + 1 }
+        await this.client.resetBuffer(this.bufferId, version, snapshot.content)
+      }
+    }
+  }
+
+  private finishDrain(): void {
+    this.draining = false
+    this.stats = { ...this.stats, queueDepth: Number(this.pending !== undefined) }
+    if (this.pending && this.active) this.startDrain()
   }
 
   private async fail(error: unknown, generation: number): Promise<void> {
@@ -301,6 +386,7 @@ export class NativeTreeSitterHighlighter {
     this.recordError(failure)
     this.active = false
     this.generation++
+    this.pending = undefined
     this.releaseLocalState()
     await this.removeBuffer().catch((removeError) => this.recordError(removeError, true))
     this.requestRender()
@@ -315,13 +401,16 @@ export class NativeTreeSitterHighlighter {
     if (this.listenersAttached) {
       this.listenersAttached = false
       this.client.off("highlights:response", this.handleHighlightResponse)
-      this.editBuffer.off("content-changed", this.handleContentChange)
+      this.editBuffer.off("annotations-reset", this.handleAnnotationsReset)
+      this.unsubscribeContentSnapshots?.()
+      this.unsubscribeContentSnapshots = undefined
     }
     if (this.namespaceAllocated) {
       this.namespaceAllocated = false
       allocatedNamespaces.delete(this.namespace)
       try {
         this.editBuffer.applyAnnotationOperations([{ kind: "clearNamespace", namespace: this.namespace }])
+        this.rangeCount = 0
       } catch (error) {
         this.recordError(error, true)
       }
