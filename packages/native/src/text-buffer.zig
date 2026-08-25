@@ -97,7 +97,6 @@ pub const UnifiedTextBuffer = struct {
     // Persistent roots carry the tab-width generation used for their cached
     // chunk and branch metrics, so only stale history roots are rescanned.
     tab_metrics_generation: u64,
-    tab_metrics_refresh_count: u64,
 
     pub const Defaults = struct {
         fg: ?RGBA,
@@ -266,7 +265,6 @@ pub const UnifiedTextBuffer = struct {
             .styled_capacity = 0,
             .tab_width = 2,
             .tab_metrics_generation = 1,
-            .tab_metrics_refresh_count = 0,
         };
 
         return self;
@@ -1299,11 +1297,6 @@ pub const UnifiedTextBuffer = struct {
         self._rope.walk(&refresh_ctx, RefreshContext.refresh) catch {};
         self._rope.remeasure();
         self._rope.setMetricsGeneration(self.tab_metrics_generation);
-        self.tab_metrics_refresh_count +%= 1;
-    }
-
-    pub fn getTabMetricsRefreshCount(self: *const Self) u64 {
-        return self.tab_metrics_refresh_count;
     }
 
     /// Debug log the rope structure using rope.toText

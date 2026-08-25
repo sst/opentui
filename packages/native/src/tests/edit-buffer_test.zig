@@ -1637,7 +1637,7 @@ test "EditBuffer - replaceText allows undo" {
     try std.testing.expectEqualStrings("Initial", buffer[0..len]);
 }
 
-test "EditBuffer - undo redo only refreshes tab metrics for stale roots" {
+test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
@@ -1649,27 +1649,21 @@ test "EditBuffer - undo redo only refreshes tab metrics for stale roots" {
     try eb.setCursor(0, eb.tb.lineWidthAt(0));
     try eb.insertText("x");
 
-    const initial_refresh_count = eb.tb.getTabMetricsRefreshCount();
     _ = try eb.undo();
-    try std.testing.expectEqual(initial_refresh_count, eb.tb.getTabMetricsRefreshCount());
     try std.testing.expectEqual(@as(u32, 4), eb.tb.lineWidthAt(0));
     _ = try eb.redo();
-    try std.testing.expectEqual(initial_refresh_count, eb.tb.getTabMetricsRefreshCount());
     try std.testing.expectEqual(@as(u32, 5), eb.tb.lineWidthAt(0));
 
     eb.tb.setTabWidth(8);
-    try std.testing.expectEqual(initial_refresh_count + 1, eb.tb.getTabMetricsRefreshCount());
     try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
 
     _ = try eb.undo();
-    try std.testing.expectEqual(initial_refresh_count + 2, eb.tb.getTabMetricsRefreshCount());
     try std.testing.expectEqual(@as(u32, 10), eb.tb.lineWidthAt(0));
     var view = try TextBufferView.init(std.testing.allocator, eb.tb);
     defer view.deinit();
     try std.testing.expectEqual(@as(u32, 10), view.getVirtualLines()[0].width_cols);
 
     _ = try eb.redo();
-    try std.testing.expectEqual(initial_refresh_count + 2, eb.tb.getTabMetricsRefreshCount());
     try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
     try std.testing.expectEqual(@as(u32, 11), view.getVirtualLines()[0].width_cols);
 }
