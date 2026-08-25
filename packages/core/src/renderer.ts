@@ -51,6 +51,7 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection.js"
+import { OutstandingCapabilityProbes, type CapabilityUpdate } from "./lib/outstanding-capability-probes.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 import { matchesKeyBinding } from "./lib/keybinding.internal.js"
@@ -849,6 +850,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
+  private readonly outstandingCapabilityProbes = new OutstandingCapabilityProbes()
   private terminalKeepAliveTimer: ReturnType<typeof setInterval> | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
@@ -3211,8 +3213,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
+    this.outstandingCapabilityProbes.begin()
     this.capabilityTimeoutId = this.clock.setTimeout(() => {
       this.capabilityTimeoutId = null
+      this.outstandingCapabilityProbes.expire()
       this.clearSplitStartupCursorSeed()
 
       if (this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout") {
@@ -3315,29 +3319,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private processCapabilitySequence(sequence: string, hasCursorReport: boolean): boolean {
     const hasStandardCapabilitySignature = isCapabilityResponse(sequence)
-    const shouldProcessAsCapability =
-      hasStandardCapabilitySignature || (hasCursorReport && this.capabilityTimeoutId !== null)
+    const update = this.outstandingCapabilityProbes.consume(sequence, hasCursorReport)
 
-    if (!shouldProcessAsCapability) {
-      return false
+    if (!update) {
+      // No probe outstanding: capability-shaped bytes are still recognized and
+      // swallowed (never forwarded as application input), but they must not
+      // mutate state. Provenance, not shape, gates mutation.
+      return hasStandardCapabilitySignature
     }
 
-    this.lib.processCapabilityResponse(this.rendererPtr, sequence)
-    this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-    if (this._capabilities?.terminal?.from_xtversion) {
-      this.resolveXtVersionWaiters()
-    }
-    if (hasStandardCapabilitySignature) {
-      this.forceFullRepaintRequested = true
-      this.requestRender()
-    }
-    this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
+    this.applyCapabilities(update)
 
     const hadPendingSplitStartupCursorSeed = this.pendingSplitStartupCursorSeed
 
     if (
       hadPendingSplitStartupCursorSeed &&
-      hasCursorReport &&
+      update.hasCursorReport &&
       this._screenMode === "split-footer" &&
       this._externalOutputMode === "capture-stdout"
     ) {
@@ -3353,9 +3350,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     const consumeStartupCursorReport =
-      hadPendingSplitStartupCursorSeed && hasCursorReport && this.splitStartupSeedTimeoutId !== null
+      hadPendingSplitStartupCursorSeed && update.hasCursorReport && this.splitStartupSeedTimeoutId !== null
 
-    return hasStandardCapabilitySignature || consumeStartupCursorReport
+    return update.hasStandardCapabilitySignature || consumeStartupCursorReport
+  }
+
+  /**
+   * The single mutation sink for terminal capabilities. Reachable only with a
+   * CapabilityUpdate minted by OutstandingCapabilityProbes.consume().
+   */
+  private applyCapabilities(update: CapabilityUpdate): void {
+    this.lib.processCapabilityResponse(this.rendererPtr, update.sequence)
+    this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+    if (this._capabilities?.terminal?.from_xtversion) {
+      this.resolveXtVersionWaiters()
+    }
+    if (update.hasStandardCapabilitySignature) {
+      this.forceFullRepaintRequested = true
+      this.requestRender()
+    }
+    this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
   }
 
   private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
@@ -4308,6 +4322,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.clock.clearTimeout(this.capabilityTimeoutId)
       this.capabilityTimeoutId = null
     }
+    this.outstandingCapabilityProbes.expire()
 
     this.clearSplitStartupCursorSeed()
 
@@ -5041,7 +5056,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private waitForXtVersion(): Promise<void> {
-    if (this.capabilityTimeoutId === null || this._capabilities?.terminal?.from_xtversion) {
+    if (!this.outstandingCapabilityProbes.isOpen || this._capabilities?.terminal?.from_xtversion) {
       return Promise.resolve()
     }
 

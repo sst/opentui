@@ -1930,6 +1930,7 @@ test("CliRenderer reseeds split startup offset from non-home CPR capability resp
   const originalGetCursorState = lib.getCursorState.bind(lib)
   ;(renderer as any).pendingSplitStartupCursorSeed = true
   ;(renderer as any).capabilityTimeoutId = setTimeout(() => {}, 10)
+  ;(renderer as any).outstandingCapabilityProbes.begin()
   ;(renderer as any).setPendingSplitFooterTransition({
     mode: "clear-stale-rows",
     sourceTopLine: 2,
@@ -1969,6 +1970,7 @@ test("CliRenderer does not consume standalone CPR replies during capability wind
   renderer = result.renderer
   ;(renderer as any).pendingSplitStartupCursorSeed = false
   ;(renderer as any).capabilityTimeoutId = setTimeout(() => {}, 10)
+  ;(renderer as any).outstandingCapabilityProbes.begin()
 
   const handled = (renderer as any).processCapabilitySequence("\x1b[7;11R", true)
   expect(handled).toBe(false)

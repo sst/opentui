@@ -164,8 +164,10 @@ async function createSilentFollowUpPaletteRenderer(clock = new ManualClock()) {
 
 function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void {
   renderer._terminalIsSetup = true
+  renderer.outstandingCapabilityProbes.begin()
   renderer.capabilityTimeoutId = clock.setTimeout(() => {
     renderer.capabilityTimeoutId = null
+    renderer.outstandingCapabilityProbes.expire()
     renderer.resolveXtVersionWaiters()
   }, 5000)
 }
@@ -716,6 +718,8 @@ describe("Capability repaint handling", () => {
 
     // @ts-expect-error - testing private renderer state
     expect(renderer.forceFullRepaintRequested).toBe(false)
+
+    startCapabilityDetectionWindow(renderer, clock)
 
     // @ts-expect-error - testing private renderer method
     renderer.capabilityHandler("\x1bP>|wezterm\x1b\\")
