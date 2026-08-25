@@ -1,4 +1,5 @@
 pub const ansi = @import("ansi.zig");
+pub const audio = @import("audio.zig");
 pub const buffer = @import("buffer.zig");
 pub const renderer = @import("renderer.zig");
 pub const text_buffer = @import("text-buffer.zig");

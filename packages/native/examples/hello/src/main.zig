@@ -35,6 +35,9 @@ pub fn main() !void {
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
+    const audio_engine = opentui.audio.create(allocator, null) orelse return error.AudioEngineCreationFailed;
+    defer opentui.audio.destroy(audio_engine);
+
     var graphemes = opentui.GraphemePool.init(allocator);
     defer graphemes.deinit();
     var links = opentui.LinkPool.init(allocator);
