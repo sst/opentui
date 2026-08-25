@@ -1,12 +1,21 @@
 ---
 title: Diff
-description: Unified or split diff viewer
-order: 15
+description: Display unified or split diffs with optional syntax highlighting
 ---
 
 # Diff
 
-Render unified or split diffs with syntax highlighting and optional line numbers.
+`Diff` renders one file patch in a unified or split view with syntax highlighting and optional line numbers. Use [Code](/docs/components/code) when you do not need patch parsing.
+
+## Availability
+
+| Field           | Availability                                                          |
+| --------------- | --------------------------------------------------------------------- |
+| Package         | `@opentui/core`                                                       |
+| Core renderable | `DiffRenderable`                                                      |
+| React           | `<diff>` (automatic)                                                  |
+| Solid           | `<diff>` is runtime built in. Its exact props declaration is missing. |
+| Status          | Built in with a Solid typing limitation                               |
 
 ## Basic usage
 
@@ -37,13 +46,11 @@ const diff = new DiffRenderable(renderer, {
 renderer.root.add(diff)
 ```
 
-## Construct API
-
-> Not available yet. Use `DiffRenderable` for now.
+For multi-file input, Diff currently displays only `patches[0]`. Create one `DiffRenderable` for each file patch that you need to show.
 
 ## Split view scroll sync
 
-When `view: "split"` is active, you can link the vertical scroll of both panes. Scrolling one pane then moves the other:
+When `view: "split"` is active, you can link `scrollX` and `scrollY` for both panes. Scrolling one pane then moves the other:
 
 ```typescript
 const diff = new DiffRenderable(renderer, {
@@ -62,29 +69,35 @@ Scroll sync is a no-op in the unified view.
 
 ## Properties
 
-| Property              | Type                            | Default     | Description                           |
-| --------------------- | ------------------------------- | ----------- | ------------------------------------- |
-| `diff`                | `string`                        | `""`        | Unified diff string                   |
-| `view`                | `"unified"` or `"split"`        | `"unified"` | Layout style                          |
-| `syncScroll`          | `boolean`                       | `false`     | Link vertical scroll in split view    |
-| `filetype`            | `string`                        | -           | Syntax highlighting language          |
-| `fg`                  | `string` or `RGBA`              | -           | Base foreground for inner code panes  |
-| `syntaxStyle`         | `SyntaxStyle`                   | -           | Syntax style for code                 |
-| `wrapMode`            | `"word"`, `"char"`, or `"none"` | -           | Code wrapping mode                    |
-| `conceal`             | `boolean`                       | `false`     | Conceal markup when highlighting      |
-| `selectionBg`         | `string` or `RGBA`              | -           | Selection background in code panes    |
-| `selectionFg`         | `string` or `RGBA`              | -           | Selection foreground in code panes    |
-| `treeSitterClient`    | `TreeSitterClient`              | -           | Custom Tree-sitter client             |
-| `showLineNumbers`     | `boolean`                       | `true`      | Show line numbers                     |
-| `lineNumberFg`        | `string` or `RGBA`              | `#888888`   | Line number text color                |
-| `lineNumberBg`        | `string` or `RGBA`              | transparent | Line number background                |
-| `addedLineNumberBg`   | `string` or `RGBA`              | transparent | Line number background for added      |
-| `removedLineNumberBg` | `string` or `RGBA`              | transparent | Line number background for removed    |
-| `addedBg`             | `string` or `RGBA`              | `#1a4d1a`   | Background for added lines            |
-| `removedBg`           | `string` or `RGBA`              | `#4d1a1a`   | Background for removed lines          |
-| `contextBg`           | `string` or `RGBA`              | transparent | Background for context lines          |
-| `addedContentBg`      | `string` or `RGBA`              | -           | Optional content background (added)   |
-| `removedContentBg`    | `string` or `RGBA`              | -           | Optional content background (removed) |
-| `contextContentBg`    | `string` or `RGBA`              | -           | Optional content background (context) |
-| `addedSignColor`      | `string` or `RGBA`              | `#22c55e`   | Sign color for added lines            |
-| `removedSignColor`    | `string` or `RGBA`              | `#ef4444`   | Sign color for removed lines          |
+| Property              | Type                            | Default     | Description                                       |
+| --------------------- | ------------------------------- | ----------- | ------------------------------------------------- |
+| `diff`                | `string`                        | `""`        | Unified diff string                               |
+| `view`                | `"unified"` or `"split"`        | `"unified"` | Layout style                                      |
+| `syncScroll`          | `boolean`                       | `false`     | Link horizontal and vertical scroll in split view |
+| `filetype`            | `string`                        | -           | Syntax highlighting language                      |
+| `fg`                  | `string` or `RGBA`              | -           | Base foreground for inner code panes              |
+| `syntaxStyle`         | `SyntaxStyle`                   | -           | Syntax style for code                             |
+| `wrapMode`            | `"word"`, `"char"`, or `"none"` | -           | Code wrapping mode                                |
+| `conceal`             | `boolean`                       | `false`     | Conceal markup when highlighting                  |
+| `selectionBg`         | `string` or `RGBA`              | -           | Selection background in code panes                |
+| `selectionFg`         | `string` or `RGBA`              | -           | Selection foreground in code panes                |
+| `treeSitterClient`    | `TreeSitterClient`              | -           | Custom Tree-sitter client                         |
+| `showLineNumbers`     | `boolean`                       | `true`      | Show line numbers                                 |
+| `lineNumberFg`        | `string` or `RGBA`              | `#888888`   | Line number text color                            |
+| `lineNumberBg`        | `string` or `RGBA`              | transparent | Line number background                            |
+| `addedLineNumberBg`   | `string` or `RGBA`              | transparent | Line number background for added                  |
+| `removedLineNumberBg` | `string` or `RGBA`              | transparent | Line number background for removed                |
+| `addedBg`             | `string` or `RGBA`              | `#1a4d1a`   | Background for added lines                        |
+| `removedBg`           | `string` or `RGBA`              | `#4d1a1a`   | Background for removed lines                      |
+| `contextBg`           | `string` or `RGBA`              | transparent | Background for context lines                      |
+| `addedContentBg`      | `string` or `RGBA`              | -           | Optional content background (added)               |
+| `removedContentBg`    | `string` or `RGBA`              | -           | Optional content background (removed)             |
+| `contextContentBg`    | `string` or `RGBA`              | -           | Optional content background (context)             |
+| `addedSignColor`      | `string` or `RGBA`              | `#22c55e`   | Sign color for added lines                        |
+| `removedSignColor`    | `string` or `RGBA`              | `#ef4444`   | Sign color for removed lines                      |
+
+Other grammars require Tree-sitter configuration. See the [Tree-sitter reference](/docs/reference/tree-sitter).
+
+## Related components
+
+Use [Code](/docs/components/code) for source text without patch structure. Use [Line number gutter](/docs/components/line-number) with other line-aware renderables. Use [Markdown](/docs/components/markdown) for documents and [TextTable](/docs/components/text-table) for general tabular comparisons.

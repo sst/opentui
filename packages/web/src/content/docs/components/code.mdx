@@ -1,12 +1,21 @@
 ---
 title: Code
-description: Syntax-highlighted code display component with Tree-sitter support
-order: 10
+description: Display syntax-highlighted code with Tree-sitter
 ---
 
 # Code
 
-Displays syntax-highlighted code using Tree-sitter. Supports many languages with accurate, fast highlighting.
+`Code` displays source text with Tree-sitter syntax highlighting. Use [Markdown](/docs/components/markdown) for documents or [Diff](/docs/components/diff) for changed lines.
+
+## Availability
+
+| Field           | Availability         |
+| --------------- | -------------------- |
+| Package         | `@opentui/core`      |
+| Core renderable | `CodeRenderable`     |
+| React           | `<code>` (automatic) |
+| Solid           | `<code>` (automatic) |
+| Status          | Built in             |
 
 ## Basic usage
 
@@ -40,31 +49,6 @@ const code = new CodeRenderable(renderer, {
 })
 
 renderer.root.add(code)
-```
-
-### Construct API
-
-```typescript
-import { Code, Box, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const syntaxStyle = SyntaxStyle.fromStyles({
-  keyword: { fg: RGBA.fromHex("#FF7B72"), bold: true },
-  string: { fg: RGBA.fromHex("#A5D6FF") },
-  default: { fg: RGBA.fromHex("#E6EDF3") },
-})
-
-renderer.root.add(
-  Box(
-    { border: true, width: 50, height: 10 },
-    Code({
-      content: 'const x = "hello"',
-      filetype: "javascript",
-      syntaxStyle,
-    }),
-  ),
-)
 ```
 
 ## Creating syntax styles
@@ -124,12 +108,14 @@ Each style definition can include:
 
 ## Supported languages
 
-Code uses Tree-sitter for parsing. Tree-sitter supports these languages:
+OpenTUI bundles Tree-sitter parsers for these languages:
 
-- TypeScript / JavaScript
-- Markdown
+- JavaScript and JSX
+- TypeScript and TSX
+- Markdown and Markdown inline
 - Zig
-- And any language with a Tree-sitter grammar
+
+Other grammars require configuration. See the [Tree-sitter reference](/docs/reference/tree-sitter).
 
 ## Streaming mode
 
@@ -230,7 +216,7 @@ renderer.root.add(scrollbox)
 | `syntaxStyle`      | `SyntaxStyle`      | required | Syntax highlighting theme                                                             |
 | `streaming`        | `boolean`          | `false`  | Preserve suitable intermediate rendering during repeated updates                      |
 | `conceal`          | `boolean`          | `true`   | Hide concealed syntax elements                                                        |
-| `drawUnstyledText` | `boolean`          | `true`   | Show unstyled text while highlighting; streaming limits this to the initial highlight |
+| `drawUnstyledText` | `boolean`          | `true`   | Show unstyled text while highlighting. Streaming limits this to the initial highlight |
 | `treeSitterClient` | `TreeSitterClient` | -        | Custom Tree-sitter client instance                                                    |
 
 ### Inherited from TextBufferRenderable
@@ -255,7 +241,7 @@ renderer.root.add(scrollbox)
 | `scrollWidth`    | `number`  | Total scrollable width (read-only)                                                                             |
 | `scrollHeight`   | `number`  | Total scrollable height (read-only)                                                                            |
 | `isHighlighting` | `boolean` | Whether highlighting is in progress                                                                            |
-| `plainText`      | `string`  | Plain text in the current text buffer; it may differ from `content` after concealment or `onChunks` transforms |
+| `plainText`      | `string`  | Plain text in the current text buffer. It can differ from `content` after concealment or `onChunks` transforms |
 
 ## Markdown styles
 
@@ -278,3 +264,9 @@ const markdownStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#E6EDF3") },
 })
 ```
+
+## Related components
+
+Use [Markdown](/docs/components/markdown) for document structure and fenced code. Add a [Line number gutter](/docs/components/line-number) to a code renderable. Use [Diff](/docs/components/diff) for unified or split patches. Use [TextTable](/docs/components/text-table) for tabular content without syntax parsing.
+
+Read [Text and terminal cells](/docs/core-concepts/text-and-cells) for wrapping, graphemes, and display-cell widths.

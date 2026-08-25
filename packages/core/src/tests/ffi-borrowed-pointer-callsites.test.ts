@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
+  AudioCaptureStatsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
+  ImageDrawOptionsStruct,
   LogicalCursorStruct,
   MeasureResultStruct,
   NativeAudioStreamCloseReason,
@@ -14,7 +16,8 @@ import {
   VisualCursorStruct,
 } from "../zig-structs.js"
 import { RGBA } from "../lib/RGBA.js"
-import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
+import { ptr, toArrayBuffer, type Pointer } from "../platform/ffi.js"
+import { OptimizedBuffer } from "../buffer.js"
 
 // Borrowed-pointer contract for styled text, styled placeholders, and cursor
 // options: packed struct buffers must reach the FFI symbol as object values so
@@ -24,17 +27,29 @@ import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
 const lib = resolveRenderLib()
 const symbols = (lib as any).opentui.symbols as Record<string, (...args: any[]) => any>
 
-function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
-  const calls: any[][] = []
-  const original = symbols[name]
-  symbols[name] = (...args: any[]) => {
-    calls.push(args)
+function withStubbedSymbols(
+  replacements: Record<string, (...args: any[]) => any>,
+  fn: (calls: Record<string, any[][]>) => void,
+): void {
+  const originals: Record<string, (...args: any[]) => any> = {}
+  const calls: Record<string, any[][]> = {}
+  for (const [name, replacement] of Object.entries(replacements)) {
+    originals[name] = symbols[name]!
+    calls[name] = []
+    symbols[name] = (...args: any[]) => {
+      calls[name]!.push(args)
+      return replacement(...args)
+    }
   }
   try {
     fn(calls)
   } finally {
-    symbols[name] = original
+    for (const [name, original] of Object.entries(originals)) symbols[name] = original
   }
+}
+
+function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
+  withStubbedSymbols({ [name]: () => undefined }, (calls) => fn(calls[name]!))
 }
 
 async function forceGc(): Promise<void> {
@@ -62,6 +77,92 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("stabilizes retained text memory before resolving its pointer", () => {
+    withStubbedSymbols(
+      {
+        textBufferRegisterMemBuffer: () => 1,
+        textBufferReplaceMemBuffer: () => 1,
+        textBufferAppend: () => undefined,
+      },
+      (calls) => {
+        const registered = new Uint8Array([1, 2, 3])
+        const replaced = new Uint8Array([4, 5, 6])
+        const appended = new Uint8Array([7, 8, 9])
+
+        lib.textBufferRegisterMemBuffer(1 as any, registered)
+        lib.textBufferReplaceMemBuffer(1 as any, 1, replaced)
+        lib.textBufferAppend(1 as any, appended)
+
+        void registered.buffer
+        void replaced.buffer
+        void appended.buffer
+        expect(calls.textBufferRegisterMemBuffer[0]![1]).toBe(ptr(registered))
+        expect(calls.textBufferReplaceMemBuffer[0]![2]).toBe(ptr(replaced))
+        expect(calls.textBufferAppend[0]![1]).toBe(ptr(appended))
+      },
+    )
+  })
+
+  test("passes transient owners directly through remaining synchronous wrappers", () => {
+    withStubbedSymbols(
+      {
+        bufferColorMatrix: () => undefined,
+        bufferDrawGrayscaleBuffer: () => undefined,
+        bufferDrawPackedBuffer: () => undefined,
+        bufferDrawSuperSampleBuffer: () => undefined,
+        bufferDrawText: () => undefined,
+        bufferGetId: () => 0,
+        getBuildOptions: () => undefined,
+        editorViewGetViewport: () => undefined,
+        audioGetPlaybackDeviceName: () => 0,
+        streamDrainSpans: () => 0,
+      },
+      (calls) => {
+        const fg = RGBA.fromValues(1, 1, 1, 1)
+        const bg = RGBA.fromValues(0, 0, 0, 1)
+        const matrix = new Float32Array(16)
+        const mask = new Float32Array(3)
+        const intensities = new Float32Array(4)
+        const spans = new Uint8Array(64)
+        const pixels = new Uint8Array(16)
+        const packed = new Uint8Array(48)
+        const buffer = new OptimizedBuffer(lib, 1 as any, 2, 2, {})
+
+        buffer.colorMatrix(matrix, mask)
+        buffer.drawGrayscaleBuffer(0, 0, intensities, 2, 2, fg, bg)
+        buffer.drawSuperSampleBuffer(0, 0, pixels, pixels.byteLength, "rgba8unorm", 8)
+        buffer.drawPackedBuffer(packed, packed.byteLength, 0, 0, 1, 1)
+        lib.bufferDrawText(1 as any, "x", 0, 0, fg, bg)
+        lib.bufferGetId(1 as any)
+        lib.getBuildOptions()
+        lib.editorViewGetViewport(1 as any)
+        lib.audioGetPlaybackDeviceName(1 as any, 0)
+        lib.streamDrainSpans(1 as any, spans, 1)
+
+        expect(calls.bufferColorMatrix[0]![1]).toBe(matrix)
+        expect(calls.bufferColorMatrix[0]![2]).toBe(mask)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![3]).toBe(intensities)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![6]).toBe(fg.buffer)
+        expect(calls.bufferDrawGrayscaleBuffer[0]![7]).toBe(bg.buffer)
+        expect(calls.bufferDrawSuperSampleBuffer[0]![3]).toBe(pixels)
+        expect(calls.bufferDrawPackedBuffer[0]![1]).toBe(packed)
+        expect(calls.bufferDrawText[0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.bufferDrawText[0]![5]).toBe(fg.buffer)
+        expect(calls.bufferDrawText[0]![6]).toBe(bg.buffer)
+        expect(calls.bufferGetId[0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.getBuildOptions[0]![0]).toBeInstanceOf(ArrayBuffer)
+        expect(calls.editorViewGetViewport[0]!.slice(1)).toEqual([
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+          expect.any(Uint32Array),
+        ])
+        expect(calls.audioGetPlaybackDeviceName[0]![2]).toBeInstanceOf(Uint8Array)
+        expect(calls.streamDrainSpans[0]![1]).toBe(spans)
+      },
+    )
+  })
+
   test("reuses owned output storage while preserving public result identity", () => {
     const originals = {
       editBufferGetCursorPosition: symbols.editBufferGetCursorPosition,
@@ -333,6 +434,164 @@ describe("borrowed pointer call sites", () => {
     })
   })
 
+  test("audio capture stats preserve the 40-byte native ABI", () => {
+    expect(AudioCaptureStatsStruct.size).toBe(40)
+    expect(
+      Object.fromEntries(
+        [
+          "framesReceived",
+          "framesRead",
+          "framesDropped",
+          "sampleRate",
+          "channels",
+          "bufferedFrames",
+          "capacityFrames",
+        ].map((name) => [name, fieldOffset(AudioCaptureStatsStruct, name)]),
+      ),
+    ).toEqual({
+      framesReceived: 0,
+      framesRead: 8,
+      framesDropped: 16,
+      sampleRate: 24,
+      channels: 28,
+      bufferedFrames: 32,
+      capacityFrames: 36,
+    })
+  })
+
+  test("audio capture wrappers pass transient buffers directly and normalize booleans", () => {
+    const originals = {
+      name: symbols.audioGetCaptureDeviceName,
+      isDefault: symbols.audioIsCaptureDeviceDefault,
+      start: symbols.audioStartCapture,
+      running: symbols.audioIsCaptureRunning,
+      read: symbols.audioReadCapture,
+      stats: symbols.audioGetCaptureStats,
+    }
+    const calls: Record<string, any[][]> = { name: [], start: [], read: [], stats: [] }
+    symbols.audioGetCaptureDeviceName = (...args: any[]) => {
+      calls.name.push(args)
+      ;(args[2] as Uint8Array).set(new TextEncoder().encode("Microphone"))
+      return 10
+    }
+    symbols.audioIsCaptureDeviceDefault = () => 1
+    symbols.audioIsCaptureRunning = () => 1
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.start.push(args)
+      return 0
+    }
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.read.push(args)
+      new Uint32Array(args[4] as ArrayBuffer)[0] = 2
+      return 0
+    }
+    symbols.audioGetCaptureStats = (...args: any[]) => {
+      calls.stats.push(args)
+      AudioCaptureStatsStruct.packInto(
+        {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+        new DataView(args[1] as ArrayBuffer),
+        0,
+      )
+      return 0
+    }
+
+    try {
+      expect(lib.audioGetCaptureDeviceName(1 as any, 2)).toBe("Microphone")
+      expect(lib.audioIsCaptureDeviceDefault(1 as any, 2)).toBe(true)
+      expect(lib.audioStartCapture(1 as any, { noFixedSizedCallback: true }, 1, 48_000)).toBe(0)
+      expect(lib.audioIsCaptureRunning(1 as any)).toBe(true)
+      const output = new Float32Array(4)
+      expect(lib.audioReadCapture(1 as any, output, 4)).toEqual({ status: 0, framesRead: 2 })
+      expect(lib.audioGetCaptureStats(1 as any)).toEqual({
+        status: 0,
+        stats: {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+      })
+
+      expect(calls.name[0]![2]).toBeInstanceOf(Uint8Array)
+      expect(calls.start[0]![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.read[0]![1]).toBe(output)
+      expect(calls.read[0]![2]).toBe(output.length)
+      expect(calls.read[0]![3]).toBe(4)
+      expect(calls.read[0]![4]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.stats[0]![1]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioGetCaptureDeviceName = originals.name
+      symbols.audioIsCaptureDeviceDefault = originals.isDefault
+      symbols.audioStartCapture = originals.start
+      symbols.audioIsCaptureRunning = originals.running
+      symbols.audioReadCapture = originals.read
+      symbols.audioGetCaptureStats = originals.stats
+    }
+  })
+
+  test("audio capture reads forward the destination sample capacity", () => {
+    const calls: any[][] = []
+    const original = symbols.audioReadCapture
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.push(args)
+      return -1
+    }
+    try {
+      const output = new Float32Array(3)
+      expect(lib.audioReadCapture(1 as any, output, 1)).toEqual({ status: -1, framesRead: 0 })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toHaveLength(5)
+      expect(calls[0]![1]).toBe(output)
+      expect(calls[0]![2]).toBe(output.length)
+      expect(calls[0]![3]).toBe(1)
+      expect(calls[0]![4]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioReadCapture = original
+    }
+  })
+
+  test("audio capture start contains option getter failures and defaults callback sizing", () => {
+    const calls: any[][] = []
+    const original = symbols.audioStartCapture
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.push(args)
+      return 0
+    }
+    try {
+      expect(lib.audioStartCapture(1 as any, undefined, 1, 48_000)).toBe(0)
+      const packed = new Uint8Array(calls[0]![1] as ArrayBuffer)
+      expect(packed[17]).toBe(1)
+
+      const options = Object.create({ periods: 3 }) as { periods?: number; noFixedSizedCallback?: boolean }
+      Object.defineProperty(options, "noFixedSizedCallback", { value: false, enumerable: false })
+      expect(lib.audioStartCapture(1 as any, options, 1, 48_000)).toBe(0)
+      const inherited = new DataView(calls[1]![1] as ArrayBuffer)
+      expect(inherited.getUint32(8, true)).toBe(3)
+      expect(inherited.getUint8(17)).toBe(0)
+
+      const throwing = {
+        get periods(): number {
+          throw new Error("getter failed")
+        },
+      }
+      expect(lib.audioStartCapture(1 as any, throwing, 1, 48_000)).toBe(-1)
+      expect(calls).toHaveLength(2)
+    } finally {
+      symbols.audioStartCapture = original
+    }
+  })
+
   test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {
     const calls: any[][] = []
     const original = symbols.audioCloseStream
@@ -492,6 +751,179 @@ describe("borrowed pointer call sites", () => {
       expect(calls[0]![1]).toBeInstanceOf(ArrayBuffer)
       expect((calls[0]![1] as ArrayBuffer).byteLength).toBe(CursorStyleOptionsStruct.size)
     })
+  })
+
+  test("image calls pass transient buffer owners directly", () => {
+    const names = [
+      "bufferDrawImage",
+      "imageInfo",
+      "imageDecode",
+      "imageCreateFromRgba",
+      "imageGetInfo",
+      "imageRetain",
+      "imageClone",
+      "imageCopyPixels",
+      "imageResize",
+      "imageExtract",
+      "imageExtend",
+      "imageTransform",
+      "imageComposite",
+    ] as const
+    const originals = new Map<string, (...args: any[]) => any>()
+    const calls = new Map<string, any[]>()
+    for (const name of names) {
+      originals.set(name, symbols[name]!)
+      symbols[name] = (...args: any[]) => {
+        calls.set(name, args)
+        return 0
+      }
+    }
+
+    try {
+      const data = Uint8Array.of(1, 2, 3, 4)
+      const pixels = Uint8Array.of(5, 6, 7, 255)
+      const destination = new Uint8Array(4)
+      const background = Uint8Array.of(8, 9, 10, 255)
+      const handle = 1 as any
+
+      lib.bufferDrawImage(handle, handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, "auto")
+      const firstImageOptions = calls.get("bufferDrawImage")![2]
+      lib.bufferDrawImage(handle, handle, 2, 3, 4, 5, 6, 7, 0, 0, 1, 1, "sixel")
+      lib.imageInfo(data)
+      lib.imageDecode(data)
+      lib.imageCreateFromRgba(pixels, 1, 1, 4)
+      lib.imageGetInfo(handle)
+      lib.imageRetain(handle)
+      lib.imageClone(handle)
+      lib.imageCopyPixels(handle, destination, 4, false)
+      lib.imageResize(handle, 1, 1, 0)
+      lib.imageExtract(handle, 0, 0, 1, 1)
+      lib.imageExtend(handle, 0, 0, 0, 0, background)
+      lib.imageTransform(handle, 0)
+      lib.imageComposite(handle, handle, 0, 0, 0, 255)
+
+      expect(calls.get("bufferDrawImage")![2]).toBe(firstImageOptions)
+      expect(firstImageOptions).toBeInstanceOf(ArrayBuffer)
+      expect((firstImageOptions as ArrayBuffer).byteLength).toBe(ImageDrawOptionsStruct.size)
+      expect(ImageDrawOptionsStruct.unpack(firstImageOptions as ArrayBuffer)).toMatchObject({
+        x: 2,
+        y: 3,
+        width: 4,
+        height: 5,
+        pixelWidth: 6,
+        pixelHeight: 7,
+        protocol: 2,
+      })
+      expect(calls.get("imageInfo")![0]).toBe(data)
+      expect(calls.get("imageInfo")![2]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageDecode")![0]).toBe(data)
+      expect(calls.get("imageDecode")![2]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageCreateFromRgba")![0]).toBe(pixels)
+      expect(calls.get("imageCreateFromRgba")![5]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("imageRetain")![1]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageCopyPixels")![1]).toBe(destination)
+      expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageExtract")![5]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageExtend")![5]).toBe(background)
+      expect(calls.get("imageExtend")![6]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageTransform")![2]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageComposite")![6]).toBeInstanceOf(Uint32Array)
+    } finally {
+      for (const [name, original] of originals) symbols[name] = original
+    }
+  })
+
+  test("imageGetPixelsPtr preserves portable pointer returns", () => {
+    const original = symbols.imageGetPixelsPtr
+    const pointer = 1234n as Pointer
+    symbols.imageGetPixelsPtr = (handle) => {
+      expect(handle).toBe(1)
+      return pointer
+    }
+    try {
+      expect(lib.imageGetPixelsPtr(1 as any)).toBe(pointer)
+      symbols.imageGetPixelsPtr = () => 0n
+      expect(lib.imageGetPixelsPtr(1 as any)).toBeNull()
+    } finally {
+      symbols.imageGetPixelsPtr = original
+    }
+  })
+
+  test("empty image inputs preserve nullable pointer semantics", () => {
+    withStubbedSymbols(
+      {
+        imageInfo: () => 0,
+        imageDecode: () => 0,
+        imageCreateFromRgba: () => 0,
+        imageCopyPixels: () => 0,
+      },
+      (calls) => {
+        const empty = new Uint8Array()
+        lib.imageInfo(empty)
+        lib.imageDecode(empty)
+        lib.imageCreateFromRgba(empty, 0, 0, 0)
+        lib.imageCopyPixels(1 as any, empty, 0, false)
+
+        expect(calls.imageInfo[0]![0]).toBeNull()
+        expect(calls.imageDecode[0]![0]).toBeNull()
+        expect(calls.imageCreateFromRgba[0]![0]).toBeNull()
+        expect(calls.imageCopyPixels[0]![1]).toBeNull()
+      },
+    )
+  })
+
+  test("imageExtend rejects a short background before native access", () => {
+    withStubbedSymbol("imageExtend", (calls) => {
+      expect(lib.imageExtend(1 as any, 0, 0, 0, 0, Uint8Array.of(1, 2, 3))).toEqual({
+        status: 7,
+        handle: null,
+      })
+      expect(calls).toHaveLength(0)
+    })
+  })
+
+  test("clipboard calls pass transient request and output buffers as object values", () => {
+    withStubbedSymbols(
+      {
+        clipboardServiceCreate: () => 1,
+        clipboardServiceDestroy: () => 0,
+        clipboardReadOperationStart: () => 0,
+        clipboardWriteOperationStart: () => 0,
+        clipboardClearOperationStart: () => 0,
+        clipboardOperationResultMimeLength: () => 0,
+        clipboardOperationResultMimeCopy: () => 0,
+        clipboardOperationResultDataCopy: () => 0,
+        clipboardOperationResultErrorCode: () => 0,
+        clipboardOperationResultDiagnosticCopy: () => 0,
+      },
+      (calls) => {
+        const service = lib.clipboardServiceCreate(4, 5, "seat0")!
+        lib.clipboardReadOperationStart(service, Uint8Array.of(1, 2), 0, 16, 32, 64, 100)
+        lib.clipboardWriteOperationStart(service, Uint8Array.of(3, 4), 0, 100)
+        lib.clipboardClearOperationStart(service, 0, 100)
+        lib.clipboardOperationResultMimeLength(1 as any)
+        lib.clipboardOperationResultMimeCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultDataCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultErrorCode(1 as any)
+        lib.clipboardOperationResultDiagnosticCopy(1 as any, new Uint8Array(2))
+        lib.clipboardServiceDestroy(service)
+
+        expect(calls.clipboardServiceCreate![0]![2]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]!.slice(4, 8)).toEqual([16, 32, 64, 100])
+        expect(calls.clipboardReadOperationStart![0]![8]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardWriteOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardWriteOperationStart![0]![5]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardClearOperationStart![0]![3]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeLength![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultDataCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultErrorCode![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultDiagnosticCopy![0]![1]).toBeInstanceOf(Uint8Array)
+      },
+    )
   })
 })
 

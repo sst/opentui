@@ -15,12 +15,13 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_VERSION: 26.4.0
+  NODE_VERSION: 26.7.0
 
 jobs:
   bun-test:
     name: Bun Test (${{ matrix.os }})
     strategy:
+      fail-fast: false
       matrix:
         os: [blacksmith-8vcpu-ubuntu-2404, blacksmith-8vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
@@ -39,16 +40,16 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Restore Zig cache
         if: runner.os != 'Windows'
         uses: actions/cache@v5
         with:
-          path: .zig-cache
-          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
-          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
+          path: packages/native/.zig-cache
+          key: zig-v1-${{ runner.os }}-0.16.0-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.16.0-
 
       - name: Install dependencies
         run: bun install
@@ -61,9 +62,21 @@ jobs:
         working-directory: packages/solid
         run: bun run build --ci
 
+      - name: Enable Linux core dumps
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/enable-linux-coredumps
+
       - name: Run tests
         working-directory: packages/solid
-        run: bun run test
+        run: |
+          if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
+          bun run test
+
+      - name: Upload Linux core dumps
+        if: failure() && runner.os == 'Linux'
+        uses: ./.github/actions/upload-linux-coredumps
+        with:
+          name: crash-dumps-solid-${{ matrix.os }}-${{ github.run_attempt }}
 
   node-source:
     name: Node Source Lane
@@ -88,15 +101,15 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Restore Zig cache
         uses: actions/cache@v5
         with:
-          path: .zig-cache
-          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
-          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
+          path: packages/native/.zig-cache
+          key: zig-v1-${{ runner.os }}-0.16.0-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.16.0-
 
       - name: Install dependencies
         run: bun install
@@ -136,15 +149,15 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Restore Zig cache
         uses: actions/cache@v5
         with:
-          path: .zig-cache
-          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
-          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
+          path: packages/native/.zig-cache
+          key: zig-v1-${{ runner.os }}-0.16.0-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.16.0-
 
       - name: Install dependencies
         run: bun install

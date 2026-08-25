@@ -16,6 +16,9 @@ const treeSitterDefaultDataPath = resolve(tmpdir(), "tree-sitter-default-node-te
 const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-markdown-renderable-test-data")
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
+const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
+const imageTestDataPath = resolve(tmpdir(), "opentui-image-node-test")
+const bufferDumpPath = resolve(packageRoot, "buffer_dump")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -30,10 +33,17 @@ const treeSitterTestDataPaths = [
   treeSitterMarkdownRenderableTestDataPath,
   textBufferTestDataPath,
   runtimeAssetTestDataPath,
+  audioRecorderTestDataPath,
+  imageTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const audioFixturesDir = "src/tests/fixtures/audio"
+const imageFixturesDir = "src/tests/fixtures/images"
+const iccFixturesDir = "../native/src/tests/fixtures"
+const stagedNativeFixturesRoot = resolve(outDir, iccFixturesDir)
+const stagedNativeRoot = resolve(packageRoot, "native")
+let stagedNativeRootOwned = false
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -44,6 +54,8 @@ const emittedAllowlist = [
   ".node-test/src/lib/bunfs.test.js",
   ".node-test/src/lib/border.test.js",
   ".node-test/src/lib/clipboard.test.js",
+  ".node-test/src/lib/clipboard-service.test.js",
+  ".node-test/src/lib/host-clipboard.test.js",
   ".node-test/src/lib/extmarks.test.js",
   ".node-test/src/lib/detect-links.test.js",
   ".node-test/src/lib/extmarks-multiwidth.test.js",
@@ -67,10 +79,12 @@ const emittedAllowlist = [
   ".node-test/src/renderables/Diff.regression.test.js",
   ".node-test/src/renderables/Diff.test.js",
   ".node-test/src/renderables/EditBufferRenderable.test.js",
+  ".node-test/src/renderables/EmbeddedTerminal.test.js",
   ".node-test/src/renderables/Input.test.js",
   ".node-test/src/renderables/Select.test.js",
   ".node-test/src/renderables/Slider.test.js",
   ".node-test/src/renderables/TabSelect.test.js",
+  ".node-test/src/renderables/TimeToFirstDraw.test.js",
   ".node-test/src/renderables/__tests__/Code.test.js",
   ".node-test/src/renderables/__tests__/LineNumberRenderable.scrollbox-simple.test.js",
   ".node-test/src/renderables/__tests__/LineNumberRenderable.scrollbox.test.js",
@@ -111,6 +125,7 @@ const emittedAllowlist = [
   ".node-test/src/lib/tree-sitter/cache.test.js",
   ".node-test/src/lib/tree-sitter/client.test.js",
   ".node-test/src/lib/tree-sitter-styled-text.test.js",
+  ".node-test/src/lib/styled-text.test.js",
   ".node-test/src/lib/yoga.options.test.js",
   ".node-test/src/renderables/__tests__/markdown-parser.test.js",
   ".node-test/src/renderables/TextNode.test.js",
@@ -124,7 +139,10 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderable.snapshot.test.js",
   ".node-test/src/tests/allocator-stats.test.js",
   ".node-test/src/tests/audio-stream.test.js",
+  ".node-test/src/tests/clipboard-native-lifecycle.test.js",
   ".node-test/src/tests/audio.test.js",
+  ".node-test/src/tests/image-renderable.test.js",
+  ".node-test/src/tests/image.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
   ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
@@ -191,11 +209,19 @@ try {
   }
 
   if (exitCode === 0) {
+    if (existsSync(stagedNativeRoot)) {
+      throw new Error(`Refusing to replace existing native fixture staging directory: ${stagedNativeRoot}`)
+    }
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
     cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
+    cpSync(resolve(packageRoot, imageFixturesDir), resolve(outDir, imageFixturesDir), { recursive: true })
+    stagedNativeRootOwned = true
+    cpSync(resolve(packageRoot, iccFixturesDir), stagedNativeFixturesRoot, { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
+    // Node resolves permission paths before tests can create their output directory.
+    mkdirSync(bufferDumpPath, { recursive: true })
 
     exitCode = run(
       nodePath,
@@ -206,6 +232,7 @@ try {
         `--allow-fs-read=${workspaceRoot}`,
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-read=${path}`),
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-write=${path}`),
+        `--allow-fs-write=${bufferDumpPath}`,
         "--allow-net=127.0.0.1",
         "--allow-child-process",
         "--allow-worker",
@@ -223,6 +250,8 @@ try {
           ...process.env,
           OTUI_TEXT_BUFFER_TEST_TMPDIR: textBufferTestDataPath,
           OTUI_RUNTIME_ASSET_TEST_TMPDIR: runtimeAssetTestDataPath,
+          OTUI_AUDIO_RECORDER_TEST_TMPDIR: audioRecorderTestDataPath,
+          OTUI_IMAGE_TEST_TMPDIR: imageTestDataPath,
           XDG_DATA_HOME: treeSitterDefaultDataPath,
         },
         timeout: nodeProcessTimeoutMs,
@@ -231,6 +260,7 @@ try {
   }
 } finally {
   rmSync(outDir, { recursive: true, force: true })
+  if (stagedNativeRootOwned) rmSync(stagedNativeRoot, { recursive: true, force: true })
 }
 
 process.exit(exitCode)
