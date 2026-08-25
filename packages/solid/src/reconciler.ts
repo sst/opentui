@@ -363,6 +363,7 @@ export const {
       default:
         // @ts-expect-error todo validate if prop is actually settable
         node[name] = value
+        if (value !== prev && node instanceof Renderable) node.requestRender()
     }
   },
 

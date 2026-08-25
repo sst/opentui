@@ -4582,7 +4582,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const frameRequests = Array.from(this.animationRequest.values())
       this.animationRequest.clear()
-      const hasFrameDrivenBufferWrites = this.frameCallbacks.some((entry) => entry.drawsToBuffer)
+      const hasFrameDrivenBufferWrites =
+        frameRequests.length > 0 || this.frameCallbacks.some((entry) => entry.drawsToBuffer)
       const refreshFrameCallbackLayer = hasFrameDrivenBufferWrites || this.hadFrameDrivenBufferWrites
       this.hadFrameDrivenBufferWrites = hasFrameDrivenBufferWrites
       if (refreshFrameCallbackLayer) {
