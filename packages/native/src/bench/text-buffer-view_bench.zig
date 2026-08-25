@@ -25,6 +25,8 @@ const large_text_patterns = [_][]const u8{
     "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
 };
 
+const matched_single_chunk_text = "word-" ** 12_800; // 64,000 bytes and display columns.
+
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
     var buffer: std.ArrayList(u8) = .empty;
     errdefer buffer.deinit(allocator);
@@ -204,6 +206,7 @@ fn benchWrap(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
+    expected_line_count: ?u32,
 ) !BenchResult {
     var stats: BenchStats = .{};
     var final_tb_mem: usize = 0;
@@ -225,7 +228,18 @@ fn benchWrap(
         view.setWrapWidth(wrap_width);
         const count = view.getVirtualLineCount();
         stats.record(timer.read());
-        _ = count;
+
+        // Validate outside the timed interval so both revisions must produce the
+        // same complete layout before their timings are compared.
+        if (expected_line_count) |expected| {
+            const lines = view.getVirtualLines();
+            if (tb.getLineCount() != 1 or count != expected or lines.len != @as(usize, @intCast(expected))) {
+                return error.InvalidBenchmarkOutput;
+            }
+            for (lines) |line| {
+                if (line.width_cols != wrap_width) return error.InvalidBenchmarkOutput;
+            }
+        }
 
         if (i == iterations - 1 and show_mem) {
             final_tb_mem = tb.getArenaAllocatedBytes();
@@ -356,6 +370,23 @@ pub fn run(
     const multiline_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
     const multiline_mb = @as(f64, @floatFromInt(multiline_stats.bytes)) / (1024.0 * 1024.0);
 
+    const matched_name = "TextBufferView wrap (word, width=80, validated 62.5 KiB single chunk)";
+    if (bench_utils.matchesBenchFilter(matched_name, bench_filter)) {
+        var bench_result = try benchWrap(
+            io,
+            allocator,
+            pool,
+            matched_single_chunk_text,
+            80,
+            .word,
+            iterations,
+            show_mem,
+            800,
+        );
+        bench_result.name = matched_name;
+        try all_results.append(allocator, bench_result);
+    }
+
     // Run measureForDimensions benchmarks
     const layout_passes: usize = 3;
     const wrap_width: u32 = 80;
@@ -455,6 +486,7 @@ pub fn run(
             scenario.mode,
             iterations,
             show_mem,
+            null,
         );
         bench_result.name = bench_name;
 
