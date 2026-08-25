@@ -121,7 +121,6 @@ export class CodeRenderable extends TextBufferRenderable {
       this.invalidateHighlights()
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
-        this.requestRender()
         return
       }
 
