@@ -3099,23 +3099,31 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
 }
 
-test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer repaint" {
+test "renderer - commitSplitFooterSnapshot appends styled snapshot with snapshot links before footer repaint" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-    var local_link_pool = link.LinkPool.init(std.testing.allocator);
-    defer local_link_pool.deinit();
+    var renderer_links = link.LinkPool.init(std.testing.allocator);
+    defer renderer_links.deinit();
+    var snapshot_links = link.LinkPool.init(std.testing.allocator);
+    defer snapshot_links.deinit();
 
-    var test_cli_renderer = try TestRenderer.create(
+    var test_cli_renderer = try TestRenderer.createWithLinkPool(
         std.testing.allocator,
         16,
         4,
         pool,
+        &renderer_links,
     );
     defer test_cli_renderer.deinit();
     const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = true;
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const renderer_link_id = try renderer_links.alloc("https://renderer.invalid");
+    const snapshot_link_id = try snapshot_links.alloc("https://snapshot.example");
+    try std.testing.expectEqual(renderer_link_id, snapshot_link_id);
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -3128,13 +3136,14 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
         std.testing.allocator,
         8,
         2,
-        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+        .{ .pool = pool, .link_pool = &snapshot_links, .width_method = .unicode, .respectAlpha = false },
     );
     defer snapshot.deinit();
 
     snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
     try snapshot.drawText("SNAP", 0, 0, ansi.rgbaFromFloats(1.0, 0.5, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), ansi.TextAttributes.BOLD);
-    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    const link_attributes = ansi.TextAttributes.setLinkId(0, snapshot_link_id);
+    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), link_attributes);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
@@ -3151,6 +3160,8 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     try std.testing.expect(sync_index != null);
     try std.testing.expect(sync_index.? < snapshot_text_index.?);
     try std.testing.expect(footer_clear_index == null);
+    try std.testing.expect(std.mem.find(u8, output, ";https://snapshot.example\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, output, "https://renderer.invalid") == null);
 }
 
 test "renderer - commitSplitFooterSnapshot preserves indexed and default color tags" {
