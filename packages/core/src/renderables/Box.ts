@@ -257,11 +257,15 @@ export class BoxRenderable extends Renderable {
   }
 
   public override canReuseRenderCommandList(): boolean {
-    return this.hasStableRenderListInputs() && !this._hasVisibleChildFilter()
+    return (
+      this.hasStableRenderListInputs() &&
+      (this._overflow === "visible" || this.getScissorRect === BoxRenderable.prototype.getScissorRect) &&
+      !this._hasVisibleChildFilter()
+    )
   }
 
   protected override hasLayoutBoundedPaint(): boolean {
-    return this.renderSelf === BoxRenderable.prototype.renderSelf
+    return this.render === Renderable.prototype.render && this.renderSelf === BoxRenderable.prototype.renderSelf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

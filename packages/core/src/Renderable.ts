@@ -1826,6 +1826,7 @@ export class RootRenderable extends Renderable {
     } else if (this.fullCompositionRequired) {
       return
     } else {
+      if (!renderable.canReuseRenderCommandList()) this.renderListReusable = false
       this.dirtyRenderables.add(renderable)
       // Bound request-time bookkeeping; actual partial/full selection uses
       // merged row damage later in the frame.
