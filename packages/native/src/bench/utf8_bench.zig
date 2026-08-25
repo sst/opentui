@@ -291,8 +291,7 @@ fn benchFindLineBreaks(
     return results.toOwnedSlice(results_alloc);
 }
 
-// Benchmark findWrapBreaks
-fn benchFindWrapBreaks(
+fn benchFindChunkLayoutInfo(
     io: std.Io,
     results_alloc: std.mem.Allocator,
     iterations: usize,
@@ -301,66 +300,35 @@ fn benchFindWrapBreaks(
     var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(results_alloc);
 
-    // ASCII text
-    {
-        const name = "findWrapBreaks: ASCII (10KB)";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer temp.deinit();
-            const alloc = temp.allocator();
-            const text = try generateAsciiText(alloc, 10 * 1024);
+    const name = "findChunkLayoutInfo: ASCII punctuation (62.5 KiB)";
+    if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+        const text = "word-" ** 12_800;
+        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer temp.deinit();
+        const alloc = temp.allocator();
+        var wrap_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+        defer wrap_breaks.deinit(alloc);
 
-            var wrap_result = utf8.WrapBreakResult.init(alloc);
-            defer wrap_result.deinit();
+        var stats: BenchStats = .{};
+        for (0..iterations) |_| {
+            const timer = bench_utils.BenchTimer.start(io);
+            const word_classes = try utf8.findChunkLayoutInfo(alloc, text, 4, true, .unicode, &wrap_breaks);
+            stats.record(timer.read());
 
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-                stats.record(timer.read());
+            if (wrap_breaks.items.len != 12_800 or word_classes.first != .ascii_word or word_classes.last != .other) {
+                return error.InvalidBenchmarkOutput;
             }
-
-            try results.append(results_alloc, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
         }
-    }
 
-    // Mixed text
-    {
-        const name = "findWrapBreaks: Mixed (10KB)";
-        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer temp.deinit();
-            const alloc = temp.allocator();
-            const text = try generateMixedText(alloc, 10 * 1024);
-
-            var wrap_result = utf8.WrapBreakResult.init(alloc);
-            defer wrap_result.deinit();
-
-            var stats: BenchStats = .{};
-            for (0..iterations) |_| {
-                const timer = bench_utils.BenchTimer.start(io);
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-                stats.record(timer.read());
-            }
-
-            try results.append(results_alloc, .{
-                .name = name,
-                .min_ns = stats.min_ns,
-                .avg_ns = stats.avg(),
-                .max_ns = stats.max_ns,
-                .total_ns = stats.total_ns,
-                .iterations = iterations,
-                .mem_stats = null,
-            });
-        }
+        try results.append(results_alloc, .{
+            .name = name,
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
     }
 
     return results.toOwnedSlice(results_alloc);
@@ -786,9 +754,9 @@ pub fn run(
     const line_breaks_results = try benchFindLineBreaks(io, allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, line_breaks_results);
 
-    // findWrapBreaks benchmarks
-    const wrap_breaks_results = try benchFindWrapBreaks(io, allocator, iterations, bench_filter);
-    try all_results.appendSlice(allocator, wrap_breaks_results);
+    // Direct benchmark for the retained word-layout scanner.
+    const chunk_layout_results = try benchFindChunkLayoutInfo(io, allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, chunk_layout_results);
 
     // findWrapPosByWidth benchmarks
     const wrap_pos_results = try benchFindWrapPosByWidth(io, allocator, iterations, bench_filter);

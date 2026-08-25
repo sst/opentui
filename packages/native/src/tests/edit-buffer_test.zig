@@ -4,6 +4,7 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
+const seg_mod = @import("../text-buffer-segment.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
@@ -307,6 +308,60 @@ test "EditBuffer - word boundary mixed CJK and ASCII transition" {
     try eb.setCursor(prev_cursor.row, prev_cursor.col);
     const prev_cursor2 = eb.getPrevWordBoundary();
     try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
+test "EditBuffer - word boundary mixed CJK and ASCII transition across chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    const text = "abc日本";
+    const tb = eb.getTextBuffer();
+    const mem_id = try tb.registerMemBuffer(text, false);
+    var segments: std.ArrayListUnmanaged(seg_mod.Segment) = .empty;
+    defer segments.deinit(std.testing.allocator);
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 0, 3) });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 3, @intCast(text.len)) });
+    try tb.rope().setSegments(segments.items);
+
+    try eb.setCursor(0, 0);
+    const next = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next.col);
+
+    try eb.setCursor(0, 7);
+    const prev = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), prev.col);
+}
+
+test "EditBuffer - combining mark keeps word class across chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    const text = "a\u{0301}日本";
+    const tb = eb.getTextBuffer();
+    const mem_id = try tb.registerMemBuffer(text, false);
+    var segments: std.ArrayListUnmanaged(seg_mod.Segment) = .empty;
+    defer segments.deinit(std.testing.allocator);
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 0, 3) });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 3, @intCast(text.len)) });
+    try tb.rope().setSegments(segments.items);
+
+    try eb.setCursor(0, 0);
+    try std.testing.expectEqual(@as(u32, 1), eb.getNextWordBoundary().col);
+
+    try eb.setCursor(0, 5);
+    try std.testing.expectEqual(@as(u32, 1), eb.getPrevWordBoundary().col);
 }
 
 test "EditBuffer - word boundary keeps Hangul run grouped" {
@@ -1580,6 +1635,37 @@ test "EditBuffer - replaceText allows undo" {
     // Should be back to "Initial"
     len = eb.getText(&buffer);
     try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+}
+
+test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("a\tb");
+    try eb.setCursor(0, eb.tb.lineWidthAt(0));
+    try eb.insertText("x");
+
+    _ = try eb.undo();
+    try std.testing.expectEqual(@as(u32, 4), eb.tb.lineWidthAt(0));
+    _ = try eb.redo();
+    try std.testing.expectEqual(@as(u32, 5), eb.tb.lineWidthAt(0));
+
+    eb.tb.setTabWidth(8);
+    try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
+
+    _ = try eb.undo();
+    try std.testing.expectEqual(@as(u32, 10), eb.tb.lineWidthAt(0));
+    var view = try TextBufferView.init(std.testing.allocator, eb.tb);
+    defer view.deinit();
+    try std.testing.expectEqual(@as(u32, 10), view.getVirtualLines()[0].width_cols);
+
+    _ = try eb.redo();
+    try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
+    try std.testing.expectEqual(@as(u32, 11), view.getVirtualLines()[0].width_cols);
 }
 
 test "EditBuffer - setText clears all history" {

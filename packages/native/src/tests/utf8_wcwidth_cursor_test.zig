@@ -209,8 +209,8 @@ test "wcwidth: findGraphemeInfo with emoji" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 8), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
 }
 
 test "wcwidth: findGraphemeInfo with ZWJ sequence" {
@@ -223,8 +223,8 @@ test "wcwidth: findGraphemeInfo with ZWJ sequence" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 11), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 11), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
 }
 
 test "wcwidth: findGraphemeInfo with combining marks" {
@@ -236,8 +236,8 @@ test "wcwidth: findGraphemeInfo with combining marks" {
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
 }
 
 test "wcwidth: tab width handling" {

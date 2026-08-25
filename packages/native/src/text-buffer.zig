@@ -28,7 +28,6 @@ pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
 pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
-pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
@@ -95,6 +94,9 @@ pub const UnifiedTextBuffer = struct {
     styled_capacity: usize,
 
     tab_width: u8,
+    // Persistent roots carry the tab-width generation used for their cached
+    // chunk and branch metrics, so only stale history roots are rescanned.
+    tab_metrics_generation: u64,
 
     pub const Defaults = struct {
         fg: ?RGBA,
@@ -138,6 +140,20 @@ pub const UnifiedTextBuffer = struct {
         break :blk if (T == *Self) *UnifiedRope else if (T == *const Self) *const UnifiedRope else @compileError("expected *Self or *const Self");
     } {
         return &self._rope;
+    }
+
+    /// Restore an undo root with metrics valid for the current tab width.
+    pub fn undo(self: *Self, meta: []const u8) ![]const u8 {
+        const previous_meta = try self._rope.undo(meta);
+        self.refreshTabWidthMetrics();
+        return previous_meta;
+    }
+
+    /// Restore a redo root with metrics valid for the current tab width.
+    pub fn redo(self: *Self) ![]const u8 {
+        const next_meta = try self._rope.redo();
+        self.refreshTabWidthMetrics();
+        return next_meta;
     }
 
     /// Accessor: get line width at a given row.
@@ -192,8 +208,8 @@ pub const UnifiedTextBuffer = struct {
         return .{ .start = line_start + bounds.start, .end = line_start + bounds.end };
     }
 
-    pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
-        return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
+    pub fn getLayoutInfoFor(self: *const Self, chunk: *const TextChunk) TextBufferError!seg_mod.ChunkLayoutInfo {
+        return chunk.getLayoutInfo(self.allocator, &self.mem_registry, self.tab_width, self.width_method);
     }
 
     /// Accessor: walk all lines and segments via callbacks.
@@ -262,6 +278,7 @@ pub const UnifiedTextBuffer = struct {
             .styled_buffer = null,
             .styled_capacity = 0,
             .tab_width = 2,
+            .tab_metrics_generation = 1,
         };
 
         return self;
@@ -348,6 +365,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn markAllViewsDirty(self: *Self) void {
+        self._rope.setMetricsGeneration(self.tab_metrics_generation);
         // Increment epoch first so views see the new value when checking caches.
         // Use wrapping add for safety, though u64 won't overflow in practice.
         self.content_epoch +%= 1;
@@ -560,7 +578,7 @@ pub const UnifiedTextBuffer = struct {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
 
-        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
+        const chunk_width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method);
 
         return .{
             .mem_id = mem_id,
@@ -1251,15 +1269,48 @@ pub const UnifiedTextBuffer = struct {
         return self.tabWidth();
     }
 
-    /// Set tab width, rounding up to nearest multiple of 2 (minimum 2).
+    /// Set tab width, rounding up to an even value in the u8-safe range [2, 254].
     /// Marks all views dirty if the width actually changes, since tab width
     /// affects measured line widths and virtual line calculations.
     pub fn setTabWidth(self: *Self, width: u8) void {
-        const clamped_width = @max(2, width);
+        const clamped_width = @min(@as(u8, 254), @max(2, width));
         const new_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
         if (self.tab_width == new_width) return;
         self.tab_width = new_width;
+        self.tab_metrics_generation +%= 1;
+
+        self.refreshTabWidthMetrics();
         self.markAllViewsDirty();
+    }
+
+    /// Bring the active persistent root to the current tab-width generation.
+    /// Widths and branch aggregates are derived state, so this deliberately
+    /// updates shared const nodes; stale history roots are repaired when restored.
+    fn refreshTabWidthMetrics(self: *Self) void {
+        if (self._rope.metricsGeneration() == self.tab_metrics_generation) return;
+
+        const RefreshContext = struct {
+            buffer: *Self,
+
+            fn refresh(ctx_ptr: *anyopaque, segment: *const Segment, _: u32) UnifiedRope.Node.WalkerResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (segment.asText()) |chunk| {
+                    const mutable = @constCast(chunk);
+                    const bytes = chunk.getBytes(&ctx.buffer.mem_registry);
+                    mutable.width = utf8.calculateTextWidth(
+                        bytes,
+                        ctx.buffer.tab_width,
+                        chunk.isAsciiOnly(),
+                        ctx.buffer.width_method,
+                    );
+                }
+                return .{};
+            }
+        };
+        var refresh_ctx: RefreshContext = .{ .buffer = self };
+        self._rope.walk(&refresh_ctx, RefreshContext.refresh) catch {};
+        self._rope.remeasure();
+        self._rope.setMetricsGeneration(self.tab_metrics_generation);
     }
 
     /// Debug log the rope structure using rope.toText

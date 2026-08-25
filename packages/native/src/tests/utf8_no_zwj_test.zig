@@ -103,12 +103,12 @@ test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
 
     // unicode: 1 grapheme (the whole ZWJ sequence)
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
-    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_unicode.items[0].width);
 
     // no_zwj: 2 graphemes (woman and rocket separately)
     try testing.expectEqual(@as(usize, 2), result_no_zwj.items.len);
-    try testing.expectEqual(@as(u8, 2), result_no_zwj.items[0].width);
-    try testing.expectEqual(@as(u8, 2), result_no_zwj.items[1].width);
+    try testing.expectEqual(@as(u32, 2), result_no_zwj.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_no_zwj.items[1].width);
 }
 
 test "no_zwj: findWrapPosByWidth with ZWJ sequences" {

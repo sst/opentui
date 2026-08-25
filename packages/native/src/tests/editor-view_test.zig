@@ -672,6 +672,57 @@ test "EditorView - moveDownVisual resolves wrapped boundary with canonical conve
     try std.testing.expectEqual(@as(u32, 5), cursor.visual_col);
 }
 
+test "EditorView - consumed whitespace cursor columns clamp to preceding row" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    var ev = try EditorView.init(std.testing.allocator, eb, 5, 2);
+    defer ev.deinit();
+    ev.setWrapMode(.word);
+
+    try eb.setText("hello  world");
+    for ([_]u32{ 5, 6 }) |logical_col| {
+        const cursor = ev.logicalToVisualCursor(0, logical_col);
+        try std.testing.expectEqual(@as(u32, 0), cursor.visual_row);
+        try std.testing.expectEqual(@as(u32, 5), cursor.visual_col);
+    }
+    const spaces_boundary = ev.logicalToVisualCursor(0, 7);
+    try std.testing.expectEqual(@as(u32, 1), spaces_boundary.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), spaces_boundary.visual_col);
+
+    eb.tb.setTabWidth(4);
+    try eb.setText("hello\tworld");
+    for ([_]u32{ 5, 8 }) |logical_col| {
+        const cursor = ev.logicalToVisualCursor(0, logical_col);
+        try std.testing.expectEqual(@as(u32, 0), cursor.visual_row);
+        try std.testing.expectEqual(@as(u32, 5), cursor.visual_col);
+    }
+    const tab_boundary = ev.logicalToVisualCursor(0, 9);
+    try std.testing.expectEqual(@as(u32, 1), tab_boundary.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), tab_boundary.visual_col);
+
+    try eb.setCursor(0, 8);
+    try std.testing.expectEqual(@as(u32, 5), ev.getVisualCursor().visual_col);
+    ev.moveDownVisual();
+    const moved = ev.getVisualCursor();
+    try std.testing.expectEqual(@as(u32, 1), moved.visual_row);
+    try std.testing.expect(moved.visual_col <= 5);
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        5,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
+}
+
 test "EditorView - moveUpVisual at top boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -3594,7 +3645,9 @@ test "occupancy - EditorView forwards occupancy and replays stored endpoints" {
     ev.setSelectionOccupancy(.boundary);
     try eb.setCursor(0, 0);
     ev.gotoVisualLineEnd();
-    try std.testing.expectEqual(@as(u32, 1), ev.getPrimaryCursor().offset);
+    // The oversized CJK grapheme remains atomic, so its visual end is after
+    // the complete width-2 cursor unit rather than inside it at the viewport edge.
+    try std.testing.expectEqual(@as(u32, 2), ev.getPrimaryCursor().offset);
 
     ev.setSelectionOccupancy(.cell);
     ev.gotoVisualLineEnd();

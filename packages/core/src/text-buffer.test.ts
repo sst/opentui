@@ -133,6 +133,16 @@ describe("TextBuffer", () => {
     })
   })
 
+  describe("tab width", () => {
+    it("clamps 255 to the largest representable even width", () => {
+      buffer.setText("a\tb")
+      buffer.setTabWidth(255)
+
+      expect(buffer.getTabWidth()).toBe(254)
+      expect(buffer.length).toBe(256)
+    })
+  })
+
   describe("getTextRange", () => {
     it("should return null bytes for zero-length range output buffers", () => {
       buffer.setText("Hello World")

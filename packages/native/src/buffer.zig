@@ -1314,7 +1314,7 @@ pub const OptimizedBuffer = struct {
             const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
             var grapheme_bytes: []const u8 = undefined;
-            var g_width: u8 = undefined;
+            var g_width: u32 = undefined;
 
             if (at_special) {
                 const g = specials[special_idx];
@@ -1736,50 +1736,37 @@ pub const OptimizedBuffer = struct {
                 const line_col_offset = vline.col_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += vchunk.width;
-                    currentX += @intCast(vchunk.width);
+                    globalCharPos += vchunk.width_cols;
+                    currentX += @intCast(vchunk.width_cols);
                     continue;
                 }
-                const col_end = vchunk.grapheme_start + vchunk.width;
-                var col = vchunk.grapheme_start;
+                const col_end = vchunk.col_start_in_chunk + vchunk.width_cols;
+                var col = vchunk.col_start_in_chunk;
                 var special_idx: usize = 0;
-                var byte_offset: u32 = 0;
+                var byte_offset = vchunk.byte_start_in_chunk;
+                const byte_end = vchunk.byte_start_in_chunk + vchunk.byte_len;
 
-                if (vchunk.grapheme_start > 0) {
-                    // Use UTF-8 aware position finding to skip to the grapheme_start
-                    const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
-                    byte_offset = pos_result.byte_offset;
-
-                    // Advance special_idx to match the skipped columns
-                    var init_col: u32 = 0;
-                    while (init_col < vchunk.grapheme_start and special_idx < specials.len) {
-                        const g = specials[special_idx];
-                        if (g.col_offset < vchunk.grapheme_start) {
-                            special_idx += 1;
-                            init_col = g.col_offset + g.width;
-                        } else {
-                            break;
-                        }
-                    }
+                while (special_idx < specials.len and specials[special_idx].byte_offset + specials[special_idx].byte_len <= byte_offset) {
+                    special_idx += 1;
                 }
 
-                text_buffer_loop: while (col < col_end) {
-                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+                text_buffer_loop: while (byte_offset < byte_end and col < col_end) {
+                    const at_special = special_idx < specials.len and specials[special_idx].byte_offset == byte_offset;
 
                     var grapheme_bytes: []const u8 = undefined;
-                    var g_width: u8 = undefined;
+                    var g_width: u32 = undefined;
 
                     if (at_special) {
                         const g = specials[special_idx];
+                        if (g.byte_offset + g.byte_len > byte_end) break;
                         grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
                         g_width = g.width;
                         byte_offset = g.byte_offset + g.byte_len;
                         special_idx += 1;
                     } else {
-                        if (byte_offset >= chunk_bytes.len) break;
+                        if (byte_offset >= byte_end or byte_offset >= chunk_bytes.len) break;
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
-                        const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
+                        const next_byte_offset = @min(byte_offset + cp_len, byte_end);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
                         g_width = 1;
                         byte_offset = next_byte_offset;

@@ -3754,7 +3754,7 @@ export fn encodeUnicode(
         const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
         var grapheme_bytes: []const u8 = undefined;
-        var g_width: u8 = undefined;
+        var g_width: u32 = undefined;
 
         if (at_special) {
             const g = specials[special_idx];

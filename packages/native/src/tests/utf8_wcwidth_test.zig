@@ -27,8 +27,8 @@ test "findGraphemeInfo wcwidth: ASCII with tab" {
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
     try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
 }
 
@@ -44,14 +44,14 @@ test "findGraphemeInfo wcwidth: CJK characters" {
 
     // First CJK char '世' at byte 5
     try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width);
     try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
 
     // Second CJK char '界' at byte 8
     try testing.expectEqual(@as(u32, 8), result.items[1].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[1].width);
+    try testing.expectEqual(@as(u32, 3), result.items[1].byte_len);
+    try testing.expectEqual(@as(u32, 2), result.items[1].width);
     try testing.expectEqual(@as(u32, 7), result.items[1].col_offset);
 }
 
@@ -65,8 +65,8 @@ test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 8), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
 }
 
 test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
@@ -78,8 +78,8 @@ test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u8, 11), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 11), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width);
 }
 
 test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
@@ -91,8 +91,8 @@ test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width);
 }
 
 test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
@@ -110,13 +110,13 @@ test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
 
     try testing.expectEqual(@as(u32, 2), result_wcwidth.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result_wcwidth.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 8), result_wcwidth.items[0].byte_len);
 
     try testing.expectEqual(@as(u32, 2), result_unicode.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result_unicode.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 8), result_unicode.items[0].byte_len);
 
-    try testing.expectEqual(@as(u8, 4), result_wcwidth.items[0].width);
-    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width);
+    try testing.expectEqual(@as(u32, 4), result_wcwidth.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_unicode.items[0].width);
 }
 
 test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
@@ -133,8 +133,8 @@ test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
     try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
 
-    try testing.expectEqual(@as(u8, 2), result_wcwidth.items[0].width);
-    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_wcwidth.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_unicode.items[0].width);
 }
 
 // ============================================================================
