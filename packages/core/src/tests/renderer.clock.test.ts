@@ -193,6 +193,34 @@ test("threaded output backpressure retries a skipped native frame", async () => 
   }
 })
 
+test.each(["pause", "stop"] as const)(
+  "threaded output backpressure does not restart a loop cancelled by %s()",
+  async (method) => {
+    const internals = renderer as unknown as {
+      renderNative: () => "backpressured"
+    }
+    const originalRenderNative = internals.renderNative
+    let frameCalls = 0
+    internals.renderNative = () => "backpressured"
+    renderer.setFrameCallback(async () => {
+      frameCalls++
+      renderer[method]()
+    })
+
+    try {
+      renderer.start()
+      await Promise.resolve()
+      expect(frameCalls).toBe(1)
+
+      clock.advance(20)
+      await Promise.resolve()
+      expect(frameCalls).toBe(1)
+    } finally {
+      internals.renderNative = originalRenderNative
+    }
+  },
+)
+
 test("fps counts rendered frames and excludes dropped frames", async () => {
   const internals = renderer as unknown as {
     renderNative: () => "rendered" | "retryable-skip" | "backpressured" | "blocked" | "failed"
