@@ -176,24 +176,25 @@ pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21
     return .{ .cp = cp4, .len = 4 };
 }
 
+// Unicode wrap-break codepoints.
 inline fn unicodeLayoutWrapBreakKind(cp: u21) LayoutWrapBreakKind {
     return switch (cp) {
-        0x00A0,
-        0x1680,
-        0x2000...0x200A,
-        0x202F,
-        0x205F,
-        0x3000,
-        0x200B,
+        0x00A0, // NBSP
+        0x1680, // OGHAM SPACE MARK
+        0x2000...0x200A, // En quad..Hair space
+        0x202F, // NARROW NO-BREAK SPACE
+        0x205F, // MEDIUM MATHEMATICAL SPACE
+        0x3000, // IDEOGRAPHIC SPACE
+        0x200B, // ZERO WIDTH SPACE
         => .whitespace,
-        0x00AD,
-        0x2010,
-        0x3001,
-        0x3002,
-        0xFF01,
-        0xFF0C,
-        0xFF1A,
-        0xFF1F,
+        0x00AD, // SOFT HYPHEN
+        0x2010, // HYPHEN
+        0x3001, // IDEOGRAPHIC COMMA
+        0x3002, // IDEOGRAPHIC FULL STOP
+        0xFF01, // FULLWIDTH EXCLAMATION MARK
+        0xFF0C, // FULLWIDTH COMMA
+        0xFF1A, // FULLWIDTH COLON
+        0xFF1F, // FULLWIDTH QUESTION MARK
         => .punctuation,
         else => .none,
     };
