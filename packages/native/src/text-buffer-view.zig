@@ -1923,14 +1923,14 @@ pub const UnifiedTextBufferView = struct {
 
             fn processWordChunk(wctx: *@This(), chunk: *const TextChunk) void {
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
-                // Measurement reuses caches but does not create them. Rendering caches
-                // only medium chunks; small/large scans and cache OOM stream instead.
+                // Reuse existing caches, but retain cold layout only for medium
+                // non-ASCII chunks; vectorized ASCII and small/large chunks stream.
                 const cached_layout = chunk.getCachedLayoutInfo(wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod());
                 const layout: ?utf8.ChunkLayoutInfo = if (cached_layout) |cached|
                     cached
                 else blk: {
                     if (comptime calculation == .render) {
-                        if (chunk_bytes.len >= 1024 and chunk_bytes.len <= 64 * 1024) {
+                        if (!chunk.isAsciiOnly() and chunk_bytes.len >= 1024 and chunk_bytes.len <= 64 * 1024) {
                             break :blk wctx.text_buffer.getLayoutInfoFor(chunk) catch |err| switch (err) {
                                 error.OutOfMemory => null,
                                 else => {

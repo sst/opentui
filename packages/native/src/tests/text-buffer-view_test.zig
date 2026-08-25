@@ -1333,9 +1333,7 @@ test "TextBufferView word wrapping - layout cache OOM falls back to complete str
     var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
-    const text = try std.testing.allocator.alloc(u8, 2048);
-    defer std.testing.allocator.free(text);
-    for (text, 0..) |*byte, i| byte.* = if (i % 2 == 0) 'a' else ',';
+    const text = "a," ** 1023 ++ "\xC3\xA9";
     try tb.setText(text);
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
