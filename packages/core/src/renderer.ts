@@ -997,6 +997,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // or duck-typed capability checks (e.g. `stdin.setRawMode?.()`).
   private readonly _usesProcessStdout: boolean
 
+  // Whether this renderer is what put process.stdin's handle on the event loop.
+  // Captured before any listener is attached: touching process.stdin lazily
+  // instantiates the TTY read stream and registers its handle, and `pause()` on
+  // destroy stops the read without releasing that registration (#1405). If the
+  // host app was already consuming stdin the handle is theirs, and destroy()
+  // must leave it exactly as it found it.
+  private readonly _ownsStdinHandle: boolean
+
   // Feed wiring. Non-null when the given stdout is not process.stdout and native
   // output is not explicitly redirected to a buffered memory destination.
   private _feed: NativeSpanFeed | null = null
@@ -1045,6 +1053,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin = stdin
     this.stdout = stdout
+    this._ownsStdinHandle =
+      stdin === process.stdin && stdin.listenerCount("data") === 0 && stdin.listenerCount("readable") === 0
     this._usesProcessStdout = stdout === process.stdout
     this.realStdoutWrite = stdout.write
 
@@ -1318,6 +1328,36 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startTerminalKeepAlive(): void {
     if (this.stdin !== process.stdin || this.terminalKeepAliveTimer !== null) return
     this.terminalKeepAliveTimer = setInterval(() => {}, 60_000)
+  }
+
+  /**
+   * Put stdin's event-loop registration back the way this renderer found it.
+   *
+   * `pause()` stops the read but leaves the libuv handle registered, so after
+   * `destroy()` the loop still holds it. On the legacy Windows console host that
+   * wedges conhost once any read has completed and then takes the window with it
+   * (#1405); `suspend()` deliberately does not do this, because `resume()`
+   * follows it.
+   *
+   * Three conditions, all required:
+   *   - we are what registered the handle (`_ownsStdinHandle`) — a caller-supplied
+   *     `config.stdin`, or a stdin the host app was already consuming, is not ours
+   *     to unref;
+   *   - nothing else is consuming it now, so a listener attached during our
+   *     lifetime and kept afterwards still keeps the process alive;
+   *   - the stream actually implements `unref` — a redirected, file-backed stdin
+   *     is a plain ReadStream and does not.
+   */
+  private releaseStdinHandle(): void {
+    if (!this._ownsStdinHandle) return
+    if (this.stdin.listenerCount("data") > 0 || this.stdin.listenerCount("readable") > 0) return
+    const unref = (this.stdin as Partial<{ unref: () => void }>).unref
+    if (typeof unref !== "function") return
+    try {
+      unref.call(this.stdin)
+    } catch (e) {
+      console.error("Error releasing stdin during destroy:", e)
+    }
   }
 
   private stopTerminalKeepAlive(): void {
@@ -4353,6 +4393,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     } catch (e) {
       console.error("Error pausing stdin during destroy:", e)
     }
+    this.releaseStdinHandle()
 
     if (this._feed !== null && this._splitHeight > 0 && !this._terminalIsSetup) {
       this.flushPendingSplitOutputBeforeTransition(false, { allowSuspended: true, allowUnsetup: true })
