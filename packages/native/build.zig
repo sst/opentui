@@ -732,6 +732,7 @@ fn buildTarget(
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
+        .strip = optimize != .Debug,
     });
 
     applyDependencies(b, module, optimize, target, build_options);

@@ -94,6 +94,24 @@ function ensureBuildArtifacts(): void {
   if (leakedGhosttyFiles.length > 0) {
     throw new Error(`Native package contains unbundled Ghostty artifacts: ${leakedGhosttyFiles.join(", ")}`)
   }
+
+  if (process.platform === "linux") {
+    const nativeLibrary = join(nativePackageDir, "libopentui.so")
+    const elf = runCommand(
+      "readelf",
+      ["--wide", "--section-headers", "--dyn-syms", nativeLibrary],
+      rootDir,
+      "Failed to inspect packaged native ELF",
+      { stdio: "pipe" },
+    ).stdout.toString("utf8")
+
+    if (/\s\.(?:z)?debug(?:_|\s)|\s\.symtab\s/.test(elf)) {
+      throw new Error("Packaged production native library is not stripped")
+    }
+    if (!/\bgetBuildOptions\b/.test(elf)) {
+      throw new Error("Packaged production native library lost its dynamic FFI exports")
+    }
+  }
 }
 
 function assertPortableDeclarations(): void {
