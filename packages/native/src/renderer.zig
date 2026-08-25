@@ -318,7 +318,6 @@ pub const CliRenderer = struct {
         clearOnShutdown: bool = true,
         // Borrowed: when provided, both frame buffers share this caller-owned pool.
         link_pool: ?*link.LinkPool = null,
-        preserve_next_buffer: bool = false,
         // Optional override for terminal environment lookups. Borrowed: the
         // caller owns the map and must keep it alive for the renderer's lifetime.
         env_map: ?*const std.process.Environ.Map = null,
