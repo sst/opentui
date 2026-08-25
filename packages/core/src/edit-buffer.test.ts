@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach, spyOn } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
 import { resolveRenderLib } from "./zig.js"
 import { ManualClock } from "./testing/manual-clock.js"
@@ -46,6 +46,31 @@ describe("EditBuffer", () => {
       const text = "Hello 世界 🌟"
       buffer.setText(text)
       expect(buffer.getText()).toBe(text)
+    })
+
+    it("should retrieve large text without truncating or overallocating ranges", () => {
+      const text = "x".repeat(1024 * 1024 + 10)
+      buffer.setText(text)
+
+      const sliceSpy = spyOn(Uint8Array.prototype, "slice")
+
+      expect(buffer.getText()).toBe(text)
+      expect(buffer.getTextRange(0, text.length)).toBe(text)
+      expect(buffer.getTextRangeByCoords(0, 0, 0, text.length)).toBe(text)
+
+      const lib = (buffer as any).lib
+      const rangeSpy = spyOn(lib, "editBufferGetTextRange")
+      const coordsSpy = spyOn(lib, "editBufferGetTextRangeByCoords")
+
+      expect(buffer.getTextRange(0, 1)).toBe("x")
+      expect(buffer.getTextRangeByCoords(0, 0, 0, 1)).toBe("x")
+      expect(rangeSpy).toHaveBeenCalledWith(buffer.ptr, 0, 1, 1)
+      expect(coordsSpy).toHaveBeenCalledWith(buffer.ptr, 0, 0, 0, 1, 1)
+      expect(sliceSpy).not.toHaveBeenCalled()
+
+      rangeSpy.mockRestore()
+      coordsSpy.mockRestore()
+      sliceSpy.mockRestore()
     })
 
     it("should return null bytes for zero-length getText output buffer", () => {
@@ -388,6 +413,21 @@ describe("EditBuffer", () => {
   })
 
   describe("range getters", () => {
+    it("should use wcwidth for ranges beyond 65535 columns", () => {
+      const prefix = "x".repeat(65_536)
+      buffer.setText(`${prefix}👋🏻👋🏼`)
+
+      expect(buffer.getTextRange(65_536, 65_540)).toBe("👋🏻")
+      expect(buffer.getTextRangeByCoords(0, 65_536, 0, 65_540)).toBe("👋🏻")
+    })
+
+    it("should snap a range start inside the final grapheme", () => {
+      buffer.setText("❤️好")
+
+      expect(buffer.getTextRange(2, 3)).toBe("好")
+      expect(buffer.getTextRangeByCoords(0, 2, 0, 3)).toBe("好")
+    })
+
     it("should return null bytes for zero-length range output buffers", () => {
       buffer.setText("Hello\nWorld")
 

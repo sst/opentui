@@ -133,9 +133,7 @@ export class EditBuffer extends EventEmitter {
 
   public getText(): string {
     this.guard()
-    // TODO: Use byte size of text buffer to get the actual size of the text
-    // actually native can stack alloc all the text and decode will alloc as js string then
-    const maxSize = 1024 * 1024 // 1MB max
+    const maxSize = this.lib.textBufferGetByteSize(this.textBufferPtr)
     const textBytes = this.lib.editBufferGetText(this.bufferPtr, maxSize)
 
     if (!textBytes) return ""
@@ -274,12 +272,10 @@ export class EditBuffer extends EventEmitter {
     this.guard()
     if (startOffset >= endOffset) return ""
 
-    // TODO: Use actual expected size of the text
-    // like other methods native can just return a pointer and size
-    // and we immediately decode the text into a js string then the native stack
-    // can go out of scope
-    const maxSize = 1024 * 1024 // 1MB max
-    const textBytes = this.lib.editBufferGetTextRange(this.bufferPtr, startOffset, endOffset, maxSize)
+    const rangeSize = this.lib.textBufferGetTextRangeByteSize(this.textBufferPtr, startOffset, endOffset)
+    if (rangeSize === 0) return ""
+
+    const textBytes = this.lib.editBufferGetTextRange(this.bufferPtr, startOffset, endOffset, rangeSize)
 
     if (!textBytes) return ""
 
@@ -289,14 +285,22 @@ export class EditBuffer extends EventEmitter {
   public getTextRangeByCoords(startRow: number, startCol: number, endRow: number, endCol: number): string {
     this.guard()
 
-    const maxSize = 1024 * 1024 // 1MB max
+    const rangeSize = this.lib.textBufferGetTextRangeByteSizeByCoords(
+      this.textBufferPtr,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+    )
+    if (rangeSize === 0) return ""
+
     const textBytes = this.lib.editBufferGetTextRangeByCoords(
       this.bufferPtr,
       startRow,
       startCol,
       endRow,
       endCol,
-      maxSize,
+      rangeSize,
     )
 
     if (!textBytes) return ""

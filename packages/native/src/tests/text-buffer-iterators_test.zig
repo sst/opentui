@@ -12,6 +12,41 @@ const LineInfo = iter_mod.LineInfo;
 const TextChunk = seg_mod.TextChunk;
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 
+test "walkLinesAndSegments stops at the end offset" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var rope = try UnifiedRope.init(arena.allocator());
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{ .text = .{ .mem_id = 0, .byte_start = 0, .byte_end = 1, .width = 1 } });
+    try rope.append(.{ .brk = {} });
+
+    const Context = struct {
+        segment_count: u32 = 0,
+        line_count: u32 = 0,
+
+        fn segmentCallback(ctx_ptr: *anyopaque, _: u32, _: *const TextChunk, _: u32) void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            ctx.segment_count += 1;
+        }
+
+        fn lineEndCallback(ctx_ptr: *anyopaque, _: LineInfo) void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            ctx.line_count += 1;
+        }
+    };
+
+    var empty_ctx: Context = .{};
+    iter_mod.walkLinesAndSegments(&rope, 0, &empty_ctx, Context.segmentCallback, Context.lineEndCallback);
+    try testing.expectEqual(@as(u32, 0), empty_ctx.segment_count);
+    try testing.expectEqual(@as(u32, 0), empty_ctx.line_count);
+
+    var ctx: Context = .{};
+    iter_mod.walkLinesAndSegments(&rope, 1, &ctx, Context.segmentCallback, Context.lineEndCallback);
+    try testing.expectEqual(@as(u32, 1), ctx.segment_count);
+    try testing.expectEqual(@as(u32, 0), ctx.line_count);
+}
+
 test "walkLines - empty rope" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

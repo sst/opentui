@@ -1467,6 +1467,17 @@ const WeightedItem = struct {
 // Leaf split function for testing (callback format)
 const WeightedRope = rope_mod.Rope(WeightedItem);
 
+test "Rope - balancing handles large representable weights" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const large_weight = std.math.maxInt(u32) / 3 + 1;
+    var rope = try WeightedRope.from_item(arena.allocator(), .{ .value = 1, .weight = large_weight });
+    try rope.append(.{ .value = 2, .weight = 1 });
+
+    try std.testing.expectEqual(large_weight + 1, rope.totalWeight());
+}
+
 fn splitWeightedItemCallback(
     allocator: std.mem.Allocator,
     ctx: ?*anyopaque,

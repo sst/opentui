@@ -113,8 +113,8 @@ pub fn Rope(comptime T: type) type {
             total_metrics: Metrics,
 
             fn is_balanced(self: *const Branch) bool {
-                const left_weight = self.left.metrics().weight();
-                const right_weight = self.right.metrics().weight();
+                const left_weight: u64 = self.left.metrics().weight();
+                const right_weight: u64 = self.right.metrics().weight();
                 const total_weight = left_weight + right_weight;
 
                 if (total_weight == 0) return true;
@@ -361,8 +361,8 @@ pub fn Rope(comptime T: type) type {
                 if (left_count == 0) return right;
                 if (right_count == 0) return left;
 
-                const left_weight = left.metrics().weight();
-                const right_weight = right.metrics().weight();
+                const left_weight: u64 = left.metrics().weight();
+                const right_weight: u64 = right.metrics().weight();
                 const total_weight = left_weight + right_weight;
 
                 if (total_weight > 0) {

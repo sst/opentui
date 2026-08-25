@@ -806,6 +806,30 @@ test "EditBuffer - getTextRange full text" {
     try std.testing.expectEqualStrings("Hello World", buffer[0..len]);
 }
 
+test "EditBuffer - getTextRange beyond 65535 columns" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    const prefix_len = 65_536;
+    const suffix = "👋🏻👋🏼";
+    const text = try std.testing.allocator.alloc(u8, prefix_len + suffix.len);
+    defer std.testing.allocator.free(text);
+    @memset(text[0..prefix_len], 'x');
+    @memcpy(text[prefix_len..], suffix);
+    try eb.setText(text);
+
+    try std.testing.expectEqual(@as(u32, 65_544), eb.getTextBuffer().getLength());
+
+    var buffer: [8]u8 = undefined;
+    const len = try eb.getTextRange(65_536, 65_540, &buffer);
+    try std.testing.expectEqualStrings("👋🏻", buffer[0..len]);
+}
+
 test "EditBuffer - getTextRange with emojis" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -839,6 +863,8 @@ test "EditBuffer - getTextRange emoji with skin tone" {
     // "Hi " = 3 cols, emoji = 2 cols
     const len = try eb.getTextRange(3, 5, &buffer);
     try std.testing.expectEqualStrings("👋🏽", buffer[0..len]);
+    try std.testing.expectEqual(len, eb.getTextBuffer().getTextRangeByteSize(3, 5));
+    try std.testing.expectEqual(len, eb.getTextBuffer().getTextRangeByteSizeByCoords(0, 3, 0, 5));
 }
 
 test "EditBuffer - getTextRange flag emoji" {
