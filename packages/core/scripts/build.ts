@@ -5,12 +5,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
 import path from "path"
-
-interface Variant {
-  platform: string
-  arch: string
-  abi?: string
-}
+import { variants, type Variant } from "./variants"
 
 interface PackageJson {
   name: string
@@ -46,7 +41,9 @@ interface BunBuildOptions {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
+const nativeRoot = resolve(rootDir, "../native")
 const licensePath = path.resolve(__dirname, "../../../LICENSE")
+const ghosttyLicensePath = path.resolve(rootDir, "THIRD_PARTY_LICENSES/GHOSTTY")
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 const args = process.argv.slice(2)
@@ -55,17 +52,7 @@ const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms
 const gpaSafeStats = args.includes("--gpa-safe-stats")
-
-const variants: Variant[] = [
-  { platform: "darwin", arch: "x64" },
-  { platform: "darwin", arch: "arm64" },
-  { platform: "linux", arch: "x64" },
-  { platform: "linux", arch: "arm64" },
-  { platform: "linux", arch: "x64", abi: "musl" },
-  { platform: "linux", arch: "arm64", abi: "musl" },
-  { platform: "win32", arch: "x64" },
-  { platform: "win32", arch: "arm64" },
-]
+const skipZig = args.includes("--skip-zig")
 
 const getHostVariant = (): Variant => {
   const hostVariant = variants.find((variant) => variant.platform === process.platform && variant.arch === process.arch)
@@ -202,14 +189,14 @@ if (buildNative) {
     zigArgs.push("-Dgpa-safe-stats=true")
   }
 
-  runCommand("zig", zigArgs, join(rootDir, "src", "zig"), "Error: Zig build failed")
+  if (!skipZig) runCommand("zig", zigArgs, nativeRoot, "Error: Zig build failed")
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
   for (const { platform, arch, abi } of variantsToPackage) {
     const nativeName = `${packageJson.name}-${platform}-${arch}${abi ? `-${abi}` : ""}`
     const nativeDir = join(rootDir, "node_modules", nativeName)
-    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch, abi))
+    const libDir = join(nativeRoot, "lib", getZigTarget(platform, arch, abi))
 
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
@@ -292,6 +279,18 @@ export default module.default
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
+    for (const [source, destination] of [
+      [ghosttyLicensePath, "LICENSE-GHOSTTY"],
+      [join(nativeRoot, "src", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
+      [join(nativeRoot, "src", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "libwebp", "AUTHORS"), "AUTHORS-LIBWEBP"],
+      [join(nativeRoot, "src", "vendor", "lcms2", "LICENSE"), "LICENSE-LCMS2"],
+    ] as const) {
+      if (!existsSync(source)) throw new Error(`Required native license file is missing: ${source}`)
+      copyFileSync(source, join(nativeDir, destination))
+    }
     console.log("Built:", nativeName)
   }
 }

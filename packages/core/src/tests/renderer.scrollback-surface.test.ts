@@ -1,8 +1,11 @@
 import { afterEach, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 
 import { RGBA } from "../lib/RGBA.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { BoxRenderable } from "../renderables/Box.js"
 import { CodeRenderable } from "../renderables/Code.js"
+import { ImageRenderable } from "../renderables/Image.js"
 import { MarkdownRenderable } from "../renderables/Markdown.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { SyntaxStyle } from "../syntax-style.js"
@@ -12,6 +15,7 @@ import type { RenderContext } from "../types.js"
 type ClaimedCommit = {
   snapshot: {
     height: number
+    buffers: { char: Uint32Array }
     getRealCharBytes(addLineBreaks?: boolean): Uint8Array
     destroy(): void
   }
@@ -121,6 +125,58 @@ test("ScrollbackSurface.commitRows reuses the last rendered buffer", async () =>
   }
 })
 
+test("ScrollbackSurface retains loaded images for native scrollback rendering", async () => {
+  const { renderer } = await createSplitFooterRenderer({ width: 8, height: 6, footerHeight: 3 })
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const source = new Uint8Array(await readFile(new URL("./fixtures/images/rgba.png", import.meta.url)))
+  const card = new BoxRenderable(surface.renderContext, {
+    id: "surface-image-card",
+    width: 8,
+    height: 4,
+    border: true,
+  })
+  const image = new ImageRenderable(surface.renderContext, {
+    id: "surface-image",
+    source,
+    protocol: "kitty",
+    width: "100%",
+    height: "100%",
+  })
+  card.add(image)
+  surface.root.add(card)
+
+  await image.loadPromise
+  expect(image.image).not.toBeNull()
+  surface.render()
+  expect(surface.height).toBe(4)
+  surface.commitRows(0, surface.height, { rowColumns: 8, trailingNewline: false })
+  surface.destroy()
+
+  let nextTailColumn = -1
+  renderer.writeToScrollback((ctx) => {
+    nextTailColumn = ctx.tailColumn
+    const root = new TextRenderable(ctx.renderContext, {
+      id: "after-surface-image",
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 1,
+      height: 1,
+      content: "X",
+    })
+    return { root, width: 1, height: 1, startOnNewLine: false, trailingNewline: false }
+  })
+
+  const commits = claimCommits(renderer)
+  try {
+    expect(commits).toHaveLength(2)
+    expect(commits[0]!.snapshot.buffers.char.some((char) => (char & 0xc0000000) >>> 0 === 0x40000000)).toBe(true)
+    expect(nextTailColumn).toBe(8)
+  } finally {
+    destroyClaimedCommits(commits)
+  }
+})
+
 test("ScrollbackSurface.settle waits for code highlighting before commit", async () => {
   const { renderer } = await createSplitFooterRenderer()
   const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
@@ -158,6 +214,43 @@ test("ScrollbackSurface.settle waits for code highlighting before commit", async
   } finally {
     destroyClaimedCommits(commits)
   }
+})
+
+test("ScrollbackSurface.settle renders a queued streaming highlight", async () => {
+  const { renderer } = await createSplitFooterRenderer()
+  const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+  const mockTreeSitterClient = createMockTreeSitterClient()
+  const highlightCalls: string[] = []
+  const highlightOnce = mockTreeSitterClient.highlightOnce.bind(mockTreeSitterClient)
+  mockTreeSitterClient.highlightOnce = async (content, filetype) => {
+    highlightCalls.push(content)
+    return highlightOnce(content, filetype)
+  }
+  const code = new CodeRenderable(surface.renderContext, {
+    id: "surface-code-streaming",
+    content: "initial",
+    filetype: "typescript",
+    syntaxStyle,
+    streaming: true,
+    treeSitterClient: mockTreeSitterClient,
+    width: "100%",
+  })
+
+  surface.root.add(code)
+  surface.render()
+  code.content = "latest"
+
+  const settlePromise = surface.settle()
+  void settlePromise.catch(() => {})
+  expect(highlightCalls).toEqual(["initial"])
+
+  mockTreeSitterClient.resolveHighlightOnce()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  expect(highlightCalls).toEqual(["initial", "latest"])
+
+  mockTreeSitterClient.resolveHighlightOnce()
+  await settlePromise
 })
 
 test("ScrollbackSurface works with MarkdownRenderable top-level blocks", async () => {
