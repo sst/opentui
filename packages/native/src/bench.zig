@@ -57,7 +57,7 @@ const buffer_draw_text_buffer_bench = @import("bench/buffer-draw-text-buffer_ben
 const buffer_color_blending_bench = @import("bench/buffer-color-blending_bench.zig");
 const buffer_draw_box_bench = @import("bench/buffer-draw-box_bench.zig");
 const utf8_bench = @import("bench/utf8_bench.zig");
-const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig");
+const text_chunk_render_clusters_bench = @import("bench/text-chunk-render-clusters_bench.zig");
 const editor_view_bench = @import("bench/editor-view_bench.zig");
 const terminal_image_bench = @import("bench/terminal-image_bench.zig");
 const renderer_image_bench = @import("bench/renderer-image_bench.zig");
@@ -116,7 +116,7 @@ pub fn main(init: std.process.Init) !void {
         .{ .name = buffer_color_blending_bench.benchName, .run = buffer_color_blending_bench.run },
         .{ .name = buffer_draw_box_bench.benchName, .run = buffer_draw_box_bench.run },
         .{ .name = utf8_bench.benchName, .run = utf8_bench.run },
-        .{ .name = text_chunk_graphemes_bench.benchName, .run = text_chunk_graphemes_bench.run },
+        .{ .name = text_chunk_render_clusters_bench.benchName, .run = text_chunk_render_clusters_bench.run },
         .{ .name = editor_view_bench.benchName, .run = editor_view_bench.run },
         .{ .name = terminal_image_bench.benchName, .run = terminal_image_bench.run },
         .{ .name = renderer_image_bench.benchName, .run = renderer_image_bench.run },

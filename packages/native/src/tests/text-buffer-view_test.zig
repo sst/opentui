@@ -488,8 +488,8 @@ test "TextBufferView virtual line spans - with highlights" {
     try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
     try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
 
-    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
-    try std.testing.expectEqual(@as(u32, 10), vline1_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.source_col_start);
+    try std.testing.expectEqual(@as(u32, 10), vline1_info.source_col_start);
 
     try std.testing.expect(vline0_info.spans.len > 0);
     try std.testing.expect(vline1_info.spans.len > 0);
@@ -1034,10 +1034,10 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 
     var line_buf: [32]u8 = undefined;
-    const line0_len = tb.getTextRange(vlines[0].col_offset, vlines[0].col_offset + vlines[0].width_cols, &line_buf);
+    const line0_len = tb.getTextRange(vlines[0].document_cell_offset, vlines[0].document_cell_offset + vlines[0].width_cols, &line_buf);
     try std.testing.expectEqualStrings("hello my good ", line_buf[0..line0_len]);
 
-    const line1_len = tb.getTextRange(vlines[1].col_offset, vlines[1].col_offset + vlines[1].width_cols, &line_buf);
+    const line1_len = tb.getTextRange(vlines[1].document_cell_offset, vlines[1].document_cell_offset + vlines[1].width_cols, &line_buf);
     try std.testing.expectEqualStrings("friend", line_buf[0..line1_len]);
 }
 
@@ -2579,8 +2579,8 @@ test "TextBufferView highlights - work correctly with wrapped lines" {
     try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
     try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
 
-    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
-    try std.testing.expectEqual(@as(u32, 10), vline1_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.source_col_start);
+    try std.testing.expectEqual(@as(u32, 10), vline1_info.source_col_start);
 
     try std.testing.expect(vline0_info.spans.len > 0);
     try std.testing.expect(vline1_info.spans.len > 0);
@@ -3197,8 +3197,8 @@ test "TextBufferView truncation - byte windows snap around wide graphemes" {
 
     const line = view.getVirtualLines()[0];
     try std.testing.expectEqual(@as(u32, 7), line.width_cols);
-    try std.testing.expectEqual(@as(u32, 2), line.ellipsis_pos);
-    try std.testing.expectEqual(@as(u32, 7), line.truncation_suffix_start);
+    try std.testing.expectEqual(@as(u32, 2), line.ellipsis_col);
+    try std.testing.expectEqual(@as(u32, 7), line.truncation_suffix_col_start);
     try std.testing.expectEqual(@as(usize, 3), line.chunks.items.len);
 
     for (line.chunks.items) |chunk| {
@@ -3315,7 +3315,7 @@ test "TextBufferView highlights - multiple highlights on wrapped line" {
     for (0..vline_count) |i| {
         const vline_info = view.getVirtualLineSpans(i);
         try std.testing.expectEqual(@as(usize, 0), vline_info.source_line);
-        try std.testing.expectEqual(@as(u32, @intCast(i * 10)), vline_info.col_offset);
+        try std.testing.expectEqual(@as(u32, @intCast(i * 10)), vline_info.source_col_start);
     }
 }
 
@@ -3347,8 +3347,8 @@ test "TextBufferView highlights - with emojis and wrapping" {
     try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
     try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
 
-    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
-    try std.testing.expect(vline1_info.col_offset == 6);
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.source_col_start);
+    try std.testing.expect(vline1_info.source_col_start == 6);
 
     try std.testing.expect(vline0_info.spans.len > 0);
 }
@@ -3380,9 +3380,9 @@ test "TextBufferView highlights - with CJK characters and wrapping" {
         try std.testing.expectEqual(@as(usize, 0), vline_info.source_line);
 
         if (i == 0) {
-            try std.testing.expectEqual(@as(u32, 0), vline_info.col_offset);
+            try std.testing.expectEqual(@as(u32, 0), vline_info.source_col_start);
         } else if (i == 1) {
-            try std.testing.expectEqual(@as(u32, 6), vline_info.col_offset);
+            try std.testing.expectEqual(@as(u32, 6), vline_info.source_col_start);
         }
     }
 }
@@ -3415,8 +3415,8 @@ test "TextBufferView highlights - mixed ASCII and wide chars with wrapping" {
     try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
     try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
 
-    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
-    try std.testing.expectEqual(@as(u32, 7), vline1_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.source_col_start);
+    try std.testing.expectEqual(@as(u32, 7), vline1_info.source_col_start);
 
     try std.testing.expect(vline0_info.spans.len > 0);
     try std.testing.expect(vline1_info.spans.len > 0);
@@ -3447,8 +3447,8 @@ test "TextBufferView highlights - emoji at wrap boundary" {
     const vline0_info = view.getVirtualLineSpans(0);
     const vline1_info = view.getVirtualLineSpans(1);
 
-    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
-    try std.testing.expect(vline1_info.col_offset >= 4);
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.source_col_start);
+    try std.testing.expect(vline1_info.source_col_start >= 4);
 }
 
 test "TextBufferView highlights - emojis without wrapping" {
@@ -4292,10 +4292,10 @@ test "TextBufferView word wrapping - does not split 'uses' across lines" {
             var line_buf: [1024]u8 = undefined;
             var next_line_buf: [1024]u8 = undefined;
 
-            const line_len = tb.getTextRange(vlines[i].col_offset, vlines[i].col_offset + vlines[i].width_cols, &line_buf);
+            const line_len = tb.getTextRange(vlines[i].document_cell_offset, vlines[i].document_cell_offset + vlines[i].width_cols, &line_buf);
             const next_line_len = tb.getTextRange(
-                vlines[i + 1].col_offset,
-                vlines[i + 1].col_offset + vlines[i + 1].width_cols,
+                vlines[i + 1].document_cell_offset,
+                vlines[i + 1].document_cell_offset + vlines[i + 1].width_cols,
                 &next_line_buf,
             );
 

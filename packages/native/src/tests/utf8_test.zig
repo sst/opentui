@@ -804,7 +804,7 @@ fn testLayoutBreaks(test_case: LayoutBreakTestCase, allocator: std.mem.Allocator
     try testing.expectEqual(test_case.expected.len, breaks.items.len);
 
     for (test_case.expected, 0..) |exp, i| {
-        try testing.expectEqual(exp, breaks.items[i].byte_offset);
+        try testing.expectEqual(exp, breaks.items[i].byte_start);
     }
 }
 
@@ -918,7 +918,7 @@ test "chunk layout scanner: break offset beyond 64KB" {
     _ = try utf8.findChunkLayoutInfo(testing.allocator, buf, 4, true, .unicode, &breaks);
 
     try testing.expectEqual(@as(usize, 1), breaks.items.len);
-    try testing.expectEqual(@as(u32, break_pos), breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, break_pos), breaks.items[0].byte_start);
 }
 
 // ============================================================================
@@ -1994,230 +1994,230 @@ test "calculateTextWidth: U+269B atom symbol should be width 2" {
 }
 
 // ============================================================================
-// GRAPHEME INFO TESTS (for caching multi-byte graphemes and tabs)
+// RENDER CLUSTER INFO TESTS (for caching multibyte clusters and tabs)
 // ============================================================================
 
-test "findGraphemeInfo: empty string" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: empty string" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, "", 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, "", 4, false, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
-test "findGraphemeInfo: ASCII-only returns empty" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: ASCII-only returns empty" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, "hello world", 4, true, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, "hello world", 4, true, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
-test "findGraphemeInfo: ASCII with tab" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: ASCII with tab" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, "hello\tworld", 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, "hello\tworld", 4, false, .unicode, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 5), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u32, 4), result.items[0].width);
-    try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 5), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: multiple tabs" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: multiple tabs" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, "a\tb\tc", 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, "a\tb\tc", 4, false, .unicode, &result);
 
     // Should have two entries for the tabs
     try testing.expectEqual(@as(usize, 2), result.items.len);
 
     // First tab at byte 1, col 1
-    try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u32, 4), result.items[0].width);
-    try testing.expectEqual(@as(u32, 1), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 1), result.items[0].col_start);
 
     // Second tab at byte 3, col 6 (1 + 4 + 1)
-    try testing.expectEqual(@as(u32, 3), result.items[1].byte_offset);
+    try testing.expectEqual(@as(u32, 3), result.items[1].byte_start);
     try testing.expectEqual(@as(u32, 1), result.items[1].byte_len);
-    try testing.expectEqual(@as(u32, 4), result.items[1].width);
-    try testing.expectEqual(@as(u32, 6), result.items[1].col_offset);
+    try testing.expectEqual(@as(u32, 4), result.items[1].width_cols);
+    try testing.expectEqual(@as(u32, 6), result.items[1].col_start);
 }
 
-test "findGraphemeInfo: CJK characters" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: CJK characters" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "hello世界";
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have two entries for the CJK characters
     try testing.expectEqual(@as(usize, 2), result.items.len);
 
     // 世 at byte 5
-    try testing.expectEqual(@as(u32, 5), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 5), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
-    try testing.expectEqual(@as(u32, 5), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 5), result.items[0].col_start);
 
     // 界 at byte 8
-    try testing.expectEqual(@as(u32, 8), result.items[1].byte_offset);
+    try testing.expectEqual(@as(u32, 8), result.items[1].byte_start);
     try testing.expectEqual(@as(u32, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u32, 2), result.items[1].width);
-    try testing.expectEqual(@as(u32, 7), result.items[1].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[1].width_cols);
+    try testing.expectEqual(@as(u32, 7), result.items[1].col_start);
 }
 
-test "findGraphemeInfo: emoji with skin tone" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: emoji with skin tone" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 8), result.items[0].byte_len); // 4 + 4 bytes
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
-    try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 2), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: emoji with ZWJ" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: emoji with ZWJ" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "a👩‍🚀b"; // a + woman astronaut + b
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
-    try testing.expectEqual(@as(u32, 1), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_start);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 1), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: combining mark" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: combining mark" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "cafe\u{0301}"; // café with combining acute
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have one entry for e + combining mark
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 3), result.items[0].byte_offset); // 'e' position
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_start); // 'e' position
     try testing.expectEqual(@as(u32, 3), result.items[0].byte_len); // e (1 byte) + combining (2 bytes)
-    try testing.expectEqual(@as(u32, 1), result.items[0].width);
-    try testing.expectEqual(@as(u32, 3), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 3), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: flag emoji" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: flag emoji" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "US🇺🇸"; // US + flag
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have one entry for the flag (two regional indicators)
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 8), result.items[0].byte_len); // Two 4-byte chars
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
-    try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 2), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: mixed content" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: mixed content" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "Hi\t世界!"; // Hi + tab + CJK + !
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have three entries: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
 
     // Tab at byte 2, col 2
-    try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 1), result.items[0].byte_len);
-    try testing.expectEqual(@as(u32, 4), result.items[0].width);
-    try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 2), result.items[0].col_start);
 
     // 世 at byte 3, col 6
-    try testing.expectEqual(@as(u32, 3), result.items[1].byte_offset);
+    try testing.expectEqual(@as(u32, 3), result.items[1].byte_start);
     try testing.expectEqual(@as(u32, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u32, 2), result.items[1].width);
-    try testing.expectEqual(@as(u32, 6), result.items[1].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[1].width_cols);
+    try testing.expectEqual(@as(u32, 6), result.items[1].col_start);
 
     // 界 at byte 6, col 8
-    try testing.expectEqual(@as(u32, 6), result.items[2].byte_offset);
+    try testing.expectEqual(@as(u32, 6), result.items[2].byte_start);
     try testing.expectEqual(@as(u32, 3), result.items[2].byte_len);
-    try testing.expectEqual(@as(u32, 2), result.items[2].width);
-    try testing.expectEqual(@as(u32, 8), result.items[2].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[2].width_cols);
+    try testing.expectEqual(@as(u32, 8), result.items[2].col_start);
 }
 
-test "findGraphemeInfo: only ASCII letters no cache" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: only ASCII letters no cache" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, "abcdefghij", 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, "abcdefghij", 4, false, .unicode, &result);
 
     // No special characters, should be empty
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
-test "findGraphemeInfo: emoji with VS16" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: emoji with VS16" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 2), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
-    try testing.expectEqual(@as(u32, 2), result.items[0].col_offset);
+    try testing.expectEqual(@as(u32, 2), result.items[0].byte_start);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 2), result.items[0].col_start);
 }
 
-test "findGraphemeInfo: realistic text" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: realistic text" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "function test() {\n\tconst 世界 = 10;\n}";
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have entries for: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
 }
 
-test "findGraphemeInfo: hiragana" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: hiragana" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "こんにちは";
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     // Should have 5 entries (each hiragana is 3 bytes, width 2)
     try testing.expectEqual(@as(usize, 5), result.items.len);
 
     // Check first character
-    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_start);
     try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u32, 2), result.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.items[0].width_cols);
 }
 
-test "findGraphemeInfo: at SIMD boundary" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "findRenderClusterInfo: at SIMD boundary" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     // Create text with multibyte char near SIMD boundary (16 bytes)
@@ -2226,22 +2226,22 @@ test "findGraphemeInfo: at SIMD boundary" {
     const cjk = "世";
     @memcpy(buf[14..17], cjk); // Place CJK char at boundary
 
-    try utf8.findGraphemeInfo(testing.allocator, &buf, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, &buf, 4, false, .unicode, &result);
 
     // Should find the CJK character
     var found = false;
     for (result.items) |g| {
-        if (g.byte_offset == 14) {
+        if (g.byte_start == 14) {
             found = true;
             try testing.expectEqual(@as(u32, 3), g.byte_len);
-            try testing.expectEqual(@as(u32, 2), g.width);
+            try testing.expectEqual(@as(u32, 2), g.width_cols);
             break;
         }
     }
     try testing.expect(found);
 }
 
-test "findGraphemeInfo: long grapheme metadata exceeds u8 ranges" {
+test "findRenderClusterInfo: long render-cluster metadata exceeds u8 ranges" {
     var text: std.ArrayListUnmanaged(u8) = .empty;
     defer text.deinit(testing.allocator);
 
@@ -2255,14 +2255,14 @@ test "findGraphemeInfo: long grapheme metadata exceeds u8 ranges" {
         .{ .method = .unicode, .width = 2 },
         .{ .method = .wcwidth, .width = 260 },
     }) |case| {
-        var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+        var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
         defer result.deinit(testing.allocator);
 
-        try utf8.findGraphemeInfo(testing.allocator, text.items, 4, false, case.method, &result);
+        try utf8.findRenderClusterInfo(testing.allocator, text.items, 4, false, case.method, &result);
         try testing.expectEqual(@as(usize, 1), result.items.len);
-        try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
+        try testing.expectEqual(@as(u32, 0), result.items[0].byte_start);
         try testing.expectEqual(@as(u32, @intCast(text.items.len)), result.items[0].byte_len);
-        try testing.expectEqual(case.width, result.items[0].width);
+        try testing.expectEqual(case.width, result.items[0].width_cols);
     }
 }
 
@@ -3521,7 +3521,7 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
     try testing.expectEqual(@as(usize, 0), failures);
 }
 
-test "findGraphemeInfo: comprehensive multilingual text" {
+test "findRenderClusterInfo: comprehensive multilingual text" {
     const text =
         \\# The Celestial Journey of संस्कृति 🌟🔮✨
         \\In the beginning, there was नमस्ते 🙏 and the ancient wisdom of the ॐ symbol echoing through dimensions. The travelers 🧑‍🚀👨‍🚀👩‍🚀 embarked on their quest through the cosmos, guided by the mysterious རྒྱ་མཚོ and the luminous 🌈🦄🧚‍♀️ beings of light. They encountered the great देवनागरी scribes who wrote in flowing अक्षर characters, documenting everything in their sacred texts 📜📖✍️.
@@ -3547,23 +3547,23 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     const expected_width = utf8.calculateTextWidth(text, 4, false, .unicode);
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
     try testing.expect(result.items.len > 0);
 
     var prev_end_byte: usize = 0;
 
     for (result.items) |g| {
-        try testing.expect(g.byte_offset >= prev_end_byte);
+        try testing.expect(g.byte_start >= prev_end_byte);
 
-        const text_before = text[0..g.byte_offset];
+        const text_before = text[0..g.byte_start];
         const expected_col = utf8.calculateTextWidth(text_before, 4, false, .unicode);
 
-        try testing.expectEqual(expected_col, g.col_offset);
+        try testing.expectEqual(expected_col, g.col_start);
 
-        prev_end_byte = g.byte_offset + g.byte_len;
+        prev_end_byte = g.byte_start + g.byte_len;
     }
 
     const final_computed_width = utf8.calculateTextWidth(text, 4, false, .unicode);
@@ -3682,29 +3682,29 @@ test "Thai: wrap by width with tone marks" {
     try testing.expectEqual(@as(u32, 3), result3.columns_used);
 }
 
-test "Thai: grapheme info for combining marks" {
+test "Thai: render-cluster info for combining marks" {
     const text = "กี่";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u32, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width_cols);
 }
 
-test "Thai: grapheme info for word with combining marks" {
+test "Thai: render-cluster info for word with combining marks" {
     const text = "คือ";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 2), result.items.len);
-    try testing.expectEqual(@as(u32, 1), result.items[0].width);
-    try testing.expectEqual(@as(u32, 1), result.items[1].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 1), result.items[1].width_cols);
 }
 
 test "Thai: mixed Thai and ASCII" {
@@ -3744,11 +3744,11 @@ test "Thai: ว่ wcwidth vs unicode mode comparison" {
 test "Thai: ว่ is a single grapheme cluster" {
     const text = "ว่";
 
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u32, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width_cols);
 }

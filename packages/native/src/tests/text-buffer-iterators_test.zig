@@ -50,7 +50,7 @@ test "walkLines - single text segment" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -86,7 +86,7 @@ test "walkLines - text + break + text" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -97,7 +97,7 @@ test "walkLines - text + break + text" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
-            .width = 5,
+            .width_cols = 5,
             .flags = 0,
         },
     });
@@ -140,7 +140,7 @@ test "walkLines - exclude newlines in offset" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -151,7 +151,7 @@ test "walkLines - exclude newlines in offset" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
-            .width = 5,
+            .width_cols = 5,
             .flags = 0,
         },
     });
@@ -194,7 +194,7 @@ test "coordsToOffset - valid coordinates" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -205,7 +205,7 @@ test "coordsToOffset - valid coordinates" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
-            .width = 5,
+            .width_cols = 5,
             .flags = 0,
         },
     });
@@ -235,7 +235,7 @@ test "offsetToCoords - valid offsets" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -246,7 +246,7 @@ test "offsetToCoords - valid offsets" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
-            .width = 5,
+            .width_cols = 5,
             .flags = 0,
         },
     });
@@ -284,7 +284,7 @@ test "Helper functions" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -295,7 +295,7 @@ test "Helper functions" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
-            .width = 5,
+            .width_cols = 5,
             .flags = 0,
         },
     });
@@ -317,7 +317,7 @@ test "coordsToOffset and offsetToCoords - round trip" {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
-            .width = 10,
+            .width_cols = 10,
             .flags = 0,
         },
     });
@@ -328,7 +328,7 @@ test "coordsToOffset and offsetToCoords - round trip" {
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 18,
-            .width = 8,
+            .width_cols = 8,
             .flags = 0,
         },
     });

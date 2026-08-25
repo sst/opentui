@@ -244,17 +244,17 @@ pub const EditBuffer = struct {
         chunk: *const TextChunk,
         weight: u32,
     ) error{ OutOfBounds, OutOfMemory }!struct { left: TextChunk, right: TextChunk } {
-        const chunk_weight = chunk.width;
+        const chunk_weight = chunk.width_cols;
 
         if (weight == 0) {
             return .{
-                .left = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
+                .left = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width_cols = 0 },
                 .right = chunk.*,
             };
         } else if (weight >= chunk_weight) {
             return .{
                 .left = chunk.*,
-                .right = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
+                .right = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width_cols = 0 },
             };
         }
 
@@ -321,7 +321,7 @@ pub const EditBuffer = struct {
         var result = try self.tb.textToSegments(self.allocator, bytes, base_mem_id, base_start, false);
         defer result.segments.deinit(result.allocator);
 
-        const inserted_width = result.total_width;
+        const inserted_width_cols = result.total_width_cols;
 
         // Calculate width after last break
         var width_after_last_break: u32 = 0;
@@ -331,7 +331,7 @@ pub const EditBuffer = struct {
                 num_breaks += 1;
                 width_after_last_break = 0;
             } else if (seg.asText()) |chunk| {
-                width_after_last_break += chunk.width;
+                width_after_last_break += chunk.width_cols;
             }
         }
 
@@ -349,7 +349,7 @@ pub const EditBuffer = struct {
                 .offset = new_offset,
             };
         } else {
-            const new_col = cursor.col + inserted_width;
+            const new_col = cursor.col + inserted_width_cols;
             const new_offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, new_col) orelse 0;
             self.cursors.items[0] = .{
                 .row = cursor.row,
@@ -741,7 +741,7 @@ pub const EditBuffer = struct {
             const seg = self.tb.rope().get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
+                const next_cols = cols_before + chunk.width_cols;
                 const layout = self.tb.getLayoutInfoFor(chunk) catch {
                     cols_before = next_cols;
                     passed_cursor = passed_cursor or cursor.col < next_cols;
@@ -764,7 +764,7 @@ pub const EditBuffer = struct {
                     const local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0;
 
                     for (wrap_breaks) |wrap_break| {
-                        const break_col = wrap_break.col_offset;
+                        const break_col = wrap_break.col_start;
                         const target_col = cols_before + wrap_break.colEnd();
 
                         // If we've passed the cursor chunk, any break is valid
@@ -780,7 +780,7 @@ pub const EditBuffer = struct {
                         // for script-transition cases like "a日", "日a", or "丽abc".
                         // Only accept it when the boundary starts on a word codepoint.
                         if (!passed_cursor and break_col == local_cursor_col) {
-                            const break_byte_offset: usize = @intCast(wrap_break.byte_offset);
+                            const break_byte_offset: usize = @intCast(wrap_break.byte_start);
                             const chunk_bytes = chunk.getBytes(self.tb.memRegistry());
                             if (break_byte_offset < chunk_bytes.len) {
                                 const break_cp = utf8.decodeUtf8Unchecked(chunk_bytes, break_byte_offset).cp;
@@ -827,7 +827,7 @@ pub const EditBuffer = struct {
             const seg = self.tb.rope().get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
+                const next_cols = cols_before + chunk.width_cols;
 
                 const layout = self.tb.getLayoutInfoFor(chunk) catch {
                     cols_before = next_cols;
