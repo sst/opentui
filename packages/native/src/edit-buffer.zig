@@ -671,10 +671,7 @@ pub const EditBuffer = struct {
     pub fn undo(self: *EditBuffer) ![]const u8 {
         var current_meta_buffer: [64]u8 = undefined;
         const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
-        const prev_meta = try self.tb.rope().undo(current_meta);
-        // Undo may restore widths cached before the latest tab-width change.
-        // Refresh them before restoring the column-based cursor.
-        self.tb.refreshTabWidthMetrics();
+        const prev_meta = try self.tb.undo(current_meta);
 
         const restored = try self.restoreCursorFromMeta(prev_meta);
 
@@ -691,10 +688,7 @@ pub const EditBuffer = struct {
     }
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
-        const next_meta = try self.tb.rope().redo();
-        // Redo may restore widths cached before the latest tab-width change.
-        // Refresh them before restoring the column-based cursor.
-        self.tb.refreshTabWidthMetrics();
+        const next_meta = try self.tb.redo();
 
         const restored = try self.restoreCursorFromMeta(next_meta);
 

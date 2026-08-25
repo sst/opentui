@@ -142,6 +142,20 @@ pub const UnifiedTextBuffer = struct {
         return &self._rope;
     }
 
+    /// Restore an undo root with metrics valid for the current tab width.
+    pub fn undo(self: *Self, meta: []const u8) ![]const u8 {
+        const previous_meta = try self._rope.undo(meta);
+        self.refreshTabWidthMetrics();
+        return previous_meta;
+    }
+
+    /// Restore a redo root with metrics valid for the current tab width.
+    pub fn redo(self: *Self) ![]const u8 {
+        const next_meta = try self._rope.redo();
+        self.refreshTabWidthMetrics();
+        return next_meta;
+    }
+
     /// Accessor: get line width at a given row.
     pub fn lineWidthAt(self: *const Self, row: u32) u32 {
         return iter_mod.lineWidthAt(@constCast(&self._rope), row);
@@ -1272,7 +1286,7 @@ pub const UnifiedTextBuffer = struct {
     /// Bring the active persistent root to the current tab-width generation.
     /// Widths and branch aggregates are derived state, so this deliberately
     /// updates shared const nodes; stale history roots are repaired when restored.
-    pub fn refreshTabWidthMetrics(self: *Self) void {
+    fn refreshTabWidthMetrics(self: *Self) void {
         if (self._rope.metricsGeneration() == self.tab_metrics_generation) return;
 
         const RefreshContext = struct {
