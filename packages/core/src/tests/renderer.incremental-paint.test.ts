@@ -152,6 +152,26 @@ describe("incremental paint", () => {
     renderer.destroy()
   })
 
+  test("preserves requestAnimationFrame direct drawing beneath the rendered scene", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 4,
+      height: 2,
+      useThread: false,
+    })
+    renderer.root.add(new TextRenderable(renderer, { id: "raf-foreground", content: "A", width: 1, height: 1 }))
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+
+    requestAnimationFrame(() => {
+      renderer.nextRenderBuffer.setCell(0, 0, "X", fg, bg)
+    })
+    await renderer.idle()
+
+    expect(captureCharFrame()).toContain("A")
+    expect(captureCharFrame()).not.toContain("X")
+    renderer.destroy()
+  })
+
   test("keeps incremental painting for frame callbacks declared buffer-free", async () => {
     const { renderer, renderOnce, root } = await setup()
     const staticNode = new PaintingRenderable(renderer, "buffer-free-callback-static", "S", 20, 6)
@@ -387,6 +407,94 @@ describe("incremental paint", () => {
     expect(captureCharFrame()).toContain("A")
     value = "B"
     custom.requestRender()
+    await renderOnce()
+
+    expect(captureCharFrame()).not.toContain("A")
+    expect(captureCharFrame()).toContain("B")
+    renderer.destroy()
+  })
+
+  test("runs a dynamically assigned render hook outside the original layout bounds", async () => {
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const box = new BoxRenderable(renderer, {
+      id: "dynamic-render-hook",
+      width: 1,
+      height: 1,
+      position: "absolute",
+      left: 2,
+      top: 2,
+    })
+    root.add(box)
+    await renderOnce()
+
+    box.renderAfter = (buffer) => buffer.setCell(2, 8, "X", fg, bg)
+    box.requestRender()
+    await renderOnce()
+
+    expect(captureCharFrame()).toContain("X")
+    renderer.destroy()
+  })
+
+  test("preserves public render overrides painting outside built-in layout bounds", async () => {
+    class RenderOverrideBox extends BoxRenderable {
+      public glyph = "A"
+
+      public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+        super.render(buffer, deltaTime)
+        buffer.setCell(2, 8, this.glyph, fg, bg)
+      }
+    }
+
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const box = new RenderOverrideBox(renderer, {
+      id: "render-override-box",
+      width: 1,
+      height: 1,
+      position: "absolute",
+      left: 2,
+      top: 2,
+    })
+    root.add(box)
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+
+    box.glyph = "B"
+    box.requestRender()
+    await renderOnce()
+
+    expect(captureCharFrame()).not.toContain("A")
+    expect(captureCharFrame()).toContain("B")
+    renderer.destroy()
+  })
+
+  test("refreshes mutable overridden box scissor geometry", async () => {
+    class MovingScissorBox extends BoxRenderable {
+      public clipOffset = 0
+
+      protected override getScissorRect(): { x: number; y: number; width: number; height: number } {
+        const rect = super.getScissorRect()
+        return { ...rect, x: rect.x + this.clipOffset, width: 1 }
+      }
+    }
+
+    const { renderer, renderOnce, root, captureCharFrame } = await setup()
+    const box = new MovingScissorBox(renderer, {
+      id: "moving-scissor-box",
+      width: 2,
+      height: 1,
+      overflow: "hidden",
+      position: "absolute",
+      left: 2,
+      top: 2,
+    })
+    box.add(new TextRenderable(renderer, { id: "moving-scissor-text", content: "AB", width: 2, height: 1 }))
+    root.add(box)
+    await renderOnce()
+    expect(captureCharFrame()).toContain("A")
+    expect(captureCharFrame()).not.toContain("B")
+
+    box.clipOffset = 1
+    box.requestRender()
     await renderOnce()
 
     expect(captureCharFrame()).not.toContain("A")
