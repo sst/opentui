@@ -395,15 +395,15 @@ pub fn run(
         streaming: bool,
         width: u32,
     }{
-        .{ .label = "layout streaming wrap", .streaming = true, .width = wrap_width },
-        .{ .label = "layout streaming intrinsic", .streaming = true, .width = 0 },
-        .{ .label = "layout static wrap", .streaming = false, .width = wrap_width },
+        .{ .label = "incremental append wrap", .streaming = true, .width = wrap_width },
+        .{ .label = "incremental append intrinsic", .streaming = true, .width = 0 },
+        .{ .label = "repeated cached wrap", .streaming = false, .width = wrap_width },
     };
 
     for (measure_scenarios) |scenario| {
         const bench_name = try std.fmt.allocPrint(
             allocator,
-            "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
+            "TextBufferView measureForDimensions ({s}, {d:.2} MiB initial text)",
             .{ scenario.label, multiline_mb },
         );
 
