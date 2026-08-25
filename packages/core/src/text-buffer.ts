@@ -208,6 +208,7 @@ export class TextBuffer {
   public setTabWidth(width: number): void {
     this.guard()
     this.lib.textBufferSetTabWidth(this.bufferPtr, width)
+    // Native length is display-cell width, so tab metrics can change it without changing bytes.
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
   }
 

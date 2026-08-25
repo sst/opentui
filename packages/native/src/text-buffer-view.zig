@@ -132,6 +132,8 @@ pub const VirtualLineSpanInfo = struct {
     col_offset: u32,
 };
 
+/// Byte and display-column windows describe the same whole-grapheme slice;
+/// columns alone cannot recover UTF-8 boundaries.
 pub const VirtualChunk = struct {
     chunk: *const TextChunk,
     byte_start_in_chunk: u32,
@@ -410,6 +412,8 @@ pub const UnifiedTextBufferView = struct {
             .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output),
         };
         if (!calculated) {
+            // Builders append to parallel arrays; discard partial output as a unit
+            // and remain dirty so the next access can retry cleanly.
             self.resetVirtualLineStorage();
             self.virtual_lines_dirty = true;
             return;
@@ -523,6 +527,8 @@ pub const UnifiedTextBufferView = struct {
         while (i < vline_count) : (i += 1) {
             const vline_idx = first_vline_idx + i;
             if (vline_idx >= vlines.len) break;
+            // A soft-wrap boundary belongs to the following visual line. Consumed
+            // separators before its source start remain on the previous line.
             if (logical_col < vlines[vline_idx].source_col_offset) return vline_idx - 1;
         }
 
@@ -1210,6 +1216,8 @@ pub const UnifiedTextBufferView = struct {
 
         const ellipsis_width: u32 = 3;
 
+        // Truncation budgets are columns, but VirtualChunks materialize byte windows.
+        // Snap both cuts to whole graphemes so renderer bytes remain atomic.
         const keepChunkPrefix = struct {
             fn apply(view: *Self, chunk: VirtualChunk, keep_cols: u32) ?VirtualChunk {
                 if (keep_cols == 0) return null;
@@ -1267,6 +1275,7 @@ pub const UnifiedTextBufferView = struct {
             ellipsis_pos: u32 = 0,
             truncation_suffix_start: u32 = 0,
         };
+        // Stage all replacements first so OOM leaves the original layout retryable.
         const replacements = self.global_allocator.alloc(Replacement, self.virtual_lines.items.len) catch return false;
         defer self.global_allocator.free(replacements);
         @memset(replacements, .{});
@@ -1642,6 +1651,8 @@ pub const UnifiedTextBufferView = struct {
             }
 
             fn consumeDroppedWhitespace(wctx: *@This(), width: u32) void {
+                // Wrapped separators are hidden on the continuation but remain in
+                // the preceding visual line's logical source interval.
                 wctx.global_char_offset += width;
                 wctx.line_col_offset += width;
                 if (comptime calculation == .render) wctx.current_vline.col_offset = wctx.global_char_offset;
@@ -1849,6 +1860,7 @@ pub const UnifiedTextBufferView = struct {
                     if (wctx.failed) return;
                 }
 
+                // Logical-line indentation is content; only later separators may be elided.
                 const preserve_leading = !wctx.source_line_has_non_whitespace;
                 const wrap_limit = wctx.wordWrapWidth();
                 if (!preserve_leading and wctx.line_position + wrap_break.width > wrap_limit) {
@@ -1911,6 +1923,8 @@ pub const UnifiedTextBufferView = struct {
 
             fn processWordChunk(wctx: *@This(), chunk: *const TextChunk) void {
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
+                // Measurement reuses caches but does not create them. Rendering caches
+                // only medium chunks; small/large scans and cache OOM stream instead.
                 const cached_layout = chunk.getCachedLayoutInfo(wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod());
                 const layout: ?utf8.ChunkLayoutInfo = if (cached_layout) |cached|
                     cached
@@ -1984,6 +1998,8 @@ pub const UnifiedTextBufferView = struct {
                 var byte_offset: usize = 0;
                 var char_offset: u32 = 0;
 
+                // Advance bytes with columns; re-deriving each byte boundary would
+                // make repeated wraps within a long chunk quadratic.
                 while (char_offset < chunk.width) {
                     const line_wrap_w = wctx.lineWrapWidth();
                     const remaining_width = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
@@ -2048,6 +2064,8 @@ pub const UnifiedTextBufferView = struct {
 
                 if (comptime wrap_mode == .word) {
                     if (comptime calculation == .measure) {
+                        // Only an unfragmented logical line can reuse one chunk's
+                        // summary; boundaries between chunks may join words.
                         if (wctx.deferred_measure_chunk) |deferred| {
                             processWordChunk(wctx, deferred);
                             wctx.deferred_measure_chunk = null;
@@ -2123,6 +2141,7 @@ pub const UnifiedTextBufferView = struct {
                 if (comptime wrap_mode == .word and calculation == .measure) {
                     if (!used_measure_cache) {
                         if (measure_cache_chunk) |chunk| {
+                            // Summary storage is best-effort; this measurement remains valid on OOM.
                             chunk.setWordMeasureSummary(
                                 wctx.text_buffer.getAllocator(),
                                 wctx.wrap_w,
@@ -2176,6 +2195,8 @@ pub const UnifiedTextBufferView = struct {
             }
         };
 
+        // first_line_offset reduces only the initial visual-line budget;
+        // committed continuations reset to the full wrap width.
         var wrap_ctx: WrapContext = .{
             .text_buffer = text_buffer,
             .allocator = allocator,

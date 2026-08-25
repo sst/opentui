@@ -102,7 +102,6 @@ pub const TabStopResult = struct {
     }
 };
 
-/// Direct byte and display-column metadata for a wrap opportunity.
 pub const LayoutWrapBreakKind = enum(u8) {
     none,
     whitespace,
@@ -110,6 +109,9 @@ pub const LayoutWrapBreakKind = enum(u8) {
     script_transition,
 };
 
+/// Direct byte and display-column metadata for a wrap opportunity.
+/// The window identifies the grapheme that creates the break, not the position
+/// after it; consumers use byteEnd()/colEnd() to cross the boundary.
 pub const LayoutWrapBreak = struct {
     byte_offset: u32,
     col_offset: u32,
@@ -1436,6 +1438,7 @@ pub const ChunkLayoutInfo = struct {
     word_classes: WordClassEdges,
 };
 
+// Edge classes preserve CJK/ASCII transition boundaries across rope chunks.
 pub const WordClassEdges = struct { first: WordClass, last: WordClass };
 
 pub fn chunkWordClassEdges(text: []const u8) WordClassEdges {

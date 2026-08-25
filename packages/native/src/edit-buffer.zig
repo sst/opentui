@@ -672,6 +672,7 @@ pub const EditBuffer = struct {
         var current_meta_buffer: [64]u8 = undefined;
         const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
         const prev_meta = try self.tb.rope().undo(current_meta);
+        // Cursor metadata is column-based, so repair stale root metrics first.
         self.tb.refreshTabWidthMetrics();
 
         const restored = try self.restoreCursorFromMeta(prev_meta);
@@ -690,6 +691,7 @@ pub const EditBuffer = struct {
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
         const next_meta = try self.tb.rope().redo();
+        // Cursor metadata is column-based, so repair stale root metrics first.
         self.tb.refreshTabWidthMetrics();
 
         const restored = try self.restoreCursorFromMeta(next_meta);

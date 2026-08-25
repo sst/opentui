@@ -91,6 +91,8 @@ pub const TextChunk = struct {
 
     fn getOrCreateCold(self: *const TextChunk, allocator: Allocator) TextBufferError!*TextChunkColdState {
         if (self.cold) |cold| return cold;
+        // Derived state lives behind an indirection to keep persistent rope leaves small.
+        // Attaching it does not change the chunk's rope metrics.
         const cold = allocator.create(TextChunkColdState) catch return TextBufferError.OutOfMemory;
         cold.* = .{};
         @constCast(self).cold = cold;
@@ -147,7 +149,8 @@ pub const TextChunk = struct {
     }
 
     /// Lazily compute and cache grapheme info for this chunk
-    /// Returns a slice that is valid until the buffer is reset
+    /// Returned storage is arena-owned until reset, but a lookup with different
+    /// tab-dependent settings may overwrite it.
     /// For ASCII-only chunks, returns an empty slice (sentinel)
     /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
     pub fn getGraphemes(
@@ -240,6 +243,7 @@ pub const TextChunk = struct {
 
         const word_classes = try utf8.findChunkLayoutInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &wrap_breaks);
 
+        // The static sentinel has zero capacity, so reuse must allocate before writing.
         const cached: []utf8.LayoutWrapBreak = if (wrap_breaks.items.len > 0) wrap_breaks.items else @constCast(&[_]utf8.LayoutWrapBreak{});
         cold.wrap_breaks = cached;
         cold.wrap_breaks_capacity = wrap_breaks.capacity;

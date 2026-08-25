@@ -94,6 +94,8 @@ pub const UnifiedTextBuffer = struct {
     styled_capacity: usize,
 
     tab_width: u8,
+    // Persistent roots carry the tab-width generation used for their cached
+    // chunk and branch metrics, so only stale history roots are rescanned.
     tab_metrics_generation: u64,
     tab_metrics_refresh_count: u64,
 
@@ -1269,7 +1271,9 @@ pub const UnifiedTextBuffer = struct {
         self.markAllViewsDirty();
     }
 
-    /// Refresh widths after switching to a persistent rope root, such as undo/redo.
+    /// Bring the active persistent root to the current tab-width generation.
+    /// Widths and branch aggregates are derived state, so this deliberately
+    /// updates shared const nodes; stale history roots are repaired when restored.
     pub fn refreshTabWidthMetrics(self: *Self) void {
         if (self._rope.metricsGeneration() == self.tab_metrics_generation) return;
 

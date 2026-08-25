@@ -573,12 +573,15 @@ pub fn Rope(comptime T: type) type {
 
         pub fn setMetricsGeneration(self: *Self, generation: u64) void {
             self.metrics_generation = generation;
+            // An undo/redo history node may alias the active root; keep its stamp
+            // current so revisiting that root does not restore a stale generation.
             if (self.curr_history) |current| {
                 if (current.root == self.root) current.metrics_generation = generation;
             }
         }
 
-        /// Recompute cached branch metrics after leaf data is changed in place.
+        /// Recompute cached branch metrics after the owner updates derived leaf data.
+        /// The persistent structure is unchanged; only aggregate caches are mutated.
         pub fn remeasure(self: *Self) void {
             _ = remeasureNode(self.root);
             self.version +%= 1;
