@@ -2974,6 +2974,73 @@ test "TextBufferView truncation - allocation failure is atomic and retryable" {
     try std.testing.expectEqual(@as(usize, 3), retried.chunks.items.len);
 }
 
+test "TextBufferView truncation - fitting prebuilt lines do not allocate" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var view = try TextBufferView.init(failing.allocator(), tb);
+    defer view.deinit();
+
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(std.testing.allocator);
+    for (0..4096) |_| try text.appendSlice(std.testing.allocator, "fit\n");
+    try tb.setText(text.items);
+    view.setWrapMode(.none);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 4096 });
+    view.setTruncate(true);
+    view.updateVirtualLines();
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+    _ = view.getVirtualLines();
+
+    try std.testing.expect(!failing.has_induced_failure);
+    try std.testing.expectEqual(allocation_index, failing.alloc_index);
+}
+
+test "TextBufferView truncation - replacement staging is proportional to overflow" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var view = try TextBufferView.init(tracking.allocator(), tb);
+    defer view.deinit();
+
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(std.testing.allocator);
+    try text.appendSlice(std.testing.allocator, "first line overflows\n");
+    for (0..4096) |_| try text.appendSlice(std.testing.allocator, "fit\n");
+    try text.appendSlice(std.testing.allocator, "last line overflows");
+    try tb.setText(text.items);
+    view.setWrapMode(.none);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 4098 });
+    view.setTruncate(true);
+    view.updateVirtualLines();
+
+    const Replacement = struct {
+        chunks: std.ArrayListUnmanaged(text_buffer_view.VirtualChunk) = .empty,
+        width_cols: u32 = 0,
+        is_truncated: bool = false,
+        ellipsis_col: u32 = 0,
+        truncation_suffix_col_start: u32 = 0,
+    };
+    const allocated_bytes = tracking.allocated_bytes;
+    const lines = view.getVirtualLines();
+
+    try std.testing.expect(lines[0].is_truncated);
+    try std.testing.expect(lines[lines.len - 1].is_truncated);
+    try std.testing.expectEqual(2 * @sizeOf(Replacement), tracking.allocated_bytes - allocated_bytes);
+}
+
 test "TextBufferView truncation - multiline with truncate" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -3082,6 +3149,29 @@ test "TextBufferView truncation - very small viewport" {
 
     // With width=3, only room for "..." - should clear the line
     try std.testing.expectEqual(@as(u32, 0), vlines[0].width_cols);
+}
+
+test "TextBufferView truncation - empty suffix retains the source end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDE好");
+    view.setWrapMode(.none);
+    view.setTruncate(true);
+
+    for (2..5) |width| {
+        view.setViewport(.{ .x = 0, .y = 0, .width = @intCast(width), .height = 1 });
+        const line = view.getVirtualLines()[0];
+        try std.testing.expect(line.is_truncated);
+        try std.testing.expectEqual(@as(u32, 7), line.truncation_suffix_col_start);
+    }
 }
 
 test "TextBufferView truncation - verify ellipsis chunk injection" {

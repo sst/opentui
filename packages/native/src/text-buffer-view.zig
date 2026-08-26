@@ -1268,22 +1268,30 @@ pub const UnifiedTextBufferView = struct {
         }.apply;
 
         const Replacement = struct {
-            active: bool = false,
             chunks: std.ArrayListUnmanaged(VirtualChunk) = .empty,
             width_cols: u32 = 0,
             is_truncated: bool = false,
             ellipsis_col: u32 = 0,
             truncation_suffix_col_start: u32 = 0,
         };
+        var overflow_count: usize = 0;
+        for (self.virtual_lines.items) |vline| {
+            if (vline.width_cols > vp.width) overflow_count += 1;
+        }
+        if (overflow_count == 0) return true;
+
         // Stage all replacements first so OOM leaves the original layout retryable.
-        const replacements = self.global_allocator.alloc(Replacement, self.virtual_lines.items.len) catch return false;
+        const replacements = self.global_allocator.alloc(Replacement, overflow_count) catch return false;
         defer self.global_allocator.free(replacements);
         @memset(replacements, .{});
         const arena_allocator = self.virtual_lines_arena.allocator();
 
-        for (self.virtual_lines.items, replacements) |vline, *replacement| {
+        var replacement_index: usize = 0;
+        for (self.virtual_lines.items) |vline| {
             if (vline.width_cols <= vp.width) continue;
-            replacement.active = true;
+            const replacement = &replacements[replacement_index];
+            replacement_index += 1;
+            replacement.truncation_suffix_col_start = vline.width_cols;
 
             if (vp.width <= ellipsis_width) {
                 replacement.is_truncated = true;
@@ -1352,11 +1360,14 @@ pub const UnifiedTextBufferView = struct {
             replacement.width_cols = prefix_accumulated + ellipsis_width + suffix_accumulated;
             replacement.is_truncated = true;
             replacement.ellipsis_col = prefix_accumulated;
-            replacement.truncation_suffix_col_start = actual_suffix_start orelse replacement.width_cols;
+            replacement.truncation_suffix_col_start = actual_suffix_start orelse vline.width_cols;
         }
 
-        for (self.virtual_lines.items, replacements) |*vline, replacement| {
-            if (!replacement.active) continue;
+        replacement_index = 0;
+        for (self.virtual_lines.items) |*vline| {
+            if (vline.width_cols <= vp.width) continue;
+            const replacement = replacements[replacement_index];
+            replacement_index += 1;
             vline.chunks = replacement.chunks;
             vline.width_cols = replacement.width_cols;
             vline.is_truncated = replacement.is_truncated;
