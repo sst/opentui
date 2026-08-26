@@ -515,6 +515,8 @@ class TimelineEngine {
     this.frameCallback = async (deltaTime: number) => {
       this.update(deltaTime)
     }
+    ;(this.frameCallback as unknown as Record<symbol, boolean>)[Symbol.for("@opentui/core/state-only-frame-callback")] =
+      true
 
     renderer.setFrameCallback(this.frameCallback)
   }

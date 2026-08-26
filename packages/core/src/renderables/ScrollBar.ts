@@ -318,6 +318,7 @@ export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
 }
 
 export class ArrowRenderable extends Renderable {
+  private readonly autoWidth: boolean
   private _direction: "up" | "down" | "left" | "right"
   private _foregroundColor: RGBA
   private _backgroundColor: RGBA
@@ -331,6 +332,7 @@ export class ArrowRenderable extends Renderable {
 
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
+    this.autoWidth = options.width === undefined
     this._direction = options.direction
     this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : RGBA.fromValues(1, 1, 1, 1)
     this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : RGBA.fromValues(0, 0, 0, 0)
@@ -356,6 +358,7 @@ export class ArrowRenderable extends Renderable {
   set direction(value: "up" | "down" | "left" | "right") {
     if (this._direction !== value) {
       this._direction = value
+      if (this.autoWidth) this.width = stringWidth(this.getArrowChar())
       this.requestRender()
     }
   }
@@ -398,11 +401,21 @@ export class ArrowRenderable extends Renderable {
       ...this._arrowChars,
       ...value,
     }
+    if (this.autoWidth) this.width = stringWidth(this.getArrowChar())
     this.requestRender()
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     const char = this.getArrowChar()
+    if (!this.autoWidth && stringWidth(char) > this.width) {
+      buffer.pushScissorRect(this.x, this.y, this.width, this.height)
+      try {
+        buffer.drawText(char, this.x, this.y, this._foregroundColor, this._backgroundColor, this._attributes)
+      } finally {
+        buffer.popScissorRect()
+      }
+      return
+    }
     buffer.drawText(char, this.x, this.y, this._foregroundColor, this._backgroundColor, this._attributes)
   }
 

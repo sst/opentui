@@ -1,6 +1,7 @@
 import { appendFileSync, writeFileSync } from "node:fs"
 import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
+import { isScopedRenderRequest } from "./lib/render-internals.js"
 import { BoxRenderable } from "./renderables/Box.js"
 import { CodeRenderable } from "./renderables/Code.js"
 import { TextRenderable } from "./renderables/Text.js"
@@ -806,6 +807,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private rendering: boolean = false
   private renderingNative: boolean = false
+  private hitGridWritesEnabled = true
+  private hadFrameDrivenBufferWrites = false
+  private frameCallbackLayerWasCleared = false
+  private fullCompositionRequired = false
   private renderTimeout: TimerHandle | null = null
   private lastTime: number = 0
   private frameCount: number = 0
@@ -1417,10 +1422,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
     this.capturedRenderable = renderable
+    this.fullCompositionRequired = true
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
-    if (!this._useMouse) return
+    if (!this._useMouse || !this.hitGridWritesEnabled) return
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
@@ -1538,6 +1544,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
+    if (!isScopedRenderRequest(this)) this.fullCompositionRequired = true
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -4062,14 +4069,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
+    this.fullCompositionRequired = true
+    this.requestRender()
   }
 
   public removePostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns = this.postProcessFns.filter((fn) => fn !== processFn)
+    this.fullCompositionRequired = true
+    this.requestRender()
   }
 
   public clearPostProcessFns(): void {
     this.postProcessFns = []
+    this.fullCompositionRequired = true
+    this.requestRender()
   }
 
   public setFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
@@ -4553,6 +4566,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const frameRequests = Array.from(this.animationRequest.values())
       this.animationRequest.clear()
+      const hasFrameDrivenBufferWrites =
+        frameRequests.length > 0 ||
+        this.frameCallbacks.some(
+          (callback) =>
+            !(callback as unknown as Record<symbol, boolean>)[Symbol.for("@opentui/core/state-only-frame-callback")],
+        )
+      const refreshFrameCallbackLayer = hasFrameDrivenBufferWrites || this.hadFrameDrivenBufferWrites
+      this.hadFrameDrivenBufferWrites = hasFrameDrivenBufferWrites
+      this.frameCallbackLayerWasCleared = refreshFrameCallbackLayer
+      if (refreshFrameCallbackLayer) this.nextRenderBuffer.clear(this.backgroundColor)
       const animationRequestStart = performance.now()
       for (const callback of frameRequests) {
         callback(deltaTime)
@@ -4572,7 +4595,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const end = performance.now()
       this.renderStats.frameCallbackTime = end - start
 
+      this.fullCompositionRequired =
+        refreshFrameCallbackLayer ||
+        this.fullCompositionRequired ||
+        this.postProcessFns.length > 0 ||
+        this._console.visible ||
+        this.debugOverlay.enabled
       this.root.render(this.nextRenderBuffer, deltaTime)
+      this.fullCompositionRequired = false
 
       for (const postProcessFn of this.postProcessFns) {
         postProcessFn(this.nextRenderBuffer, deltaTime)
@@ -4583,6 +4613,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // If destroy() was requested during this frame, skip native work and scheduling.
       if (!this._isDestroyed) {
         const nativeStatus = this.renderNative() ?? "rendered"
+        if (nativeStatus !== "rendered") this.fullCompositionRequired = true
         if (nativeStatus === "rendered") this.frameCount++
         if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
           this.currentFps = this.frameCount

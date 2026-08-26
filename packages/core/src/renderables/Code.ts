@@ -112,6 +112,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private invalidateHighlights(): void {
     this._highlightsDirty = true
     this._highlightSnapshotId++
+    this.requestRender()
   }
 
   set content(value: string) {

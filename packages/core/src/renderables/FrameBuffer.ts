@@ -33,7 +33,7 @@ export class FrameBufferRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this.visible || this.isDestroyed) return
-    buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+    buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, 0, 0, this.width, this.height)
   }
 
   protected destroySelf(): void {

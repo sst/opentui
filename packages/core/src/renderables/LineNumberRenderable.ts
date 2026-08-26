@@ -1,4 +1,5 @@
 import { Renderable, type BaseRenderable, type RenderableOptions } from "../Renderable.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 import { OptimizedBuffer } from "../buffer.js"
 import type { RenderContext, LineInfoProvider } from "../types.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
@@ -102,6 +103,7 @@ class GutterRenderable extends Renderable {
         this.requestRender()
       }
     }
+    registerStableRenderCallback(this.onLifecyclePass)
   }
 
   private setupMeasureFunc(): void {

@@ -2,6 +2,7 @@ import { type KeyEvent } from "../lib/index.js"
 import { getObjectsInViewport } from "../lib/objects-in-viewport.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
 import type { BaseRenderable, Renderable, RenderableOptions } from "../Renderable.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
@@ -395,6 +396,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       }
     }
     this._ctx.on("selection", this.selectionListener)
+    if (this.onUpdate === ScrollBoxRenderable.prototype.onUpdate) registerStableRenderCallback(this.onUpdate)
   }
 
   protected onUpdate(deltaTime: number): void {

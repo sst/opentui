@@ -363,17 +363,13 @@ export class TextNodeRenderable extends BaseRenderable {
 export class RootTextNodeRenderable extends TextNodeRenderable {
   textParent: TextRenderable
 
-  constructor(
-    private readonly ctx: RenderContext,
-    options: TextNodeOptions,
-    textParent: TextRenderable,
-  ) {
+  constructor(_ctx: RenderContext, options: TextNodeOptions, textParent: TextRenderable) {
     super(options)
     this.textParent = textParent
   }
 
   public requestRender(): void {
     this.markDirty()
-    this.ctx.requestRender()
+    this.textParent.requestRender()
   }
 }

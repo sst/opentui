@@ -309,7 +309,7 @@ describe("QRCodeRenderable", () => {
 
       expect(paintTracker.counts.fillRect).toBe(afterFirstPaint.fillRect)
       expect(paintTracker.counts.setCell).toBe(afterFirstPaint.setCell)
-      expect(paintTracker.counts.drawFrameBuffer).toBeGreaterThan(afterFirstPaint.drawFrameBuffer)
+      expect(paintTracker.counts.drawFrameBuffer).toBe(afterFirstPaint.drawFrameBuffer)
 
       qr.foregroundColor = "#ff0000"
       await renderOnce()
@@ -323,7 +323,7 @@ describe("QRCodeRenderable", () => {
 
       expect(paintTracker.counts.fillRect).toBe(afterColorPaint.fillRect)
       expect(paintTracker.counts.setCell).toBe(afterColorPaint.setCell)
-      expect(paintTracker.counts.drawFrameBuffer).toBeGreaterThan(afterColorPaint.drawFrameBuffer)
+      expect(paintTracker.counts.drawFrameBuffer).toBe(afterColorPaint.drawFrameBuffer)
 
       qr.content = "HELLO OPENTUI"
       await renderOnce()

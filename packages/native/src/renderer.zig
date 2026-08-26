@@ -277,6 +277,8 @@ pub const CliRenderer = struct {
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
     hitGridDirty: bool = false,
     hitGridResizeInvalidated: bool = false,
+    retained_scene: bool = false,
+    rebuilding_hit_grid: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -858,8 +860,9 @@ pub const CliRenderer = struct {
     }
 
     fn clearSkippedFrameState(self: *CliRenderer) void {
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.retained_scene) self.nextRenderBuffer.clear(self.backgroundColor, null);
         @memset(self.nextHitGrid, 0);
+        self.rebuilding_hit_grid = false;
     }
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
@@ -871,6 +874,7 @@ pub const CliRenderer = struct {
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.pendingImages.clearRetainingCapacity();
         @memset(self.nextHitGrid, 0);
+        self.rebuilding_hit_grid = false;
         self.force_full_repaint = true;
         self.lastCursorStyleTag = null;
         self.lastCursorBlinking = null;
@@ -883,6 +887,11 @@ pub const CliRenderer = struct {
     }
 
     fn commitPendingHitGrid(self: *CliRenderer) void {
+        if (self.retained_scene and !self.rebuilding_hit_grid) {
+            self.hitGridDirty = self.hitGridResizeInvalidated;
+            return;
+        }
+        self.rebuilding_hit_grid = false;
         self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
         const previous = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;
@@ -2784,7 +2793,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.retained_scene) self.nextRenderBuffer.clear(self.backgroundColor, null);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {
@@ -2828,6 +2837,7 @@ pub const CliRenderer = struct {
     /// only register hits within the visible region. Later renderables overwrite
     /// earlier ones. Z-order is determined by render order.
     pub fn addToHitGrid(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+        self.rebuilding_hit_grid = true;
         const clipped = self.clipRectToHitScissor(x, y, width, height) orelse return;
         const startX = @max(0, clipped.x);
         const startY = @max(0, clipped.y);
@@ -2955,6 +2965,8 @@ pub const CliRenderer = struct {
     /// Clear all hit grid scissors. Called at start of render to reset state.
     pub fn hitGridClearScissorRects(self: *CliRenderer) void {
         self.hitScissorStack.clearRetainingCapacity();
+        self.retained_scene = true;
+        self.rebuilding_hit_grid = true;
     }
 
     /// Write directly to currentHitGrid with scissor clipping.
