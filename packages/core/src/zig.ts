@@ -1238,7 +1238,7 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewGetViewport: {
       args: ["u32", "buffer", "buffer", "buffer", "buffer"],
-      returns: "void",
+      returns: "bool",
     },
     editorViewSetScrollMargin: {
       args: ["u32", "f32"],

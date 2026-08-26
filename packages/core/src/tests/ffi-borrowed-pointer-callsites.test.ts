@@ -77,6 +77,16 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("preserves the native viewport lookup success result", () => {
+    const x = new Uint32Array([1])
+    const y = new Uint32Array([1])
+    const width = new Uint32Array([1])
+    const height = new Uint32Array([1])
+
+    expect([false, 0]).toContain(symbols.editorViewGetViewport(0, x, y, width, height))
+    expect([x[0], y[0], width[0], height[0]]).toEqual([0, 0, 0, 0])
+  })
+
   test("stabilizes retained text memory before resolving its pointer", () => {
     withStubbedSymbols(
       {
