@@ -169,6 +169,28 @@ const markdown = new MarkdownRenderable(renderer, {
 - **`"grid"`**: boxed table with visible borders. Defaults to `borders: true`, `widthMode: "full"`. This is the normal markdown-in-a-box rendering.
 - **`"columns"`**: borderless columns with a 2-column gap, defaults to `widthMode: "content"`. Useful for append-only output where a full-width grid feels heavy.
 
+A separate Name/Status sample compares both presets:
+
+Grid:
+
+```text terminal=markdown-table-grid
+┌────────┬────────┐
+│ Name   │ Status │
+├────────┼────────┤
+│ api    │ ready  │
+├────────┼────────┤
+│ worker │ paused │
+└────────┴────────┘
+```
+
+Columns:
+
+```text terminal=markdown-table-columns
+Name    Status
+api     ready
+worker  paused
+```
+
 If you do not pass `style`, it defaults to `"columns"` when `internalBlockMode` is `"top-level"`, and `"grid"` otherwise. You can still override individual fields (for example, `borders: true`) to pull toward a different look.
 
 ## Custom node rendering

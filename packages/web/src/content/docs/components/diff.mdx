@@ -32,11 +32,22 @@ const syntaxStyle = SyntaxStyle.fromStyles({
   keyword: { fg: RGBA.fromHex("#FF7B72"), bold: true },
 })
 
+const patch = `diff --git a/app.ts b/app.ts
+index 1111111..2222222 100644
+--- a/app.ts
++++ b/app.ts
+@@ -1,3 +1,3 @@
+ setup()
+-const a = 1
++const a = 2
+ ready(a)
+`
+
 const diff = new DiffRenderable(renderer, {
   id: "diff",
   width: "100%",
   height: 16,
-  diff: `diff --git a/app.ts b/app.ts\nindex 1111111..2222222 100644\n--- a/app.ts\n+++ b/app.ts\n@@ -1,3 +1,3 @@\n-const a = 1\n+const a = 2\n`,
+  diff: patch,
   view: "split",
   filetype: "typescript",
   syntaxStyle,
@@ -44,6 +55,25 @@ const diff = new DiffRenderable(renderer, {
 })
 
 renderer.root.add(diff)
+```
+
+Monochrome views of the same patch:
+
+Unified view:
+
+```text terminal=diff-unified
+ 1   setup()
+ 2 - const a = 1
+ 2 + const a = 2
+ 3   ready(a)
+```
+
+Split view:
+
+```text terminal=diff-split
+ 1   setup()      1   setup()
+ 2 - const a = 1  2 + const a = 2
+ 3   ready(a)     3   ready(a)
 ```
 
 For multi-file input, Diff currently displays only `patches[0]`. Create one `DiffRenderable` for each file patch that you need to show.

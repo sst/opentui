@@ -39,7 +39,7 @@ const syntaxStyle = SyntaxStyle.fromStyles({
 
 const code = new CodeRenderable(renderer, {
   id: "code",
-  content: "const x = 1\nconst y = 2\n",
+  content: "const port = 3000\nserve(port)\nawait ready()",
   filetype: "typescript",
   syntaxStyle,
   width: "100%",
@@ -60,8 +60,15 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   height: 18,
 })
 
+lineNumbers.setLineSign(1, { before: ">" })
 scrollbox.add(lineNumbers)
 renderer.root.add(scrollbox)
+```
+
+```text terminal=line-number-editor surface
+  1 const port = 3000
+> 2 serve(port)
+  3 await ready()
 ```
 
 ## Line signs and colors

@@ -41,6 +41,20 @@ renderer.root.add(textarea)
 textarea.focus()
 ```
 
+At 30 columns, longer text wraps at word boundaries:
+
+```typescript
+textarea.width = 30
+textarea.setText("Long lines wrap at word boundaries.\nKeep paragraphs readable.")
+```
+
+```text terminal=textarea-wrap surface
+Notes
+Long lines wrap at word
+boundaries.
+Keep paragraphs readable.
+```
+
 ## Submit handling
 
 Bind a submit action and listen for `onSubmit`:
@@ -149,6 +163,15 @@ textarea.setSelectionInclusive(start, end) // also selects the grapheme at end i
 textarea.selectAll()
 textarea.clearSelection()
 textarea.deleteSelection()
+```
+
+Selecting `keyboard focus` in a draft:
+
+```text terminal=textarea-selection surface
+Draft
+Plan the release
+Review keyboard focus
+Ship the update
 ```
 
 ### Editing

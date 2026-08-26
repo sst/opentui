@@ -7,6 +7,15 @@ const copyButtonTransformer = {
   pre(node) {
     node.properties["data-code"] = this.source
     if (this.options?.lang) node.properties["data-language"] = this.options.lang
+
+    if (this.options?.lang === "text") {
+      const metadata = this.options.meta?.__raw ?? ""
+      const visual = metadata.match(/(?:^|\s)terminal=([a-z0-9-]+)(?=\s|$)/)
+      if (visual) {
+        node.properties["data-terminal-visual"] = visual[1]
+        if (/(?:^|\s)surface(?=\s|$)/.test(metadata)) node.properties["data-terminal-surface"] = true
+      }
+    }
   },
 }
 

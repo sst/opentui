@@ -90,6 +90,19 @@ Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallb
 | `sixel`    | Force Sixel. Falls back to blocks without terminal pixel resolution |
 | `blocks`   | Portable Unicode quadrant-block rendering                           |
 
+The `blocks` protocol renders generated RGBA pixels as terminal cells:
+
+```text terminal=image-blocks
+████████████████████████
+██████████████████▘██▜██
+█████▛▀▝▀█████████▖██▟██
+██▛▀██████▝▀█▛▀▘██▀▀████
+▀███████████▗▄▙▄██████▀▀
+████████▗▄▟███████▄▄████
+▄▄▄▄▄▄▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄▄
+████████████████████████
+```
+
 With global and per-image protocols set to `auto`, tmux uses blocks. Explicit Kitty, or Sixel with pixel resolution, uses tmux passthrough.
 
 Overlapping images must use the same effective protocol. OpenTUI does not support layering or alpha composition across different effective protocols. Leave overlapping images on `auto` or give them the same explicit `protocol`. Non-overlapping images can use different protocols.
