@@ -2,10 +2,12 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
 import { Renderable } from "../Renderable.js"
 
 let testRenderer: TestRenderer
 let mockMouse: MockMouse
+let captureCharFrame: () => string
 
 class MovingBoxRenderable extends BoxRenderable {
   public shouldMove = false
@@ -19,7 +21,11 @@ class MovingBoxRenderable extends BoxRenderable {
 }
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({
+  ;({
+    renderer: testRenderer,
+    mockMouse,
+    captureCharFrame,
+  } = await createTestRenderer({
     width: 50,
     height: 30,
   }))
@@ -771,12 +777,13 @@ test("bordered overflow clip excludes child hits from every border cell", async 
   expect(borderHits).toEqual(Array(borderHits.length).fill(container.num))
 })
 
-test("buffered bordered overflow clip uses inset screen coordinates", async () => {
+test("buffered bordered overflow clip does not make hidden content clickable", async () => {
+  let clicks = 0
   const container = new BoxRenderable(testRenderer, {
     id: "buffered-bordered-container",
     position: "absolute",
-    left: 10,
-    top: 5,
+    left: 1,
+    top: 1,
     width: 8,
     height: 6,
     border: true,
@@ -785,23 +792,23 @@ test("buffered bordered overflow clip uses inset screen coordinates", async () =
   })
   testRenderer.root.add(container)
 
-  const child = new BoxRenderable(testRenderer, {
+  const child = new TextRenderable(testRenderer, {
     id: "buffered-bordered-child",
+    content: "LAST",
     width: 6,
-    height: 4,
+    height: 1,
+    marginTop: 3,
+    onMouseDown: () => clicks++,
   })
   container.add(child)
 
   await testRenderer.idle()
 
-  expect(child.x).toBe(container.x + 1)
-  expect(child.y).toBe(container.y + 1)
-  expect([
-    testRenderer.hitTest(child.x, child.y),
-    testRenderer.hitTest(child.x + child.width - 1, child.y),
-    testRenderer.hitTest(child.x, child.y + child.height - 1),
-    testRenderer.hitTest(child.x + child.width - 1, child.y + child.height - 1),
-  ]).toEqual([child.num, child.num, child.num, child.num])
+  const visible = captureCharFrame().split("\n")[child.y].includes("LAST")
+  expect(testRenderer.hitTest(child.x, child.y) === child.num).toBe(visible)
+
+  await mockMouse.click(child.x, child.y, MouseButtons.LEFT, { delayMs: 0 })
+  expect(clicks).toBe(visible ? 1 : 0)
 })
 
 for (const side of ["top", "right", "bottom", "left"] as const) {

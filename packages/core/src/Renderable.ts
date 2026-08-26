@@ -1429,8 +1429,8 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        screenX: scissorRect.x + (this.buffered ? this._screenX : 0),
-        screenY: scissorRect.y + (this.buffered ? this._screenY : 0),
+        screenX: this.buffered ? this._screenX : scissorRect.x,
+        screenY: this.buffered ? this._screenY : scissorRect.y,
       })
     }
     // Most renderables expose all children. Skip building a visible-child list
