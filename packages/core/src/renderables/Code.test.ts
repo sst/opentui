@@ -518,6 +518,34 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
 
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.content).toBe("")
+
+  codeRenderable.initialStyledText = new StyledText([{ __isChunk: true, text: "first\nsecond" }])
+  codeRenderable.streaming = true
+  codeRenderable.content = "first\nsecond"
+  await renderOnce()
+
+  expect(codeRenderable.isHighlighting).toBe(true)
+  expect(codeRenderable.lineCount).toBe(2)
+  expect(captureFrame()).toContain("first")
+
+  const changes: Array<{ source: string; visible: string }> = []
+  codeRenderable.on("line-info-change", () => {
+    changes.push({ source: codeRenderable.content, visible: codeRenderable.plainText })
+  })
+
+  codeRenderable.content = ""
+
+  expect(changes).toEqual([{ source: "", visible: "" }])
+  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.lineCount).toBe(1)
+  expect(codeRenderable.lineInfo.lineSources).toEqual([0])
+  expect(codeRenderable.isDirty).toBe(true)
+
+  await renderOnce()
+
+  expect(codeRenderable.isHighlighting).toBe(false)
+  expect(mockClient.isHighlighting()).toBe(true)
+  expect(captureFrame()).not.toContain("first")
 })
 
 test("CodeRenderable - text renders immediately before highlighting completes", async () => {
@@ -1326,14 +1354,22 @@ test("CodeRenderable - updating initial styled text refreshes an unresolved stre
   expect(mockClient.isHighlighting()).toBe(true)
   expect(codeRenderable.plainText).toBe("Label (https://example.com)")
 
-  codeRenderable.initialStyledText = new StyledText([
-    { __isChunk: true, text: "Label", link: { url: "https://example.com/new" } },
-  ])
+  const preview = new StyledText([{ __isChunk: true, text: "Label", link: { url: "https://example.com/new" } }])
+  codeRenderable.initialStyledText = preview
+  expect(codeRenderable.plainText).toBe("Label")
   await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-  expect(codeRenderable.plainText).toBe("Label")
   expect(currentRenderer.getLinkAt(codeRenderable.x, codeRenderable.y)).toBe("https://example.com/new")
+
+  preview.chunks[0]!.text = "Changed"
+  preview.chunks[0]!.link = { url: "https://example.com/changed" }
+  codeRenderable.content = "[Changed](https://example.com/changed)"
+  expect(codeRenderable.plainText).toBe("Changed")
+  await renderOnce()
+
+  expect(mockClient.isHighlighting()).toBe(true)
+  expect(currentRenderer.getLinkAt(codeRenderable.x, codeRenderable.y)).toBe("https://example.com/changed")
 })
 
 test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {

@@ -10,20 +10,22 @@ function chunk(text: string): TextChunk {
 
 describe("detectLinks", () => {
   test("should set link on markup.link.url chunks", () => {
-    const content = "[Click here](https://example.com)"
+    const destination = "custom+v1://example.test/path"
+    const content = `[Click here](${destination})`
+    const start = content.indexOf(destination)
     const highlights: SimpleHighlight[] = [
       [0, 1, "markup.link"],
       [1, 11, "markup.link.label"],
-      [11, 13, "markup.link"],
-      [13, 32, "markup.link.url"],
-      [32, 33, "markup.link"],
+      [11, start, "markup.link"],
+      [start, start + destination.length, "markup.link.url"],
+      [start + destination.length, content.length, "markup.link"],
     ]
-    const chunks = [chunk("["), chunk("Click here"), chunk("]("), chunk("https://example.com"), chunk(")")]
+    const chunks = [chunk("["), chunk("Click here"), chunk("]("), chunk(destination), chunk(")")]
 
     const result = detectLinks(chunks, { content, highlights })
 
-    expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })
-    expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: "https://example.com" })
+    expect(result.find((c) => c.text === destination)!.link).toEqual({ url: destination })
+    expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: destination })
   })
 
   test("should set link on string.special.url chunks", () => {
@@ -56,9 +58,15 @@ describe("detectLinks", () => {
   })
 
   test("should return chunks unchanged when no URL scopes exist", () => {
-    const content = "hello world"
-    const highlights: SimpleHighlight[] = [[0, 5, "keyword"]]
-    const chunks = [chunk("hello"), chunk(" world")]
+    const content = "**label** and `code`"
+    const highlights: SimpleHighlight[] = [
+      [0, 9, "markup.strong"],
+      [0, 2, "conceal", { conceal: "" }],
+      [2, 7, "markup.link.label"],
+      [7, 9, "conceal", { conceal: "" }],
+      [14, 20, "markup.raw"],
+    ]
+    const chunks = [chunk("label"), chunk(" and "), chunk("code")]
 
     const result = detectLinks(chunks, { content, highlights })
 
@@ -297,14 +305,14 @@ describe("detectLinks", () => {
   }, 10_000)
 
   test("splits only bare HTTP URLs from surrounding prose and punctuation", () => {
-    const content = "ftp://ignored.test mailto:user@test See https://one.test/path, then (http://two.test/a_(b))."
+    const content = "ftp://ignored.test mailto:user@test See HtTpS://one.test/path, then (http://two.test/a_(b))."
     const chunks = [chunk(content)]
 
     const result = detectLinks(chunks, { content, highlights: [] })
 
     expect(result.map((item) => [item.text, item.link?.url])).toEqual([
       ["ftp://ignored.test mailto:user@test See ", undefined],
-      ["https://one.test/path", "https://one.test/path"],
+      ["HtTpS://one.test/path", "HtTpS://one.test/path"],
       [", then (", undefined],
       ["http://two.test/a_(b)", "http://two.test/a_(b)"],
       [").", undefined],

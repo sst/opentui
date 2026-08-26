@@ -231,6 +231,7 @@ const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/
 const markdownLinkEncoder = new TextEncoder()
 
 function isSupportedLinkTarget(url: string): boolean {
+  if (url.length > MAX_LINK_URL_BYTES) return false
   return markdownLinkEncoder.encode(url).byteLength <= MAX_LINK_URL_BYTES
 }
 
@@ -292,6 +293,8 @@ export class MarkdownRenderable extends Renderable {
   private _ownedStructuredRenderables = new WeakSet<Renderable>()
 
   private handleCapabilities(): void {
+    if (!this._renderNode && !this._content.includes("]")) return
+
     const previousHighlight = this._highlightMarkdownLinks
     this._highlightMarkdownLinks = (highlights, context) => this.addMarkdownLinkHighlights(highlights, context.content)
 
@@ -718,6 +721,10 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private addMarkdownLinkHighlights(highlights: SimpleHighlight[], content: string): SimpleHighlight[] {
+    if (!highlights.some(([, , group]) => group === "markup.link.url" || group === "string.special.url")) {
+      return highlights
+    }
+
     const modified = [...highlights]
     const labels = new Map<number, SimpleHighlight>()
     const bracketConceals = new Map<number, number>()
@@ -1136,7 +1143,11 @@ export class MarkdownRenderable extends Renderable {
     baseHighlight?: string,
     initialStyledText?: StyledText,
   ): void {
-    renderable.initialStyledText = initialStyledText
+    if (initialStyledText && renderable.streaming && renderable.drawUnstyledText && renderable.isHighlighting) {
+      renderable.updateStreamingPreview(content, initialStyledText)
+    } else {
+      renderable.initialStyledText = initialStyledText
+    }
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg

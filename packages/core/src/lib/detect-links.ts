@@ -2,6 +2,7 @@ import type { TextChunk } from "../text-buffer.js"
 import type { SimpleHighlight } from "./tree-sitter/types.js"
 
 const URL_SCOPES = ["markup.link.url", "string.special.url"]
+const HTTP_URL_PREFIX = /https?:\/\//i
 const BARE_URL = /https?:\/\/[^\s<>"`]+/gi
 
 export function normalizeMarkdownLinkTarget(destination: string): string {
@@ -14,6 +15,9 @@ export function detectLinks(
 ): TextChunk[] {
   const content = context.content
   const highlights = context.highlights
+  const hasBareUrl = HTTP_URL_PREFIX.test(content)
+  if (!hasBareUrl && !highlights.some(([, , group]) => URL_SCOPES.includes(group))) return chunks
+
   const ranges: Array<{ start: number; end: number; url: string; label?: boolean }> = []
   const rawRanges: Array<{ start: number; end: number }> = []
   const labels = new Map<number, { start: number; end: number }>()
@@ -52,46 +56,48 @@ export function detectLinks(
     ranges.push({ ...label, url: range.url, label: true })
   }
 
-  rawRanges.sort((a, b) => a.start - b.start || b.end - a.end)
-  ranges.sort((a, b) => a.start - b.start || b.end - a.end)
-  let rawIndex = 0
-  let highlightedIndex = 0
+  if (hasBareUrl) {
+    rawRanges.sort((a, b) => a.start - b.start || b.end - a.end)
+    ranges.sort((a, b) => a.start - b.start || b.end - a.end)
+    let rawIndex = 0
+    let highlightedIndex = 0
 
-  for (const match of content.matchAll(BARE_URL)) {
-    const start = match.index
-    let url = match[0]
-    let openParens = 0
-    let closeParens = 0
-    for (const character of url) {
-      if (character === "(") openParens++
-      if (character === ")") closeParens++
-    }
-
-    while (url.length > 0) {
-      const delimiterStart = concealedDelimiters.get(start + url.length)
-      if (delimiterStart !== undefined && delimiterStart >= start) {
-        url = url.slice(0, delimiterStart - start)
-        continue
+    for (const match of content.matchAll(BARE_URL)) {
+      const start = match.index
+      let url = match[0]
+      let openParens = 0
+      let closeParens = 0
+      for (const character of url) {
+        if (character === "(") openParens++
+        if (character === ")") closeParens++
       }
-      const last = url[url.length - 1]
-      if (last === ")" && closeParens > openParens) {
-        closeParens--
-      } else if (!".,!?;:]}'".includes(last)) {
-        break
+
+      while (url.length > 0) {
+        const delimiterStart = concealedDelimiters.get(start + url.length)
+        if (delimiterStart !== undefined && delimiterStart >= start) {
+          url = url.slice(0, delimiterStart - start)
+          continue
+        }
+        const last = url[url.length - 1]
+        if (last === ")" && closeParens > openParens) {
+          closeParens--
+        } else if (!".,!?;:]}'".includes(last)) {
+          break
+        }
+        url = url.slice(0, -1)
       }
-      url = url.slice(0, -1)
+
+      const end = start + url.length
+      if (!url) continue
+
+      while (rawIndex < rawRanges.length && rawRanges[rawIndex].end <= start) rawIndex++
+      if (rawIndex < rawRanges.length && rawRanges[rawIndex].start < end) continue
+
+      while (highlightedIndex < ranges.length && ranges[highlightedIndex].end <= start) highlightedIndex++
+      if (highlightedIndex < ranges.length && ranges[highlightedIndex].start < end) continue
+
+      ranges.push({ start, end, url })
     }
-
-    const end = start + url.length
-    if (!url) continue
-
-    while (rawIndex < rawRanges.length && rawRanges[rawIndex].end <= start) rawIndex++
-    if (rawIndex < rawRanges.length && rawRanges[rawIndex].start < end) continue
-
-    while (highlightedIndex < ranges.length && ranges[highlightedIndex].end <= start) highlightedIndex++
-    if (highlightedIndex < ranges.length && ranges[highlightedIndex].start < end) continue
-
-    ranges.push({ start, end, url })
   }
 
   if (ranges.length === 0) return chunks

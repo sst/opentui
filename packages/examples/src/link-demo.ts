@@ -3,22 +3,24 @@ import {
   createCliRenderer,
   t,
   fg,
-  underline,
   link,
   bold,
   italic,
   BoxRenderable,
   RGBA,
-  StyledText,
+  RenderableEvents,
+  TextAttributes,
   TextRenderable,
+  getLinkId,
   type MouseEvent,
+  type OptimizedBuffer,
   type RenderContext,
+  type StyledText,
 } from "@opentui/core"
 import { spawn } from "node:child_process"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 100
-let draggableBoxes: DraggableBox[] = []
 let dragModeEnabled = false
 
 class DraggableBox extends BoxRenderable {
@@ -96,10 +98,31 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#0f172a") // Deep slate blue background
 
+  let hoveredLinkId = 0
+  const highlightHoveredLink = (buffer: OptimizedBuffer): void => {
+    if (!hoveredLinkId) return
+
+    const attributes = buffer.buffers.attributes
+    for (let index = 0; index < attributes.length; index++) {
+      if (getLinkId(attributes[index]!) === hoveredLinkId) attributes[index] |= TextAttributes.UNDERLINE
+    }
+  }
+
+  const updateHoveredLink = (event: MouseEvent): void => {
+    const nextLinkId = renderer.getLinkIdAt(event.x, event.y)
+    if (nextLinkId === hoveredLinkId) return
+
+    if (nextLinkId === 0 || hoveredLinkId === 0) renderer.setMousePointer(nextLinkId ? "pointer" : "default")
+    hoveredLinkId = nextLinkId
+    renderer.requestRender()
+  }
+
   const container = new BoxRenderable(renderer, {
     id: "main-container",
     width: "100%",
     height: "100%",
+    onMouseMove: updateHoveredLink,
+    onMouseOver: updateHoveredLink,
   })
   renderer.root.add(container)
 
@@ -117,12 +140,18 @@ export function run(renderer: CliRenderer): void {
   container.add(header)
 
   // Toggle drag mode with 'd' key
-  renderer.keyInput.on("keypress", (event) => {
+  const handleKeypress = (event: { name: string }): void => {
     if (event.name === "d") {
       dragModeEnabled = !dragModeEnabled
       header.content = getHeaderContent()
     }
+  }
+  container.once(RenderableEvents.DESTROYED, () => {
+    renderer.removePostProcessFn(highlightHoveredLink)
+    renderer.keyInput.off("keypress", handleKeypress)
   })
+  renderer.addPostProcessFn(highlightHoveredLink)
+  renderer.keyInput.on("keypress", handleKeypress)
 
   // Card 1: Project Info
   createCard(
@@ -188,30 +217,12 @@ function createCard(
   content: StyledText,
 ) {
   const card = new DraggableBox(renderer, id, x, y, width, height, bg)
-  let hoveredUrl: string | null = null
 
-  const text: TextRenderable = new TextRenderable(renderer, {
+  const text = new TextRenderable(renderer, {
     id: `${id}-text`,
     content: content,
     width: width - 2, // Account for padding
     height: height - 2,
-    onMouseMove(event) {
-      const url = renderer.getLinkAt(event.x, event.y)
-      if (url === hoveredUrl) return
-
-      hoveredUrl = url
-      renderer.setMousePointer(url ? "pointer" : "default")
-      text.content = url
-        ? new StyledText(content.chunks.map((chunk) => (chunk.link?.url === url ? underline(chunk) : chunk)))
-        : content
-    },
-    onMouseOut() {
-      if (!hoveredUrl) return
-
-      hoveredUrl = null
-      renderer.setMousePointer("default")
-      text.content = content
-    },
     onMouseDown(event) {
       const url = event.button === 0 ? renderer.getLinkAt(event.x, event.y) : null
       if (!url) return
@@ -228,17 +239,11 @@ function createCard(
 
   card.add(text)
   container.add(card)
-  draggableBoxes.push(card)
 }
 
 export function destroy(renderer: CliRenderer): void {
-  for (const box of draggableBoxes) {
-    renderer.root.remove(box)
-  }
-  draggableBoxes = []
   dragModeEnabled = false
-  const mainContainer = renderer.root.getRenderable("main-container")
-  if (mainContainer) renderer.root.remove(mainContainer)
+  renderer.root.getRenderable("main-container")?.destroyRecursively()
   renderer.setMousePointer("default")
   renderer.setCursorPosition(0, 0, false)
 }

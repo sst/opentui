@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { link, t } from "../lib/styled-text.js"
 import { TextRenderable } from "../renderables/Text.js"
 import type { MouseEvent } from "../renderer.js"
-import type { RenderContext } from "../types.js"
+import { TextAttributes, type RenderContext } from "../types.js"
 import type { Selection } from "../lib/selection.js"
+import { getLinkId } from "../utils.js"
 
 class TestRenderable extends Renderable {
   public selectionActive = false
@@ -37,14 +38,15 @@ describe("renderer getLinkAt", () => {
 
   test("resolves rendered and clicked links while rejecting invalid coordinates and destroyed renderers", async () => {
     const url = "https://example.com/rendered"
+    const content = t`A ${link(url)("link")} ${link("https://example.com/second")("two")}`
     const text = new TextRenderable(renderer, {
       id: "linked-text",
       position: "absolute",
       left: 2,
       top: 1,
-      width: 8,
+      width: 10,
       height: 1,
-      content: t`A ${link(url)("link")} Z`,
+      content,
     })
     const clicked: { url: string | null } = { url: null }
     text.onMouseDown = (event) => {
@@ -54,15 +56,65 @@ describe("renderer getLinkAt", () => {
     await renderOnce()
 
     const linkX = text.x + 2
+    const linkId = renderer.getLinkIdAt(linkX, text.y)
+    expect(linkId).toBeGreaterThan(0)
+    expect(renderer.getLinkIdAt(linkX + 3, text.y)).toBe(linkId)
     expect(renderer.getLinkAt(linkX, text.y)).toBe(url)
     expect(renderer.getLinkAt(linkX + 3, text.y)).toBe(url)
+    expect(renderer.getLinkIdAt(text.x, text.y)).toBe(0)
     expect(renderer.getLinkAt(text.x, text.y)).toBeNull()
+    expect(renderer.getLinkIdAt(renderer.width - 1, renderer.height - 1)).toBe(0)
     expect(renderer.getLinkAt(renderer.width - 1, renderer.height - 1)).toBeNull()
 
-    await mockMouse.pressDown(linkX, text.y)
-    expect(clicked.url).toBe(url)
+    const lib = renderer.currentRenderBuffer.lib
+    const urlLookups = spyOn(lib, "linkGetUrl")
+    const styledTextUpdates = spyOn(lib, "textBufferSetStyledText")
+
+    try {
+      let hoveredLinkId = 0
+      text.onMouseMove = (event) => {
+        hoveredLinkId = renderer.getLinkIdAt(event.x, event.y)
+        renderer.setMousePointer(hoveredLinkId ? "pointer" : "default")
+        renderer.requestRender()
+      }
+      renderer.addPostProcessFn((buffer) => {
+        if (!hoveredLinkId) return
+        const attributes = buffer.buffers.attributes
+        for (let index = 0; index < attributes.length; index++) {
+          if (getLinkId(attributes[index]!) === hoveredLinkId) attributes[index] |= TextAttributes.UNDERLINE
+        }
+      })
+
+      for (const [x, first, second] of [
+        [linkX, true, false],
+        [linkX + 5, false, true],
+        [linkX + 4, false, false],
+      ] as const) {
+        await mockMouse.moveTo(x, text.y)
+        await renderOnce()
+        const start = text.y * renderer.width + text.x
+        expect(
+          Array.from(
+            renderer.currentRenderBuffer.buffers.attributes.subarray(start, start + text.width),
+            (attributes) => Boolean(attributes & TextAttributes.UNDERLINE),
+          ),
+        ).toEqual([false, false, first, first, first, first, false, second, second, second])
+      }
+
+      expect(text.content).toBe(content)
+      expect(styledTextUpdates).toHaveBeenCalledTimes(0)
+      expect(urlLookups).toHaveBeenCalledTimes(0)
+
+      await mockMouse.pressDown(linkX, text.y)
+      expect(clicked.url).toBe(url)
+      expect(urlLookups).toHaveBeenCalledTimes(1)
+    } finally {
+      styledTextUpdates.mockRestore()
+      urlLookups.mockRestore()
+    }
 
     renderer.useMouse = false
+    expect(renderer.getLinkIdAt(linkX, text.y)).toBe(linkId)
     expect(renderer.getLinkAt(linkX, text.y)).toBe(url)
 
     for (const [x, y] of [
@@ -77,10 +129,12 @@ describe("renderer getLinkAt", () => {
       [0.5, 0],
       [0, 0.5],
     ]) {
+      expect(renderer.getLinkIdAt(x, y)).toBe(0)
       expect(renderer.getLinkAt(x, y)).toBeNull()
     }
 
     renderer.destroy()
+    expect(renderer.getLinkIdAt(0, 0)).toBe(0)
     expect(renderer.getLinkAt(0, 0)).toBeNull()
   })
 
@@ -99,6 +153,8 @@ describe("renderer getLinkAt", () => {
     renderer.root.add(text)
     await renderOnce()
 
+    const linkId = renderer.getLinkIdAt(text.x, text.y)
+    expect(linkId).toBeGreaterThan(0)
     for (const [x, y] of [
       [text.x, text.y],
       [text.x + 2, text.y],
@@ -106,6 +162,7 @@ describe("renderer getLinkAt", () => {
       [text.x, text.y + 1],
       [text.x + 1, text.y + 1],
     ]) {
+      expect(renderer.getLinkIdAt(x, y)).toBe(linkId)
       expect(renderer.getLinkAt(x, y)).toBe(url)
     }
   })

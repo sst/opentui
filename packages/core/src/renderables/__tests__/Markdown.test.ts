@@ -1234,11 +1234,12 @@ test("code block concealment can be enabled with concealCode", async () => {
 
   const md = createMarkdownRenderable({
     id: "markdown-code-conceal-enabled",
-    content: "```markdown\n# Hidden heading\n```",
+    content: "```markdown\n# Hidden heading\n```\n\nPlain **prose**\n\n| Name |\n|---|\n| Value |",
     syntaxStyle,
     conceal: true,
     concealCode: true,
     treeSitterClient: mockTreeSitterClient,
+    tableOptions: { widthMode: "content" },
   })
 
   renderer.root.add(md)
@@ -1246,20 +1247,29 @@ test("code block concealment can be enabled with concealCode", async () => {
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
+  const prose = md._blockStates[1]!.renderable as CodeRenderable
+  const table = md._blockStates[2]!.renderable as TextTableRenderable
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await waitForHighlight(codeBlock)
+  await Promise.all([waitForHighlight(codeBlock), waitForHighlight(prose)])
   await renderer.idle()
 
+  const onHighlight = prose.onHighlight
+  const tableContent = table.content
   const frame = captureFrame()
   expect(frame).not.toContain("# Hidden heading")
   expect(frame).toContain("Hidden heading")
 
-  renderer.emit("capabilities", setRendererCapabilities(renderer, { hyperlinks: true }))
-  await renderOnce()
+  for (const hyperlinks of [true, false]) {
+    renderer.emit("capabilities", setRendererCapabilities(renderer, { hyperlinks }))
+    await renderOnce()
 
-  expect(codeBlock.onHighlight).toBeUndefined()
-  expect(mockTreeSitterClient.isHighlighting()).toBe(false)
-  expect(captureFrame()).toBe(frame)
+    expect(codeBlock.onHighlight).toBeUndefined()
+    expect(prose.onHighlight).toBe(onHighlight)
+    expect(md._blockStates[2]!.renderable).toBe(table)
+    expect(table.content).toBe(tableContent)
+    expect(mockTreeSitterClient.isHighlighting()).toBe(false)
+    expect(captureFrame()).toBe(frame)
+  }
 })
 
 test("toggling concealCode updates existing code block renderables", async () => {
@@ -2071,6 +2081,20 @@ for (const hyperlinks of [false, true]) {
     const refreshedImage = findRenderedText("Logo")
     expect(renderer.getLinkAt(refreshedLabel.x, refreshedLabel.y)).toBe("https://example.com/docs")
     expect(renderer.getLinkAt(refreshedImage.x, refreshedImage.y)).toBe("https://example.com/outer")
+
+    const code = md._blockStates[0]!.renderable as CodeRenderable
+    const changes: Array<{ source: string; visible: string }> = []
+    code.on("line-info-change", () => changes.push({ source: code.content, visible: code.plainText }))
+
+    md.content = "[Updated](custom://target)"
+
+    expect(changes).toEqual([
+      { source: "[Updated](custom://target)", visible: hyperlinks ? "Updated (custom://target)" : "Updated" },
+    ])
+    await renderOnce()
+
+    const updated = findRenderedText("Updated")
+    expect(renderer.getLinkAt(updated.x, updated.y)).toBe("custom://target")
   })
 }
 
@@ -2151,12 +2175,14 @@ for (const [label, ending, supported] of [
   ["maximum UTF-8", "\u00e9", true],
   ["oversized UTF-8", "\u00e9a", false],
   ["maximum escaped ASCII", "\\_", true],
+  ["maximum custom scheme", "a", true],
 ] as const) {
   test(`${label} Markdown destinations respect the native link-pool UTF-8 capacity`, async () => {
     setRendererCapabilities(renderer, { hyperlinks: true })
     resizeRenderer(560, 12)
 
-    const prefix = "https://example.com/"
+    const custom = label === "maximum custom scheme"
+    const prefix = custom ? "custom+v1://example.test/" : "https://example.com/"
     const destination = prefix + "a".repeat(511 - prefix.length - (ending.startsWith("\u00e9") ? 1 : 0)) + ending
     const target = destination.replace("\\_", "_")
     const md = createMarkdownRenderable({
@@ -2174,6 +2200,7 @@ for (const [label, ending, supported] of [
     const table = findRenderedText("Table")
     expect(new TextEncoder().encode(target)).toHaveLength(supported ? 512 : 513)
     if (ending === "\\_") expect(new TextEncoder().encode(destination)).toHaveLength(513)
+    if (custom) expect(md.content).not.toContain("http")
     if (supported) {
       expect(frame).not.toContain(target)
       expect(renderer.getLinkAt(prose.x, prose.y)).toBe(target)
@@ -2290,10 +2317,10 @@ test("hyperlink capability changes preserve custom Markdown code callbacks", asy
   const onHighlight = (highlights: SimpleHighlight[]) => highlights
   const md = createMarkdownRenderable({
     id: "markdown-capability-custom-code",
-    content: "[Custom](https://example.com/custom)\n\n[Delegated](https://example.com/delegated)",
+    content: "Custom\n\nDelegated\n\nplain",
     syntaxStyle,
     renderNode: (token, context) => {
-      if (token.raw.startsWith("[Custom]")) {
+      if (token.raw.startsWith("Custom")) {
         return new CodeRenderable(renderer, {
           id: "custom-markdown-code",
           content: token.raw,
@@ -2305,7 +2332,8 @@ test("hyperlink capability changes preserve custom Markdown code callbacks", asy
       }
 
       const renderable = context.defaultRender() as CodeRenderable
-      renderable.onHighlight = onHighlight
+      if (token.raw.startsWith("Delegated")) renderable.onHighlight = onHighlight
+      else renderable.content = "[Injected](custom://target)"
       return renderable
     },
   })
@@ -2315,10 +2343,21 @@ test("hyperlink capability changes preserve custom Markdown code callbacks", asy
 
   const custom = md._blockStates[0]!.renderable as CodeRenderable
   const delegated = md._blockStates[1]!.renderable as CodeRenderable
+  const injected = md._blockStates[2]!.renderable as CodeRenderable
+  expect(captureFrame()).toContain("Injected (custom://target)")
+  let label = findRenderedText("Injected")
+  expect(renderer.getLinkAt(label.x, label.y)).toBe("custom://target")
+
   renderer.emit("capabilities", setRendererCapabilities(renderer, { hyperlinks: true }))
+  await renderMarkdownRenderable(md)
 
   expect(custom.onHighlight).toBe(onHighlight)
   expect(delegated.onHighlight).toBe(onHighlight)
+  expect(md._blockStates[2]!.renderable).toBe(injected)
+  expect(captureFrame()).toContain("Injected")
+  expect(captureFrame()).not.toContain("custom://target")
+  label = findRenderedText("Injected")
+  expect(renderer.getLinkAt(label.x, label.y)).toBe("custom://target")
 })
 
 test("hyperlink capability changes preserve custom table content", async () => {
@@ -2420,7 +2459,19 @@ for (const wrapped of [false, true]) {
 test("dense Markdown link highlights conceal every destination", () => {
   setRendererCapabilities(renderer, { hyperlinks: true })
   const md = createMarkdownRenderable({ id: "markdown-dense-link-highlights", syntaxStyle })
-  const highlights: SimpleHighlight[] = []
+  const addMarkdownLinkHighlights = (
+    md as unknown as { addMarkdownLinkHighlights: (items: SimpleHighlight[], source: string) => SimpleHighlight[] }
+  ).addMarkdownLinkHighlights.bind(md)
+  const highlights: SimpleHighlight[] = [
+    [0, 9, "markup.strong"],
+    [0, 2, "conceal", { conceal: "" }],
+    [2, 7, "markup.link.label"],
+    [7, 9, "conceal", { conceal: "" }],
+    [14, 20, "markup.raw"],
+  ]
+
+  expect(addMarkdownLinkHighlights(highlights, "**label** and `code`")).toBe(highlights)
+  highlights.length = 0
   let content = ""
 
   for (let index = 0; index < 1024; index++) {
@@ -2435,9 +2486,7 @@ test("dense Markdown link highlights conceal every destination", () => {
     )
   }
 
-  const modified = (
-    md as unknown as { addMarkdownLinkHighlights: (items: SimpleHighlight[], source: string) => SimpleHighlight[] }
-  ).addMarkdownLinkHighlights(highlights, content)
+  const modified = addMarkdownLinkHighlights(highlights, content)
 
   expect(modified.filter(([, , group, meta]) => group === "conceal" && meta?.isInjection)).toHaveLength(1024)
   expect(modified.filter(([, , group, meta]) => group === "conceal" && meta?.conceal === " ")).toHaveLength(0)

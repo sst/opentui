@@ -125,7 +125,7 @@ export class CodeRenderable extends TextBufferRenderable {
         return
       }
 
-      if (this._initialStyledText && this._drawUnstyledText) {
+      if (value && this._initialStyledText && this._drawUnstyledText) {
         this.textBuffer.setStyledText(this._initialStyledText)
       } else {
         this.textBuffer.setText(value)
@@ -133,6 +133,15 @@ export class CodeRenderable extends TextBufferRenderable {
       this.setRenderedLineSources(undefined)
       this.updateTextInfo()
     }
+  }
+
+  public updateStreamingPreview(content: string, initialStyledText: StyledText): void {
+    this._content = content
+    this._initialStyledText = initialStyledText
+    this.invalidateHighlights()
+    this.textBuffer.setStyledText(initialStyledText)
+    this.setRenderedLineSources(undefined)
+    this.updateTextInfo()
   }
 
   public override get lineInfo(): LineInfo {
@@ -230,12 +239,12 @@ export class CodeRenderable extends TextBufferRenderable {
 
   set initialStyledText(value: StyledText | undefined) {
     if (this._initialStyledText !== value) {
-      this._initialStyledText = value
       if (value && this._streaming && this._drawUnstyledText && this._isHighlighting) {
-        this.textBuffer.setStyledText(value)
-        this.setRenderedLineSources(undefined)
-        this.updateTextInfo()
+        this.updateStreamingPreview(this._content, value)
+        return
       }
+
+      this._initialStyledText = value
       this.invalidateHighlights()
     }
   }

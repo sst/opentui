@@ -3869,14 +3869,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.lib.checkHit(this.rendererPtr, x, y)
   }
 
-  public getLinkAt(x: number, y: number): string | null {
-    if (this._isDestroyed || !Number.isInteger(x) || !Number.isInteger(y)) return null
+  public getLinkIdAt(x: number, y: number): number {
+    if (this._isDestroyed || !Number.isInteger(x) || !Number.isInteger(y)) return 0
 
     const buffer = this.currentRenderBuffer
-    if (x < 0 || y < 0 || x >= buffer.width || y >= buffer.height) return null
+    if (x < 0 || y < 0 || x >= buffer.width || y >= buffer.height) return 0
 
-    const linkId = getLinkId(buffer.buffers.attributes[y * buffer.width + x])
-    return linkId === 0 ? null : buffer.lib.linkGetUrl(linkId) || null
+    return getLinkId(buffer.buffers.attributes[y * buffer.width + x])
+  }
+
+  public getLinkAt(x: number, y: number): string | null {
+    const linkId = this.getLinkIdAt(x, y)
+    return linkId === 0 ? null : this.currentRenderBuffer.lib.linkGetUrl(linkId) || null
   }
 
   private takeMemorySnapshot(): void {
