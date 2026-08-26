@@ -61,6 +61,42 @@ test "TextBuffer line info - simple text without newlines" {
     try std.testing.expectEqualStrings(text, out_buffer[0..written]);
 }
 
+test "TextBuffer tab width changes preserve large tab-free Unicode and update one-tab control" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const unit = "OpenTUI text: 世界🙂 ";
+    const repeat_count = 4096;
+    const tab_free = try std.testing.allocator.alloc(u8, unit.len * repeat_count);
+    defer std.testing.allocator.free(tab_free);
+    for (0..repeat_count) |i| {
+        @memcpy(tab_free[i * unit.len ..][0..unit.len], unit);
+    }
+
+    try tb.setText(tab_free);
+    try std.testing.expect(!tb.rope().root.metrics().custom.has_tabs);
+    const tab_free_width = tb.lineWidthAt(0);
+    for (0..40) |i| {
+        tb.setTabWidth(if (i % 2 == 0) 4 else 2);
+        try std.testing.expectEqual(tab_free_width, tb.lineWidthAt(0));
+    }
+
+    const one_tab = try std.testing.allocator.dupe(u8, tab_free);
+    defer std.testing.allocator.free(one_tab);
+    one_tab[std.mem.indexOfScalar(u8, one_tab, 'x').?] = '\t';
+    try tb.setText(one_tab);
+    try std.testing.expect(tb.rope().root.metrics().custom.has_tabs);
+    for (0..40) |i| {
+        tb.setTabWidth(if (i % 2 == 0) 4 else 2);
+        try std.testing.expectEqual(tb.measureText(one_tab), tb.lineWidthAt(0));
+    }
+}
+
 test "TextBuffer line info - single newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

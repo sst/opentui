@@ -1668,6 +1668,32 @@ test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     try std.testing.expectEqual(@as(u32, 11), view.getVirtualLines()[0].width_cols);
 }
 
+test "EditBuffer - stale tab-free undo redo roots preserve Unicode widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("界🙂alpha");
+    const initial_width = eb.tb.lineWidthAt(0);
+    try eb.setCursor(0, initial_width);
+    try eb.insertText("x");
+    const edited_width = eb.tb.lineWidthAt(0);
+
+    _ = try eb.undo();
+    try std.testing.expectEqual(initial_width, eb.tb.lineWidthAt(0));
+
+    eb.tb.setTabWidth(8);
+    _ = try eb.redo();
+    try std.testing.expectEqual(edited_width, eb.tb.lineWidthAt(0));
+
+    eb.tb.setTabWidth(4);
+    _ = try eb.undo();
+    try std.testing.expectEqual(initial_width, eb.tb.lineWidthAt(0));
+}
+
 test "EditBuffer - setText clears all history" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -65,10 +65,15 @@ pub const TextChunk = struct {
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
+        pub const HAS_TAB: u8 = 0b00000010;
     };
 
     pub fn isAsciiOnly(self: *const TextChunk) bool {
         return (self.flags & Flags.ASCII_ONLY) != 0;
+    }
+
+    pub fn hasTab(self: *const TextChunk) bool {
+        return (self.flags & Flags.HAS_TAB) != 0;
     }
 
     pub fn empty() TextChunk {
@@ -295,6 +300,7 @@ pub const Segment = union(enum) {
         max_line_width_cols: u32 = 0,
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
         ascii_only: bool = true,
+        has_tabs: bool = false,
 
         pub fn add(self: *Metrics, other: Metrics) void {
             self.total_width_cols += other.total_width_cols;
@@ -305,6 +311,7 @@ pub const Segment = union(enum) {
             self.max_line_width_cols = @max(self.max_line_width_cols, other.max_line_width_cols);
 
             self.ascii_only = self.ascii_only and other.ascii_only;
+            self.has_tabs = self.has_tabs or other.has_tabs;
         }
 
         /// Get the balancing weight for the rope
@@ -328,6 +335,7 @@ pub const Segment = union(enum) {
                     .newline_count = 0,
                     .max_line_width_cols = chunk.width_cols,
                     .ascii_only = is_ascii,
+                    .has_tabs = chunk.hasTab(),
                 };
             },
             .brk => Metrics{

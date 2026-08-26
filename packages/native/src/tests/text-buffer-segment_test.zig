@@ -217,6 +217,28 @@ test "Segment.measure - text chunk" {
     try testing.expect(metrics.ascii_only);
 }
 
+test "Segment.measure - propagates tab presence" {
+    const without_tab = Segment{ .text = .{
+        .mem_id = 0,
+        .byte_start = 0,
+        .byte_end = 1,
+        .width_cols = 1,
+        .flags = TextChunk.Flags.ASCII_ONLY,
+    } };
+    const with_tab = Segment{ .text = .{
+        .mem_id = 0,
+        .byte_start = 1,
+        .byte_end = 2,
+        .width_cols = 2,
+        .flags = TextChunk.Flags.HAS_TAB,
+    } };
+
+    var metrics = without_tab.measure();
+    try std.testing.expect(!metrics.has_tabs);
+    metrics.add(with_tab.measure());
+    try std.testing.expect(metrics.has_tabs);
+}
+
 test "Segment.measure - break" {
     const seg: Segment = .{ .brk = {} };
     const metrics = seg.measure();
