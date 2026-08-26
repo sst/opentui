@@ -897,9 +897,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _useConsole: boolean = true
   private sigwinchHandler: () => void = (() => {
-    const width = this.stdout.columns || 80
-    const height = this.stdout.rows || 24
-    this.handleResize(width, height)
+    const width = this.stdout.columns
+    const height = this.stdout.rows
+    if (width > 0 && height > 0) this.handleResize(width, height)
   }).bind(this)
   private _capabilities: TerminalCapabilities | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
