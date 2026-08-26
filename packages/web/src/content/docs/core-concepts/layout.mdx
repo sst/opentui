@@ -12,22 +12,49 @@ OpenTUI uses Yoga to compute a renderable tree on a grid of terminal cells. It s
 
 A horizontal size is a count of terminal columns. A vertical size is a count of terminal rows. These values are never character counts.
 
+## Spacing and growth
+
 ```typescript
-import { BoxRenderable, TextRenderable, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, RGBA, TextRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
+const foreground = RGBA.defaultForeground()
+const fill = RGBA.fromIndex(238)
 
 const row = new BoxRenderable(renderer, {
-  width: "100%",
+  width: 34,
   height: 5,
+  border: true,
+  borderColor: foreground,
+  padding: 1,
   flexDirection: "row",
-  alignItems: "center",
-  gap: 1,
+  gap: 2,
 })
 
-row.add(new TextRenderable(renderer, { content: "Status" }))
-row.add(new TextRenderable(renderer, { content: "Ready", flexGrow: 1 }))
+const fixed = new BoxRenderable(renderer, { width: 8, height: 1, backgroundColor: fill })
+fixed.add(new TextRenderable(renderer, { content: "fixed 8", fg: foreground }))
+
+const growing = new BoxRenderable(renderer, {
+  flexGrow: 1,
+  flexBasis: 0,
+  height: 1,
+  backgroundColor: fill,
+})
+growing.add(new TextRenderable(renderer, { content: "grow 20", fg: foreground }))
+
+row.add(fixed)
+row.add(growing)
 renderer.root.add(row)
+```
+
+The shaded children occupy 8 and 20 columns. The border and padding consume four columns; the gap consumes two more.
+
+```text terminal=layout-flex-columns
+┌────────────────────────────────┐
+│                                │
+│ fixed 8   grow 20              │
+│                                │
+└────────────────────────────────┘
 ```
 
 The same layout properties work across the built-in renderable classes.
@@ -63,6 +90,51 @@ Yoga align values are `"auto"`, `"flex-start"`, `"center"`, `"flex-end"`, `"stre
 
 The public TypeScript interface includes `"auto"` for min and max dimensions. The current runtime ignores that value for those four options.
 
+## Alignment
+
+In a row, `justifyContent` distributes horizontal space and `alignItems` positions children vertically. A child can override the vertical alignment with `alignSelf`.
+
+```typescript
+const row = new BoxRenderable(renderer, {
+  width: 32,
+  height: 7,
+  border: true,
+  borderColor: foreground,
+  paddingX: 1,
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+})
+
+for (const [label, height] of [
+  ["A", 1],
+  ["B", 3],
+  ["C", 1],
+] as const) {
+  const child = new BoxRenderable(renderer, {
+    width: 6,
+    height,
+    alignSelf: label === "C" ? "flex-end" : "auto",
+    backgroundColor: fill,
+  })
+  child.add(new TextRenderable(renderer, { content: label, fg: foreground }))
+  row.add(child)
+}
+renderer.root.add(row)
+```
+
+A and B share a vertical center despite their different heights. C sits at the bottom.
+
+```text terminal=layout-alignment
+┌──────────────────────────────┐
+│                              │
+│            B                 │
+│ A                            │
+│                              │
+│                       C      │
+└──────────────────────────────┘
+```
+
 ## Automatic and intrinsic size
 
 An `"auto"` dimension lets Yoga derive size from children or a renderable's measure function. Text and editor renderables supply native measure targets.
@@ -91,11 +163,80 @@ Yoga uses a point scale factor of `1`. It rounds computed edges to whole termina
 
 Percentage and flex calculations can produce fractions before this step. Adjacent children can therefore receive different rounded widths.
 
+These three children use the same grow factor and zero basis:
+
+```typescript
+const child = new BoxRenderable(renderer, {
+  flexGrow: 1,
+  flexBasis: 0,
+  minWidth: 0,
+})
+```
+
+A 32-column bordered row leaves 30 inner columns. Adding one column gives the middle child an extra cell, without gaps or overlaps:
+
+```text terminal=layout-cell-rounding
+32 columns: 30 inside
+┌──────────────────────────────┐
+│    10        10        10    │
+└──────────────────────────────┘
+33 columns: 31 inside
+┌───────────────────────────────┐
+│    10        11         10    │
+└───────────────────────────────┘
+```
+
 Renderable getters expose computed integer geometry after a layout pass. OpenTUI clamps exposed `width` and `height` to at least one cell.
 
 ## Resize behavior
 
 A terminal resize keeps the same renderable instances. The renderer resizes its root and runs Yoga again with the new column and row counts.
+
+With `flexWrap: "wrap"`, whole children move to the next row when they no longer fit. The container's automatic height grows to include them:
+
+```typescript
+const row = new BoxRenderable(renderer, {
+  width: "100%",
+  border: true,
+  borderColor: foreground,
+  paddingX: 1,
+  flexDirection: "row",
+  flexWrap: "wrap",
+  alignItems: "flex-start",
+  columnGap: 2,
+  rowGap: 1,
+})
+
+for (const content of ["A", "B", "C"]) {
+  const child = new BoxRenderable(renderer, {
+    width: 8,
+    height: 1,
+    flexShrink: 0,
+    backgroundColor: fill,
+  })
+  child.add(new TextRenderable(renderer, { content, fg: foreground }))
+  row.add(child)
+}
+renderer.root.add(row)
+```
+
+The same children before and after narrowing the terminal:
+
+```text terminal=layout-wrap-wide
+32 columns
+┌──────────────────────────────┐
+│ A         B         C        │
+└──────────────────────────────┘
+```
+
+```text terminal=layout-wrap-narrow
+22 columns
+┌────────────────────┐
+│ A         B        │
+│                    │
+│ C                  │
+└────────────────────┘
+```
 
 Computed `x`, `y`, `width`, and `height` can all change. Buffered renderables resize their frame buffers before `onResize(width, height)` runs.
 

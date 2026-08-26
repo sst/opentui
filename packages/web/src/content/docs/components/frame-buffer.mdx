@@ -61,6 +61,15 @@ canvas.frameBuffer.setCell(10, 5, "@", RGBA.fromHex("#FFFF00"), RGBA.fromHex("#0
 
 `setCell()` uses only the first code point and does not reserve continuation cells. Use it for one-cell scalars. Use `drawText()` for wide or joined graphemes.
 
+Draw text and block characters directly to build a compact chart:
+
+```text terminal=frame-buffer-draw
+network throughput
+rx  ▂▄▆█▇▅▃▂  42 MB/s
+tx  ▃▅▇█▆▄▂▁  18 MB/s
+    8 seconds     now
+```
+
 ### setCellWithAlphaBlending
 
 Set a cell with alpha blending for transparency effects:
@@ -262,6 +271,14 @@ function drawProgressBar(fb, x, y, width, progress, color) {
 
 // Usage
 drawProgressBar(canvas.frameBuffer, 5, 10, 30, 0.75, RGBA.fromHex("#00FF00"))
+```
+
+A 20-cell bar with 14 filled cells renders as:
+
+```text terminal=frame-buffer-progress
+Downloading package
+██████████████░░░░░░  70%
+14 of 20 files
 ```
 
 ## Related APIs

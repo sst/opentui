@@ -45,6 +45,18 @@ const table = new TextTableRenderable(renderer, {
 renderer.root.add(table)
 ```
 
+Monochrome preview of the same table:
+
+```text terminal=text-table-styled
+╭───────┬────────┬────────────────╮
+│Service│Status  │Notes           │
+├───────┼────────┼────────────────┤
+│api    │OK      │latency 28ms    │
+├───────┼────────┼────────────────┤
+│worker │DEGRADED│queue depth: 124│
+╰───────┴────────┴────────────────╯
+```
+
 ## Content
 
 The public content types are:

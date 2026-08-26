@@ -71,6 +71,22 @@ The hit grid obeys clipping from `overflow: "hidden"` and `"scroll"`. A layout c
 
 Mouse events start at the hit target and bubble through `parent` links. `event.stopPropagation()` prevents later ancestors from receiving that event.
 
+In this overlapping pair, the front box receives both mouse downs. The first bubbles to `parent`; the second calls
+`stopPropagation()` in the front box's handler.
+
+```text terminal=interaction-hit-bubbling
+┌─parent─────────────────────────────┐
+│                                    │
+│ ┌─back z=0─────────────┐           │
+│ │        ┌─front z=1─────────────┐ │
+│ └────────│                       │ │
+│          └───────────────────────┘ │
+└────────────────────────────────────┘
+target: front
+bubble: front -> parent
+stopped: front
+```
+
 `event.preventDefault()` has only defined renderer defaults. On left-button `down`, it prevents automatic focus and the post-dispatch selection clear.
 
 It does not stop propagation. It also does not undo a new selection that already started on selectable text.
@@ -94,6 +110,20 @@ Input, Textarea, Select, TabSelect, ScrollBox, and ScrollBar are focusable by de
 Each renderer tracks at most one focused renderable. Focusing another renderable blurs the previous one.
 
 Use `focus()` and `blur()` for explicit control. Listen for `RenderableEvents.FOCUSED` and `RenderableEvents.BLURRED` on the instance.
+
+Focusing an input does not clear a selection in another renderable:
+
+```typescript
+input.focus()
+input.value = "deploy --check"
+```
+
+```text terminal=interaction-selection-focus surface
+Select text, then focus input
+
+Command
+deploy --check
+```
 
 By default, a left-button down focuses the nearest focusable target or ancestor. Set renderer `autoFocus: false` to disable this behavior.
 
@@ -173,6 +203,16 @@ Each text buffer converts the global cell rectangle to local coordinates. `TextB
 These offsets form a half-open range from the start of that text buffer. They count terminal display width, and each line break adds one unit.
 
 The offsets are not UTF-16 indexes. Selection boundaries snap around complete grapheme clusters, including a cluster that spans multiple cells.
+
+A drag can span lines. Here, the selected text includes the line break after `app`, and the local range ends after `Test`.
+
+```text terminal=interaction-drag-selection surface
+Build the app
+Test the input
+
+Selected: "the app\nTest"
+Range: [6, 18)
+```
 
 Read [Text and terminal cells](/docs/core-concepts/text-and-cells) before you combine selection offsets with JavaScript string methods.
 

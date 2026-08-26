@@ -77,6 +77,24 @@ OpenTUI includes several ASCII art font styles:
 }
 ```
 
+The `tiny` font draws `OPEN` in two rows:
+
+```text terminal=ascii-font-tiny
+█▀█ █▀█ █▀▀ █▄ █
+█▄█ █▀▀ ██▄ █ ▀█
+```
+
+The `block` font draws the same text in six rows:
+
+```text terminal=ascii-font-block
+ ██████╗  ██████╗  ███████╗ ███╗   ██╗
+██╔═══██╗ ██╔══██╗ ██╔════╝ ████╗  ██║
+██║   ██║ ██████╔╝ █████╗   ██╔██╗ ██║
+██║   ██║ ██╔═══╝  ██╔══╝   ██║╚██╗██║
+╚██████╔╝ ██║      ███████╗ ██║ ╚████║
+ ╚═════╝  ╚═╝      ╚══════╝ ╚═╝  ╚═══╝
+```
+
 ## Positioning
 
 ASCIIFont inherits the standard layout positioning options. To position it at coordinates relative to its parent, use absolute positioning with `left` and `top`:

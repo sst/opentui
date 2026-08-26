@@ -156,6 +156,7 @@
   min-width: min(100%, var(--content-width));
   max-width: 100%;
   margin-block: 0 1.5rem;
+  margin-inline: 0;
   overflow-x: auto;
 }
 
@@ -169,6 +170,57 @@
   font-size: inherit;
   line-height: 1.2;
   font-variant-ligatures: none;
+}
+
+.prose .terminal-frame {
+  /* Keep ambiguous-width symbols in the same single cells as the terminal. */
+  font-feature-settings: "NWID";
+  --terminal-color-235: color-mix(in srgb, var(--page-color) 7%, var(--page-background));
+  --terminal-color-238: color-mix(in srgb, var(--page-color) 16%, var(--page-background));
+  --terminal-color-243: var(--terminal-color-238);
+  --terminal-color-244: color-mix(in srgb, var(--page-color) 65%, var(--page-background));
+  --terminal-color-247: color-mix(in srgb, var(--page-color) 82%, var(--page-background));
+}
+
+:root[data-theme="blue"] .prose .terminal-frame {
+  --terminal-color-244: color-mix(in srgb, var(--page-color) 80%, var(--page-background));
+  --terminal-color-247: color-mix(in srgb, var(--page-color) 90%, var(--page-background));
+}
+
+.prose .box-figure pre.terminal-frame--surface {
+  --terminal-background: var(--terminal-color-235);
+  padding: 1.25em 2ch;
+  background: var(--terminal-background);
+}
+
+.prose .terminal-frame__row {
+  position: relative;
+  display: block;
+  height: 1.25em;
+  line-height: 1.25em;
+}
+
+.prose .terminal-frame__span {
+  display: inline-block;
+  height: 100%;
+  line-height: inherit;
+  vertical-align: top;
+}
+
+.prose .terminal-frame__cursor {
+  position: absolute;
+  inset-block: 0;
+  width: 1ch;
+  background: var(--page-color);
+}
+
+.prose .terminal-frame__cursor--line {
+  width: 1px;
+}
+
+.prose .terminal-frame__cursor--underline {
+  inset-block-start: auto;
+  height: 2px;
 }
 
 .prose .code-block pre {

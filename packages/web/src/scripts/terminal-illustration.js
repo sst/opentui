@@ -541,10 +541,6 @@
     updateToggle()
 
     function advanceStory() {
-      if (stories.length < 2) {
-        setupStory(storyIndex)
-        return
-      }
       setupStory((storyIndex + 1) % stories.length)
       paint()
       renderCaption()
@@ -642,8 +638,6 @@
       }
     })
 
-    if (reduceMotion) return
-
     if ("IntersectionObserver" in window) {
       new IntersectionObserver(
         function (entries) {
@@ -651,7 +645,7 @@
             return entry.isIntersecting
           })
           if (isIntersecting) {
-            if (!hasStarted || resumeAfterIntersection) {
+            if ((!hasStarted && !reduceMotion) || resumeAfterIntersection) {
               resumeAfterIntersection = false
               play()
             }
@@ -664,7 +658,7 @@
       ).observe(illustration)
     } else {
       isIntersecting = true
-      play()
+      if (!reduceMotion) play()
     }
   }
 

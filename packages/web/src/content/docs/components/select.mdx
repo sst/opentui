@@ -30,13 +30,12 @@ const renderer = await createCliRenderer()
 
 const menu = new SelectRenderable(renderer, {
   id: "menu",
-  width: 30,
-  height: 8,
+  width: 32,
+  height: 6,
   options: [
-    { name: "New File", description: "Create a new file" },
-    { name: "Open File", description: "Open an existing file" },
-    { name: "Save", description: "Save current file" },
-    { name: "Exit", description: "Exit the application" },
+    { name: "New file", description: "Create a document" },
+    { name: "Open file", description: "Browse existing files" },
+    { name: "Save", description: "Write current changes" },
   ],
 })
 
@@ -46,6 +45,17 @@ menu.on(SelectRenderableEvents.ITEM_SELECTED, (index, option) => {
 
 menu.focus()
 renderer.root.add(menu)
+```
+
+After pressing Down, the next option is selected:
+
+```text terminal=select-options surface
+   New file
+   Create a document
+ ▶ Open file
+   Browse existing files
+   Save
+   Write current changes
 ```
 
 ## Keyboard navigation
