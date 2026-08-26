@@ -10,6 +10,7 @@ const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
 const image = @import("../image.zig");
 const handles = @import("../handles.zig");
+const ghostty_vt = @import("../ghostty-vt.zig");
 const test_renderer_mod = @import("test-renderer.zig");
 const terminal_image_test = @import("terminal-image_test.zig");
 
@@ -658,12 +659,14 @@ test "renderer preserves Malayalam report after Ghostty probe replies" {
     defer link.deinitGlobalLinkPool();
     var test_renderer = try TestRenderer.create(std.testing.allocator, 80, 1, pool);
     defer test_renderer.deinit();
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM", "ghostty"));
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM_VERSION", "1.3.1"));
 
     var writer = DiscardTerminalWriter{};
     try test_renderer.renderer.terminal.queryTerminalSend(&writer);
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;5R");
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R");
-    test_renderer.renderer.terminal.processCapabilityResponse("\x1b[1;1R\x1bP>|ghostty 1.3.1\x1b\\");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;5R");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;1R");
+    test_renderer.renderer.processCapabilityResponse("\x1b[1;1R\x1bP>|ghostty 1.3.1\x1b\\");
 
     const report = "OpenCode search configuration പരിശോധിക്കൽ";
     try test_renderer.renderer.getNextBuffer().drawText(
@@ -674,11 +677,78 @@ test "renderer preserves Malayalam report after Ghostty probe replies" {
         ansi.rgbColor(0, 0, 0, 255),
         0,
     );
+    try test_renderer.renderer.getNextBuffer().drawText(
+        "|",
+        40,
+        0,
+        ansi.rgbColor(255, 255, 255, 255),
+        ansi.rgbColor(0, 0, 0, 255),
+        0,
+    );
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
 
     const output = test_renderer.memory.lastWrite();
-    try std.testing.expect(std.mem.find(u8, output, report) != null);
     try std.testing.expect(std.mem.find(u8, output, "\x1b]66;") == null);
+
+    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, std.testing.allocator, .{
+        .cols = 80,
+        .rows = 1,
+    });
+    defer terminal.deinit(std.testing.allocator);
+    var stream = terminal.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("\x1b[?2027h");
+    stream.nextSlice(output);
+
+    const screen = try terminal.plainString(std.testing.allocator);
+    defer std.testing.allocator.free(screen);
+    try std.testing.expectEqualStrings(report ++ "|", std.mem.trimEnd(u8, screen, " "));
+}
+
+test "renderer preserves wide grapheme when continuation and next cell colors match" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 6, 1, pool);
+    defer test_renderer.deinit();
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM", "ghostty"));
+    try std.testing.expect(test_renderer.renderer.setTerminalEnvVar("TERM_PROGRAM_VERSION", "1.3.1"));
+
+    const text = "✅ X";
+    const foreground = ansi.rgbColor(255, 255, 255, 255);
+    const background = ansi.rgbColor(0, 0, 0, 255);
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.drawText(text, 0, 0, foreground, background, 0);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try next.drawText(text, 0, 0, foreground, background, 0);
+    const colors = [_]buffer.RGBA{
+        ansi.rgbColor(200, 0, 0, 255),
+        ansi.rgbColor(0, 200, 0, 255),
+        ansi.rgbColor(0, 200, 0, 255),
+        ansi.rgbColor(0, 0, 200, 255),
+    };
+    for (colors, 0..) |color, x| {
+        var cell = next.get(@intCast(x), 0).?;
+        cell.fg = color;
+        next.setRaw(@intCast(x), 0, cell);
+    }
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+
+    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, std.testing.allocator, .{
+        .cols = 6,
+        .rows = 1,
+    });
+    defer terminal.deinit(std.testing.allocator);
+    var stream = terminal.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("\x1b[?2027h");
+    stream.nextSlice(test_renderer.memory.bytes.items);
+
+    const screen = try terminal.plainString(std.testing.allocator);
+    defer std.testing.allocator.free(screen);
+    try std.testing.expectEqualStrings(text, std.mem.trimEnd(u8, screen, " "));
 }
 
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
@@ -3075,23 +3145,31 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
 }
 
-test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer repaint" {
+test "renderer - commitSplitFooterSnapshot appends styled snapshot with snapshot links before footer repaint" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-    var local_link_pool = link.LinkPool.init(std.testing.allocator);
-    defer local_link_pool.deinit();
+    var renderer_links = link.LinkPool.init(std.testing.allocator);
+    defer renderer_links.deinit();
+    var snapshot_links = link.LinkPool.init(std.testing.allocator);
+    defer snapshot_links.deinit();
 
-    var test_cli_renderer = try TestRenderer.create(
+    var test_cli_renderer = try TestRenderer.createWithLinkPool(
         std.testing.allocator,
         16,
         4,
         pool,
+        &renderer_links,
     );
     defer test_cli_renderer.deinit();
     const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = true;
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const renderer_link_id = try renderer_links.alloc("https://renderer.invalid");
+    const snapshot_link_id = try snapshot_links.alloc("https://snapshot.example");
+    try std.testing.expectEqual(renderer_link_id, snapshot_link_id);
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -3104,13 +3182,14 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
         std.testing.allocator,
         8,
         2,
-        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+        .{ .pool = pool, .link_pool = &snapshot_links, .width_method = .unicode, .respectAlpha = false },
     );
     defer snapshot.deinit();
 
     snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
     try snapshot.drawText("SNAP", 0, 0, ansi.rgbaFromFloats(1.0, 0.5, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), ansi.TextAttributes.BOLD);
-    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    const link_attributes = ansi.TextAttributes.setLinkId(0, snapshot_link_id);
+    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), link_attributes);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
@@ -3127,6 +3206,8 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     try std.testing.expect(sync_index != null);
     try std.testing.expect(sync_index.? < snapshot_text_index.?);
     try std.testing.expect(footer_clear_index == null);
+    try std.testing.expect(std.mem.find(u8, output, ";https://snapshot.example\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, output, "https://renderer.invalid") == null);
 }
 
 test "renderer - commitSplitFooterSnapshot preserves indexed and default color tags" {

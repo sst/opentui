@@ -364,6 +364,15 @@ function editorLocalSelectionFlags(updateCursor: boolean, followCursor: boolean,
   return ffiBool(updateCursor) | (ffiBool(followCursor) << 1) | (selectionBehaviorByte(behavior) << 2)
 }
 
+function widthMethodCode(widthMethod: WidthMethod): number {
+  return widthMethod === "wcwidth" ? 0 : widthMethod === "unicode-wide" ? 3 : 1
+}
+
+function widthMethodFromCode(code: number): WidthMethod {
+  if (code === 0) return "wcwidth"
+  return code === 3 ? "unicode-wide" : "unicode"
+}
+
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
   if (!resolvedLibPath) {
@@ -586,6 +595,10 @@ function getOpenTUILib(libPath?: string) {
     getBufferHeight: {
       args: ["u32"],
       returns: "u32",
+    },
+    getBufferWidthMethod: {
+      args: ["u32"],
+      returns: "u8",
     },
     bufferClear: {
       args: ["u32", "buffer"],
@@ -3782,8 +3795,9 @@ class FFIRenderLib implements RenderLib {
 
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
+    const widthMethod = widthMethodFromCode(this.opentui.symbols.getBufferWidthMethod(bufferPtr))
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer", widthMethod: "unicode" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer", widthMethod })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -3794,8 +3808,9 @@ class FFIRenderLib implements RenderLib {
 
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
+    const widthMethod = widthMethodFromCode(this.opentui.symbols.getBufferWidthMethod(bufferPtr))
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod })
   }
 
   public rendererSetPaletteState(
@@ -4283,14 +4298,13 @@ class FFIRenderLib implements RenderLib {
       console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
     }
 
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
     const idToUse = id || "unnamed buffer"
     const idBytes = this.encoder.encode(idToUse)
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(
       width,
       height,
       ffiBool(respectAlpha),
-      widthMethodCode,
+      widthMethodCode(widthMethod),
       idBytes,
       idBytes.byteLength,
     )
@@ -4897,8 +4911,7 @@ class FFIRenderLib implements RenderLib {
 
   // TextBuffer methods
   public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode(widthMethod))
     if (!bufferPtr) {
       throw new Error(`Failed to create TextBuffer`)
     }
@@ -5536,8 +5549,10 @@ class FFIRenderLib implements RenderLib {
 
   // EditBuffer implementations
   public createEditBuffer(widthMethod: WidthMethod): EditBufferHandle {
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode, this.eventSinkPtr ?? 0) as EditBufferHandle
+    const bufferPtr = this.opentui.symbols.createEditBuffer(
+      widthMethodCode(widthMethod),
+      this.eventSinkPtr ?? 0,
+    ) as EditBufferHandle
     if (!bufferPtr) {
       throw new Error("Failed to create EditBuffer")
     }
@@ -6052,7 +6067,6 @@ class FFIRenderLib implements RenderLib {
     widthMethod: WidthMethod,
   ): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
     const textBytes = this.encoder.encode(text)
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
 
     const outPtrBuffer = new ArrayBuffer(8) // Pointer-sized out slot
     const outLenBuffer = new ArrayBuffer(8) // Native length out slot
@@ -6062,7 +6076,7 @@ class FFIRenderLib implements RenderLib {
       textBytes.byteLength,
       outPtrBuffer,
       outLenBuffer,
-      widthMethodCode,
+      widthMethodCode(widthMethod),
     )
 
     if (!success) {

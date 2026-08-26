@@ -465,6 +465,7 @@ fn applyDependencies(
             "general_category",
             "is_emoji_presentation",
         }),
+        .fields_1 = @as([]const []const u8, &.{"wcwidth_zero_in_grapheme"}),
     })) |uucode_dep| {
         module.addImport("uucode", uucode_dep.module("uucode"));
     }

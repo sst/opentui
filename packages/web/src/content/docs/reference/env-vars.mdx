@@ -112,15 +112,20 @@ Tree-sitter worker started. An explicit client `workerPath` option takes precede
 
 ## Security-sensitive diagnostics
 
-| Variable         | Type      | Default | Read time         | Purpose                                   |
-| ---------------- | --------- | ------- | ----------------- | ----------------------------------------- |
-| `OTUI_DEBUG`     | `boolean` | `false` | Renderer creation | Retain raw input sequences for debugging  |
-| `OTUI_STDIN_LOG` | `string`  | `""`    | Renderer creation | Write the raw stdin byte stream to a file |
+| Variable                 | Type      | Default | Read time             | Purpose                                                       |
+| ------------------------ | --------- | ------- | --------------------- | ------------------------------------------------------------- |
+| `OTUI_DEBUG`             | `boolean` | `false` | Renderer creation     | Retain raw input sequences for debugging                      |
+| `OTUI_STDIN_LOG`         | `string`  | `""`    | Renderer creation     | Write the raw stdin byte stream to a file                     |
+| `OTUI_GHOSTTY_LOG_LEVEL` | `string`  | `""`    | Native initialization | Forward scoped Ghostty logs through the normal OpenTUI logger |
 
 `OTUI_STDIN_LOG=/tmp/opentui-stdin.bin` records stdin before parsing. The renderer truncates the file when it starts
 and writes to it synchronously. The binary data can contain passwords and other sensitive input. Use this option only
 for short debugging sessions, and protect the recorded file. Treat `OTUI_DEBUG` input captures and
 `OTUI_DUMP_CAPTURES` output as sensitive data too.
+
+`OTUI_GHOSTTY_LOG_LEVEL` accepts `error`, `warn`, `info`, or `debug` (`err` and `warning` are aliases). The selected level
+includes all more severe messages. Unset or invalid values disable Ghostty logs. Standard-library logs outside the
+recognized Ghostty scopes are always discarded.
 
 ## Remote sessions
 

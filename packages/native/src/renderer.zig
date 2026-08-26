@@ -448,6 +448,7 @@ pub const CliRenderer = struct {
             .palette_epoch = 0,
         };
 
+        self.syncWidthMethod();
         self.resetFallbackPaletteState();
         nextBuffer.setBlendBackdropColor(ansi.rgbColor(ansi.red(self.backgroundColor), ansi.green(self.backgroundColor), ansi.blue(self.backgroundColor), 255));
 
@@ -1483,7 +1484,7 @@ pub const CliRenderer = struct {
                     }
                     currentLinkId = linkId;
                     if (currentLinkId != 0) {
-                        const lp = self.nextRenderBuffer.link_pool;
+                        const lp = snapshot.link_pool;
                         if (lp.get(currentLinkId)) |url_bytes| {
                             writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
@@ -2464,6 +2465,14 @@ pub const CliRenderer = struct {
                     continue;
                 }
 
+                if (cell_type == gp.CHAR_FLAG_CONTINUATION) {
+                    // A continuation has no bytes to emit. Starting a run here can
+                    // position the next printable cell inside the wide grapheme.
+                    self.currentRenderBuffer.syncCell(x, y, cell);
+                    cellsUpdated += 1;
+                    continue;
+                }
+
                 if (!frame_started) {
                     beginRenderFrame(writer);
                     frame_started = true;
@@ -3130,7 +3139,14 @@ pub const CliRenderer = struct {
 
     pub fn setTerminalEnvVar(self: *CliRenderer, key: []const u8, value: []const u8) bool {
         self.terminal.setHostEnvVar(self.allocator, key, value) catch return false;
+        self.syncWidthMethod();
         return true;
+    }
+
+    fn syncWidthMethod(self: *CliRenderer) void {
+        const width_method = if (self.terminal.caps.unicode == .no_zwj) .unicode else self.terminal.caps.unicode;
+        self.currentRenderBuffer.width_method = width_method;
+        self.nextRenderBuffer.width_method = width_method;
     }
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {

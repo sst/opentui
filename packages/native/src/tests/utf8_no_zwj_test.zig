@@ -90,25 +90,25 @@ test "no_zwj: mixed text with ZWJ emoji" {
     try testing.expectEqual(@as(u32, 14), width_no_zwj);
 }
 
-test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
-    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "no_zwj: findRenderClusterInfo splits ZWJ sequences" {
+    var result_unicode: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result_unicode.deinit(testing.allocator);
-    var result_no_zwj: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+    var result_no_zwj: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result_no_zwj.deinit(testing.allocator);
 
     const text = "Hi👩‍🚀Bye";
 
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result_unicode);
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .no_zwj, &result_no_zwj);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .unicode, &result_unicode);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .no_zwj, &result_no_zwj);
 
     // unicode: 1 grapheme (the whole ZWJ sequence)
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
-    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result_unicode.items[0].width_cols);
 
     // no_zwj: 2 graphemes (woman and rocket separately)
     try testing.expectEqual(@as(usize, 2), result_no_zwj.items.len);
-    try testing.expectEqual(@as(u8, 2), result_no_zwj.items[0].width);
-    try testing.expectEqual(@as(u8, 2), result_no_zwj.items[1].width);
+    try testing.expectEqual(@as(u32, 2), result_no_zwj.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 2), result_no_zwj.items[1].width_cols);
 }
 
 test "no_zwj: findWrapPosByWidth with ZWJ sequences" {

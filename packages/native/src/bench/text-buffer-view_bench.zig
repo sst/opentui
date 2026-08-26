@@ -25,6 +25,9 @@ const large_text_patterns = [_][]const u8{
     "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
 };
 
+const matched_single_chunk_text = "word-" ** 12_800;
+const matched_single_chunk_width: u32 = 64_000;
+
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
     var buffer: std.ArrayList(u8) = .empty;
     errdefer buffer.deinit(allocator);
@@ -48,23 +51,6 @@ pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes:
     return buffer.toOwnedSlice(allocator);
 }
 
-pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: usize) ![]u8 {
-    var buffer: std.ArrayList(u8) = .empty;
-    errdefer buffer.deinit(allocator);
-
-    var current_bytes: usize = 0;
-    var pattern_idx: usize = 0;
-
-    while (current_bytes < target_bytes) {
-        const pattern = large_text_patterns[pattern_idx % large_text_patterns.len];
-        try buffer.appendSlice(allocator, pattern);
-        current_bytes += pattern.len;
-        pattern_idx += 1;
-    }
-
-    return buffer.toOwnedSlice(allocator);
-}
-
 fn computeLargeTextStats(lines: u32, target_bytes: usize) struct { bytes: usize, line_count: usize } {
     var current_bytes: usize = 0;
     var line_idx: u32 = 0;
@@ -76,19 +62,6 @@ fn computeLargeTextStats(lines: u32, target_bytes: usize) struct { bytes: usize,
     }
 
     return .{ .bytes = current_bytes, .line_count = line_idx };
-}
-
-fn computeSingleLineTextSize(target_bytes: usize) usize {
-    var current_bytes: usize = 0;
-    var pattern_idx: usize = 0;
-
-    while (current_bytes < target_bytes) {
-        const pattern = large_text_patterns[pattern_idx % large_text_patterns.len];
-        current_bytes += pattern.len;
-        pattern_idx += 1;
-    }
-
-    return current_bytes;
 }
 
 fn benchSetText(
@@ -105,7 +78,7 @@ fn benchSetText(
 
     // Small text
     {
-        const name = "TextBuffer setText small (3 lines, 40 bytes)";
+        const name = "TextBuffer setText small (3 lines, 36 bytes)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             const text = "Hello, world!\nSecond line\nThird line";
             var stats: BenchStats = .{};
@@ -204,6 +177,7 @@ fn benchWrap(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
+    expected_total_width: ?u32,
 ) !BenchResult {
     var stats: BenchStats = .{};
     var final_tb_mem: usize = 0;
@@ -225,7 +199,21 @@ fn benchWrap(
         view.setWrapWidth(wrap_width);
         const count = view.getVirtualLineCount();
         stats.record(timer.read());
-        _ = count;
+
+        // Validate outside the timed interval so both revisions must produce the
+        // same complete layout before their timings are compared.
+        if (expected_total_width) |expected_width| {
+            const lines = view.getVirtualLines();
+            const expected_count = (expected_width + wrap_width - 1) / wrap_width;
+            if (tb.getLineCount() != 1 or count != expected_count or lines.len != @as(usize, @intCast(expected_count))) {
+                return error.InvalidBenchmarkOutput;
+            }
+            for (lines, 0..) |line, line_idx| {
+                const remainder = expected_width % wrap_width;
+                const expected_line_width = if (line_idx + 1 == lines.len and remainder != 0) remainder else wrap_width;
+                if (line.width_cols != expected_line_width) return error.InvalidBenchmarkOutput;
+            }
+        }
 
         if (i == iterations - 1 and show_mem) {
             final_tb_mem = tb.getArenaAllocatedBytes();
@@ -351,8 +339,6 @@ pub fn run(
 
     var text_multiline: ?[]u8 = null;
     defer if (text_multiline) |text| allocator.free(text);
-    var text_singleline: ?[]u8 = null;
-    defer if (text_singleline) |text| allocator.free(text);
     const multiline_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
     const multiline_mb = @as(f64, @floatFromInt(multiline_stats.bytes)) / (1024.0 * 1024.0);
 
@@ -364,15 +350,15 @@ pub fn run(
         streaming: bool,
         width: u32,
     }{
-        .{ .label = "layout streaming wrap", .streaming = true, .width = wrap_width },
-        .{ .label = "layout streaming intrinsic", .streaming = true, .width = 0 },
-        .{ .label = "layout static wrap", .streaming = false, .width = wrap_width },
+        .{ .label = "incremental append wrap", .streaming = true, .width = wrap_width },
+        .{ .label = "incremental append intrinsic", .streaming = true, .width = 0 },
+        .{ .label = "repeated cached wrap", .streaming = false, .width = wrap_width },
     };
 
     for (measure_scenarios) |scenario| {
         const bench_name = try std.fmt.allocPrint(
             allocator,
-            "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
+            "TextBufferView measureForDimensions ({s}, {d:.2} MiB initial text)",
             .{ scenario.label, multiline_mb },
         );
 
@@ -423,28 +409,26 @@ pub fn run(
     };
 
     for (scenarios) |scenario| {
-        if (scenario.single_line) {
-            if (text_singleline == null) {
-                text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
-            }
-        } else {
-            if (text_multiline == null) {
-                text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
-            }
-        }
-        const text = if (scenario.single_line) text_singleline.? else text_multiline.?;
-        const line_type = if (scenario.single_line) "single" else "multi";
-
-        const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, width={d}, {s}-line)", .{
-            scenario.mode_str,
-            scenario.width,
-            line_type,
-        });
+        const bench_name = if (scenario.single_line)
+            try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, width={d}, validated 62.5 KiB single chunk)", .{
+                scenario.mode_str,
+                scenario.width,
+            })
+        else
+            try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, width={d}, multi-line)", .{
+                scenario.mode_str,
+                scenario.width,
+            });
 
         if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
             allocator.free(bench_name);
             continue;
         }
+
+        if (!scenario.single_line and text_multiline == null) {
+            text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+        }
+        const text = if (scenario.single_line) matched_single_chunk_text else text_multiline.?;
 
         var bench_result = try benchWrap(
             io,
@@ -455,6 +439,7 @@ pub fn run(
             scenario.mode,
             iterations,
             show_mem,
+            if (scenario.single_line) matched_single_chunk_width else null,
         );
         bench_result.name = bench_name;
 

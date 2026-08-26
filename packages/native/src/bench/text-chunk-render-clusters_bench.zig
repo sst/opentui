@@ -10,7 +10,7 @@ const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
-pub const benchName = "TextChunk getGraphemes";
+pub const benchName = "TextChunk getRenderClusters";
 
 const TextType = enum { ascii, mixed, heavy_unicode };
 
@@ -76,7 +76,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
     return buffer.toOwnedSlice(allocator);
 }
 
-fn benchGetGraphemes(
+fn benchGetRenderClusters(
     io: std.Io,
     allocator: std.mem.Allocator,
     size: usize,
@@ -102,17 +102,9 @@ fn benchGetGraphemes(
 
     // Create TextChunk
     // Width is approximate - clamped to u16 max
-    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
-    var chunk: TextChunk = .{
-        .mem_id = mem_id,
-        .byte_start = 0,
-        .byte_end = @intCast(text.len),
-        .width = approx_width,
-        .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
-    };
-
+    const approx_width: u32 = @intCast(@min(text.len, std.math.maxInt(u32)));
     var stats: BenchStats = .{};
-    var grapheme_count: usize = 0;
+    var render_cluster_count: usize = 0;
     var final_mem: usize = 0;
 
     for (0..iterations) |i| {
@@ -121,11 +113,16 @@ fn benchGetGraphemes(
         defer arena.deinit();
         const arena_alloc = arena.allocator();
 
-        // Clear cached graphemes
-        chunk.graphemes = null;
+        const chunk: TextChunk = .{
+            .mem_id = mem_id,
+            .byte_start = 0,
+            .byte_end = @intCast(text.len),
+            .width_cols = approx_width,
+            .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
+        };
 
         const timer = bench_utils.BenchTimer.start(io);
-        const graphemes = try chunk.getGraphemes(
+        const render_clusters = try chunk.getRenderClusters(
             arena_alloc,
             &registry,
             4, // tab width
@@ -134,12 +131,12 @@ fn benchGetGraphemes(
         stats.record(timer.read());
 
         if (i == 0) {
-            grapheme_count = graphemes.len;
+            render_cluster_count = render_clusters.len;
         }
 
         if (i == iterations - 1 and show_mem) {
-            // Estimate memory used for grapheme storage
-            final_mem = graphemes.len * @sizeOf(seg_mod.GraphemeInfo);
+            // Estimate memory used for sparse render-cluster metadata.
+            final_mem = render_clusters.len * @sizeOf(seg_mod.RenderClusterInfo);
         }
     }
 
@@ -151,13 +148,13 @@ fn benchGetGraphemes(
 
     const name = try std.fmt.allocPrint(
         allocator,
-        "getGraphemes {s} ({d} bytes, {d} graphemes)",
-        .{ type_str, size, grapheme_count },
+        "getRenderClusters {s} ({d} bytes, {d} render clusters)",
+        .{ type_str, size, render_cluster_count },
     );
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
         const mem_stat_slice = try allocator.alloc(MemStat, 1);
-        mem_stat_slice[0] = .{ .name = "Graphemes", .bytes = final_mem };
+        mem_stat_slice[0] = .{ .name = "Render clusters", .bytes = final_mem };
         break :blk mem_stat_slice;
     } else null;
 
@@ -187,16 +184,16 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         .ascii => true,
         else => false,
     };
-    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
+    const approx_width: u32 = @intCast(@min(text.len, std.math.maxInt(u32)));
     var chunk: TextChunk = .{
         .mem_id = mem_id,
         .byte_start = 0,
         .byte_end = @intCast(text.len),
-        .width = approx_width,
+        .width_cols = approx_width,
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
-    const graphemes = try chunk.getGraphemes(
+    const render_clusters = try chunk.getRenderClusters(
         temp_alloc,
         &registry,
         4, // tab width
@@ -211,8 +208,8 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 
     return std.fmt.allocPrint(
         allocator,
-        "getGraphemes {s} ({d} bytes, {d} graphemes)",
-        .{ type_str, size, graphemes.len },
+        "getRenderClusters {s} ({d} bytes, {d} render clusters)",
+        .{ type_str, size, render_clusters.len },
     );
 }
 
@@ -237,7 +234,7 @@ pub fn run(
     if (bench_filter == null) {
         for (text_types) |text_type| {
             for (sizes) |size| {
-                const result = try benchGetGraphemes(
+                const result = try benchGetRenderClusters(
                     io,
                     allocator,
                     size,
@@ -257,7 +254,7 @@ pub fn run(
                     continue;
                 }
 
-                var result = try benchGetGraphemes(
+                var result = try benchGetRenderClusters(
                     io,
                     allocator,
                     size,

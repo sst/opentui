@@ -88,7 +88,7 @@ export const VisualCursorStruct = defineStruct([
   ["offset", "u32"],
 ])
 
-const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
+const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1, "unicode-wide": 3 }, "u8")
 const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
 const Osc52SupportEnum = defineEnum({ unknown: 0, supported: 1, unsupported: 2 }, "u8")
 const ImageProtocolEnum = defineEnum({ auto: 0, kitty: 1, sixel: 2, blocks: 3 }, "u8")

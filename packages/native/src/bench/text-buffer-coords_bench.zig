@@ -23,7 +23,7 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
                 .mem_id = 0,
                 .byte_start = 0,
                 .byte_end = chars_per_line,
-                .width = @intCast(chars_per_line),
+                .width_cols = @intCast(chars_per_line),
                 .flags = TextChunk.Flags.ASCII_ONLY,
             },
         });

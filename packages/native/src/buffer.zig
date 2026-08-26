@@ -1295,12 +1295,12 @@ pub const OptimizedBuffer = struct {
             }
         }
 
-        var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
-        defer grapheme_list.deinit(self.allocator);
+        var render_cluster_list: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
+        defer render_cluster_list.deinit(self.allocator);
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfo(self.allocator, text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
-        const specials = grapheme_list.items;
+        try utf8.findRenderClusterInfo(self.allocator, text, tab_width, is_ascii_only, self.width_method, &render_cluster_list);
+        const render_clusters = render_cluster_list.items;
 
         var advance_cells: u32 = 0;
         var byte_offset: u32 = 0;
@@ -1311,28 +1311,28 @@ pub const OptimizedBuffer = struct {
             const charX = x + advance_cells;
             if (charX >= self.width) break;
 
-            const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+            const at_special = special_idx < render_clusters.len and render_clusters[special_idx].col_start == col;
 
             var grapheme_bytes: []const u8 = undefined;
-            var g_width: u8 = undefined;
+            var cluster_width_cols: u32 = undefined;
 
             if (at_special) {
-                const g = specials[special_idx];
-                grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
-                g_width = g.width;
-                byte_offset = g.byte_offset + g.byte_len;
+                const g = render_clusters[special_idx];
+                grapheme_bytes = text[g.byte_start .. g.byte_start + g.byte_len];
+                cluster_width_cols = g.width_cols;
+                byte_offset = g.byte_start + g.byte_len;
                 special_idx += 1;
             } else {
                 if (byte_offset >= text.len) break;
                 grapheme_bytes = text[byte_offset .. byte_offset + 1];
-                g_width = 1;
+                cluster_width_cols = 1;
                 byte_offset += 1;
             }
 
             const is_tab = grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t';
             if (!is_tab and !self.isPointInScissor(@intCast(charX), @intCast(y))) {
-                advance_cells += g_width;
-                col += g_width;
+                advance_cells += cluster_width_cols;
+                col += cluster_width_cols;
                 continue;
             }
 
@@ -1345,21 +1345,21 @@ pub const OptimizedBuffer = struct {
                 bgColor = ansi.rgbColor(0, 0, 0, 255);
             }
 
-            const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, self.width_method);
+            const cell_width = utf8.getWidthAt(text, if (at_special) render_clusters[special_idx - 1].byte_start else byte_offset - 1, tab_width, self.width_method);
             if (cell_width == 0) {
-                col += g_width;
+                col += cluster_width_cols;
                 continue;
             }
             if (cell_width > 1 and !is_tab) {
                 if (charX + cell_width > self.width) {
-                    advance_cells += g_width;
-                    col += g_width;
+                    advance_cells += cluster_width_cols;
+                    col += cluster_width_cols;
                     continue;
                 }
                 for (1..cell_width) |span_offset| {
                     if (!self.isPointInScissor(@intCast(charX + @as(u32, @intCast(span_offset))), @intCast(y))) {
-                        advance_cells += g_width;
-                        col += g_width;
+                        advance_cells += cluster_width_cols;
+                        col += cluster_width_cols;
                         continue :text_loop;
                     }
                 }
@@ -1367,7 +1367,7 @@ pub const OptimizedBuffer = struct {
 
             if (is_tab) {
                 var tab_col: u32 = 0;
-                while (tab_col < g_width) : (tab_col += 1) {
+                while (tab_col < cluster_width_cols) : (tab_col += 1) {
                     const tab_x = charX + tab_col;
                     if (tab_x >= self.width) break;
                     if (!self.isPointInScissor(@intCast(tab_x), @intCast(y))) continue;
@@ -1375,8 +1375,8 @@ pub const OptimizedBuffer = struct {
                     const cell = makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes);
                     if (explicit_colors_opaque) self.set(tab_x, y, cell) else self.setTextCell(tab_x, y, cell);
                 }
-                advance_cells += g_width;
-                col += g_width;
+                advance_cells += cluster_width_cols;
+                col += cluster_width_cols;
                 continue;
             }
 
@@ -1392,7 +1392,7 @@ pub const OptimizedBuffer = struct {
             if (explicit_colors_opaque) self.set(charX, y, cell) else self.setTextCell(charX, y, cell);
 
             advance_cells += cell_width;
-            col += g_width;
+            col += cluster_width_cols;
         }
     }
 
@@ -1675,7 +1675,7 @@ pub const OptimizedBuffer = struct {
         const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
-        var globalCharPos: u32 = if (firstVisibleLine < line_info.line_start_cols.len)
+        var document_cell_offset: u32 = if (firstVisibleLine < line_info.line_start_cols.len)
             line_info.line_start_cols[firstVisibleLine]
         else
             0;
@@ -1684,8 +1684,8 @@ pub const OptimizedBuffer = struct {
             if (currentY >= bufferBottomY) break;
 
             currentX = x;
-            var column_in_line: u32 = 0;
-            globalCharPos = vline.col_offset;
+            var rendered_col_in_vline: u32 = 0;
+            document_cell_offset = vline.document_cell_offset;
 
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
@@ -1694,7 +1694,7 @@ pub const OptimizedBuffer = struct {
             const vline_idx = viewport_offset + firstVisibleLine + slice_idx;
             const vline_span_info = view.getVirtualLineSpans(vline_idx);
             const spans = vline_span_info.spans;
-            const col_offset = vline_span_info.col_offset;
+            const col_offset = vline_span_info.source_col_start;
             var span_idx: usize = 0;
             var lineFg = text_defaults.fg orelse ansi.rgbColor(255, 255, 255, 255);
             var lineBg = text_defaults.bg orelse ansi.rgbColor(0, 0, 0, 0);
@@ -1756,142 +1756,129 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
-                const specials = chunk.getGraphemes(text_buffer.getAllocator(), text_buffer.memRegistry(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
-                const line_col_offset = vline.col_offset;
+                const render_clusters = chunk.getRenderClusters(text_buffer.getAllocator(), text_buffer.memRegistry(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
+                const line_col_offset = vline.document_cell_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += vchunk.width;
-                    currentX += @intCast(vchunk.width);
+                    document_cell_offset += vchunk.width_cols;
+                    currentX += @intCast(vchunk.width_cols);
                     continue;
                 }
-                const col_end = vchunk.grapheme_start + vchunk.width;
-                var col = vchunk.grapheme_start;
+                const col_end = vchunk.col_start_in_chunk + vchunk.width_cols;
+                var col = vchunk.col_start_in_chunk;
                 var special_idx: usize = 0;
-                var byte_offset: u32 = 0;
+                var byte_offset = vchunk.byte_start_in_chunk;
+                const byte_end = vchunk.byte_start_in_chunk + vchunk.byte_len;
 
-                if (vchunk.grapheme_start > 0) {
-                    // Use UTF-8 aware position finding to skip to the grapheme_start
-                    const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
-                    byte_offset = pos_result.byte_offset;
-
-                    // Advance special_idx to match the skipped columns
-                    var init_col: u32 = 0;
-                    while (init_col < vchunk.grapheme_start and special_idx < specials.len) {
-                        const g = specials[special_idx];
-                        if (g.col_offset < vchunk.grapheme_start) {
-                            special_idx += 1;
-                            init_col = g.col_offset + g.width;
-                        } else {
-                            break;
-                        }
-                    }
+                while (special_idx < render_clusters.len and render_clusters[special_idx].byte_start + render_clusters[special_idx].byte_len <= byte_offset) {
+                    special_idx += 1;
                 }
 
-                text_buffer_loop: while (col < col_end) {
-                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+                text_buffer_loop: while (byte_offset < byte_end and col < col_end) {
+                    const at_special = special_idx < render_clusters.len and render_clusters[special_idx].byte_start == byte_offset;
 
                     var grapheme_bytes: []const u8 = undefined;
-                    var g_width: u8 = undefined;
+                    var cluster_width_cols: u32 = undefined;
 
                     if (at_special) {
-                        const g = specials[special_idx];
-                        grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
-                        g_width = g.width;
-                        byte_offset = g.byte_offset + g.byte_len;
+                        const g = render_clusters[special_idx];
+                        if (g.byte_start + g.byte_len > byte_end) break;
+                        grapheme_bytes = chunk_bytes[g.byte_start .. g.byte_start + g.byte_len];
+                        cluster_width_cols = g.width_cols;
+                        byte_offset = g.byte_start + g.byte_len;
                         special_idx += 1;
                     } else {
-                        if (byte_offset >= chunk_bytes.len) break;
+                        if (byte_offset >= byte_end or byte_offset >= chunk_bytes.len) break;
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
-                        const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
+                        const next_byte_offset = @min(byte_offset + cp_len, byte_end);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        g_width = 1;
+                        cluster_width_cols = 1;
                         byte_offset = next_byte_offset;
                     }
 
-                    if (column_in_line < horizontal_offset) {
-                        globalCharPos += g_width;
-                        column_in_line += g_width;
-                        col += g_width;
+                    if (rendered_col_in_vline < horizontal_offset) {
+                        document_cell_offset += cluster_width_cols;
+                        rendered_col_in_vline += cluster_width_cols;
+                        col += cluster_width_cols;
                         continue;
                     }
 
-                    if (column_in_line >= horizontal_offset + viewport_width) {
-                        globalCharPos += (col_end - col);
+                    if (rendered_col_in_vline >= horizontal_offset + viewport_width) {
+                        document_cell_offset += (col_end - col);
                         break;
                     }
 
-                    // A glyph occupies columns [currentX, currentX + g_width).
+                    // A glyph occupies columns [currentX, currentX + cluster_width_cols).
                     // If this range ends at or before column 0, the glyph is left of the screen.
                     // Skip the glyph, but advance the counters to put the next glyph in the correct columns.
                     // This check permits wide glyphs that cross column 0.
-                    // The g_width > 1 check below discards these glyphs before they reach the unchecked fast-path index.
-                    if (currentX + @as(i32, @intCast(g_width)) <= 0) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
+                    // The cluster_width_cols > 1 check below discards these glyphs before they reach the unchecked fast-path index.
+                    if (currentX + @as(i32, @intCast(cluster_width_cols)) <= 0) {
+                        document_cell_offset += cluster_width_cols;
+                        currentX += @as(i32, @intCast(cluster_width_cols));
+                        rendered_col_in_vline += cluster_width_cols;
+                        col += cluster_width_cols;
                         continue;
                     }
 
                     if (currentX >= @as(i32, @intCast(self.width))) {
-                        globalCharPos += (col_end - col);
+                        document_cell_offset += (col_end - col);
                         break;
                     }
 
                     const is_tab = grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t';
                     if (!is_tab and !self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
+                        document_cell_offset += cluster_width_cols;
+                        currentX += @as(i32, @intCast(cluster_width_cols));
+                        rendered_col_in_vline += cluster_width_cols;
+                        col += cluster_width_cols;
                         continue;
                     }
 
-                    if (g_width > 1 and !is_tab) {
-                        if (column_in_line + g_width > horizontal_offset + viewport_width or
-                            currentX < 0 or currentX + @as(i32, @intCast(g_width)) > @as(i32, @intCast(self.width)))
+                    if (cluster_width_cols > 1 and !is_tab) {
+                        if (rendered_col_in_vline + cluster_width_cols > horizontal_offset + viewport_width or
+                            currentX < 0 or currentX + @as(i32, @intCast(cluster_width_cols)) > @as(i32, @intCast(self.width)))
                         {
-                            globalCharPos += g_width;
-                            currentX += @as(i32, @intCast(g_width));
-                            column_in_line += g_width;
-                            col += g_width;
+                            document_cell_offset += cluster_width_cols;
+                            currentX += @as(i32, @intCast(cluster_width_cols));
+                            rendered_col_in_vline += cluster_width_cols;
+                            col += cluster_width_cols;
                             continue;
                         }
-                        for (1..g_width) |span_offset| {
+                        for (1..cluster_width_cols) |span_offset| {
                             if (!self.isPointInScissor(currentX + @as(i32, @intCast(span_offset)), currentY)) {
-                                globalCharPos += g_width;
-                                currentX += @as(i32, @intCast(g_width));
-                                column_in_line += g_width;
-                                col += g_width;
+                                document_cell_offset += cluster_width_cols;
+                                currentX += @as(i32, @intCast(cluster_width_cols));
+                                rendered_col_in_vline += cluster_width_cols;
+                                col += cluster_width_cols;
                                 continue :text_buffer_loop;
                             }
                         }
                     }
 
-                    var selection_offset = globalCharPos;
-                    if (vline.is_truncated and globalCharPos >= line_col_offset) {
+                    var selection_offset = document_cell_offset;
+                    if (vline.is_truncated and document_cell_offset >= line_col_offset) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_col_offset;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_col_offset + vline.ellipsis_pos;
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_col_offset + vline.truncation_suffix_start +
-                                (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        const column_offset_in_line = document_cell_offset - line_col_offset;
+                        if (column_offset_in_line >= vline.ellipsis_col and column_offset_in_line < vline.ellipsis_col + ellipsis_width) {
+                            selection_offset = line_col_offset + vline.ellipsis_col;
+                        } else if (column_offset_in_line >= vline.ellipsis_col + ellipsis_width) {
+                            selection_offset = line_col_offset + vline.truncation_suffix_col_start +
+                                (column_offset_in_line - vline.ellipsis_col - ellipsis_width);
                         } else {
                             selection_offset = line_col_offset + column_offset_in_line;
                         }
                     }
 
                     // Track the actual column position in the source line (including horizontal offset)
-                    var source_col_pos = col_offset + column_in_line;
+                    var source_col_pos = col_offset + rendered_col_in_vline;
                     if (vline.is_truncated) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_col_offset;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                        const column_offset_in_line = document_cell_offset - line_col_offset;
+                        if (column_offset_in_line >= vline.ellipsis_col and column_offset_in_line < vline.ellipsis_col + ellipsis_width) {
                             source_col_pos = std.math.maxInt(u32);
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            source_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        } else if (column_offset_in_line >= vline.ellipsis_col + ellipsis_width) {
+                            source_col_pos = vline.truncation_suffix_col_start + (column_offset_in_line - vline.ellipsis_col - ellipsis_width);
                         }
                     }
 
@@ -1921,14 +1908,14 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (vline.is_truncated) {
-                        const column_offset_in_line = globalCharPos - line_col_offset;
+                        const column_offset_in_line = document_cell_offset - line_col_offset;
                         const ellipsis_width: u32 = 3;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                        if (column_offset_in_line >= vline.ellipsis_col and column_offset_in_line < vline.ellipsis_col + ellipsis_width) {
                             lineFg = defaultFg;
                             lineBg = defaultBg;
                             lineAttributes = defaultAttributes;
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        } else if (column_offset_in_line >= vline.ellipsis_col + ellipsis_width) {
+                            const suffix_col_pos = vline.truncation_suffix_col_start + (column_offset_in_line - vline.ellipsis_col - ellipsis_width);
                             if (spans.len == 0) {
                                 lineFg = defaultFg;
                                 lineBg = defaultBg;
@@ -1969,7 +1956,7 @@ pub const OptimizedBuffer = struct {
                     const finalAttributes = lineAttributes;
 
                     var cell_idx: u32 = 0;
-                    while (cell_idx < g_width) : (cell_idx += 1) {
+                    while (cell_idx < cluster_width_cols) : (cell_idx += 1) {
                         if (view.getSelection()) |sel| {
                             const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
                             if (isSelected) {
@@ -1990,7 +1977,7 @@ pub const OptimizedBuffer = struct {
 
                     // Skip zero-width characters (ZWJ, VS16, etc.) - don't render them
                     // Don't increment col since they take no space
-                    if (g_width == 0) {
+                    if (cluster_width_cols == 0) {
                         continue;
                     }
 
@@ -2020,8 +2007,8 @@ pub const OptimizedBuffer = struct {
                         const tab_indicator_color = view.getTabIndicatorColor();
 
                         var tab_col: u32 = 0;
-                        while (tab_col < g_width) : (tab_col += 1) {
-                            if (column_in_line + tab_col >= horizontal_offset + viewport_width) break;
+                        while (tab_col < cluster_width_cols) : (tab_col += 1) {
+                            if (rendered_col_in_vline + tab_col >= horizontal_offset + viewport_width) break;
                             const tab_x = currentX + @as(i32, @intCast(tab_col));
                             if (tab_x < 0) continue;
                             if (tab_x >= @as(i32, @intCast(self.width))) break;
@@ -2045,26 +2032,26 @@ pub const OptimizedBuffer = struct {
                         }
                     } else {
                         var encoded_char: u32 = 0;
-                        if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
+                        if (grapheme_bytes.len == 1 and cluster_width_cols == 1 and grapheme_bytes[0] >= 32) {
                             encoded_char = @as(u32, grapheme_bytes[0]);
                         } else {
                             const gid = self.pool.alloc(grapheme_bytes) catch |err| {
                                 logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
-                                globalCharPos += g_width;
-                                currentX += @as(i32, @intCast(g_width));
-                                col += g_width;
+                                document_cell_offset += cluster_width_cols;
+                                currentX += @as(i32, @intCast(cluster_width_cols));
+                                col += cluster_width_cols;
                                 continue;
                             };
-                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cluster_width_cols);
                         }
 
                         if (useTransparentTextFastPath) {
                             const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
                             if (self.trySetTransparentTextCellFast(index, encoded_char, drawFg, drawAttributes)) {
-                                globalCharPos += g_width;
-                                currentX += @as(i32, @intCast(g_width));
-                                column_in_line += g_width;
-                                col += g_width;
+                                document_cell_offset += cluster_width_cols;
+                                currentX += @as(i32, @intCast(cluster_width_cols));
+                                rendered_col_in_vline += cluster_width_cols;
+                                col += cluster_width_cols;
                                 continue;
                             }
                         }
@@ -2076,10 +2063,10 @@ pub const OptimizedBuffer = struct {
                         );
                     }
 
-                    globalCharPos += g_width;
-                    currentX += @as(i32, @intCast(g_width));
-                    column_in_line += g_width;
-                    col += g_width;
+                    document_cell_offset += cluster_width_cols;
+                    currentX += @as(i32, @intCast(cluster_width_cols));
+                    rendered_col_in_vline += cluster_width_cols;
+                    col += cluster_width_cols;
                 }
             }
 
@@ -2089,7 +2076,7 @@ pub const OptimizedBuffer = struct {
             if (is_last_vline_of_logical_line) {
                 const is_last_logical_line = vline.source_line + 1 >= total_line_count;
                 if (!is_last_logical_line) {
-                    globalCharPos += 1;
+                    document_cell_offset += 1;
                 }
             }
 

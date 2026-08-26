@@ -445,6 +445,7 @@ pub fn Rope(comptime T: type) type {
 
         pub const UndoNode = struct {
             root: *const Node,
+            metrics_generation: u64,
             next: ?*UndoNode = null,
             branches: ?*UndoBranch = null,
             meta: []const u8,
@@ -456,6 +457,7 @@ pub fn Rope(comptime T: type) type {
         };
 
         root: *const Node,
+        metrics_generation: u64 = 0,
         allocator: Allocator,
         empty_leaf: *const Node,
         undo_history: ?*UndoNode = null,
@@ -565,6 +567,45 @@ pub fn Rope(comptime T: type) type {
             if (result.err) |e| return e;
         }
 
+        pub fn metricsGeneration(self: *const Self) u64 {
+            return self.metrics_generation;
+        }
+
+        pub fn setMetricsGeneration(self: *Self, generation: u64) void {
+            self.metrics_generation = generation;
+            // An undo/redo history node may alias the active root; keep its stamp
+            // current so revisiting that root does not restore a stale generation.
+            if (self.curr_history) |current| {
+                if (current.root == self.root) current.metrics_generation = generation;
+            }
+        }
+
+        /// Recompute cached branch metrics after the owner updates derived leaf data.
+        /// The persistent structure is unchanged; only aggregate caches are mutated.
+        pub fn remeasure(self: *Self) void {
+            _ = remeasureNode(self.root);
+            self.version +%= 1;
+        }
+
+        fn remeasureNode(node: *const Node) Metrics {
+            return switch (node.*) {
+                .leaf => |*leaf| leaf.metrics(),
+                .branch => |*branch| blk: {
+                    const left_metrics = remeasureNode(branch.left);
+                    const right_metrics = remeasureNode(branch.right);
+                    var total_metrics = Metrics{};
+                    total_metrics.add(left_metrics);
+                    total_metrics.add(right_metrics);
+                    total_metrics.depth += 1;
+
+                    const mutable = @constCast(branch);
+                    mutable.left_metrics = left_metrics;
+                    mutable.total_metrics = total_metrics;
+                    break :blk total_metrics;
+                },
+            };
+        }
+
         fn walkNode(self: *const Self, node: *const Node, ctx: *anyopaque, f: Node.WalkerFn, current_index: *u32) Node.WalkerResult {
             return switch (node.*) {
                 .branch => |*b| {
@@ -657,6 +698,7 @@ pub fn Rope(comptime T: type) type {
             self.version += 1;
             return Self{
                 .root = result.right,
+                .metrics_generation = self.metrics_generation,
                 .allocator = self.allocator,
                 .empty_leaf = self.empty_leaf,
                 .undo_history = null,
@@ -788,8 +830,8 @@ pub fn Rope(comptime T: type) type {
                             try writer.writeByte(':');
                             try writer.print("w{d}", .{metrics.weight()});
 
-                            if (@hasDecl(T.Metrics, "total_width")) {
-                                try writer.print(",tw{d}", .{metrics.custom.total_width});
+                            if (@hasDecl(T.Metrics, "total_width_cols")) {
+                                try writer.print(",tw{d}", .{metrics.custom.total_width_cols});
                             }
                             if (@hasDecl(T.Metrics, "total_bytes")) {
                                 try writer.print(",b{d}", .{metrics.custom.total_bytes});
@@ -820,6 +862,7 @@ pub fn Rope(comptime T: type) type {
             self.version += 1;
             return Self{
                 .root = result.right,
+                .metrics_generation = self.metrics_generation,
                 .allocator = self.allocator,
                 .empty_leaf = self.empty_leaf,
                 .undo_history = null,
@@ -1008,6 +1051,7 @@ pub fn Rope(comptime T: type) type {
             const meta = try self.allocator.dupe(u8, meta_);
             undo_node.* = UndoNode{
                 .root = root,
+                .metrics_generation = self.metrics_generation,
                 .meta = meta,
             };
             return undo_node;
@@ -1072,6 +1116,7 @@ pub fn Rope(comptime T: type) type {
             self.undo_history = h.next;
             self.curr_history = h;
             self.root = h.root;
+            self.metrics_generation = h.metrics_generation;
             self.version += 1;
             self.push_redo(r);
             if (self.undo_depth > 0) self.undo_depth -= 1;
@@ -1085,6 +1130,7 @@ pub fn Rope(comptime T: type) type {
             self.redo_history = h.next;
             self.curr_history = h;
             self.root = h.root;
+            self.metrics_generation = h.metrics_generation;
             self.version += 1;
             self.push_undo(u);
             return h.meta;

@@ -30,22 +30,43 @@ pub const WrapIndent = enum {
     same,
 };
 
-pub const ChunkFitResult = struct {
-    char_count: u32,
-    width: u32,
+pub const RenderClusterInfo = utf8.RenderClusterInfo;
+pub const ChunkLayoutInfo = utf8.ChunkLayoutInfo;
+
+const CachedMeasure = struct {
+    wrap_width: u32,
+    first_width: u32,
+    tab_width: u8,
+    width_method: utf8.WidthMethod,
+    result: WordMeasureSummary,
 };
 
-pub const GraphemeInfo = utf8.GraphemeInfo;
+pub const TextChunkColdState = struct {
+    render_clusters: ?[]RenderClusterInfo = null,
+    render_clusters_capacity: usize = 0,
+    render_clusters_tab_width: ?u8 = null,
+    render_clusters_width_method: ?utf8.WidthMethod = null,
+    wrap_breaks: ?[]utf8.LayoutWrapBreak = null,
+    wrap_breaks_capacity: usize = 0,
+    wrap_breaks_tab_width: ?u8 = null,
+    wrap_breaks_width_method: ?utf8.WidthMethod = null,
+    word_classes: utf8.WordClassEdges = .{ .first = .other, .last = .other },
+    measure_word: ?CachedMeasure = null,
+};
+
+pub const WordMeasureSummary = struct {
+    line_count: u32,
+    width_max: u32,
+};
 
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
     mem_id: u8,
     byte_start: u32,
     byte_end: u32,
-    width: u16,
+    width_cols: u32,
     flags: u8 = 0,
-    graphemes: ?[]GraphemeInfo = null,
-    wrap_offsets: ?[]utf8.WrapBreak = null,
+    cold: ?*TextChunkColdState = null,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
@@ -60,12 +81,12 @@ pub const TextChunk = struct {
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 0,
-            .width = 0,
+            .width_cols = 0,
         };
     }
 
     pub fn is_empty(self: *const TextChunk) bool {
-        return self.width == 0;
+        return self.width_cols == 0;
     }
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
@@ -73,67 +94,172 @@ pub const TextChunk = struct {
         return mem_buf[self.byte_start..self.byte_end];
     }
 
-    /// Lazily compute and cache grapheme info for this chunk
-    /// Returns a slice that is valid until the buffer is reset
+    fn getOrCreateCold(self: *const TextChunk, allocator: Allocator) TextBufferError!*TextChunkColdState {
+        if (self.cold) |cold| return cold;
+        // Derived state lives behind an indirection to keep persistent rope leaves small.
+        // Attaching it does not change the chunk's rope metrics.
+        const cold = allocator.create(TextChunkColdState) catch return TextBufferError.OutOfMemory;
+        cold.* = .{};
+        @constCast(self).cold = cold;
+        return cold;
+    }
+
+    pub fn getCachedLayoutInfo(
+        self: *const TextChunk,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) ?ChunkLayoutInfo {
+        const cold = self.cold orelse return null;
+        const cached = cold.wrap_breaks orelse return null;
+        if (cold.wrap_breaks_tab_width != tabwidth or cold.wrap_breaks_width_method != width_method) return null;
+        return .{
+            .wrap_breaks = cached,
+            .word_classes = cold.word_classes,
+        };
+    }
+
+    pub fn getWordMeasureSummary(
+        self: *const TextChunk,
+        wrap_width: u32,
+        first_width: u32,
+        tab_width: u8,
+        width_method: utf8.WidthMethod,
+    ) ?WordMeasureSummary {
+        const cold = self.cold orelse return null;
+        const cached = cold.measure_word orelse return null;
+        if (cached.wrap_width != wrap_width or
+            cached.first_width != first_width or
+            cached.tab_width != tab_width or
+            cached.width_method != width_method) return null;
+        return cached.result;
+    }
+
+    pub fn setWordMeasureSummary(
+        self: *const TextChunk,
+        allocator: Allocator,
+        wrap_width: u32,
+        first_width: u32,
+        tab_width: u8,
+        width_method: utf8.WidthMethod,
+        summary: WordMeasureSummary,
+    ) TextBufferError!void {
+        const cold = try self.getOrCreateCold(allocator);
+        cold.measure_word = .{
+            .wrap_width = wrap_width,
+            .first_width = first_width,
+            .tab_width = tab_width,
+            .width_method = width_method,
+            .result = summary,
+        };
+    }
+
+    /// Lazily compute and cache sparse render-cluster metadata for this chunk
+    /// Returned storage is arena-owned until reset, but a lookup with different
+    /// tab-dependent settings may overwrite it.
     /// For ASCII-only chunks, returns an empty slice (sentinel)
-    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
-    pub fn getGraphemes(
+    /// For mixed chunks, returns only multibyte render clusters and tabs with their cell-column starts
+    pub fn getRenderClusters(
         self: *const TextChunk,
         allocator: Allocator,
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError![]const GraphemeInfo {
-        const mut_self = @constCast(self);
-        if (self.graphemes) |cached| {
-            return cached;
-        }
+    ) TextBufferError![]const RenderClusterInfo {
+        if (self.isAsciiOnly()) return &[_]RenderClusterInfo{};
 
-        if (self.isAsciiOnly()) {
-            const empty_slice = try allocator.alloc(GraphemeInfo, 0);
-            mut_self.graphemes = empty_slice;
-            return empty_slice;
+        const cold = try self.getOrCreateCold(allocator);
+        if (cold.render_clusters) |cached| {
+            if (cold.render_clusters_tab_width == tabwidth and cold.render_clusters_width_method == width_method) {
+                return cached;
+            }
+
+            var reusable: std.ArrayListUnmanaged(RenderClusterInfo) = .{
+                .items = cached,
+                .capacity = cold.render_clusters_capacity,
+            };
+            reusable.clearRetainingCapacity();
+            try utf8.findRenderClusterInfo(allocator, self.getBytes(mem_registry), tabwidth, self.isAsciiOnly(), width_method, &reusable);
+            cold.render_clusters = reusable.items;
+            cold.render_clusters_capacity = reusable.capacity;
+            cold.render_clusters_tab_width = tabwidth;
+            cold.render_clusters_width_method = width_method;
+            return reusable.items;
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
 
-        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .empty;
-        errdefer grapheme_list.deinit(allocator);
+        var render_cluster_list: std.ArrayListUnmanaged(RenderClusterInfo) = .empty;
+        errdefer render_cluster_list.deinit(allocator);
 
-        try utf8.findGraphemeInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);
+        try utf8.findRenderClusterInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &render_cluster_list);
 
-        // TODO: Calling this with an arena allocator will just double the memory usage?
-        const graphemes = try grapheme_list.toOwnedSlice(allocator);
-
-        mut_self.graphemes = graphemes;
-        return graphemes;
+        cold.render_clusters = render_cluster_list.items;
+        cold.render_clusters_capacity = render_cluster_list.capacity;
+        cold.render_clusters_tab_width = tabwidth;
+        cold.render_clusters_width_method = width_method;
+        return render_cluster_list.items;
     }
 
-    /// Lazily compute and cache wrap offsets for this chunk
-    /// Returns a slice that is valid until the buffer is reset
-    pub fn getWrapOffsets(
+    /// Lazily compute and cache direct byte/column wrap metadata for this chunk.
+    pub fn getLayoutInfo(
         self: *const TextChunk,
         allocator: Allocator,
         mem_registry: *const MemRegistry,
+        tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError![]const utf8.WrapBreak {
-        const mut_self = @constCast(self);
-        if (self.wrap_offsets) |cached| {
-            return cached;
+    ) TextBufferError!ChunkLayoutInfo {
+        const cold = try self.getOrCreateCold(allocator);
+        if (cold.wrap_breaks) |cached| {
+            if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method) {
+                return .{
+                    .wrap_breaks = cached,
+                    .word_classes = cold.word_classes,
+                };
+            }
+
+            if (cold.wrap_breaks_width_method == width_method) {
+                var reusable: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .{
+                    .items = cached,
+                    .capacity = cold.wrap_breaks_capacity,
+                };
+                reusable.clearRetainingCapacity();
+                const word_classes = try utf8.findChunkLayoutInfo(
+                    allocator,
+                    self.getBytes(mem_registry),
+                    tabwidth,
+                    self.isAsciiOnly(),
+                    width_method,
+                    &reusable,
+                );
+                cold.wrap_breaks = reusable.items;
+                cold.wrap_breaks_capacity = reusable.capacity;
+                cold.wrap_breaks_tab_width = tabwidth;
+                cold.word_classes = word_classes;
+                return .{
+                    .wrap_breaks = reusable.items,
+                    .word_classes = word_classes,
+                };
+            }
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
-        var wrap_result = utf8.WrapBreakResult.init(allocator);
-        errdefer wrap_result.deinit();
+        var wrap_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+        errdefer wrap_breaks.deinit(allocator);
 
-        try utf8.findWrapBreaks(chunk_bytes, &wrap_result, width_method);
+        const word_classes = try utf8.findChunkLayoutInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &wrap_breaks);
 
-        // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
-        // Use toOwnedSlice to transfer ownership without copying
-        const wrap_offsets = try wrap_result.breaks.toOwnedSlice(allocator);
-        mut_self.wrap_offsets = wrap_offsets;
+        // The static sentinel has zero capacity, so reuse must allocate before writing.
+        const cached: []utf8.LayoutWrapBreak = if (wrap_breaks.items.len > 0) wrap_breaks.items else @constCast(&[_]utf8.LayoutWrapBreak{});
+        cold.wrap_breaks = cached;
+        cold.wrap_breaks_capacity = wrap_breaks.capacity;
+        cold.wrap_breaks_tab_width = tabwidth;
+        cold.wrap_breaks_width_method = width_method;
+        cold.word_classes = word_classes;
 
-        return wrap_offsets;
+        return .{
+            .wrap_breaks = cached,
+            .word_classes = word_classes,
+        };
     }
 };
 
@@ -167,30 +293,30 @@ pub const Segment = union(enum) {
     /// Metrics for aggregation in the rope tree
     /// These enable O(log n) row/col coordinate mapping and efficient line queries
     pub const Metrics = struct {
-        total_width: u32 = 0,
+        total_width_cols: u32 = 0,
         total_bytes: u32 = 0,
         linestart_count: u32 = 0,
         newline_count: u32 = 0,
-        max_line_width: u32 = 0,
+        max_line_width_cols: u32 = 0,
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
         ascii_only: bool = true,
 
         pub fn add(self: *Metrics, other: Metrics) void {
-            self.total_width += other.total_width;
+            self.total_width_cols += other.total_width_cols;
             self.total_bytes += other.total_bytes;
             self.linestart_count += other.linestart_count;
             self.newline_count += other.newline_count;
 
-            self.max_line_width = @max(self.max_line_width, other.max_line_width);
+            self.max_line_width_cols = @max(self.max_line_width_cols, other.max_line_width_cols);
 
             self.ascii_only = self.ascii_only and other.ascii_only;
         }
 
         /// Get the balancing weight for the rope
-        /// We use total_width + newline_count to give each break a weight of 1
+        /// We use total_width_cols + newline_count to give each break a weight of 1
         /// This eliminates boundary ambiguity in coordinate/offset conversions
         pub fn weight(self: *const Metrics) u32 {
-            return self.total_width + self.newline_count;
+            return self.total_width_cols + self.newline_count;
         }
     };
 
@@ -201,28 +327,28 @@ pub const Segment = union(enum) {
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const byte_len = chunk.byte_end - chunk.byte_start;
                 break :blk Metrics{
-                    .total_width = chunk.width,
+                    .total_width_cols = chunk.width_cols,
                     .total_bytes = byte_len,
                     .linestart_count = 0,
                     .newline_count = 0,
-                    .max_line_width = chunk.width,
+                    .max_line_width_cols = chunk.width_cols,
                     .ascii_only = is_ascii,
                 };
             },
             .brk => Metrics{
-                .total_width = 0,
+                .total_width_cols = 0,
                 .total_bytes = 0,
                 .linestart_count = 0,
                 .newline_count = 1,
-                .max_line_width = 0,
+                .max_line_width_cols = 0,
                 .ascii_only = true,
             },
             .linestart => Metrics{
-                .total_width = 0,
+                .total_width_cols = 0,
                 .total_bytes = 0,
                 .linestart_count = 1,
                 .newline_count = 0,
-                .max_line_width = 0,
+                .max_line_width_cols = 0,
                 .ascii_only = true,
             },
         };
@@ -304,10 +430,8 @@ pub const Segment = union(enum) {
                 .mem_id = left_chunk.mem_id,
                 .byte_start = left_chunk.byte_start,
                 .byte_end = right_chunk.byte_end,
-                .width = left_chunk.width + right_chunk.width,
+                .width_cols = left_chunk.width_cols + right_chunk.width_cols,
                 .flags = left_chunk.flags,
-                .graphemes = null,
-                .wrap_offsets = null,
             },
         };
     }

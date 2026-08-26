@@ -3,6 +3,61 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
+pub const std_options: std.Options = .{
+    .log_level = .debug,
+    .logFn = handleStdLog,
+};
+
+fn handleStdLog(
+    comptime message_level: std.log.Level,
+    comptime scope: @EnumLiteral(),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const ghostty_scope = switch (scope) {
+        .parser,
+        .stream,
+        .stream_terminal,
+        .screen,
+        .terminal,
+        .terminal_mem,
+        .terminal_apc,
+        .terminal_dcs,
+        .osc,
+        .osc_color,
+        .osc_iterm2,
+        .kitty_gfx,
+        .key_encode,
+        .mouse_encode,
+        .render_state_c,
+        => true,
+        else => false,
+    };
+    if (!ghostty_scope) return;
+    const configured = ghosttyLogLevel() orelse return;
+    if (@intFromEnum(message_level) > @intFromEnum(configured)) return;
+
+    const level: logger.LogLevel = switch (message_level) {
+        .err => .err,
+        .warn => .warn,
+        .info => .info,
+        .debug => .debug,
+    };
+    logger.logMessage(level, "(" ++ @tagName(scope) ++ ") " ++ format, args);
+}
+
+fn ghosttyLogLevel() ?std.log.Level {
+    const Environment = struct {
+        extern "c" fn getenv(name: [*:0]const u8) ?[*:0]const u8;
+    };
+    const value = std.mem.span(Environment.getenv("OTUI_GHOSTTY_LOG_LEVEL") orelse return null);
+    if (std.ascii.eqlIgnoreCase(value, "error") or std.ascii.eqlIgnoreCase(value, "err")) return .err;
+    if (std.ascii.eqlIgnoreCase(value, "warning") or std.ascii.eqlIgnoreCase(value, "warn")) return .warn;
+    if (std.ascii.eqlIgnoreCase(value, "info")) return .info;
+    if (std.ascii.eqlIgnoreCase(value, "debug")) return .debug;
+    return null;
+}
+
 var io_threaded: std.Io.Threaded = .init_single_threaded;
 pub const io = io_threaded.io();
 
@@ -1283,6 +1338,21 @@ export fn getCurrentBuffer(renderer_handle: NativeHandle) NativeHandle {
     return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(object_ptr.getCurrentBuffer()), renderer_handle) catch INVALID_HANDLE;
 }
 
+fn widthMethodFromInt(value: u8) utf8.WidthMethod {
+    return switch (value) {
+        @intFromEnum(utf8.WidthMethod.wcwidth) => .wcwidth,
+        @intFromEnum(utf8.WidthMethod.unicode_wide) => .unicode_wide,
+        else => .unicode,
+    };
+}
+
+test "widthMethodFromInt preserves legacy numeric inputs" {
+    try std.testing.expectEqual(utf8.WidthMethod.wcwidth, widthMethodFromInt(0));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode, widthMethodFromInt(1));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode, widthMethodFromInt(2));
+    try std.testing.expectEqual(utf8.WidthMethod.unicode_wide, widthMethodFromInt(3));
+}
+
 export fn setHyperlinksCapability(renderer_handle: NativeHandle, enabled: bool) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.terminal.caps.hyperlinks = enabled;
@@ -1300,6 +1370,11 @@ export fn getBufferWidth(buffer_handle: NativeHandle) u32 {
 export fn getBufferHeight(buffer_handle: NativeHandle) u32 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
     return object_ptr.height;
+}
+
+export fn getBufferWidthMethod(buffer_handle: NativeHandle) u8 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return @intFromEnum(utf8.WidthMethod.unicode);
+    return @intFromEnum(object_ptr.width_method);
 }
 
 fn packRenderResult(result: renderer.RenderResult) u64 {
@@ -1377,7 +1452,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: u8, width
 
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
     const id = sliceFromPtrLen(idPtr, idLen);
 
     const bufferPtr = buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
@@ -1467,7 +1542,11 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .kitty_graphics = caps.kitty_graphics,
         .rgb = caps.rgb,
         .ansi256 = caps.ansi256,
-        .unicode = if (caps.unicode == .wcwidth) 0 else 1,
+        .unicode = switch (caps.unicode) {
+            .wcwidth => 0,
+            .unicode_wide => 3,
+            .unicode, .no_zwj => 1,
+        },
         .sgr_pixels = caps.sgr_pixels,
         .color_scheme_updates = caps.color_scheme_updates,
         .explicit_width = caps.explicit_width,
@@ -2105,7 +2184,7 @@ fn destroyTextBufferViewChildren(owner: NativeHandle) void {
 export fn createTextBuffer(widthMethod: u8) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
 
     const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return INVALID_HANDLE;
@@ -2464,7 +2543,7 @@ fn destroyEditorViewChildren(owner: NativeHandle) void {
 export fn createEditBuffer(widthMethod: u8, event_sink_handle: NativeHandle) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
     const event_sink_ptr = if (event_sink_handle == INVALID_HANDLE) null else acquireEventSink(event_sink_handle);
     const event_sink = if (event_sink_ptr) |object_ptr| object_ptr else null;
 
@@ -3645,18 +3724,18 @@ export fn encodeUnicode(
     }
 
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod = widthMethodFromInt(widthMethod);
 
     // Check if ASCII only for optimization
     const is_ascii_only = utf8.isAsciiOnly(text);
 
-    // Find grapheme info
-    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
-    defer grapheme_list.deinit(globalAllocator);
+    // Find sparse render-cluster metadata.
+    var render_cluster_list: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
+    defer render_cluster_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;
-    utf8.findGraphemeInfo(globalAllocator, text, tab_width, is_ascii_only, wMethod, &grapheme_list) catch return false;
-    const specials = grapheme_list.items;
+    utf8.findRenderClusterInfo(globalAllocator, text, tab_width, is_ascii_only, wMethod, &render_cluster_list) catch return false;
+    const render_clusters = render_cluster_list.items;
 
     // Allocate output array
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
@@ -3692,27 +3771,27 @@ export fn encodeUnicode(
     var special_idx: usize = 0;
 
     while (byte_offset < text.len) {
-        const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+        const at_special = special_idx < render_clusters.len and render_clusters[special_idx].col_start == col;
 
         var grapheme_bytes: []const u8 = undefined;
-        var g_width: u8 = undefined;
+        var cluster_width_cols: u32 = undefined;
 
         if (at_special) {
-            const g = specials[special_idx];
-            grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
-            g_width = g.width;
-            byte_offset = g.byte_offset + g.byte_len;
+            const g = render_clusters[special_idx];
+            grapheme_bytes = text[g.byte_start .. g.byte_start + g.byte_len];
+            cluster_width_cols = g.width_cols;
+            byte_offset = g.byte_start + g.byte_len;
             special_idx += 1;
         } else {
             if (byte_offset >= text.len) break;
             grapheme_bytes = text[byte_offset .. byte_offset + 1];
-            g_width = 1;
+            cluster_width_cols = 1;
             byte_offset += 1;
         }
 
-        const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, wMethod);
+        const cell_width = utf8.getWidthAt(text, if (at_special) render_clusters[special_idx - 1].byte_start else byte_offset - 1, tab_width, wMethod);
         if (cell_width == 0) {
-            col += g_width;
+            col += cluster_width_cols;
             continue;
         }
 
@@ -3746,7 +3825,7 @@ export fn encodeUnicode(
         };
         pending_gid = null; // Successfully stored, no longer pending
         result_idx += 1;
-        col += g_width;
+        col += cluster_width_cols;
     }
 
     // Trim to actual size

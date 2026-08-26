@@ -199,45 +199,45 @@ test "wcwidth: mixed content with cursor movement" {
     try testing.expectEqual(@as(u32, 1), r_a.?.width);
 }
 
-test "wcwidth: findGraphemeInfo with emoji" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "wcwidth: findRenderClusterInfo with emoji" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_start);
+    try testing.expectEqual(@as(u32, 8), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width_cols);
 }
 
-test "wcwidth: findGraphemeInfo with ZWJ sequence" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "wcwidth: findRenderClusterInfo with ZWJ sequence" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
-    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 11), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 4), result.items[0].width);
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_start);
+    try testing.expectEqual(@as(u32, 11), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 4), result.items[0].width_cols);
 }
 
-test "wcwidth: findGraphemeInfo with combining marks" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
+test "wcwidth: findRenderClusterInfo with combining marks" {
+    var result: std.ArrayListUnmanaged(utf8.RenderClusterInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}"; // e + combining acute
-    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
+    try utf8.findRenderClusterInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_start);
+    try testing.expectEqual(@as(u32, 3), result.items[0].byte_len);
+    try testing.expectEqual(@as(u32, 1), result.items[0].width_cols);
 }
 
 test "wcwidth: tab width handling" {

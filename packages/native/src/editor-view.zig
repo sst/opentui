@@ -472,8 +472,8 @@ pub const EditorView = struct {
 
         var new_offset_x = vp.x;
         if (self.text_buffer_view.wrap_mode == .none) {
-            const max_line_width = iter_mod.getMaxLineWidth(self.edit_buffer.tb.rope());
-            const max_offset_x = if (max_line_width > vp.width) max_line_width - vp.width else 0;
+            const max_line_width_cols = iter_mod.getMaxLineWidth(self.edit_buffer.tb.rope());
+            const max_offset_x = if (max_line_width_cols > vp.width) max_line_width_cols - vp.width else 0;
             if (vp.x > max_offset_x) {
                 new_offset_x = max_offset_x;
             }
@@ -498,6 +498,7 @@ pub const EditorView = struct {
     }
 
     pub fn setWrapIndent(self: *EditorView, indent: tb.WrapIndent) void {
+        self.cursor_visual_affinity = null;
         self.text_buffer_view.setWrapIndent(indent);
     }
 
@@ -551,14 +552,21 @@ pub const EditorView = struct {
 
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vline = &vlines[visual_row];
-        if (vline.source_line != cursor.row or cursor.offset < vline.col_offset) {
+        if (vline.source_line != cursor.row or cursor.offset < vline.document_cell_offset) {
             self.cursor_visual_affinity = null;
             return;
         }
 
-        const visual_col = cursor.offset - vline.col_offset;
+        const visual_col = cursor.offset - vline.document_cell_offset;
         var visual_col_max = vline.width_cols;
-        if (self.text_buffer_view.getSelectionOccupancy() == .cell and vline.width_cols > 0 and visual_row + 1 < vlines.len) {
+        const viewport_width = if (self.text_buffer_view.getViewport()) |vp| vp.width else vline.width_cols;
+        // An overwide visual line may be one atomic grapheme; do not reserve a
+        // viewport-edge cell as though it were an ordinary soft wrap.
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell and
+            vline.width_cols > 0 and
+            vline.width_cols <= viewport_width and
+            visual_row + 1 < vlines.len)
+        {
             const next_vline = &vlines[visual_row + 1];
             if (next_vline.source_line == vline.source_line) visual_col_max -= 1;
         }
@@ -643,11 +651,11 @@ pub const EditorView = struct {
         }
 
         const vline = &vlines[visual_row_idx];
-        const vline_start_col = vline.source_col_offset;
+        const vline_start_col = vline.source_col_start;
 
         // Calculate visual column within this virtual line
         const visual_col = if (clamped_col >= vline_start_col)
-            clamped_col - vline_start_col
+            @min(clamped_col - vline_start_col, vline.width_cols)
         else
             0;
 
@@ -672,7 +680,7 @@ pub const EditorView = struct {
 
         const vline = &vlines[visual_row];
         const clamped_visual_col = @min(visual_col, vline.width_cols);
-        const logical_col = vline.source_col_offset + clamped_visual_col;
+        const logical_col = vline.source_col_start + clamped_visual_col;
         const logical_row = @as(u32, @intCast(vline.source_line));
 
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
@@ -855,7 +863,7 @@ pub const EditorView = struct {
         }
 
         const vline = &vlines[vcursor.visual_row];
-        const logical_col = vline.source_col_offset; // Start column of this visual line
+        const logical_col = vline.source_col_start; // Start column of this visual line
         const logical_row = @as(u32, @intCast(vline.source_line));
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
@@ -884,21 +892,26 @@ pub const EditorView = struct {
         }
 
         const vline = &vlines[vcursor.visual_row];
+        const viewport_width = if (self.text_buffer_view.getViewport()) |vp| vp.width else vline.width_cols;
+        // Keep an overwide grapheme atomic instead of targeting a synthetic wrap cell.
+        const oversized_visual_line = vline.width_cols > viewport_width;
         var target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
             vline.width_cols
+        else if (oversized_visual_line)
+            @min(vcursor.visual_col, vline.width_cols)
         else
             clampVisualColToStayOnVisualRow(vlines, vcursor.visual_row, vline.width_cols);
-        if (self.text_buffer_view.getSelectionOccupancy() == .cell) {
-            const target_offset = vline.col_offset + target_visual_col;
+        if (self.text_buffer_view.getSelectionOccupancy() == .cell and !oversized_visual_line) {
+            const target_offset = vline.document_cell_offset + target_visual_col;
             if (self.edit_buffer.tb.cursorUnitBoundsAtOffset(target_offset)) |bounds| {
                 if (bounds.start < target_offset) {
-                    const target = if (bounds.start >= vline.col_offset) bounds.start else bounds.end;
-                    target_visual_col = @min(target -| vline.col_offset, vline.width_cols);
+                    const target = if (bounds.start >= vline.document_cell_offset) bounds.start else bounds.end;
+                    target_visual_col = @min(target -| vline.document_cell_offset, vline.width_cols);
                 }
             }
         }
         const logical_row = @as(u32, @intCast(vline.source_line));
-        const logical_col = vline.source_col_offset + target_visual_col;
+        const logical_col = vline.source_col_start + target_visual_col;
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
         return .{

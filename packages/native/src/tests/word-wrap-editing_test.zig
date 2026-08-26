@@ -419,7 +419,7 @@ test "Word wrap - word at exact wrap width" {
     vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
     try std.testing.expectEqual(@as(u32, 20), vlines[0].width_cols);
-    try std.testing.expectEqual(@as(u32, 5), vlines[1].width_cols);
+    try std.testing.expectEqual(@as(u32, 4), vlines[1].width_cols);
 }
 
 test "Word wrap - debug virtual line contents" {

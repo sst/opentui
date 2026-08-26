@@ -897,9 +897,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _useConsole: boolean = true
   private sigwinchHandler: () => void = (() => {
-    const width = this.stdout.columns || 80
-    const height = this.stdout.rows || 24
-    this.handleResize(width, height)
+    const width = this.stdout.columns
+    const height = this.stdout.rows
+    if (width > 0 && height > 0) this.handleResize(width, height)
   }).bind(this)
   private _capabilities: TerminalCapabilities | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
@@ -1439,8 +1439,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get widthMethod(): WidthMethod {
-    const caps = this.capabilities
-    return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
+    return this.capabilities?.unicode ?? this.nextRenderBuffer.widthMethod
   }
 
   public get frameId(): number {
@@ -4532,6 +4531,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
+    const startedWhileRunning = this._isRunning
     if (this.renderTimeout) {
       this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
@@ -4645,7 +4645,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.renderTimeout = null
           }
         } else if (nativeStatus === "backpressured") {
-          this.scheduleRenderAfterBackpressure()
+          if (!startedWhileRunning || this._isRunning || this.immediateRerenderRequested) {
+            this.scheduleRenderAfterBackpressure()
+          }
         } else if (nativeStatus === "retryable-skip") {
           this.immediateRerenderRequested = false
           this.renderTimeout = null
