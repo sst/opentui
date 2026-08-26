@@ -105,6 +105,7 @@ pub const TabStopResult = struct {
 pub const LayoutWrapBreakKind = enum(u8) {
     none,
     whitespace,
+    preserved_whitespace,
     punctuation,
     script_transition,
 };
@@ -1481,10 +1482,13 @@ inline fn commitLayoutCluster(
     cluster_col_offset: u32,
     cluster_width: u32,
     cluster_break_kind: LayoutWrapBreakKind,
+    cluster_has_non_whitespace: bool,
     cluster_class: WordClass,
     next_class: ?WordClass,
 ) !bool {
-    const kind: LayoutWrapBreakKind = if (cluster_break_kind != .none)
+    const kind: LayoutWrapBreakKind = if (cluster_break_kind == .whitespace and cluster_has_non_whitespace)
+        .preserved_whitespace
+    else if (cluster_break_kind != .none)
         cluster_break_kind
     else if (next_class != null and isCjkAsciiTransition(cluster_class, next_class.?))
         .script_transition
@@ -1611,6 +1615,7 @@ fn walkChunkLayoutInfoGeneric(
     var cluster_col_offset: u32 = 0;
     var cluster_width_state: GraphemeWidthState = undefined;
     var cluster_break_kind: LayoutWrapBreakKind = .none;
+    var cluster_has_non_whitespace = false;
     var cluster_class: WordClass = .other;
 
     while (pos < text.len) {
@@ -1636,6 +1641,7 @@ fn walkChunkLayoutInfoGeneric(
                             cluster_col_offset,
                             cluster_width_state.width,
                             cluster_break_kind,
+                            cluster_has_non_whitespace,
                             cluster_class,
                             first_class,
                         )) return chunkWordClassEdges(text);
@@ -1660,6 +1666,7 @@ fn walkChunkLayoutInfoGeneric(
                     cluster_col_offset = col;
                     cluster_width_state = GraphemeWidthState.init(last_cp, asciiCharWidth(last_b, tab_width), width_method);
                     cluster_break_kind = asciiLayoutWrapBreakKind(last_b);
+                    cluster_has_non_whitespace = cluster_break_kind != .whitespace;
                     cluster_class = classifyWordClass(last_cp);
                     prev_cp = last_cp;
                     break_state = .default;
@@ -1691,6 +1698,7 @@ fn walkChunkLayoutInfoGeneric(
                     cluster_col_offset,
                     cluster_width_state.width,
                     cluster_break_kind,
+                    cluster_has_non_whitespace,
                     cluster_class,
                     curr_class,
                 )) return chunkWordClassEdges(text);
@@ -1702,11 +1710,13 @@ fn walkChunkLayoutInfoGeneric(
             cluster_col_offset = col;
             cluster_width_state = GraphemeWidthState.init(decoded.cp, cp_width, width_method);
             cluster_break_kind = if (b0 < 0x80) asciiLayoutWrapBreakKind(b0) else unicodeLayoutWrapBreakKind(decoded.cp);
+            cluster_has_non_whitespace = cluster_break_kind != .whitespace;
             cluster_class = curr_class;
         } else {
             cluster_width_state.addCodepoint(decoded.cp, cp_width);
             const next_break_kind = if (b0 < 0x80) asciiLayoutWrapBreakKind(b0) else unicodeLayoutWrapBreakKind(decoded.cp);
             if (next_break_kind == .whitespace or cluster_break_kind == .none) cluster_break_kind = next_break_kind;
+            cluster_has_non_whitespace = cluster_has_non_whitespace or next_break_kind != .whitespace;
         }
 
         prev_cp = decoded.cp;
@@ -1721,6 +1731,7 @@ fn walkChunkLayoutInfoGeneric(
             cluster_col_offset,
             cluster_width_state.width,
             cluster_break_kind,
+            cluster_has_non_whitespace,
             cluster_class,
             null,
         );
