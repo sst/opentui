@@ -292,8 +292,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   currentGenerator.setAutoSpawn(AUTO_SPAWN_RATE)
 
   resizeListener = (newWidth: number, newHeight: number) => {
-    if (framebuffer) {
-      framebuffer.resize(newWidth, newHeight)
+    if (framebufferRenderableRef) {
+      framebufferRenderableRef.width = newWidth
+      framebufferRenderableRef.height = newHeight
     }
     if (engine) {
       const camera = engine.getActiveCamera()

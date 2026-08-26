@@ -559,7 +559,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   }
 
   state.resizeHandler = (newWidth: number, newHeight: number) => {
-    framebuffer.resize(newWidth, newHeight)
+    framebufferRenderable.width = newWidth
+    framebufferRenderable.height = newHeight
 
     const newOrthoViewWidth = orthoViewHeight * state.engine.aspectRatio
     state.camera.left = newOrthoViewWidth / -2

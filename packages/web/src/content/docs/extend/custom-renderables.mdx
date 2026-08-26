@@ -125,8 +125,14 @@ With `buffered: true`, OpenTUI creates a private `OptimizedBuffer` for the rende
 relative to `(0, 0)` in that buffer. OpenTUI resizes and composites it after `renderSelf()`. Buffering does not turn the
 whole child subtree into one offscreen surface.
 
-An ancestor with `overflow: "hidden"` or `overflow: "scroll"` clips descendant drawing and hit testing. Keep custom
-drawing inside the renderable's computed rectangle. See [Buffer API](/docs/reference/buffer-api) for cell operations.
+Every renderable's own `render()`, `renderSelf()`, `renderBefore`, and `renderAfter` drawing must stay inside its computed
+layout rectangle. The renderer uses that rectangle to retain and redraw damaged rows; painting outside it can leave stale
+cells. Children may draw outside a parent's rectangle when its overflow is visible. Direct frame callbacks and
+postprocessors are separate drawing layers and are not subject to the renderable rectangle contract. Raw buffer-array
+writes are not checked and must follow the same bounds when performed by a renderable.
+
+An ancestor with `overflow: "hidden"` or `overflow: "scroll"` clips descendant drawing and hit testing. See
+[Buffer API](/docs/reference/buffer-api) for cell operations.
 
 ## Schedule updates
 

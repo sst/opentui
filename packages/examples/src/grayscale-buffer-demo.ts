@@ -206,7 +206,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
     WIDTH = width
     HEIGHT = height
     if (framebuffer) {
-      framebuffer.resize(width, height)
+      framebufferRenderable.width = width
+      framebufferRenderable.height = height
     }
   }
   renderer.on("resize", resizeListener)

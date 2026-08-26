@@ -105,7 +105,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   statusText.content = "Sprite loaded. Press t/u/`/k."
 
   resizeHandler = (newWidth: number, newHeight: number) => {
-    framebuffer.resize(newWidth, newHeight)
+    framebufferRenderable.width = newWidth
+    framebufferRenderable.height = newHeight
 
     const newAspectRatio = engine!.aspectRatio
     camera!.left = (frustumSize * newAspectRatio) / -2
