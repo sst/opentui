@@ -102,6 +102,8 @@ import { isBunfsPath } from "./lib/bunfs.js"
 import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 import { allocStruct } from "bun-ffi-structs"
 
+export const MAX_LINK_URL_BYTES = 512
+
 // Struct outputs use `buffer` instead of `ptr`. A `buffer` call is about 3x cheaper on Bun 1.3 and 2.5x cheaper on
 // Bun 1.4. `buffer` rejects an argument that is not a view with a TypeError. `ptr` accepts a number as a raw address.
 // `buffer` also skips the Node pointer normalizer. Bun 1.3 rejects ArrayBuffer and DataView for `buffer`, so keep one
@@ -2483,6 +2485,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => NativeRenderOperationResult
   getNextBuffer: (renderer: RendererHandle) => OptimizedBuffer
   getCurrentBuffer: (renderer: RendererHandle) => OptimizedBuffer
+  linkGetUrl: (linkId: number, maxLen?: number) => string
   rendererSetPaletteState: (
     renderer: RendererHandle,
     palette: readonly RGBA[],
@@ -4219,7 +4222,7 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.linkAlloc(viewOrNull(urlBytes), urlBytes.byteLength)
   }
 
-  public linkGetUrl(linkId: number, maxLen: number = 512): string {
+  public linkGetUrl(linkId: number, maxLen: number = MAX_LINK_URL_BYTES): string {
     const outBuffer = new Uint8Array(maxLen)
     const actualLen = this.opentui.symbols.linkGetUrl(linkId, viewOrNull(outBuffer), maxLen)
     return this.decoder.decode(outBuffer.slice(0, actualLen))

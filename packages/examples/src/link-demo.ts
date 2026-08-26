@@ -9,10 +9,12 @@ import {
   italic,
   BoxRenderable,
   RGBA,
+  StyledText,
   TextRenderable,
   type MouseEvent,
   type RenderContext,
 } from "@opentui/core"
+import { spawn } from "node:child_process"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 100
@@ -134,9 +136,9 @@ export function run(renderer: CliRenderer): void {
     RGBA.fromHex("#1e293be6"), // Dark slate
     t`${bold(fg("#f472b6")("♥ Project Info"))}
 
-${fg("#e2e8f0")("Source:")} ${link("https://github.com/anomalyco/opentui")(underline(fg("#38bdf8")("GitHub Repository")))}
-${fg("#e2e8f0")("Web:")}    ${link("https://opentui.com")(underline(fg("#34d399")("Official Website")))}
-${fg("#e2e8f0")("License:")} ${link("https://github.com/anomalyco/opentui/blob/main/LICENSE")(underline(fg("#fbbf24")("MIT")))}`,
+${fg("#e2e8f0")("Source:")} ${link("https://github.com/anomalyco/opentui")(fg("#38bdf8")("GitHub Repository"))}
+${fg("#e2e8f0")("Web:")}    ${link("https://opentui.com")(fg("#34d399")("Official Website"))}
+${fg("#e2e8f0")("License:")} ${link("https://github.com/anomalyco/opentui/blob/main/LICENSE")(fg("#fbbf24")("MIT"))}`,
   )
 
   // Card 2: Documentation
@@ -183,15 +185,45 @@ function createCard(
   width: number,
   height: number,
   bg: RGBA,
-  content: any,
+  content: StyledText,
 ) {
   const card = new DraggableBox(renderer, id, x, y, width, height, bg)
+  let hoveredUrl: string | null = null
 
-  const text = new TextRenderable(renderer, {
+  const text: TextRenderable = new TextRenderable(renderer, {
     id: `${id}-text`,
     content: content,
     width: width - 2, // Account for padding
     height: height - 2,
+    onMouseMove(event) {
+      const url = renderer.getLinkAt(event.x, event.y)
+      if (url === hoveredUrl) return
+
+      hoveredUrl = url
+      renderer.setMousePointer(url ? "pointer" : "default")
+      text.content = url
+        ? new StyledText(content.chunks.map((chunk) => (chunk.link?.url === url ? underline(chunk) : chunk)))
+        : content
+    },
+    onMouseOut() {
+      if (!hoveredUrl) return
+
+      hoveredUrl = null
+      renderer.setMousePointer("default")
+      text.content = content
+    },
+    onMouseDown(event) {
+      const url = event.button === 0 ? renderer.getLinkAt(event.x, event.y) : null
+      if (!url) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      const command =
+        process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open"
+      const child = spawn(command, [url], { detached: true, stdio: "ignore" })
+      child.on("error", (error) => console.error("Failed to open link:", error))
+      child.unref()
+    },
   })
 
   card.add(text)
@@ -207,6 +239,7 @@ export function destroy(renderer: CliRenderer): void {
   dragModeEnabled = false
   const mainContainer = renderer.root.getRenderable("main-container")
   if (mainContainer) renderer.root.remove(mainContainer)
+  renderer.setMousePointer("default")
   renderer.setCursorPosition(0, 0, false)
 }
 

@@ -55,6 +55,7 @@ import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 import { matchesKeyBinding } from "./lib/keybinding.internal.js"
 import { RendererThemeMode } from "./renderer-theme-mode.js"
+import { getLinkId } from "./utils.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -2052,6 +2053,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const destroyListener = (): void => {
       destroySurface()
     }
+    const capabilitiesListener = (capabilities: TerminalCapabilities): void => {
+      snapshotContext.capabilities = capabilities
+      renderContext.emit(CliRenderEvents.CAPABILITIES, capabilities)
+    }
 
     const assertNotDestroyed = (): void => {
       if (surfaceDestroyed) {
@@ -2278,6 +2283,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       surfaceDestroyed = true
       renderer.off(CliRenderEvents.DESTROY, destroyListener)
+      renderer.off(CliRenderEvents.CAPABILITIES, capabilitiesListener)
 
       let destroyError: unknown = null
 
@@ -2304,6 +2310,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     renderer.on(CliRenderEvents.DESTROY, destroyListener)
+    renderer.on(CliRenderEvents.CAPABILITIES, capabilitiesListener)
 
     return {
       get renderContext(): RenderContext {
@@ -3860,6 +3867,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public hitTest(x: number, y: number): number {
     return this.lib.checkHit(this.rendererPtr, x, y)
+  }
+
+  public getLinkAt(x: number, y: number): string | null {
+    if (this._isDestroyed || !Number.isInteger(x) || !Number.isInteger(y)) return null
+
+    const buffer = this.currentRenderBuffer
+    if (x < 0 || y < 0 || x >= buffer.width || y >= buffer.height) return null
+
+    const linkId = getLinkId(buffer.buffers.attributes[y * buffer.width + x])
+    return linkId === 0 ? null : buffer.lib.linkGetUrl(linkId) || null
   }
 
   private takeMemorySnapshot(): void {

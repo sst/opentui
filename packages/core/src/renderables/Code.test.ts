@@ -7,6 +7,7 @@ import { ManualClock } from "../testing/manual-clock.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { BoxRenderable } from "./Box.js"
 import { TextAttributes, type CapturedFrame } from "../types.js"
+import { StyledText } from "../lib/styled-text.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1304,6 +1305,37 @@ test("CodeRenderable - streaming mode respects drawUnstyledText only for initial
   expect(codeRenderable.content).toBe("const updated = 'world';")
 })
 
+test("CodeRenderable - updating initial styled text refreshes an unresolved streaming preview", async () => {
+  const mockClient = new MockTreeSitterClient()
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-styled-preview",
+    content: "[Label](https://example.com)",
+    filetype: "markdown",
+    syntaxStyle: SyntaxStyle.create(),
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    initialStyledText: new StyledText([
+      { __isChunk: true, text: "Label (https://example.com)", link: { url: "https://example.com/old" } },
+    ]),
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  expect(mockClient.isHighlighting()).toBe(true)
+  expect(codeRenderable.plainText).toBe("Label (https://example.com)")
+
+  codeRenderable.initialStyledText = new StyledText([
+    { __isChunk: true, text: "Label", link: { url: "https://example.com/new" } },
+  ])
+  await renderOnce()
+
+  expect(mockClient.isHighlighting()).toBe(true)
+  expect(codeRenderable.plainText).toBe("Label")
+  expect(currentRenderer.getLinkAt(codeRenderable.x, codeRenderable.y)).toBe("https://example.com/new")
+})
+
 test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -1378,6 +1410,45 @@ test("CodeRenderable - onChunks callback can transform chunks when highlights ar
 
   expect(callbackInvoked).toBe(true)
   expect(codeRenderable.plainText).toBe("HELLO")
+})
+
+test("CodeRenderable - onChunks receives exact source ranges for concealed replacement chunks", async () => {
+  const content = "[x](https://example.com)"
+  const highlights: SimpleHighlight[] = [
+    [0, 1, "conceal", { conceal: "" }],
+    [1, 2, "markup.link.label"],
+    [2, 3, "conceal", { conceal: "replacement" }],
+    [4, 23, "markup.link.url"],
+  ]
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights })
+  let observedRanges: Array<{ start: number; end: number }> | undefined
+  let observedChunks: string[] | undefined
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-source-ranges",
+    content,
+    filetype: "markdown",
+    syntaxStyle: SyntaxStyle.create(),
+    treeSitterClient: mockClient,
+    onChunks: (chunks, context) => {
+      observedChunks = chunks.map((item) => item.text)
+      observedRanges = context.sourceRanges
+      return chunks
+    },
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(codeRenderable, mockClient)
+
+  expect(observedChunks).toEqual(["x", "replacement", "(", "https://example.com", ")"])
+  expect(observedRanges).toEqual([
+    { start: 1, end: 2 },
+    { start: 2, end: 3 },
+    { start: 3, end: 4 },
+    { start: 4, end: 23 },
+    { start: 23, end: 24 },
+  ])
 })
 
 test("CodeRenderable - baseHighlight applies a style when parser highlights are empty", async () => {

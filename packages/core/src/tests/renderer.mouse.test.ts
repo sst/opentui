@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { link, t } from "../lib/styled-text.js"
+import { TextRenderable } from "../renderables/Text.js"
 import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import type { Selection } from "../lib/selection.js"
@@ -21,6 +23,93 @@ class TestRenderable extends Renderable {
     return this.selectionActive
   }
 }
+
+describe("renderer getLinkAt", () => {
+  let renderer: TestRenderer
+  let mockMouse: MockMouse
+  let renderOnce: () => Promise<void>
+
+  beforeEach(async () => {
+    ;({ renderer, mockMouse, renderOnce } = await createTestRenderer({ width: 12, height: 5, useMouse: true }))
+  })
+
+  afterEach(() => renderer.destroy())
+
+  test("resolves rendered and clicked links while rejecting invalid coordinates and destroyed renderers", async () => {
+    const url = "https://example.com/rendered"
+    const text = new TextRenderable(renderer, {
+      id: "linked-text",
+      position: "absolute",
+      left: 2,
+      top: 1,
+      width: 8,
+      height: 1,
+      content: t`A ${link(url)("link")} Z`,
+    })
+    const clicked: { url: string | null } = { url: null }
+    text.onMouseDown = (event) => {
+      clicked.url = renderer.getLinkAt(event.x, event.y)
+    }
+    renderer.root.add(text)
+    await renderOnce()
+
+    const linkX = text.x + 2
+    expect(renderer.getLinkAt(linkX, text.y)).toBe(url)
+    expect(renderer.getLinkAt(linkX + 3, text.y)).toBe(url)
+    expect(renderer.getLinkAt(text.x, text.y)).toBeNull()
+    expect(renderer.getLinkAt(renderer.width - 1, renderer.height - 1)).toBeNull()
+
+    await mockMouse.pressDown(linkX, text.y)
+    expect(clicked.url).toBe(url)
+
+    renderer.useMouse = false
+    expect(renderer.getLinkAt(linkX, text.y)).toBe(url)
+
+    for (const [x, y] of [
+      [-1, 0],
+      [0, -1],
+      [renderer.width, 0],
+      [0, renderer.height],
+      [Number.NaN, 0],
+      [0, Number.NaN],
+      [Number.POSITIVE_INFINITY, 0],
+      [0, Number.NEGATIVE_INFINITY],
+      [0.5, 0],
+      [0, 0.5],
+    ]) {
+      expect(renderer.getLinkAt(x, y)).toBeNull()
+    }
+
+    renderer.destroy()
+    expect(renderer.getLinkAt(0, 0)).toBeNull()
+  })
+
+  test("resolves linked cells after wrapping and across wide-character cells", async () => {
+    const url = "https://example.com/wrapped"
+    const text = new TextRenderable(renderer, {
+      id: "wrapped-link",
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: 4,
+      height: 2,
+      wrapMode: "char",
+      content: t`${link(url)("ab\u754cde")}`,
+    })
+    renderer.root.add(text)
+    await renderOnce()
+
+    for (const [x, y] of [
+      [text.x, text.y],
+      [text.x + 2, text.y],
+      [text.x + 3, text.y],
+      [text.x, text.y + 1],
+      [text.x + 1, text.y + 1],
+    ]) {
+      expect(renderer.getLinkAt(x, y)).toBe(url)
+    }
+  })
+})
 
 describe("renderer handleMouseData", () => {
   let renderer: TestRenderer
@@ -1250,6 +1339,35 @@ describe("renderer handleMouseData split height", () => {
       await mockMouse.click(target.x + 1, screenY)
       expect(downEvent).not.toBeNull()
       expect(downEvent!.y).toBe(target.y + 1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("split-footer mouse handlers resolve links using renderer-relative coordinates", async () => {
+    try {
+      const url = "https://example.com/split-footer"
+      const text = new TextRenderable(renderer, {
+        id: "split-footer-link",
+        position: "absolute",
+        left: 2,
+        top: 1,
+        width: 6,
+        height: 1,
+        content: t`${link(url)("click")}`,
+      })
+      const clicked: { url: string | null } = { url: null }
+      text.onMouseDown = (event) => {
+        clicked.url = renderer.getLinkAt(event.x, event.y)
+      }
+      renderer.root.add(text)
+      await renderOnce()
+
+      const screenY = baseHeight - splitHeight + text.y
+      await mockMouse.pressDown(text.x + 1, screenY)
+
+      expect(clicked.url).toBe(url)
+      expect(renderer.getLinkAt(text.x + 1, screenY)).toBeNull()
     } finally {
       renderer.destroy()
     }
