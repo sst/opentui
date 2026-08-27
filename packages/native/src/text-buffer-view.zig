@@ -406,7 +406,6 @@ pub const UnifiedTextBufferView = struct {
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
         if (buffer_dirty or self.wrap_mode != .word or self.wrap_width == null) self.word_layout.reset();
-        const reuse_words = !buffer_dirty and self.virtual_lines.items.len > 0;
         self.resetVirtualLineStorage(if (!buffer_dirty and self.wrap_mode == .word) .retain_capacity else .free_all);
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
@@ -426,7 +425,7 @@ pub const UnifiedTextBufferView = struct {
         else switch (self.wrap_mode) {
             .none => unreachable,
             .char => calculateVirtualLinesGeneric(.render, .char, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output, null),
-            .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output, if (reuse_words) &self.word_layout else null),
+            .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output, &self.word_layout),
         };
         if (!calculated) {
             // Builders append to parallel arrays; discard partial output as a unit

@@ -11,6 +11,70 @@ const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = text_buffer.RGBA;
 
+test "TextBufferView first layout retains reusable word metadata" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    try tb.setText("alpha \u{754c}abc e\u{301} words\n" ** 100);
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 100), view.word_layout.layouts.items.len);
+    const ptr = view.word_layout.layouts.items.ptr;
+    const capacity = view.word_layout.arena.queryCapacity();
+    view.setWrapWidth(79);
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(ptr, view.word_layout.layouts.items.ptr);
+    try std.testing.expectEqual(capacity, view.word_layout.arena.queryCapacity());
+}
+
+test "TextBufferView optional metadata failure preserves every streamed piece" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    try tb.setText(("a\u{754c}e\u{301} \u{0600} xy\tend-" ** 5000) ++ "\n" ++ ("\u{754c}abc e\u{301}\n" ** 100));
+    const expected = try TextBufferView.init(std.testing.allocator, tb);
+    defer expected.deinit();
+    expected.setWrapMode(.word);
+    expected.setWrapWidth(79);
+    const want = expected.getVirtualLines();
+    for (0..14) |failure| {
+        var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const actual = try TextBufferView.init(std.testing.allocator, tb);
+        defer actual.deinit();
+        actual.word_layout.arena.child_allocator = tracking.allocator();
+        actual.setWrapMode(.word);
+        tracking.fail_index = failure;
+        actual.setWrapWidth(79);
+        const got = actual.getVirtualLines();
+        try std.testing.expect(!actual.virtual_lines_dirty);
+        try std.testing.expectEqual(want.len, got.len);
+        for (want, got) |wl, gl| {
+            try std.testing.expectEqual(wl.width_cols, gl.width_cols);
+            try std.testing.expectEqual(wl.source_line, gl.source_line);
+            try std.testing.expectEqual(wl.source_col_start, gl.source_col_start);
+            try std.testing.expectEqual(wl.document_cell_offset, gl.document_cell_offset);
+            try std.testing.expectEqualDeep(wl.chunks.items, gl.chunks.items);
+        }
+        if (tracking.has_induced_failure) try std.testing.expectEqual(@as(usize, 0), actual.word_layout.layouts.items.len);
+        tracking.fail_index = std.math.maxInt(usize);
+        actual.setWrapWidth(80);
+        _ = actual.getVirtualLines();
+        actual.setWrapWidth(79);
+        try std.testing.expectEqual(want.len, actual.getVirtualLines().len);
+        const measured = try actual.measureForDimensions(79, 24);
+        try std.testing.expectEqual(want.len, measured.line_count);
+    }
+}
+
 test "TextBufferView width reuse does not leave metadata in old buffer roots" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -65,7 +129,7 @@ test "TextBufferView live word metadata follows views history and buffer switche
     second.setWrapWidth(32);
     _ = view.getVirtualLines();
     _ = second.getVirtualLines();
-    try std.testing.expectEqual(@as(usize, 0), view.word_layout.layouts.items.len);
+    try std.testing.expect(view.word_layout.layouts.items.len > 0);
     view.setWrapWidth(17);
     second.setWrapWidth(33);
     _ = view.getVirtualLines();
@@ -85,7 +149,7 @@ test "TextBufferView live word metadata follows views history and buffer switche
         edit.tb.setTabWidth(@intCast(2 + step * 2));
         for ([_]*TextBufferView{ view, second }) |current| {
             _ = current.getVirtualLines();
-            try std.testing.expectEqual(@as(usize, 0), current.word_layout.layouts.items.len);
+            try std.testing.expect(current.word_layout.layouts.items.len > 0);
             current.setWrapWidth(19);
             _ = current.getVirtualLines();
             current.setWrapWidth(23);
@@ -146,14 +210,12 @@ test "TextBufferView live word metadata discards partial allocation on failure" 
         try tb.setText("alpha \u{754c} e\u{301} word word word word\n" ** 100);
         view.setWrapMode(.word);
         view.setWrapWidth(16);
-        _ = view.getVirtualLines();
         tracking.fail_index = tracking.alloc_index + failure;
         view.setWrapWidth(17);
         _ = view.getVirtualLines();
         if (tracking.has_induced_failure) {
             try std.testing.expectEqual(@as(usize, 0), view.word_layout.layouts.items.len);
             if (view.virtual_lines_dirty) try std.testing.expectEqual(@as(usize, 0), view.virtual_lines.items.len);
-            if (failure == 1) try std.testing.expect(!view.virtual_lines_dirty);
         }
         tracking.fail_index = std.math.maxInt(usize);
         const measured = try view.measureForDimensions(17, 24);
