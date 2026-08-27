@@ -100,6 +100,8 @@ test "walkChunkLayoutInfo preserves mixed-content whitespace graphemes" {
     const cases = [_][]const u8{
         "\u{0D4E} ", // U+0D4E MALAYALAM LETTER DOT REPH
         "\u{0600} ", // U+0600 ARABIC NUMBER SIGN
+        " \u{301}", // Non-whitespace after whitespace in the same grapheme
+        "\u{0600} \u{301}", // Mixed content on both sides of whitespace
     };
     var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
     defer breaks.deinit(testing.allocator);
