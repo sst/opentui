@@ -1277,6 +1277,25 @@ describe("TextRenderable Selection", () => {
   })
 
   describe("Text Selection with Truncation", () => {
+    it("copies the full source through an ellipsis-only line", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "ABCDE好",
+        width: 4,
+        height: 1,
+        selectable: true,
+        truncate: true,
+        wrapMode: "none",
+      })
+
+      expect(captureFrame().split("\n")[0]?.slice(0, 4)).toBe("... ")
+
+      await currentMouse.drag(text.x, text.y, text.x + 3, text.y)
+      expect(text.getSelectedText()).toBe("ABCDE好")
+
+      await currentMouse.drag(text.x + 3, text.y, text.x, text.y)
+      expect(text.getSelectedText()).toBe("ABCDE好")
+    })
+
     it("should not extend selection across ellipsis in single line", async () => {
       const buffer = currentRenderer.currentRenderBuffer
       const { text } = await createTextRenderable(currentRenderer, {
