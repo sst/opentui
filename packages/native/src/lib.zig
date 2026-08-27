@@ -2249,6 +2249,12 @@ export fn textBufferGetTabWidth(tb_handle: NativeHandle) u8 {
 }
 
 export fn textBufferSetTabWidth(tb_handle: NativeHandle, width: u8) void {
+    if (handles.getOwner(tb_handle, .text_buffer)) |owner| {
+        if (acquireEditBuffer(owner)) |edit_buffer| {
+            edit_buffer.setTabWidth(width);
+            return;
+        }
+    }
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     object_ptr.setTabWidth(width);
 }
@@ -2570,6 +2576,11 @@ export fn destroyEditBuffer(edit_handle: NativeHandle) void {
 export fn editBufferGetTextBuffer(edit_handle: NativeHandle) NativeHandle {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return INVALID_HANDLE;
     return handles.getOrInsertBorrowed(.text_buffer, erasePtr(object_ptr.getTextBuffer()), edit_handle) catch INVALID_HANDLE;
+}
+
+export fn editBufferSetTabWidth(edit_handle: NativeHandle, width: u8) void {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setTabWidth(width);
 }
 
 export fn editBufferInsertText(edit_handle: NativeHandle, textPtr: ?[*]const u8, textLen: u32) void {

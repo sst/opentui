@@ -1370,6 +1370,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
+    editBufferSetTabWidth: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
     editBufferDebugLogRope: {
       args: ["u32"],
       returns: "void",
@@ -2923,6 +2927,7 @@ export interface RenderLib extends AudioEngineLib {
   editBufferGetCursorPosition: (buffer: EditBufferHandle) => LogicalCursor
   editBufferGetId: (buffer: EditBufferHandle) => number
   editBufferGetTextBuffer: (buffer: EditBufferHandle) => TextBufferHandle
+  editBufferSetTabWidth: (buffer: EditBufferHandle, width: number) => void
   editBufferDebugLogRope: (buffer: EditBufferHandle) => void
   editBufferUndo: (buffer: EditBufferHandle, maxLength: number) => Uint8Array | null
   editBufferRedo: (buffer: EditBufferHandle, maxLength: number) => Uint8Array | null
@@ -5652,6 +5657,10 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get TextBuffer from EditBuffer")
     }
     return result
+  }
+
+  public editBufferSetTabWidth(buffer: Pointer, width: number): void {
+    this.opentui.symbols.editBufferSetTabWidth(buffer, width)
   }
 
   public editBufferDebugLogRope(buffer: Pointer): void {

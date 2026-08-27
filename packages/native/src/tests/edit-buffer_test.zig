@@ -1654,7 +1654,7 @@ test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     _ = try eb.redo();
     try std.testing.expectEqual(@as(u32, 5), eb.tb.lineWidthAt(0));
 
-    eb.tb.setTabWidth(8);
+    eb.setTabWidth(8);
     try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
 
     _ = try eb.undo();

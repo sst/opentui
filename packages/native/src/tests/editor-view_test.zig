@@ -694,7 +694,7 @@ test "EditorView - consumed whitespace cursor columns clamp to preceding row" {
     try std.testing.expectEqual(@as(u32, 1), spaces_boundary.visual_row);
     try std.testing.expectEqual(@as(u32, 0), spaces_boundary.visual_col);
 
-    eb.tb.setTabWidth(4);
+    eb.setTabWidth(4);
     try eb.setText("hello\tworld");
     for ([_]u32{ 5, 8 }) |logical_col| {
         const cursor = ev.logicalToVisualCursor(0, logical_col);
@@ -3081,7 +3081,7 @@ test "EditorView - tab indicator renders in buffer" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    eb.tb.setTabWidth(4);
+    eb.setTabWidth(4);
     try eb.insertText("A\tB");
 
     ev.setTabIndicator('→');
