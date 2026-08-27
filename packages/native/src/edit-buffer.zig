@@ -843,6 +843,7 @@ pub const EditBuffer = struct {
                     const local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0;
 
                     for (wrap_breaks) |wrap_break| {
+                        if (!wrap_break.kind.isWordBoundary()) continue;
                         const break_col = wrap_break.col_start;
                         const target_col = cols_before + wrap_break.colEnd();
 
@@ -919,6 +920,7 @@ pub const EditBuffer = struct {
                 }
 
                 for (layout.wrap_breaks) |wrap_break| {
+                    if (!wrap_break.kind.isWordBoundary()) continue;
                     const boundary_col = cols_before + wrap_break.colEnd();
                     if (boundary_col < cursor.col) {
                         last_boundary = boundary_col;

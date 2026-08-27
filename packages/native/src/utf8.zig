@@ -102,17 +102,31 @@ pub const TabStopResult = struct {
     }
 };
 
+/// Classifies a layout break opportunity. Line wrapping and editor word motion
+/// share the same scan, but the two boundary sets differ: every kind is a
+/// line-break opportunity, while only word-ending kinds are word boundaries.
 pub const LayoutWrapBreakKind = enum(u8) {
     none,
     whitespace,
     preserved_whitespace,
     punctuation,
     script_transition,
+
+    /// True when the break also ends a word. Word motion must skip breaks
+    /// that are line-break opportunities only.
+    pub fn isWordBoundary(self: LayoutWrapBreakKind) bool {
+        return switch (self) {
+            .whitespace, .punctuation, .script_transition => true,
+            .none => false,
+        };
+    }
 };
 
 /// Direct byte and display-column metadata for a wrap opportunity.
 /// The window identifies the grapheme that creates the break, not the position
 /// after it; consumers use byteEnd()/colEnd() to cross the boundary.
+/// Line wrapping may break at every entry; word motion must filter through
+/// `kind.isWordBoundary()`.
 pub const LayoutWrapBreak = struct {
     byte_start: u32,
     col_start: u32,
