@@ -414,7 +414,7 @@ pub const Segment = union(enum) {
 
         if (left_chunk.mem_id != right_chunk.mem_id) return false;
         if (left_chunk.byte_end != right_chunk.byte_start) return false;
-        if (left_chunk.flags != right_chunk.flags) return false;
+        if ((left_chunk.flags & ~TextChunk.Flags.HAS_TAB) != (right_chunk.flags & ~TextChunk.Flags.HAS_TAB)) return false;
 
         return true;
     }
@@ -434,7 +434,7 @@ pub const Segment = union(enum) {
                 .byte_start = left_chunk.byte_start,
                 .byte_end = right_chunk.byte_end,
                 .width_cols = left_chunk.width_cols + right_chunk.width_cols,
-                .flags = left_chunk.flags,
+                .flags = left_chunk.flags | right_chunk.flags,
             },
         };
     }
