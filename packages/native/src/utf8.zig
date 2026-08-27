@@ -105,6 +105,7 @@ pub const TabStopResult = struct {
 pub const LayoutWrapBreakKind = enum(u8) {
     none,
     whitespace,
+    preserved_whitespace,
     punctuation,
     script_transition,
 };
@@ -1706,7 +1707,13 @@ fn walkChunkLayoutInfoGeneric(
         } else {
             cluster_width_state.addCodepoint(decoded.cp, cp_width);
             const next_break_kind = if (b0 < 0x80) asciiLayoutWrapBreakKind(b0) else unicodeLayoutWrapBreakKind(decoded.cp);
-            if (next_break_kind == .whitespace or cluster_break_kind == .none) cluster_break_kind = next_break_kind;
+            // Only all-whitespace graphemes may be elided by wrapping.
+            if (cluster_break_kind == .whitespace or next_break_kind == .whitespace) {
+                cluster_break_kind = if (cluster_break_kind == .whitespace and next_break_kind == .whitespace)
+                    .whitespace
+                else
+                    .preserved_whitespace;
+            } else if (cluster_break_kind == .none) cluster_break_kind = next_break_kind;
         }
 
         prev_cp = decoded.cp;

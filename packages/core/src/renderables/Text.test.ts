@@ -64,6 +64,7 @@ describe("TextRenderable Selection", () => {
     } = await createTestRenderer({
       width: 20,
       height: 5,
+      forwardEnvKeys: [],
     }))
   })
 
@@ -2343,6 +2344,33 @@ describe("TextRenderable Selection", () => {
       const expectedLines = ["gyorskiszolgáló éttermek közül. Azóta", "alapjaiban értelmeztük újra a", "vendéglátást"]
 
       expect(lines).toEqual(expectedLines)
+    })
+
+    it("should preserve mixed-content graphemes at word-wrap boundaries", async () => {
+      for (const prefix of [
+        "\u0D4E", // U+0D4E MALAYALAM LETTER DOT REPH
+        "\u0600", // U+0600 ARABIC NUMBER SIGN
+      ]) {
+        for (const { width, expected } of [
+          { width: 5, expected: ["hello", prefix, "world"] },
+          { width: 7, expected: [`hello ${prefix}`, "world"] },
+        ]) {
+          const { text } = await createTextRenderable(currentRenderer, {
+            content: `hello ${prefix} world`,
+            wrapMode: "word",
+            width,
+          })
+
+          const lines = captureFrame()
+            .split("\n")
+            .map((line) => line.trimEnd())
+            .filter((line) => line.length > 0)
+          expect(lines).toEqual(expected)
+
+          currentRenderer.root.remove(text)
+          await renderOnce()
+        }
+      }
     })
 
     it("should dynamically change wrap mode", async () => {

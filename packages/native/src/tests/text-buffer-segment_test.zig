@@ -93,7 +93,28 @@ test "walkChunkLayoutInfo keeps Prepend joined to an ASCII vector" {
     try testing.expectEqual(@as(u32, 3), breaks.items[0].byte_len);
     try testing.expectEqual(@as(u32, 0), breaks.items[0].col_start);
     try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
-    try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, breaks.items[0].kind);
+    try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+}
+
+test "walkChunkLayoutInfo preserves mixed-content whitespace graphemes" {
+    const cases = [_][]const u8{
+        "\u{0D4E} ", // U+0D4E MALAYALAM LETTER DOT REPH
+        "\u{0600} ", // U+0600 ARABIC NUMBER SIGN
+        " \u{301}", // Non-whitespace after whitespace in the same grapheme
+        "\u{0600} \u{301}", // Mixed content on both sides of whitespace
+    };
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+
+    for (cases) |text| {
+        _ = try utf8.findChunkLayoutInfo(testing.allocator, text, 2, false, .unicode, &breaks);
+        try testing.expectEqual(@as(usize, 1), breaks.items.len);
+        try testing.expectEqual(@as(u32, 0), breaks.items[0].byte_start);
+        try testing.expectEqual(@as(u32, @intCast(text.len)), breaks.items[0].byte_len);
+        try testing.expectEqual(@as(u32, 0), breaks.items[0].col_start);
+        try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+    }
 }
 
 test "walkChunkLayoutInfo stops streaming after visitor allocation failure" {
