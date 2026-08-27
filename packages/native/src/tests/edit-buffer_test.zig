@@ -1668,6 +1668,52 @@ test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     try std.testing.expectEqual(@as(u32, 11), view.getVirtualLines()[0].width_cols);
 }
 
+test "EditBuffer - tab presence survives splitting merging and history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    var out: [64]u8 = undefined;
+
+    for ([_][]const u8{ "abc\tdef", "\u{754c}x\tdef" }) |text| {
+        eb.tb.setTabWidth(2);
+        try eb.setText(text);
+        try eb.setCursor(0, 3);
+        for (0..5) |stage| {
+            switch (stage) {
+                0 => try eb.insertText("\n"),
+                1 => try eb.backspace(),
+                2 => try eb.deleteRange(.{ .row = 0, .col = 3 }, .{ .row = 0, .col = 5 }),
+                3 => {
+                    eb.tb.setTabWidth(8);
+                    _ = try eb.undo();
+                    try std.testing.expectEqual(@as(u32, 14), eb.tb.lineWidthAt(0));
+                },
+                4 => {
+                    _ = try eb.redo();
+                    try std.testing.expectEqual(@as(u32, 6), eb.tb.lineWidthAt(0));
+                },
+                else => unreachable,
+            }
+            const bytes = out[0..eb.getText(&out)];
+            const has_tab = std.mem.indexOfScalar(u8, bytes, '\t') != null;
+            try std.testing.expectEqual(stage != 2 and stage != 4, has_tab);
+            try std.testing.expectEqual(has_tab, eb.tb.rope().root.metrics().custom.has_tabs);
+            for (0..eb.tb.rope().count()) |i| {
+                const segment = eb.tb.rope().get(@intCast(i)).?;
+                if (segment.asText()) |chunk| {
+                    const chunk_bytes = chunk.getBytes(eb.tb.memRegistry());
+                    try std.testing.expectEqual(std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null, chunk.hasTab());
+                    if (chunk.isAsciiOnly()) try std.testing.expect(!chunk.hasTab());
+                }
+            }
+            if (stage == 1 or stage == 3) try std.testing.expectEqualStrings(text, bytes);
+        }
+    }
+}
+
 test "EditBuffer - stale tab-free undo redo roots preserve Unicode widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

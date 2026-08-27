@@ -577,7 +577,7 @@ pub const UnifiedTextBuffer = struct {
         if (chunk_bytes.len > 0 and is_ascii) {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
-        if (std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null) {
+        if (!is_ascii and std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null) {
             flags |= TextChunk.Flags.HAS_TAB;
         }
 
