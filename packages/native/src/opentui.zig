@@ -4,6 +4,7 @@ pub const buffer = @import("buffer.zig");
 pub const renderer = @import("renderer.zig");
 pub const text_buffer = @import("text-buffer.zig");
 pub const text_buffer_view = @import("text-buffer-view.zig");
+pub const yoga_c = @import("yoga");
 
 pub const BufferedOutput = renderer.BufferedOutput;
 pub const CliRenderer = renderer.CliRenderer;

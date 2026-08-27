@@ -1,6 +1,19 @@
 const std = @import("std");
 const opentui = @import("opentui");
 
+test "Yoga layout is available through the public Zig module" {
+    const yoga = opentui.yoga_c;
+    const node = yoga.YGNodeNew();
+    defer yoga.YGNodeFree(node);
+
+    yoga.YGNodeStyleSetWidth(node, 12);
+    yoga.YGNodeStyleSetHeight(node, 3);
+    yoga.YGNodeCalculateLayout(node, 80, 24, yoga.YGDirectionLTR);
+
+    try std.testing.expectEqual(@as(f32, 12), yoga.YGNodeLayoutGetWidth(node));
+    try std.testing.expectEqual(@as(f32, 3), yoga.YGNodeLayoutGetHeight(node));
+}
+
 const MemorySink = struct {
     const capacity = 16 * 1024;
 
