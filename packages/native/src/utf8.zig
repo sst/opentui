@@ -1615,10 +1615,16 @@ fn walkChunkLayoutInfoGeneric(
     var cluster_class: WordClass = .other;
 
     while (pos < text.len) {
-        if (pos + vector_len <= text.len) {
-            const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
-            const is_non_ascii = chunk >= @as(@Vector(vector_len, u8), @splat(0x80));
-            if (!@reduce(.Or, is_non_ascii)) {
+        {
+            var ascii_len: usize = 0;
+            if (pos + vector_len <= text.len) {
+                const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
+                const is_non_ascii = chunk >= @as(@Vector(vector_len, u8), @splat(0x80));
+                ascii_len = if (std.simd.firstTrue(is_non_ascii)) |index| index else vector_len;
+            } else {
+                while (pos + ascii_len < text.len and text[pos + ascii_len] < 0x80) : (ascii_len += 1) {}
+            }
+            if (ascii_len > 1) {
                 var can_use_ascii_fast_path = true;
                 if (cluster_started) {
                     var probe_state = break_state;
@@ -1645,7 +1651,7 @@ fn walkChunkLayoutInfoGeneric(
                     }
 
                     var i: usize = 0;
-                    while (i + 1 < vector_len) : (i += 1) {
+                    while (i + 1 < ascii_len) : (i += 1) {
                         const b = text[pos + i];
                         const width = asciiCharWidth(b, tab_width);
                         if (isAsciiWrapBreak(b)) {
@@ -1654,17 +1660,17 @@ fn walkChunkLayoutInfoGeneric(
                         col += width;
                     }
 
-                    const last_b = text[pos + vector_len - 1];
+                    const last_b = text[pos + ascii_len - 1];
                     const last_cp: u21 = last_b;
                     cluster_started = true;
-                    cluster_start = pos + vector_len - 1;
+                    cluster_start = pos + ascii_len - 1;
                     cluster_col_offset = col;
                     cluster_width_state = GraphemeWidthState.init(last_cp, asciiCharWidth(last_b, tab_width), width_method);
                     cluster_break_kind = asciiLayoutWrapBreakKind(last_b);
                     cluster_class = classifyWordClass(last_cp);
                     prev_cp = last_cp;
                     break_state = .default;
-                    pos += vector_len;
+                    pos += ascii_len;
                     continue;
                 }
             }

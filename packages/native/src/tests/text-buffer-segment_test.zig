@@ -96,6 +96,23 @@ test "walkChunkLayoutInfo keeps Prepend joined to an ASCII vector" {
     try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
 }
 
+test "walkChunkLayoutInfo ASCII prefixes keep their final grapheme intact" {
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+    for (0..32) |prefix_len| {
+        const text = try std.fmt.allocPrint(testing.allocator, "{s} \u{301} \u{754c}abc", .{("a" ** 32)[0..prefix_len]});
+        defer testing.allocator.free(text);
+        _ = try utf8.findChunkLayoutInfo(testing.allocator, text, 2, false, .unicode, &breaks);
+        try testing.expectEqual(@as(usize, 3), breaks.items.len);
+        try testing.expectEqual(@as(u32, @intCast(prefix_len)), breaks.items[0].byte_start);
+        try testing.expectEqual(@as(u32, 3), breaks.items[0].byte_len);
+        try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, breaks.items[1].kind);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.script_transition, breaks.items[2].kind);
+    }
+}
+
 test "walkChunkLayoutInfo preserves mixed-content whitespace graphemes" {
     const cases = [_][]const u8{
         "\u{0D4E} ", // U+0D4E MALAYALAM LETTER DOT REPH

@@ -374,8 +374,8 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    fn resetVirtualLineStorage(self: *Self) void {
-        _ = self.virtual_lines_arena.reset(.free_all);
+    fn resetVirtualLineStorage(self: *Self, mode: std.heap.ArenaAllocator.ResetMode) void {
+        _ = self.virtual_lines_arena.reset(mode);
         self.virtual_lines = .empty;
         self.cached_line_starts = .empty;
         self.cached_line_widths = .empty;
@@ -390,7 +390,7 @@ pub const UnifiedTextBufferView = struct {
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
-        self.resetVirtualLineStorage();
+        self.resetVirtualLineStorage(if (!buffer_dirty and self.wrap_mode == .word) .retain_capacity else .free_all);
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
@@ -414,7 +414,7 @@ pub const UnifiedTextBufferView = struct {
         if (!calculated) {
             // Builders append to parallel arrays; discard partial output as a unit
             // and remain dirty so the next access can retry cleanly.
-            self.resetVirtualLineStorage();
+            self.resetVirtualLineStorage(.free_all);
             self.virtual_lines_dirty = true;
             return;
         }
@@ -1613,7 +1613,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) Allocator.Error!void {
+            inline fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) Allocator.Error!void {
                 if (byte_len == 0) return;
 
                 if (comptime calculation == .render and wrap_mode == .word) {
@@ -1645,7 +1645,7 @@ pub const UnifiedTextBufferView = struct {
                 wctx.current_vline_width_cols += width_cols;
             }
 
-            fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
+            inline fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
                 addVirtualChunk(wctx, chunk, byte_start, byte_len, col_start, width_cols) catch {
                     wctx.failed = true;
                     return false;
@@ -1815,7 +1815,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
+            inline fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
                 if (width_cols == 0 or wctx.failed) return;
 
                 var piece: PendingWordPiece = .{
@@ -1855,6 +1855,14 @@ pub const UnifiedTextBufferView = struct {
             }
 
             fn processWhitespaceBreak(wctx: *@This(), chunk: *const TextChunk, col_start: u32, byte_start: u32, wrap_break: utf8.LayoutWrapBreak) void {
+                // A fitting word and separator already coalesce into one chunk.
+                if (wctx.pending_word_width_cols == 0 and wrap_break.width_cols > 0 and wrap_break.col_start > col_start and
+                    wctx.current_vline_width_cols + (wrap_break.colEnd() - col_start) <= wctx.wordWrapWidth())
+                {
+                    _ = addVirtualChunkSticky(wctx, chunk, byte_start, wrap_break.byteEnd() - byte_start, col_start, wrap_break.colEnd() - col_start);
+                    wctx.source_line_has_non_whitespace = true;
+                    return;
+                }
                 if (wrap_break.col_start > col_start) {
                     flushCompleteWordPiece(
                         wctx,
@@ -1895,7 +1903,7 @@ pub const UnifiedTextBufferView = struct {
                 );
             }
 
-            fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
+            inline fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
                 const chunk = wctx.word_chunk orelse return;
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
                 const col_end = @min(wrap_break.colEnd(), chunk.width_cols);
