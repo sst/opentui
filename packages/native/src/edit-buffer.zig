@@ -40,20 +40,20 @@ const CursorMeta = struct {
     row: u32,
     col: u32,
     desired_col: u32,
-    byte_col: ?u32 = null,
+    tab_width: ?u8 = null,
 
-    fn fromCursor(cursor: Cursor, byte_col: ?u32) CursorMeta {
+    fn fromCursor(cursor: Cursor, tab_width: u8) CursorMeta {
         return .{
             .row = cursor.row,
             .col = cursor.col,
             .desired_col = cursor.desired_col,
-            .byte_col = byte_col,
+            .tab_width = tab_width,
         };
     }
 
     fn encode(self: CursorMeta, out_buffer: []u8) ![]const u8 {
-        if (self.byte_col) |byte_col| {
-            return std.fmt.bufPrint(out_buffer, "cursor:{d}:{d}:{d}:{d}", .{ self.row, self.col, self.desired_col, byte_col });
+        if (self.tab_width) |tab_width| {
+            return std.fmt.bufPrint(out_buffer, "cursor:{d}:{d}:{d}:{d}", .{ self.row, self.col, self.desired_col, tab_width });
         }
         return std.fmt.bufPrint(out_buffer, "cursor:{d}:{d}:{d}", .{ self.row, self.col, self.desired_col });
     }
@@ -69,8 +69,8 @@ const CursorMeta = struct {
         const row = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
         const col = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
         const desired_col = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
-        const byte_col = if (parts.next()) |part|
-            std.fmt.parseInt(u32, part, 10) catch return null
+        const tab_width = if (parts.next()) |part|
+            std.fmt.parseInt(u8, part, 10) catch return null
         else
             null;
 
@@ -82,13 +82,13 @@ const CursorMeta = struct {
             .row = row,
             .col = col,
             .desired_col = desired_col,
-            .byte_col = byte_col,
+            .tab_width = tab_width,
         };
     }
 
     fn publicBytes(bytes: []const u8) []const u8 {
         const decoded = decode(bytes) orelse return bytes;
-        if (decoded.byte_col == null) return bytes;
+        if (decoded.tab_width == null) return bytes;
         const last_separator = std.mem.lastIndexOfScalar(u8, bytes, ':') orelse return bytes;
         return bytes[0..last_separator];
     }
@@ -251,87 +251,57 @@ pub const EditBuffer = struct {
         try self.setCursor(coords.row, coords.col);
     }
 
-    fn cursorByteCol(self: *EditBuffer, cursor: Cursor) ?u32 {
-        const linestart = self.tb.rope().getMarker(.linestart, cursor.row) orelse return null;
+    fn remapCol(self: *EditBuffer, row: u32, target_col: u32, old_tab_width: u8) ?u32 {
+        const linestart = self.tb.rope().getMarker(.linestart, row) orelse return null;
         var seg_idx = linestart.leaf_index + 1;
-        var col: u32 = 0;
-        var byte_col: u32 = 0;
+        var old_col: u32 = 0;
+        var new_col: u32 = 0;
 
         while (seg_idx < self.tb.rope().count()) : (seg_idx += 1) {
             const seg = self.tb.rope().get(seg_idx) orelse break;
             if (seg.isBreak() or seg.isLineStart()) break;
             const chunk = seg.asText() orelse continue;
             const bytes = chunk.getBytes(self.tb.memRegistry());
-            const next_col = col +| chunk.width_cols;
-            if (cursor.col <= next_col) {
+            // The restored root's cached widths use the current policy, not the checkpoint's.
+            const next_col = old_col +| utf8.calculateTextWidth(bytes, old_tab_width, chunk.isAsciiOnly(), self.tb.widthMethod());
+            if (target_col <= next_col) {
                 const pos = utf8.findPosByWidth(
                     bytes,
-                    cursor.col -| col,
-                    self.tb.tabWidth(),
+                    target_col -| old_col,
+                    old_tab_width,
                     chunk.isAsciiOnly(),
                     false,
                     self.tb.widthMethod(),
                 );
-                return byte_col +| pos.byte_offset;
-            }
-            col = next_col;
-            byte_col +|= @intCast(bytes.len);
-        }
-
-        return if (cursor.col == col) byte_col else null;
-    }
-
-    fn colForByteCol(self: *EditBuffer, row: u32, target_byte_col: u32) ?u32 {
-        const linestart = self.tb.rope().getMarker(.linestart, row) orelse return null;
-        var seg_idx = linestart.leaf_index + 1;
-        var col: u32 = 0;
-        var byte_col: u32 = 0;
-
-        while (seg_idx < self.tb.rope().count()) : (seg_idx += 1) {
-            const seg = self.tb.rope().get(seg_idx) orelse break;
-            if (seg.isBreak() or seg.isLineStart()) break;
-            const chunk = seg.asText() orelse continue;
-            const bytes = chunk.getBytes(self.tb.memRegistry());
-            const next_byte_col = byte_col +| @as(u32, @intCast(bytes.len));
-            if (target_byte_col <= next_byte_col) {
-                const local_byte_col: usize = @intCast(target_byte_col -| byte_col);
-                return col +| utf8.calculateTextWidth(
-                    bytes[0..local_byte_col],
+                return new_col +| utf8.calculateTextWidth(
+                    bytes[0..pos.byte_offset],
                     self.tb.tabWidth(),
                     chunk.isAsciiOnly(),
                     self.tb.widthMethod(),
                 );
             }
-            col +|= chunk.width_cols;
-            byte_col = next_byte_col;
+            old_col = next_col;
+            new_col +|= chunk.width_cols;
         }
 
-        return if (target_byte_col == byte_col) col else null;
+        return if (target_col == old_col) new_col else null;
     }
 
     pub fn setTabWidth(self: *EditBuffer, width: u8) void {
         const old_width = self.tb.tabWidth();
-        for (self.cursors.items) |*cursor| {
-            cursor.offset = self.cursorByteCol(cursor.*) orelse std.math.maxInt(u32);
-        }
-
         self.tb.setTabWidth(width);
+        if (old_width == self.tb.tabWidth()) return;
 
         for (self.cursors.items) |*cursor| {
-            const byte_col = cursor.offset;
-            const new_col = if (byte_col == std.math.maxInt(u32))
-                @min(cursor.col, iter_mod.lineWidthAt(self.tb.rope(), cursor.row))
-            else
-                self.colForByteCol(cursor.row, byte_col) orelse @min(cursor.col, iter_mod.lineWidthAt(self.tb.rope(), cursor.row));
+            const new_col = self.remapCol(cursor.row, cursor.col, old_width) orelse
+                @min(cursor.col, iter_mod.lineWidthAt(self.tb.rope(), cursor.row));
             if (cursor.desired_col == cursor.col) cursor.desired_col = new_col;
             cursor.col = new_col;
             cursor.offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, new_col) orelse 0;
         }
 
-        if (old_width != self.tb.tabWidth()) {
-            self.events.emit(.cursorChanged);
-            self.emitNativeEvent("cursor-changed");
-        }
+        self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
@@ -748,20 +718,21 @@ pub const EditBuffer = struct {
 
     fn encodeCurrentCursorMeta(self: *EditBuffer, out_buffer: []u8) ![]const u8 {
         const cursor = self.getPrimaryCursor();
-        return CursorMeta.fromCursor(cursor, self.cursorByteCol(cursor)).encode(out_buffer);
+        return CursorMeta.fromCursor(cursor, self.tb.tabWidth()).encode(out_buffer);
     }
 
     fn restoreCursorFromMeta(self: *EditBuffer, meta: []const u8) !bool {
         const decodedMeta = CursorMeta.decode(meta) orelse return false;
 
-        const col = if (decodedMeta.byte_col) |byte_col|
-            self.colForByteCol(decodedMeta.row, byte_col) orelse decodedMeta.col
+        const width_changed = if (decodedMeta.tab_width) |width| width != self.tb.tabWidth() else false;
+        const col = if (width_changed)
+            self.remapCol(decodedMeta.row, decodedMeta.col, decodedMeta.tab_width.?) orelse decodedMeta.col
         else
             decodedMeta.col;
         try self.setCursor(decodedMeta.row, col);
 
         if (self.cursors.items.len > 0) {
-            self.cursors.items[0].desired_col = if (decodedMeta.byte_col != null and decodedMeta.desired_col == decodedMeta.col)
+            self.cursors.items[0].desired_col = if (width_changed and decodedMeta.desired_col == decodedMeta.col)
                 col
             else
                 decodedMeta.desired_col;
