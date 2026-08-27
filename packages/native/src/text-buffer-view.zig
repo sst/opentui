@@ -57,8 +57,9 @@ pub const SelectionRange = struct {
 
 /// Ghostty-style boundaries for double-click selection. NUL is omitted because
 /// OpenTUI text buffers do not use it for unwritten terminal cells.
-/// Keep this policy separate from `utf8.findWrapBreaks`: wrap and editor motion
-/// split on `/`, `-`, and CJK/ASCII transitions, but selection does not.
+/// Keep this policy separate from `utf8.findChunkLayoutInfo`: wrap and editor
+/// motion split on `/`, `-`, and CJK/ASCII transitions (wrap additionally
+/// between adjacent CJK characters), but selection does not.
 /// Selection groups consecutive graphemes by this class, so space and tab runs
 /// are selectable instead of mapping to an adjacent word.
 const default_word_boundaries = [_]u21{
@@ -2012,7 +2013,8 @@ pub const UnifiedTextBufferView = struct {
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
                 if (wctx.pending_word_width_cols > 0 and
-                    utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first))
+                    (utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first) or
+                        utf8.isCjkIntercharacterBreak(wctx.pending_word_last_class, word_classes.first)))
                 {
                     finalizePendingWord(wctx);
                     if (wctx.failed) return;

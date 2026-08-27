@@ -111,13 +111,14 @@ pub const LayoutWrapBreakKind = enum(u8) {
     preserved_whitespace,
     punctuation,
     script_transition,
+    cjk_intercharacter,
 
     /// True when the break also ends a word. Word motion must skip breaks
     /// that are line-break opportunities only.
     pub fn isWordBoundary(self: LayoutWrapBreakKind) bool {
         return switch (self) {
             .whitespace, .punctuation, .script_transition => true,
-            .none => false,
+            .none, .cjk_intercharacter => false,
         };
     }
 };
@@ -267,6 +268,13 @@ inline fn classifyWordClass(cp: u21) WordClass {
 
 pub inline fn isWordCodepoint(cp: u21) bool {
     return classifyWordClass(cp) != .other;
+}
+
+/// CJK text has no spaces between words, so any two adjacent CJK characters
+/// form a line-break opportunity. The run still moves as one word; see
+/// LayoutWrapBreakKind.isWordBoundary.
+pub inline fn isCjkIntercharacterBreak(prev_class: WordClass, curr_class: WordClass) bool {
+    return prev_class == .cjk_word and curr_class == .cjk_word;
 }
 
 pub inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
@@ -1550,12 +1558,13 @@ inline fn commitLayoutCluster(
     cluster_class: WordClass,
     next_class: ?WordClass,
 ) !bool {
-    const kind: LayoutWrapBreakKind = if (cluster_break_kind != .none)
-        cluster_break_kind
-    else if (next_class != null and isCjkAsciiTransition(cluster_class, next_class.?))
-        .script_transition
-    else
-        .none;
+    const kind: LayoutWrapBreakKind = blk: {
+        if (cluster_break_kind != .none) break :blk cluster_break_kind;
+        const next = next_class orelse break :blk .none;
+        if (isCjkAsciiTransition(cluster_class, next)) break :blk .script_transition;
+        if (isCjkIntercharacterBreak(cluster_class, next)) break :blk .cjk_intercharacter;
+        break :blk .none;
+    };
     if (kind != .none) {
         return emitLayoutWrapBreak(
             visitor,
