@@ -4645,7 +4645,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.renderTimeout = null
           }
         } else if (nativeStatus === "backpressured") {
-          if (!startedWhileRunning || this._isRunning || this.immediateRerenderRequested) {
+          // Automatic live completion still owes its final frame; explicit pause/stop does not.
+          if (
+            !startedWhileRunning ||
+            this._isRunning ||
+            this.immediateRerenderRequested ||
+            this._controlState === RendererControlState.IDLE
+          ) {
             this.scheduleRenderAfterBackpressure()
           }
         } else if (nativeStatus === "retryable-skip") {
