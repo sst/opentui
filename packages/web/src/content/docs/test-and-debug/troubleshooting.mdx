@@ -60,6 +60,19 @@ Start with the visible symptom. Run the diagnostic in its row, then open the lin
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `Timed out waiting for visual idle after ... frames` | Read the attached `frameId`, `nativeFrameCount`, `cellsUpdated`, and scheduler fields. Stop unintended live rendering or release the live request. Increase `maxFrames` only when the expected work needs more frames. | [Waiting for observable output](/docs/core-concepts/testing#waiting-for-observable-output) |
 
+## Native builds across worktrees
+
+Zig shares its global cache by default. For repeated native builds across many worktrees, you can also share the project
+cache:
+
+```sh
+export ZIG_LOCAL_CACHE_DIR="$HOME/.cache/opentui/zig-local-0.16.0"
+bun run build:native
+```
+
+Use a persistent local directory. Use a separate directory for each Zig version. `bun run clean` does not remove an
+external cache.
+
 ## Next
 
 - [Environment variables](/docs/reference/env-vars) lists diagnostics and overrides.
