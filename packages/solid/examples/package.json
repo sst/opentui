@@ -4,8 +4,9 @@
   "type": "module",
   "dependencies": {
     "@opentui/core": "workspace:*",
+    "@opentui/three": "workspace:*",
     "@opentui/solid": "workspace:*",
-    "solid-js": "1.9.11"
+    "solid-js": "1.9.12"
   },
   "scripts": {
     "dev": "bun --preload ../scripts/preload.ts index.tsx",

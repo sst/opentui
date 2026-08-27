@@ -1,7 +1,7 @@
 import type { RootRenderable } from "@opentui/core"
 import React from "react"
 import ReactReconciler from "react-reconciler"
-import { ConcurrentRoot } from "react-reconciler/constants"
+import { ConcurrentRoot } from "react-reconciler/constants.js"
 import { hostConfig } from "./host-config.js"
 
 export const reconciler = ReactReconciler(hostConfig)
@@ -42,8 +42,7 @@ export function _render(element: React.ReactNode, root: RootRenderable) {
     console.error,
     console.error,
     console.error,
-    console.error,
-    null,
+    () => {},
   )
 
   reconciler.updateContainer(element, container, null, () => {})

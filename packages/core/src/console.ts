@@ -3,7 +3,8 @@ import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-import type { CliRenderer, ColorInput, MouseEvent } from "./index.js"
+import type { CliRenderer, MouseEvent } from "./renderer.js"
+import type { ColorInput } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { type Clock, SystemClock } from "./lib/clock.js"
 import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
@@ -14,13 +15,14 @@ import type { KeyEvent } from "./lib/KeyHandler.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
-  type KeyAliasMap,
+  getKeyBindingAction,
   defaultKeyAliases,
   mergeKeyAliases,
   keyBindingToString,
-} from "./lib/keymapping.js"
+} from "./lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 interface CallerInfo {
   functionName: string
@@ -95,6 +97,8 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   public activate(): void {
+    if (!env.OTUI_USE_CONSOLE) return
+
     if (!this._originalConsole) {
       this._originalConsole = global.console
     }
@@ -144,6 +148,13 @@ class TerminalConsoleCache extends EventEmitter {
     console.debug = (...args: any[]) => {
       this.appendToConsole(LogLevel.DEBUG, ...args)
     }
+
+    // React 19.2's reconciler calls console.timeStamp with a 6-arg Performance Tracks signature.
+    // The new Console instance from setupConsoleCapture lacks timeStamp, so provide a no-op
+    // unless the runtime already supplies one.
+    if (typeof console.timeStamp !== "function") {
+      console.timeStamp = () => {}
+    }
   }
 
   public setCollectCallerInfo(enabled: boolean): void {
@@ -166,8 +177,6 @@ class TerminalConsoleCache extends EventEmitter {
     if (this._originalConsole) {
       global.console = this._originalConsole
     }
-
-    this.setupConsoleCapture()
   }
 
   public addLogEntry(level: LogLevel, ...args: any[]) {
@@ -517,16 +526,7 @@ export class TerminalConsole extends EventEmitter {
       return
     }
 
-    const bindingKey = getKeyBindingKey({
-      name: event.name,
-      ctrl: event.ctrl,
-      shift: event.shift,
-      meta: event.meta,
-      super: event.super,
-      action: "scroll-up" as ConsoleAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, event)
 
     if (action) {
       const handler = this._actionHandlers.get(action)
@@ -749,6 +749,7 @@ export class TerminalConsole extends EventEmitter {
 
   public hide(): void {
     if (this.isVisible) {
+      this.stopAutoScroll()
       this.isVisible = false
       this.blur()
       terminalConsoleCache.setCachingEnabled(true)

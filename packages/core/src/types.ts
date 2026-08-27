@@ -3,6 +3,7 @@ import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection.js"
 import type { Renderable } from "./Renderable.js"
 import type { InternalKeyHandler, KeyHandler } from "./lib/KeyHandler.js"
+import type { EditBufferRenderable } from "./renderables/EditBufferRenderable.js"
 
 export const TextAttributes = {
   NONE: 0,
@@ -32,6 +33,17 @@ export type ThemeMode = "dark" | "light"
 
 export type CursorStyle = "block" | "line" | "underline" | "default"
 
+/** How a selection occupies cells between stored anchor and focus offsets.
+ * Independent of `cursorStyle` (CSI `q` is paint). Default `cell` includes
+ * the grapheme under the max endpoint. `boundary` is the half-open insert
+ * range `[min, max)`. */
+export type SelectionOccupancy = "cell" | "boundary"
+
+/** How local cell coordinates expand into a highlight range.
+ * `cell` is the current inclusive press/drag. `word` and `line` expand
+ * each endpoint through native selectWord / selectLine. */
+export type SelectionBehavior = "cell" | "word" | "line"
+
 export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 
 export interface CursorStyleOptions {
@@ -48,13 +60,56 @@ export enum DebugOverlayCorner {
   bottomRight = 3,
 }
 
-export type WidthMethod = "wcwidth" | "unicode"
+export enum TargetChannel {
+  FG = 1,
+  BG = 2,
+  Both = 3,
+}
+
+export type WidthMethod = "wcwidth" | "unicode" | "unicode-wide"
+export type TerminalMultiplexer = "none" | "tmux" | "zellij" | "screen" | "unknown"
+export type TerminalCapabilityState = "unknown" | "supported" | "unsupported"
+export type ImageRenderProtocol = "auto" | "kitty" | "sixel" | "blocks"
+
+export interface TerminalInfo {
+  name: string
+  version: string
+  from_xtversion: boolean
+}
+
+export interface TerminalCapabilities {
+  kitty_keyboard: boolean
+  kitty_graphics: boolean
+  rgb: boolean
+  ansi256: boolean
+  unicode: WidthMethod
+  sgr_pixels: boolean
+  color_scheme_updates: boolean
+  explicit_width: boolean
+  scaled_text: boolean
+  sixel: boolean
+  focus_tracking: boolean
+  sync: boolean
+  bracketed_paste: boolean
+  hyperlinks: boolean
+  osc52: boolean
+  osc52_support: TerminalCapabilityState
+  notifications: boolean
+  explicit_cursor_positioning: boolean
+  remote: boolean
+  multiplexer: TerminalMultiplexer
+  image_protocol?: ImageRenderProtocol
+  terminal: TerminalInfo
+}
 
 export interface RendererEvents {
   resize: (width: number, height: number) => void
   key: (data: Buffer) => void
   "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
+  capabilities: (capabilities: TerminalCapabilities) => void
   selection: (selection: Selection) => void
+  focused_renderable: (current: Renderable | null, previous: Renderable | null) => void
+  focused_editor: (current: EditBufferRenderable | null, previous: EditBufferRenderable | null) => void
   "debugOverlay:toggle": (enabled: boolean) => void
   theme_mode: (mode: ThemeMode) => void
 }
@@ -66,27 +121,35 @@ export interface RenderContext extends EventEmitter {
   clearHitGridScissorRects: () => void
   width: number
   height: number
+  terminalWidth?: number
+  terminalHeight?: number
+  resolution?: { width: number; height: number } | null
+  /** Monotonic, bumped once per `loop()` iteration. Lets renderables dedupe per-frame work. */
+  frameId: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
   setCursorStyle: (options: CursorStyleOptions) => void
   setCursorColor: (color: RGBA) => void
   setMousePointer: (shape: MousePointerStyle) => void
   widthMethod: WidthMethod
-  capabilities: any | null
+  capabilities: TerminalCapabilities | null
   requestLive: () => void
   dropLive: () => void
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void
   currentFocusedRenderable: Renderable | null
+  currentFocusedEditor: EditBufferRenderable | null
   focusRenderable: (renderable: Renderable) => void
+  blurRenderable: (renderable: Renderable) => void
+  claimFirstLineOffset?: (renderable?: Renderable) => number
   registerLifecyclePass: (renderable: Renderable) => void
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>
   keyInput: KeyHandler
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
-  startSelection: (renderable: Renderable, x: number, y: number) => void
+  startSelection: (renderable: Renderable, x: number, y: number, behavior?: SelectionBehavior) => void
   updateSelection: (
     currentRenderable: Renderable | undefined,
     x: number,

@@ -1,8 +1,9 @@
-import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { Renderable, type BaseRenderable, type RenderableOptions } from "../Renderable.js"
 import { OptimizedBuffer } from "../buffer.js"
 import type { RenderContext, LineInfoProvider } from "../types.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
-import { MeasureMode } from "yoga-layout"
+import { stringWidth } from "../platform/runtime.js"
+import { MeasureMode } from "../yoga.js"
 
 export interface LineSign {
   before?: string
@@ -29,6 +30,9 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineNumbers?: Map<number, number>
   showLineNumbers?: boolean
 }
+
+const DEFAULT_GUTTER_FG = "#888888"
+const DEFAULT_GUTTER_BG = "transparent"
 
 class GutterRenderable extends Renderable {
   private target: Renderable & LineInfoProvider
@@ -155,11 +159,11 @@ class GutterRenderable extends Renderable {
 
     for (const sign of this._lineSigns.values()) {
       if (sign.before) {
-        const width = Bun.stringWidth(sign.before)
+        const width = stringWidth(sign.before)
         this._maxBeforeWidth = Math.max(this._maxBeforeWidth, width)
       }
       if (sign.after) {
-        const width = Bun.stringWidth(sign.after)
+        const width = stringWidth(sign.after)
         this._maxAfterWidth = Math.max(this._maxAfterWidth, width)
       }
     }
@@ -185,6 +189,28 @@ class GutterRenderable extends Renderable {
     this._lineColorsGutter = lineColorsGutter
     this._lineColorsContent = lineColorsContent
     this.requestRender()
+  }
+
+  public get fg(): RGBA {
+    return this._fg
+  }
+
+  public setFg(fg: RGBA): void {
+    if (this._fg !== fg) {
+      this._fg = fg
+      this.requestRender()
+    }
+  }
+
+  public get bg(): RGBA {
+    return this._bg
+  }
+
+  public setBg(bg: RGBA): void {
+    if (this._bg !== bg) {
+      this._bg = bg
+      this.requestRender()
+    }
   }
 
   public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA> } {
@@ -277,7 +303,7 @@ class GutterRenderable extends Renderable {
         // Draw 'before' sign if present
         const sign = this._lineSigns.get(logicalLine)
         if (sign?.before) {
-          const beforeWidth = Bun.stringWidth(sign.before)
+          const beforeWidth = stringWidth(sign.before)
           // Pad to max before width for alignment
           const padding = this._maxBeforeWidth - beforeWidth
           currentX += padding
@@ -371,8 +397,8 @@ export class LineNumberRenderable extends Renderable {
       height: "auto",
     })
 
-    this._fg = parseColor(options.fg ?? "#888888")
-    this._bg = parseColor(options.bg ?? "transparent")
+    this._fg = parseColor(options.fg ?? DEFAULT_GUTTER_FG)
+    this._bg = parseColor(options.bg ?? DEFAULT_GUTTER_BG)
     this._minWidth = options.minWidth ?? 3
     this._paddingRight = options.paddingRight ?? 1
     this._lineNumberOffset = options.lineNumberOffset ?? 0
@@ -406,11 +432,11 @@ export class LineNumberRenderable extends Renderable {
     if (this.target) {
       // Remove event listener from old target
       this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target.id)
+      super.remove(this.target)
     }
 
     if (this.gutter) {
-      super.remove(this.gutter.id)
+      super.remove(this.gutter)
       this.gutter = null
     }
 
@@ -456,19 +482,19 @@ export class LineNumberRenderable extends Renderable {
   }
 
   // Override remove to prevent removing gutter/target directly
-  public override remove(id: string): void {
+  public override remove(child: BaseRenderable): void {
     if (this._isDestroying) {
-      super.remove(id)
+      super.remove(child)
       return
     }
 
-    if (this.gutter && id === this.gutter.id) {
+    if (this.gutter && child === this.gutter) {
       throw new Error("LineNumberRenderable: Cannot remove gutter directly.")
     }
-    if (this.target && id === this.target.id) {
+    if (this.target && child === this.target) {
       throw new Error("LineNumberRenderable: Cannot remove target directly. Use clearTarget() instead.")
     }
-    super.remove(id)
+    super.remove(child)
   }
 
   // Override destroyRecursively to properly clean up internal components
@@ -488,11 +514,11 @@ export class LineNumberRenderable extends Renderable {
   public clearTarget(): void {
     if (this.target) {
       this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target.id)
+      super.remove(this.target)
       this.target = null
     }
     if (this.gutter) {
-      super.remove(this.gutter.id)
+      super.remove(this.gutter)
       this.gutter = null
     }
   }
@@ -536,6 +562,30 @@ export class LineNumberRenderable extends Renderable {
 
   public get showLineNumbers(): boolean {
     return this.gutter?.visible ?? false
+  }
+
+  public get fg(): RGBA {
+    return this._fg
+  }
+
+  public set fg(value: string | RGBA | undefined) {
+    const parsed = parseColor(value ?? DEFAULT_GUTTER_FG)
+    if (this._fg !== parsed) {
+      this._fg = parsed
+      this.gutter?.setFg(parsed)
+    }
+  }
+
+  public get bg(): RGBA {
+    return this._bg
+  }
+
+  public set bg(value: string | RGBA | undefined) {
+    const parsed = parseColor(value ?? DEFAULT_GUTTER_BG)
+    if (this._bg !== parsed) {
+      this._bg = parsed
+      this.gutter?.setBg(parsed)
+    }
   }
 
   public setLineColor(line: number, color: string | RGBA | LineColorConfig): void {

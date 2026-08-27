@@ -1,15 +1,21 @@
 import { RGBA } from "./lib/RGBA.js"
-import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
-import { type Pointer } from "bun:ffi"
+import {
+  resolveRenderLib,
+  type LineInfo,
+  type MeasureResult,
+  type RenderLib,
+  type TextBufferViewHandle,
+} from "./zig.js"
 import type { TextBuffer } from "./text-buffer.js"
+import type { SelectionBehavior, SelectionOccupancy } from "./types.js"
 
 export class TextBufferView {
   private lib: RenderLib
-  private viewPtr: Pointer
+  private viewPtr: TextBufferViewHandle
   private textBuffer: TextBuffer
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer) {
+  constructor(lib: RenderLib, ptr: TextBufferViewHandle, textBuffer: TextBuffer) {
     this.lib = lib
     this.viewPtr = ptr
     this.textBuffer = textBuffer
@@ -26,7 +32,7 @@ export class TextBufferView {
     if (this._destroyed) throw new Error("TextBufferView is destroyed")
   }
 
-  public get ptr(): Pointer {
+  public get ptr(): TextBufferViewHandle {
     this.guard()
     return this.viewPtr
   }
@@ -63,6 +69,7 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.textBufferViewSetLocalSelection(
@@ -73,6 +80,7 @@ export class TextBufferView {
       focusY,
       bgColor || null,
       fgColor || null,
+      behavior,
     )
   }
 
@@ -83,6 +91,7 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
+    behavior: SelectionBehavior = "cell",
   ): boolean {
     this.guard()
     return this.lib.textBufferViewUpdateLocalSelection(
@@ -93,12 +102,23 @@ export class TextBufferView {
       focusY,
       bgColor || null,
       fgColor || null,
+      behavior,
     )
   }
 
   public resetLocalSelection(): void {
     this.guard()
     this.lib.textBufferViewResetLocalSelection(this.viewPtr)
+  }
+
+  public setSelectionOccupancy(occupancy: SelectionOccupancy): void {
+    this.guard()
+    this.lib.textBufferViewSetSelectionOccupancy(this.viewPtr, occupancy)
+  }
+
+  public getSelectionOccupancy(): SelectionOccupancy {
+    this.guard()
+    return this.lib.textBufferViewGetSelectionOccupancy(this.viewPtr)
   }
 
   public setWrapWidth(width: number | null): void {
@@ -109,6 +129,11 @@ export class TextBufferView {
   public setWrapMode(mode: "none" | "char" | "word"): void {
     this.guard()
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
+  }
+
+  public setFirstLineOffset(offset: number): void {
+    this.guard()
+    this.lib.textBufferViewSetFirstLineOffset(this.viewPtr, offset)
   }
 
   public setViewportSize(width: number, height: number): void {
@@ -171,7 +196,7 @@ export class TextBufferView {
     this.lib.textBufferViewSetTruncate(this.viewPtr, truncate)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
+  public measureForDimensions(width: number, height: number): MeasureResult | null {
     this.guard()
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }

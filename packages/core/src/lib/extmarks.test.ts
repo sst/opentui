@@ -468,6 +468,60 @@ describe("ExtmarksController", () => {
       expect(extmark?.start).toBe(0)
       expect(extmark?.end).toBe(5)
     })
+
+    it("should adjust extmark positions by display width after multi-width text insertion before extmark", async () => {
+      await setup("abc")
+
+      const id = extmarks.create({
+        start: 1,
+        end: 3,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      textarea.insertText("한글")
+
+      const extmark = extmarks.get(id)
+      expect(textarea.plainText).toBe("한글abc")
+      expect(extmark?.start).toBe(5)
+      expect(extmark?.end).toBe(7)
+    })
+
+    it("should adjust extmark positions by display width after multi-width char insertion before extmark", async () => {
+      await setup("abc")
+
+      const id = extmarks.create({
+        start: 1,
+        end: 3,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      textarea.insertChar("한")
+
+      const extmark = extmarks.get(id)
+      expect(textarea.plainText).toBe("한abc")
+      expect(extmark?.start).toBe(3)
+      expect(extmark?.end).toBe(5)
+    })
+
+    it("should count newlines in display offsets after multi-line multi-width insertion before extmark", async () => {
+      await setup("abc")
+
+      const id = extmarks.create({
+        start: 1,
+        end: 3,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      textarea.insertText("한\n글")
+
+      const extmark = extmarks.get(id)
+      expect(textarea.plainText).toBe("한\n글abc")
+      expect(extmark?.start).toBe(6)
+      expect(extmark?.end).toBe(8)
+    })
   })
 
   describe("Extmark Position Adjustment - Deletion", () => {
@@ -501,6 +555,42 @@ describe("ExtmarksController", () => {
       textarea.deleteRange(0, 6, 0, 11)
 
       expect(extmarks.get(id)).toBeNull()
+    })
+
+    it("should adjust extmark positions by display width after backspacing multi-width text before extmark", async () => {
+      await setup("한글abc")
+
+      const id = extmarks.create({
+        start: 4,
+        end: 7,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 4
+      currentMockInput.pressBackspace()
+
+      const extmark = extmarks.get(id)
+      expect(textarea.plainText).toBe("한abc")
+      expect(extmark?.start).toBe(2)
+      expect(extmark?.end).toBe(5)
+    })
+
+    it("should adjust extmark positions by display width after deleting multi-width text before extmark", async () => {
+      await setup("한abc")
+
+      const id = extmarks.create({
+        start: 2,
+        end: 5,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("DELETE")
+
+      const extmark = extmarks.get(id)
+      expect(textarea.plainText).toBe("abc")
+      expect(extmark?.start).toBe(0)
+      expect(extmark?.end).toBe(3)
     })
   })
 
@@ -1525,7 +1615,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      currentMockInput.pressArrow("right", { shift: true })
+      // Inclusive selection: 3 shift+right presses select 4 cells ("hell").
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
@@ -1552,7 +1642,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      currentMockInput.pressArrow("right", { shift: true })
+      // Inclusive selection: 3 shift+right presses select 4 cells ("hell").
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
@@ -1579,7 +1669,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      currentMockInput.pressArrow("right", { shift: true })
+      // Inclusive selection: 4 shift+right presses select 5 cells ("hello").
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
       currentMockInput.pressArrow("right", { shift: true })
@@ -1606,7 +1696,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 11; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1631,7 +1721,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 7
 
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 6; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1639,12 +1729,14 @@ Press ESC to return to main menu.`
 
       currentMockInput.pressBackspace()
 
-      expect(textarea.plainText).toBe("Line 1\nLine 3\nLine 4")
+      // Charwise selection at EOL does not include the newline (Vim v$),
+      // so the emptied line remains.
+      expect(textarea.plainText).toBe("Line 1\n\nLine 3\nLine 4")
 
       const extmark = extmarks.get(id)
       expect(extmark).not.toBeNull()
-      expect(extmark?.start).toBe(14)
-      expect(extmark?.end).toBe(20)
+      expect(extmark?.start).toBe(15)
+      expect(extmark?.end).toBe(21)
     })
 
     it("should adjust multiple extmarks after deleting multiline selection", async () => {
@@ -1663,7 +1755,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 7; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1671,18 +1763,19 @@ Press ESC to return to main menu.`
 
       currentMockInput.pressBackspace()
 
-      expect(textarea.plainText).toBe("CCC\nDDD")
+      // Charwise selection at EOL does not include the trailing newline.
+      expect(textarea.plainText).toBe("\nCCC\nDDD")
 
       const extmark1 = extmarks.get(id1)
       expect(extmark1).not.toBeNull()
-      expect(extmark1?.start).toBe(0)
-      expect(extmark1?.end).toBe(3)
+      expect(extmark1?.start).toBe(1)
+      expect(extmark1?.end).toBe(4)
       expect(textarea.plainText.substring(extmark1!.start, extmark1!.end)).toBe("CCC")
 
       const extmark2 = extmarks.get(id2)
       expect(extmark2).not.toBeNull()
-      expect(extmark2?.start).toBe(4)
-      expect(extmark2?.end).toBe(7)
+      expect(extmark2?.start).toBe(5)
+      expect(extmark2?.end).toBe(8)
       expect(textarea.plainText.substring(extmark2!.start, extmark2!.end)).toBe("DDD")
     })
 
@@ -1697,7 +1790,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 7; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1705,12 +1798,13 @@ Press ESC to return to main menu.`
 
       currentMockInput.pressBackspace()
 
-      expect(textarea.plainText).toBe("CCC\nDDD\nEEE")
+      // Charwise selection at EOL does not include the trailing newline.
+      expect(textarea.plainText).toBe("\nCCC\nDDD\nEEE")
 
       const extmark = extmarks.get(id)
       expect(extmark).not.toBeNull()
-      expect(extmark?.start).toBe(4)
-      expect(extmark?.end).toBe(11)
+      expect(extmark?.start).toBe(5)
+      expect(extmark?.end).toBe(12)
       expect(textarea.plainText.substring(extmark!.start, extmark!.end)).toBe("DDD\nEEE")
     })
 
@@ -1725,7 +1819,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 4
 
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 5; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1757,7 +1851,7 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 17; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 
@@ -1765,18 +1859,19 @@ Press ESC to return to main menu.`
 
       currentMockInput.pressBackspace()
 
-      expect(textarea.plainText).toBe("Line4\nLine5")
+      // Charwise selection at EOL does not include the trailing newline.
+      expect(textarea.plainText).toBe("\nLine4\nLine5")
 
       const extmark1 = extmarks.get(id1)
       expect(extmark1).not.toBeNull()
-      expect(extmark1?.start).toBe(0)
-      expect(extmark1?.end).toBe(5)
+      expect(extmark1?.start).toBe(1)
+      expect(extmark1?.end).toBe(6)
       expect(textarea.plainText.substring(extmark1!.start, extmark1!.end)).toBe("Line4")
 
       const extmark2 = extmarks.get(id2)
       expect(extmark2).not.toBeNull()
-      expect(extmark2?.start).toBe(6)
-      expect(extmark2?.end).toBe(11)
+      expect(extmark2?.start).toBe(7)
+      expect(extmark2?.end).toBe(12)
       expect(textarea.plainText.substring(extmark2!.start, extmark2!.end)).toBe("Line5")
     })
   })
@@ -2682,7 +2777,8 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 0
 
-      for (let i = 0; i < 5; i++) {
+      // Inclusive selection: 4 shift+right presses select 5 cells ("Hello").
+      for (let i = 0; i < 4; i++) {
         currentMockInput.pressArrow("right", { shift: true })
       }
 

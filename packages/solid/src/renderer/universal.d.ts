@@ -1,6 +1,7 @@
 export interface RendererOptions<NodeType> {
   createElement(tag: string): NodeType
   createTextNode(value: string): NodeType
+  createDynamicTextNode(value: string): NodeType
   createSlotNode(): NodeType
   replaceText(textNode: NodeType, value: string): void
   isTextNode(node: NodeType): boolean

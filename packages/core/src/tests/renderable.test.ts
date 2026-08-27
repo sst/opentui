@@ -1,10 +1,11 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
-import { decodePasteBytes } from "../lib/paste"
+import { decodePasteBytes } from "../lib/paste.js"
 import {
   Renderable,
   BaseRenderable,
   RootRenderable,
   RenderableEvents,
+  isRenderable,
   type BaseRenderableOptions,
   type RenderableOptions,
 } from "../Renderable.js"
@@ -21,7 +22,7 @@ export class TestBaseRenderable extends BaseRenderable {
   add(obj: BaseRenderable | unknown, index?: number): number {
     throw new Error("Method not implemented.")
   }
-  remove(id: string): void {
+  remove(child: BaseRenderable): void {
     throw new Error("Method not implemented.")
   }
   insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void {
@@ -45,8 +46,24 @@ export class TestBaseRenderable extends BaseRenderable {
 }
 
 class TestRenderable extends Renderable {
+  constructor(ctx: RenderContext, options: RenderableOptions<TestRenderable>) {
+    super(ctx, options)
+  }
+}
+
+class CountingRenderable extends Renderable {
+  public renderCount = 0
+
   constructor(ctx: RenderContext, options: RenderableOptions) {
     super(ctx, options)
+  }
+
+  protected renderSelf(): void {
+    this.renderCount += 1
+  }
+
+  public getScreenPosition(): { x: number; y: number } {
+    return { x: this.screenX, y: this.screenY }
   }
 }
 
@@ -119,7 +136,6 @@ describe("Renderable", () => {
   })
 
   test("isRenderable", () => {
-    const { isRenderable } = require("../Renderable")
     const renderable = new TestBaseRenderable({})
     expect(isRenderable(renderable)).toBe(true)
     expect(isRenderable({})).toBe(false)
@@ -165,6 +181,152 @@ describe("Renderable", () => {
     expect(renderable.live).toBe(true)
     expect(renderable.liveCount).toBe(1)
   })
+
+  test("screen position cache matches x/y after layout", async () => {
+    const parent = new CountingRenderable(testRenderer, {
+      id: "parent",
+      position: "absolute",
+      left: 10,
+      top: 4,
+      width: 30,
+      height: 10,
+    })
+    parent.translateX = 2
+    parent.translateY = 1
+
+    const child = new CountingRenderable(testRenderer, {
+      id: "child",
+      position: "absolute",
+      left: 3,
+      top: 2,
+      width: 8,
+      height: 4,
+    })
+    child.translateX = 1
+    child.translateY = 2
+
+    const grandchild = new CountingRenderable(testRenderer, {
+      id: "grandchild",
+      width: 4,
+      height: 2,
+    })
+    grandchild.translateX = 2
+    grandchild.translateY = 1
+
+    child.add(grandchild)
+    parent.add(child)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    expect(parent.getScreenPosition()).toEqual({ x: parent.x, y: parent.y })
+    expect(child.getScreenPosition()).toEqual({ x: child.x, y: child.y })
+    expect(grandchild.getScreenPosition()).toEqual({ x: grandchild.x, y: grandchild.y })
+  })
+
+  test("screen position cache tracks translate changes on the next render", async () => {
+    const parent = new CountingRenderable(testRenderer, {
+      id: "parent",
+      position: "absolute",
+      left: 5,
+      top: 6,
+      width: 24,
+      height: 12,
+    })
+    const child = new CountingRenderable(testRenderer, {
+      id: "child",
+      width: 10,
+      height: 4,
+    })
+
+    parent.add(child)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    parent.translateX = 7
+    parent.translateY = 3
+    child.translateX = 2
+    child.translateY = 5
+
+    expect(parent.screenX).toBe(parent.x)
+    expect(parent.screenY).toBe(parent.y)
+    expect(child.screenX).toBe(child.x)
+    expect(child.screenY).toBe(child.y)
+
+    await renderOnce()
+
+    expect(parent.getScreenPosition()).toEqual({ x: parent.x, y: parent.y })
+    expect(child.getScreenPosition()).toEqual({ x: child.x, y: child.y })
+  })
+})
+
+describe("Renderable - layout read caching invariants", () => {
+  // Behavioral contracts for any layout-read caching or batching scheme
+  // (the render-list reuse keyed on the context layout generation today, a
+  // native render tree with shared layout buffers tomorrow): every mutation
+  // that can change computed layout must be visible on the next frame, even
+  // when it bypasses the Renderable setters, and ancestor movement must
+  // cascade to descendant screen positions without a relayout.
+
+  test("direct yoga-node style mutation bypassing all setters is picked up next frame", async () => {
+    const box = new TestRenderable(testRenderer, { id: "yoga-bypass", width: 10, height: 2 })
+    testRenderer.root.add(box)
+    await renderOnce()
+    expect(box.width).toBe(10)
+
+    box.getLayoutNode().setWidth(30)
+    await renderOnce()
+
+    expect(box.width).toBe(30)
+  })
+
+  test("out-of-band subtree calculateLayout does not freeze later layout reads", async () => {
+    const parent = new TestRenderable(testRenderer, { id: "oob-parent", width: 40, height: 6 })
+    const child = new TestRenderable(testRenderer, { id: "oob-child", width: 10, height: 2 })
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+    expect(child.width).toBe(10)
+
+    // Mutate and lay out the subtree directly through yoga, bypassing the
+    // renderer's root calculateLayout entirely.
+    child.getLayoutNode().setWidth(25)
+    parent.getLayoutNode().calculateLayout(undefined, undefined)
+    await renderOnce()
+
+    expect(child.width).toBe(25)
+  })
+
+  test("grandchild screen position follows a translate-only ancestor move", async () => {
+    const parent = new TestRenderable(testRenderer, {
+      id: "cascade-parent",
+      position: "absolute",
+      left: 2,
+      top: 2,
+      width: 30,
+      height: 10,
+    })
+    const child = new TestRenderable(testRenderer, { id: "cascade-child", width: 20, height: 6 })
+    const grandchild = new TestRenderable(testRenderer, { id: "cascade-grandchild", width: 10, height: 2 })
+
+    child.add(grandchild)
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+
+    const beforeX = grandchild.screenX
+    const beforeY = grandchild.screenY
+
+    // Translate does not touch yoga: no relayout happens, only ancestor
+    // screen positions move. Every descendant must follow on the next frame.
+    parent.translateX = 7
+    parent.translateY = 5
+    await renderOnce()
+
+    expect(grandchild.screenX).toBe(beforeX + 7)
+    expect(grandchild.screenY).toBe(beforeY + 5)
+  })
 })
 
 describe("Renderable - Child Management", () => {
@@ -182,10 +344,267 @@ describe("Renderable - Child Management", () => {
     expect(index2).toBe(1)
     expect(parent.getChildrenCount()).toBe(2)
 
-    parent.remove("child1")
+    parent.remove(child1)
     expect(parent.getChildrenCount()).toBe(1)
     expect(parent.getRenderable("child1")).toBeUndefined()
     expect(parent.getRenderable("child2")).toBe(child2)
+  })
+
+  test("public id lookup returns first matching duplicate child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    expect(parent.getRenderable("duplicate")).toBe(first)
+    expect(parent.findDescendantById("duplicate")).toBe(first)
+
+    const found = parent.getRenderable("duplicate")
+    expect(found).toBe(first)
+    if (found) parent.remove(found)
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(second)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBeNull()
+    expect(second.parent).toBe(parent)
+    expect(parent.getRenderable("duplicate")).toBe(second)
+  })
+
+  test("remove detaches the exact duplicate-id child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    parent.remove(second)
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(first)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBeNull()
+    expect(parent.getRenderable("duplicate")).toBe(first)
+  })
+
+  test("remove rejects string ids at runtime", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parent.add(child)
+
+    expect(() => (parent as any).remove("child")).toThrow("remove expects a renderable child object")
+    expect(parent.getChildren()[0]).toBe(child)
+  })
+
+  test("remove warns in dev when the object was never a child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const stranger = new TestRenderable(testRenderer, { id: "stranger" })
+    parent.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(() => parent.remove(stranger)).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(parent.getChildren()).toEqual([child])
+      expect(stranger.parent).toBeNull()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove warns in dev and does not detach a child that belongs to another parent", () => {
+    const parentA = new TestRenderable(testRenderer, { id: "parent-a" })
+    const parentB = new TestRenderable(testRenderer, { id: "parent-b" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parentA.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      parentB.remove(child)
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(child.parent).toBe(parentA)
+      expect(parentA.getChildren()).toEqual([child])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove warns in dev when passed a text node instead of a layout child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const textNode = new TextNodeRenderable({ id: "text-node" })
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(() => parent.remove(textNode)).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove stays silent for actual children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parent.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      parent.remove(child)
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(child.parent).toBeNull()
+      expect(parent.getChildrenCount()).toBe(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("changing a child's id keeps parent lookups working", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "old-id" })
+    parent.add(child)
+
+    child.id = "new-id"
+
+    expect(child.id).toBe("new-id")
+    expect(parent.getRenderable("new-id")).toBe(child)
+    expect(parent.getRenderable("old-id")).toBeUndefined()
+    expect(parent.findDescendantById("new-id")).toBe(child)
+  })
+
+  test("insertBefore accepts an anchor with the same public id", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(tail)
+    parent.insertBefore(second, first)
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(3)
+    expect(children[0]).toBe(second)
+    expect(children[1]).toBe(first)
+    expect(children[2]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBe(parent)
+  })
+
+  test("reparenting moves the exact duplicate-id child", () => {
+    const oldParent = new TestRenderable(testRenderer, { id: "old-parent" })
+    const newParent = new TestRenderable(testRenderer, { id: "new-parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+
+    oldParent.add(first)
+    oldParent.add(second)
+    newParent.add(second)
+
+    const oldChildren = oldParent.getChildren()
+    const newChildren = newParent.getChildren()
+    expect(oldChildren).toHaveLength(1)
+    expect(newChildren).toHaveLength(1)
+    expect(oldChildren[0]).toBe(first)
+    expect(newChildren[0]).toBe(second)
+    expect(first.parent).toBe(oldParent)
+    expect(second.parent).toBe(newParent)
+  })
+
+  test("destroying a duplicate-id child removes that exact child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    second.destroy()
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(first)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBeNull()
+    expect(second.isDestroyed).toBe(true)
+  })
+
+  test("renderBefore position changes update hit-grid coordinates in the same frame", async () => {
+    testRenderer.requestRender = () => {}
+    const hitGridSpy = spyOn(testRenderer, "addToHitGrid")
+
+    const renderable = new TestRenderable(testRenderer, {
+      id: "hook-moved-hit-grid",
+      position: "absolute",
+      left: 2,
+      top: 3,
+      width: 4,
+      height: 2,
+      renderBefore: function () {
+        if (this.translateX === 0) {
+          this.translateX = 5
+        }
+      },
+    })
+
+    testRenderer.root.add(renderable)
+    await renderOnce()
+
+    expect(renderable.screenX).toBe(7)
+
+    const call = hitGridSpy.mock.calls.find((args) => args[4] === renderable.num)
+    if (!call) {
+      throw new Error("Expected renderable to be added to the hit grid")
+    }
+
+    expect(call[0]).toBe(renderable.screenX)
+    expect(call[1]).toBe(renderable.screenY)
+  })
+
+  test("renderBefore position changes update frame-buffer compositing coordinates in the same frame", async () => {
+    testRenderer.requestRender = () => {}
+    const drawFrameBufferSpy = spyOn(testRenderer.nextRenderBuffer, "drawFrameBuffer")
+
+    const renderable = new TestRenderable(testRenderer, {
+      id: "hook-moved-buffered",
+      buffered: true,
+      position: "absolute",
+      left: 2,
+      top: 3,
+      width: 4,
+      height: 2,
+      renderBefore: function () {
+        if (this.translateX === 0) {
+          this.translateX = 5
+        }
+      },
+    })
+
+    testRenderer.root.add(renderable)
+    await renderOnce()
+
+    expect(renderable.screenX).toBe(7)
+
+    const call = drawFrameBufferSpy.mock.calls.find((args) => args[2]?.id === `framebuffer-${renderable.id}`)
+    if (!call) {
+      throw new Error("Expected renderable frame buffer to be composited")
+    }
+
+    expect(call[0]).toBe(renderable.screenX)
+    expect(call[1]).toBe(renderable.screenY)
   })
 
   test("can insert child at specific index", () => {
@@ -733,6 +1152,7 @@ describe("Renderable - Focus", () => {
 
     renderable.focus()
     expect(renderable.focused).toBe(true)
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
 
     renderable.blur()
     expect(renderable.focused).toBe(false)
@@ -817,6 +1237,50 @@ describe("Renderable - Focus", () => {
     expect(onPasteCalled).toBe(true)
     expect(handlePasteCalled).toBe(false)
   })
+
+  test("blur() calls _ctx.blurRenderable to reset focusedRenderable", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-blur-context" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    renderable.focus()
+    expect(renderable.focused).toBe(true)
+    expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
+
+    renderable.blur()
+    expect(blurSpy).toHaveBeenCalledWith(renderable)
+    expect(blurSpy).toHaveBeenCalledTimes(1)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
+  })
+
+  test("destroy() blurs renderable on context when focused", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-destroy-focused" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    renderable.focus()
+    expect(renderable.focused).toBe(true)
+    expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
+
+    renderable.destroy()
+    expect(blurSpy).toHaveBeenCalledWith(renderable)
+    expect(blurSpy).toHaveBeenCalledTimes(1)
+    expect(renderable.focused).toBe(false)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
+  })
+
+  test("destroy() does not call blurRenderable when renderable was not focused", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-destroy-not-focused" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    // Don't focus the renderable
+    expect(renderable.focused).toBe(false)
+
+    renderable.destroy()
+    // blur() is called but returns early since renderable wasn't focused
+    // so blurRenderable is never called
+    expect(blurSpy).not.toHaveBeenCalled()
+  })
 })
 
 describe("Renderable - Lifecycle", () => {
@@ -862,6 +1326,10 @@ describe("Renderable - Layout with Viewport Filtering", () => {
       this._filterEnabled = true
     }
 
+    protected _hasVisibleChildFilter(): boolean {
+      return this._filterEnabled
+    }
+
     protected _getVisibleChildren(): number[] {
       if (!this._filterEnabled) {
         return super._getVisibleChildren()
@@ -870,6 +1338,56 @@ describe("Renderable - Layout with Viewport Filtering", () => {
       return children.map((c) => c.num)
     }
   }
+
+  class LegacyViewportFilteringRenderable extends Renderable {
+    private _filterEnabled = false
+
+    constructor(ctx: RenderContext, options: RenderableOptions) {
+      super(ctx, options)
+    }
+
+    enableFiltering() {
+      this._filterEnabled = true
+    }
+
+    protected _getVisibleChildren(): number[] {
+      if (!this._filterEnabled) {
+        return super._getVisibleChildren()
+      }
+
+      return this._childrenInZIndexOrder.slice(0, 1).map((child) => child.num)
+    }
+  }
+
+  test("legacy subclasses that only override _getVisibleChildren still filter children", async () => {
+    const parent = new LegacyViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const visibleChild = new CountingRenderable(testRenderer, {
+      id: "visible-child",
+      height: 30,
+      flexGrow: 0,
+    })
+    const filteredChild = new CountingRenderable(testRenderer, {
+      id: "filtered-child",
+      height: 30,
+      flexGrow: 0,
+    })
+
+    parent.add(visibleChild)
+    parent.add(filteredChild)
+    parent.enableFiltering()
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    expect(visibleChild.renderCount).toBeGreaterThan(0)
+    expect(filteredChild.renderCount).toBe(0)
+  })
 
   test("newly added children receive layout even when filtered from viewport", async () => {
     const parent = new ViewportFilteringRenderable(testRenderer, {
@@ -913,6 +1431,58 @@ describe("Renderable - Layout with Viewport Filtering", () => {
     expect(child3.width).toBe(100)
     expect(child3.height).toBe(25)
     expect(child3.y).toBe(60)
+  })
+
+  test("renders all children when visible-children hook returns default path", async () => {
+    const parent = new ViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const child1 = new CountingRenderable(testRenderer, { id: "child1", height: 20, flexGrow: 0 })
+    const child2 = new CountingRenderable(testRenderer, { id: "child2", height: 20, flexGrow: 0 })
+    const child3 = new CountingRenderable(testRenderer, { id: "child3", height: 20, flexGrow: 0 })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    expect(child1.renderCount).toBeGreaterThan(0)
+    expect(child2.renderCount).toBeGreaterThan(0)
+    expect(child3.renderCount).toBeGreaterThan(0)
+    expect(child1.renderCount).toBe(child2.renderCount)
+    expect(child2.renderCount).toBe(child3.renderCount)
+  })
+
+  test("renders only filtered children while still updating hidden layout", async () => {
+    const parent = new ViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const child1 = new CountingRenderable(testRenderer, { id: "child1", height: 20, flexGrow: 0 })
+    const child2 = new CountingRenderable(testRenderer, { id: "child2", height: 20, flexGrow: 0 })
+    const child3 = new CountingRenderable(testRenderer, { id: "child3", height: 20, flexGrow: 0 })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+    testRenderer.root.add(parent)
+    parent.enableFiltering()
+
+    await renderOnce()
+
+    expect(child1.renderCount).toBeGreaterThan(0)
+    expect(child2.renderCount).toBeGreaterThan(0)
+    expect(child3.renderCount).toBe(0)
+    expect(child3.height).toBe(20)
   })
 
   test("child inserted before visible children receives layout when filtered", async () => {
@@ -1238,7 +1808,7 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
     expect(child1InitialY).toBe(0)
     expect(child2InitialY).toBe(30)
 
-    parent.remove(child1.id)
+    parent.remove(child1)
     await renderOnce()
 
     expect(child2.y).toBe(0)

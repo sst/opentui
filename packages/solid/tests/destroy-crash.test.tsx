@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { createTestRenderer } from "@opentui/core/testing"
 import { For, createSignal, onCleanup, onMount } from "solid-js"
-import { render } from "../index"
+import { render } from "../index.js"
 
 describe("Renderer destroy with pending Solid updates", () => {
   it("disposes Solid root when renderer is destroyed externally", async () => {

@@ -1,14 +1,15 @@
-import { MeasureMode } from "yoga-layout"
-import { type RenderableOptions, Renderable } from "../Renderable"
-import type { OptimizedBuffer } from "../buffer"
-import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border"
-import { convertGlobalToLocalSelection, type Selection, type LocalSelectionBounds } from "../lib/selection"
-import { StyledText, stringToStyledText } from "../lib/styled-text"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import { SyntaxStyle } from "../syntax-style"
-import { type TextChunk, TextBuffer } from "../text-buffer"
-import { TextBufferView } from "../text-buffer-view"
-import type { RenderContext } from "../types"
+import { MeasureMode } from "../yoga.js"
+import { type RenderableOptions, Renderable } from "../Renderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border.js"
+import { convertGlobalToLocalSelection, type Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import { StyledText, stringToStyledText } from "../lib/styled-text.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { type TextChunk, TextBuffer } from "../text-buffer.js"
+import { TextBufferView } from "../text-buffer-view.js"
+import type { RenderContext } from "../types.js"
+import { allocateProportionalColumnWidths } from "./text-table-width.js"
 
 // Large sentinel height for text measurement. The Zig measure path currently
 // ignores height, but we pass an effectively unbounded value so if height-aware
@@ -77,6 +78,9 @@ export interface TextTableOptions extends RenderableOptions<TextTableRenderable>
   columnWidthMode?: TextTableColumnWidthMode
   columnFitter?: TextTableColumnFitter
   cellPadding?: number
+  cellPaddingX?: number
+  cellPaddingY?: number
+  columnGap?: number
   showBorders?: boolean
   border?: boolean
   outerBorder?: boolean
@@ -97,7 +101,9 @@ export class TextTableRenderable extends Renderable {
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: TextTableColumnWidthMode
   private _columnFitter: TextTableColumnFitter
-  private _cellPadding: number
+  private _cellPaddingX: number
+  private _cellPaddingY: number
+  private _columnGap: number
   private _showBorders: boolean
   private _border: boolean
   private _outerBorder: boolean
@@ -132,6 +138,9 @@ export class TextTableRenderable extends Renderable {
     columnWidthMode: "full" as TextTableColumnWidthMode,
     columnFitter: "proportional" as TextTableColumnFitter,
     cellPadding: 0,
+    cellPaddingX: undefined as number | undefined,
+    cellPaddingY: undefined as number | undefined,
+    columnGap: 0,
     showBorders: true,
     border: true,
     outerBorder: true,
@@ -154,7 +163,9 @@ export class TextTableRenderable extends Renderable {
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
     this._columnFitter = this.resolveColumnFitter(options.columnFitter)
-    this._cellPadding = this.resolveCellPadding(options.cellPadding)
+    this._cellPaddingX = this.resolveCellPadding(options.cellPaddingX ?? options.cellPadding)
+    this._cellPaddingY = this.resolveCellPadding(options.cellPaddingY ?? options.cellPadding)
+    this._columnGap = this.resolveColumnGap(options.columnGap)
     this._showBorders = options.showBorders ?? this._defaultOptions.showBorders
     this._border = options.border ?? this._defaultOptions.border
     this._hasExplicitOuterBorder = options.outerBorder !== undefined
@@ -222,13 +233,47 @@ export class TextTableRenderable extends Renderable {
   }
 
   public get cellPadding(): number {
-    return this._cellPadding
+    return this._cellPaddingX === this._cellPaddingY ? this._cellPaddingX : 0
   }
 
   public set cellPadding(value: number) {
     const next = this.resolveCellPadding(value)
-    if (this._cellPadding === next) return
-    this._cellPadding = next
+    if (this._cellPaddingX === next && this._cellPaddingY === next) return
+    this._cellPaddingX = next
+    this._cellPaddingY = next
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get cellPaddingX(): number {
+    return this._cellPaddingX
+  }
+
+  public set cellPaddingX(value: number) {
+    const next = this.resolveCellPadding(value)
+    if (this._cellPaddingX === next) return
+    this._cellPaddingX = next
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get cellPaddingY(): number {
+    return this._cellPaddingY
+  }
+
+  public set cellPaddingY(value: number) {
+    const next = this.resolveCellPadding(value)
+    if (this._cellPaddingY === next) return
+    this._cellPaddingY = next
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get columnGap(): number {
+    return this._columnGap
+  }
+
+  public set columnGap(value: number) {
+    const next = this.resolveColumnGap(value)
+    if (this._columnGap === next) return
+    this._columnGap = next
     this.invalidateLayoutAndRaster()
   }
 
@@ -623,6 +668,7 @@ export class TextTableRenderable extends Renderable {
       borderLayout.left,
       borderLayout.right,
       borderLayout.innerVertical,
+      this.getInterColumnGap(borderLayout),
     )
     const rowOffsets = this.computeOffsets(
       rowHeights,
@@ -665,7 +711,10 @@ export class TextTableRenderable extends Renderable {
       return intrinsicWidths
     }
 
-    const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - this.getVerticalBorderCount(borderLayout))
+    const maxContentWidth = Math.max(
+      1,
+      Math.floor(maxTableWidth) - this.getVerticalBorderCount(borderLayout) - this.getTotalInterColumnGap(borderLayout),
+    )
     const currentWidth = intrinsicWidths.reduce((sum, width) => sum + width, 0)
 
     if (currentWidth === maxContentWidth) {
@@ -721,65 +770,7 @@ export class TextTableRenderable extends Renderable {
 
   private fitColumnWidthsProportional(widths: number[], targetContentWidth: number): number[] {
     const minWidth = 1 + this.getHorizontalCellPadding()
-    const hardMinWidths = new Array(widths.length).fill(minWidth)
-    const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
-
-    const preferredMinWidths = baseWidths.map((width) => Math.min(width, minWidth + 1))
-    const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
-
-    const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
-    const floorTotal = floorWidths.reduce((sum, width) => sum + width, 0)
-    const clampedTarget = Math.max(floorTotal, targetContentWidth)
-
-    const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
-
-    if (totalBaseWidth <= clampedTarget) {
-      return baseWidths
-    }
-
-    const shrinkable = baseWidths.map((width, idx) => width - floorWidths[idx])
-    const totalShrinkable = shrinkable.reduce((sum, value) => sum + value, 0)
-    if (totalShrinkable <= 0) {
-      return [...floorWidths]
-    }
-
-    const targetShrink = totalBaseWidth - clampedTarget
-    const integerShrink = new Array(baseWidths.length).fill(0)
-    const fractions = new Array(baseWidths.length).fill(0)
-    let usedShrink = 0
-
-    for (let idx = 0; idx < baseWidths.length; idx++) {
-      if (shrinkable[idx] <= 0) continue
-
-      const exact = (shrinkable[idx] / totalShrinkable) * targetShrink
-      const whole = Math.min(shrinkable[idx], Math.floor(exact))
-      integerShrink[idx] = whole
-      fractions[idx] = exact - whole
-      usedShrink += whole
-    }
-
-    let remainingShrink = targetShrink - usedShrink
-
-    while (remainingShrink > 0) {
-      let bestIdx = -1
-      let bestFraction = -1
-
-      for (let idx = 0; idx < baseWidths.length; idx++) {
-        if (shrinkable[idx] - integerShrink[idx] <= 0) continue
-        if (fractions[idx] > bestFraction) {
-          bestFraction = fractions[idx]
-          bestIdx = idx
-        }
-      }
-
-      if (bestIdx === -1) break
-
-      integerShrink[bestIdx] += 1
-      fractions[bestIdx] = 0
-      remainingShrink -= 1
-    }
-
-    return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - integerShrink[idx]))
+    return allocateProportionalColumnWidths(widths, targetContentWidth, minWidth)
   }
 
   private fitColumnWidthsBalanced(widths: number[], targetContentWidth: number): number[] {
@@ -905,18 +896,31 @@ export class TextTableRenderable extends Renderable {
     startBoundary: boolean,
     endBoundary: boolean,
     includeInnerBoundaries: boolean,
+    innerGap: number = 0,
   ): number[] {
     const offsets: number[] = [startBoundary ? 0 : -1]
     let cursor = offsets[0] ?? 0
 
     for (let idx = 0; idx < parts.length; idx++) {
       const size = parts[idx] ?? 1
-      const hasBoundaryAfter = idx < parts.length - 1 ? includeInnerBoundaries : endBoundary
-      cursor += size + (hasBoundaryAfter ? 1 : 0)
+      const separatorAfter = idx < parts.length - 1 ? (includeInnerBoundaries ? 1 : innerGap) : endBoundary ? 1 : 0
+      cursor += size + separatorAfter
       offsets.push(cursor)
     }
 
     return offsets
+  }
+
+  private getInterColumnGap(borderLayout: ResolvedTableBorderLayout): number {
+    if (borderLayout.innerVertical) {
+      return 0
+    }
+
+    return this._columnGap
+  }
+
+  private getTotalInterColumnGap(borderLayout: ResolvedTableBorderLayout): number {
+    return Math.max(0, this._columnCount - 1) * this.getInterColumnGap(borderLayout)
   }
 
   private applyLayoutToViews(layout: TextTableLayout): void {
@@ -1000,15 +1004,16 @@ export class TextTableRenderable extends Renderable {
   private drawCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
     const colOffsets = this._layout.columnOffsets
     const rowOffsets = this._layout.rowOffsets
-    const cellPadding = this._cellPadding
+    const cellPaddingX = this._cellPaddingX
+    const cellPaddingY = this._cellPaddingY
 
     for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
-      const cellY = (rowOffsets[rowIdx] ?? 0) + 1 + cellPadding
+      const cellY = (rowOffsets[rowIdx] ?? 0) + 1 + cellPaddingY
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
-        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1 + cellPadding, cellY)
+        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1 + cellPaddingX, cellY)
       }
     }
   }
@@ -1042,7 +1047,15 @@ export class TextTableRenderable extends Renderable {
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cellX = (colOffsets[colIdx] ?? 0) + 1
         const colWidth = colWidths[colIdx] ?? 1
-        buffer.fillRect(cellX, cellY, colWidth, rowHeight, this._backgroundColor)
+        if (this._backgroundColor.a < 1) {
+          for (let y = cellY; y < cellY + rowHeight; y++) {
+            for (let x = cellX; x < cellX + colWidth; x++) {
+              buffer.setCell(x, y, " ", this._defaultFg, this._backgroundColor, this._defaultAttributes)
+            }
+          }
+        } else {
+          buffer.fillRect(cellX, cellY, colWidth, rowHeight, this._backgroundColor)
+        }
       }
     }
   }
@@ -1086,6 +1099,12 @@ export class TextTableRenderable extends Renderable {
   }
 
   private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): void {
+    if (localSelection.anchorX === localSelection.focusX && localSelection.anchorY === localSelection.focusY) {
+      this.resetCellSelections()
+      this._lastSelectionMode = null
+      return
+    }
+
     const minSelY = Math.min(localSelection.anchorY, localSelection.focusY)
     const maxSelY = Math.max(localSelection.anchorY, localSelection.focusY)
 
@@ -1102,7 +1121,7 @@ export class TextTableRenderable extends Renderable {
         continue
       }
 
-      const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1 + this._cellPadding
+      const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1 + this._cellPaddingY
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
@@ -1113,7 +1132,7 @@ export class TextTableRenderable extends Renderable {
           continue
         }
 
-        const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1 + this._cellPadding
+        const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1 + this._cellPaddingX
         let coords: CellSelectionCoords = {
           anchorX: localSelection.anchorX - cellLeft,
           anchorY: localSelection.anchorY - cellTop,
@@ -1125,6 +1144,12 @@ export class TextTableRenderable extends Renderable {
           selection.anchorCell !== null &&
           selection.anchorCell.rowIdx === rowIdx &&
           selection.anchorCell.colIdx === colIdx
+
+        if (selection.mode === "single-cell" && !isAnchorCell) {
+          cell.textBufferView.resetLocalSelection()
+          continue
+        }
+
         const forceSet = isAnchorCell && selection.mode !== "single-cell"
 
         if (forceSet) {
@@ -1301,11 +1326,11 @@ export class TextTableRenderable extends Renderable {
   }
 
   private getHorizontalCellPadding(): number {
-    return this._cellPadding * 2
+    return this._cellPaddingX * 2
   }
 
   private getVerticalCellPadding(): number {
-    return this._cellPadding * 2
+    return this._cellPaddingY * 2
   }
 
   private resolveColumnFitter(value: TextTableColumnFitter | undefined): TextTableColumnFitter {
@@ -1319,6 +1344,14 @@ export class TextTableRenderable extends Renderable {
   private resolveCellPadding(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value)) {
       return this._defaultOptions.cellPadding
+    }
+
+    return Math.max(0, Math.floor(value))
+  }
+
+  private resolveColumnGap(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return this._defaultOptions.columnGap
     }
 
     return Math.max(0, Math.floor(value))

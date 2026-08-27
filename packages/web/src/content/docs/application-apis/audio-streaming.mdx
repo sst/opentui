@@ -1,0 +1,393 @@
+---
+title: Streaming audio
+description: Play bounded MP3 or FLAC streams from byte sources, URLs, and custom transports
+skill:
+  entry: true
+  intents: [audio-streaming, audio-stream, radio, mp3, flac, icy, backpressure, reconnect]
+---
+
+# Streaming audio
+
+OpenTUI streams encoded MP3 or FLAC data into the native audio mixer. Streaming starts before the complete source arrives.
+
+Use streaming for long media, internet radio, or a transport that supplies encoded chunks over time. Use [loaded sounds](/docs/core-concepts/audio#load-sounds) for short, reusable audio.
+
+## Play a URL
+
+The engine does not start output when it creates a stream. Start a playback device first, or consume headless output with `mixFrames()`.
+
+```typescript
+import { Audio, AudioStreamError, type AudioStream } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const controller = new AbortController()
+const stopTimer = setTimeout(() => controller.abort(), 30_000)
+let stream: AudioStream | null = null
+
+function reportSetupError(error: unknown): void {
+  if (error instanceof AudioStreamError) {
+    console.error(`${error.context.action}: ${error.message}`)
+  } else if (!(error instanceof DOMException && error.name === "AbortError")) {
+    throw error
+  }
+}
+
+audio.on("error", (error, context) => {
+  console.error(`${context.action}: ${error.message}`)
+})
+
+try {
+  if (!audio.start()) throw new Error("No playback device is available")
+
+  stream = await audio.playStreamUrl("https://localhost/radio", {
+    signal: controller.signal,
+    reconnect: { maxRetries: 5 },
+  })
+
+  stream.on("error", (error, context) => {
+    console.error(`${context.action}: ${error.message}`)
+  })
+
+  await stream.closed
+} catch (error) {
+  reportSetupError(error)
+} finally {
+  clearTimeout(stopTimer)
+  if (stream != null && stream.state !== "ended" && stream.state !== "errored" && stream.state !== "disposed") {
+    stream.dispose()
+  }
+  await stream?.closed
+  audio.dispose()
+}
+```
+
+`Audio` and `AudioStream` inherit Node's `EventEmitter`. Attach the `Audio` error listener before `start()` or stream setup.
+
+Attach the `AudioStream` error listener immediately after setup resolves. Later stream errors emit asynchronously.
+
+Stream setup errors reject the entry-method promise because the stream is not available for a listener yet. An unhandled later `error` event throws.
+
+A control method can return `false` and schedule an `error` event. Without a listener, the event can throw after the
+caller receives `false`.
+
+## Choose an entry method
+
+The three entry methods own different source policies.
+
+| Method                                  | Source and ownership                                                         |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| `playStream(source, options?)`          | Reads one `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>` to EOF |
+| `playStreamUrl(url, options?)`          | Owns Fetch, HTTP validation, ICY metadata, and optional reconnects           |
+| `playStreamSource(connector, options?)` | Opens custom connections and creates a demuxer for each connection           |
+
+`playStream()` is one-shot. It does not accept request, reconnect, content-type, or metadata-encoding options.
+
+`playStreamUrl()` accepts a string or `URL`. It creates a new response body and ICY demuxer for each reconnect.
+
+`playStreamSource()` accepts an `AudioStreamConnector<I>`. Its `demuxer(info)` callback can create transport-specific framing for each connection.
+
+All methods support only `format: "mp3"` and `format: "flac"`. The default is `"mp3"`.
+
+The promise resolves after the native decoder becomes ready. The stream is usually still in `buffering` state at that time.
+
+## Shared options
+
+| Option              | Default   | Constraint or effect                                           |
+| ------------------- | --------- | -------------------------------------------------------------- |
+| `format`            | `"mp3"`   | `"mp3"` or `"flac"`                                            |
+| `volume`            | `1`       | Native playback clamps it to `0..4`                            |
+| `pan`               | `0`       | Native playback clamps it to `-1..1`                           |
+| `groupId`           | `0`       | Must be an unsigned 32-bit ID for a group in the owning engine |
+| `buffer.capacityMs` | `2000`    | Decoded PCM capacity                                           |
+| `buffer.startupMs`  | `1000`    | Initial playback threshold                                     |
+| `buffer.resumeMs`   | `1000`    | Resume threshold after an underrun                             |
+| `maxProbeBytes`     | `1048576` | Maximum encoded bytes inspected while the decoder starts       |
+| `signal`            | None      | Cancels setup, source work, reconnect delays, and playback     |
+
+The three buffer durations and `maxProbeBytes` must be positive unsigned 32-bit integers. Startup and resume durations cannot exceed capacity.
+
+The decoder produces stereo interleaved Float32 PCM at `audio.sampleRate`. The maximum decoded capacity is `268,435,452` stereo frames.
+
+An encoded stream uses one of the engine's 32 combined loaded-voice and stream slots.
+
+## Start, underrun, and EOF behavior
+
+The decoder fills the PCM ring before playback crosses `startupMs`. Calls to `mixFrames()` return silence for that stream below the initial threshold.
+
+After playback starts, starvation changes the stream to `buffering` and increments `underruns` once. Playback resumes when PCM reaches `resumeMs`.
+
+If the decoder reaches EOF with some PCM, playback can start or resume below either threshold. It drains the final frames before the stream ends.
+
+Clean source EOF first flushes the demuxer. OpenTUI then marks encoded input complete and waits for decoded PCM to drain.
+
+`ended` and `closed` can remain pending when no output consumes the decoded ring. Call `start()`, or call `startMixer()` and `mixFrames()` at a regular cadence.
+
+During a reconnect, a stream that already started can play PCM left in its decoded ring. Controls, counters, and the native voice slot remain in the same stream session.
+
+## Buffering and backpressure
+
+OpenTUI bounds these internal layers:
+
+| Layer                    | Bound                                                  |
+| ------------------------ | ------------------------------------------------------ |
+| Native encoded input     | `256 KiB` per stream                                   |
+| Native decoded PCM       | `buffer.capacityMs`, up to `268,435,452` stereo frames |
+| JavaScript source demand | One active `read()` or iterator `next()`               |
+
+OpenTUI finishes the current source chunk before it requests the next chunk. A full native encoded ring applies backpressure to that chunk.
+
+A blocked native write retries at 5 ms intervals. This polling exists only while that write has no space.
+
+An empty input chunk yields with a zero-delay timer. This prevents an endless empty source from blocking cancellation.
+
+OpenTUI does not limit the size of one supplied chunk. It also does not limit one custom demuxer output or the number of outputs in its iterable.
+
+Source implementations can maintain their own queues before OpenTUI calls `read()` or `next()`. Those external queues are outside OpenTUI's bounds.
+
+Readiness and EOF use short-lived polling. The stream does not keep a persistent idle statistics timer.
+
+## URL response policy
+
+`playStreamUrl()` uses `contentTypePolicy: "validate"` by default.
+
+| Format | Accepted `Content-Type` values                                                       |
+| ------ | ------------------------------------------------------------------------------------ |
+| MP3    | `audio/mpeg`, `audio/mp3`, `application/mp3`, `application/octet-stream`, or missing |
+| FLAC   | `audio/flac`, `audio/x-flac`, `application/octet-stream`, or missing                 |
+
+Validation ignores case and parameters such as `charset=binary`. It evaluates every initial and replacement response before native stream allocation or byte ingestion.
+
+Use `contentTypePolicy: "ignore"` when the server has an incorrect label. The decoder still validates the encoded data.
+
+A callback policy receives `{ format, contentType, status, url }` and must return a boolean. The `url` is the effective response URL after redirects.
+
+The `request` option accepts `RequestInit` except `body` and `signal`. OpenTUI also strips those two fields at runtime.
+
+Use the stream-level `signal` option for cancellation. Request headers and other request options apply again to every reconnect.
+
+## ICY metadata
+
+URL streams add `Icy-MetaData: 1` unless `request.headers` already contains that header. Set the header to `0` to disable negotiation explicitly.
+
+OpenTUI copies every `icy-*` response header into an immutable metadata snapshot. Header names become lowercase.
+
+A non-negative safe integer `icy-metaint` controls in-band framing. A positive value enables metadata blocks, while zero exposes headers without framing.
+
+OpenTUI does not infer framing from a URL, content type, server name, or station header. An invalid or ambiguous interval rejects the response.
+
+`getMetadata()` returns the latest `{ format: "icy", headers, fields }` snapshot or `null`. In-band field names keep their source case.
+
+Unknown fields remain in the snapshot. Zero-length blocks, invalid field text, and repeated equivalent fields do not emit a change.
+
+ICY does not define one text encoding. OpenTUI defaults to ISO-8859-1, which the Encoding Standard decodes as `windows-1252`.
+
+Set `metadataEncoding` when a station uses another encoding. OpenTUI validates the encoding before it sends a request.
+
+Metadata is untrusted text. Remove terminal control characters before display, and do not open a metadata URL without validation.
+
+Metadata follows response ingestion, not audible playback. A title can arrive before the related decoded PCM becomes audible.
+
+Events are asynchronous and rapid changes can coalesce. `getMetadata()` always returns the latest snapshot.
+
+Metadata found during setup remains available after the promise resolves. OpenTUI schedules its event so an immediate listener can observe it.
+
+During reconnect, the old snapshot remains until the replacement demuxer starts. Replacement ICY fields replace the old fields.
+
+A replacement response without ICY headers sets metadata to `null` and emits `metadata` with `null`.
+
+## Reconnect URL streams
+
+Reconnect is opt-in. Pass a `reconnect` object to enable it.
+
+| Option           | Default    | Constraint or effect                    |
+| ---------------- | ---------- | --------------------------------------- |
+| `maxRetries`     | `Infinity` | Consecutive retries for one outage      |
+| `initialDelayMs` | `1000`     | First retry delay                       |
+| `maxDelayMs`     | `15000`    | Delay cap                               |
+| `backoffFactor`  | `2`        | Exponential factor, at least `1`        |
+| `retryOnEnd`     | `false`    | Reconnect after clean EOF and PCM drain |
+| `retry`          | None       | Overrides retry classification or delay |
+
+Use a finite `maxRetries` and an `AbortSignal` for unattended streams. The default retry count can keep initial setup pending without a limit.
+
+URL streams retry these cases by default:
+
+- Fetch failures
+- A successful response without a body
+- HTTP `408`, `425`, or `429`
+- HTTP status values from `500` through `599`
+- A response body that fails before clean EOF
+
+Other HTTP responses and content-type failures stop by default. Decoder failures, native creation failures, and demuxer `push()` failures are terminal.
+
+Valid `Retry-After` seconds or dates replace normal backoff, up to `maxDelayMs`.
+
+`reconnect.retry(error, context)` receives the next `attempt`, `maxRetries`, and a `phase` of `"connect"` or `"read"`.
+
+Return `false` to stop. Return `{}` to keep a transport delay or normal backoff.
+
+Return `{ delayMs }` to set a finite non-negative integer delay. OpenTUI caps that value at `maxDelayMs`.
+
+The callback can override default URL response classification. OpenTUI does not call it for a clean EOF retry from `retryOnEnd`.
+
+Initial retries occur while `playStreamUrl()` is pending. They call `retry`, but they do not emit `reconnecting` because callers do not have the stream yet.
+
+After a replacement decoder becomes ready, the consecutive attempt number and retry budget reset. A later outage starts at attempt `1` again.
+
+`getStats().reconnectAttempts` remains cumulative. It includes retries that occurred during initial setup and all later outages.
+
+## Use a custom connector
+
+An `AudioStreamConnector<I>` opens one connection at a time:
+
+```typescript
+interface AudioStreamConnectContext {
+  readonly signal: AbortSignal
+  readonly attempt: number
+}
+
+interface AudioStreamConnection<I> {
+  readonly body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
+  readonly info: I
+  close?(): void | Promise<void>
+}
+
+interface AudioStreamConnector<I> {
+  connect(context: AudioStreamConnectContext): Promise<AudioStreamConnection<I>>
+}
+```
+
+The initial `attempt` is `0`. Each consecutive reconnect gets the next value until a decoder becomes ready.
+
+Connector and body-read failures are retryable by default when `reconnect` exists. The same retry options and callback rules apply.
+
+The `info` value goes to the connection's demuxer factory. Return `undefined` when the transport has no connection metadata.
+
+## Use a custom demuxer
+
+`playStream()` accepts `demuxer: () => AudioStreamDemuxer<M>`. `playStreamSource()` accepts `demuxer: (info) => AudioStreamDemuxer<M> | null`.
+
+Each connector attempt receives a fresh demuxer. A demuxer has this interface:
+
+```typescript
+type AudioStreamDemuxOutput<M> = { type: "audio"; data: Uint8Array } | { type: "metadata"; metadata: M | null }
+
+interface AudioStreamDemuxer<M> {
+  readonly initialMetadata: M | null
+  push(chunk: Uint8Array): Iterable<AudioStreamDemuxOutput<M>>
+  flush(): Iterable<AudioStreamDemuxOutput<M>>
+  abort?(reason: unknown): void
+}
+```
+
+OpenTUI consumes outputs in iterable order. It sends audio outputs to the native decoder and publishes metadata outputs.
+
+Clean EOF calls `flush()` and consumes all flush outputs before native EOF. An interruption calls `abort()` instead of `flush()`.
+
+A `push()` exception is terminal. A `flush()` exception means truncated input and follows the reconnect read policy.
+
+Custom metadata snapshots should be immutable. The demuxer controls equivalent-update suppression for its metadata type.
+
+Use `createIcyStreamDemuxer()` for ICY framing on a non-HTTP transport. It accepts `metadataInterval`, `metadataEncoding`, and optional `headers`.
+
+The public ICY demuxer uses the same `windows-1252` default. It copies headers and changes their names to lowercase.
+
+## Connection cleanup
+
+OpenTUI waits for an active resource acquisition to finish before it cleans that connection.
+
+Cleanup first calls `demuxer.abort()` when the demuxer did not finish. It then cancels the reader or returns the async iterator.
+
+OpenTUI calls `connection.close()` after it requests source release. It waits for source and connection cleanup together.
+
+A reconnect waits for the previous connection cleanup before it opens the replacement. This prevents two custom connections from overlapping.
+
+Terminal shutdown gives uncooperative cleanup 50 ms of grace. The `closed` promise can then resolve while an external cleanup promise remains pending.
+
+OpenTUI calls `close()` at most once for each returned connection. It ignores exceptions from cleanup callbacks.
+
+`dispose()` can throw `AudioStreamError` with action `destroy` when native close fails. The stream retains its native ownership so a later `dispose()` can retry.
+
+## Members, state, and statistics
+
+| `AudioStream` member | Behavior                                                       |
+| -------------------- | -------------------------------------------------------------- |
+| `format`             | Resolved `"mp3"` or `"flac"` value                             |
+| `state`              | Latest cached lifecycle snapshot                               |
+| `getStats()`         | Refreshes native state and returns current or final statistics |
+| `getMetadata()`      | Returns the latest metadata snapshot or `null`                 |
+| `setVolume(volume)`  | Sets volume and returns `boolean`                              |
+| `setPan(pan)`        | Sets pan and returns `boolean`                                 |
+| `setGroup(groupId)`  | Moves the stream and returns `boolean`                         |
+| `dispose()`          | Cancels source work, reconnects, and native playback           |
+| `closed`             | Resolves after terminal event delivery and bounded cleanup     |
+
+`state` can be `initializing`, `buffering`, `playing`, `reconnecting`, `ended`, `errored`, or `disposed`. Read `getStats()` for an explicit native refresh.
+
+Controls remain active across reconnects. They return `false` after terminal cleanup or when native control fails.
+
+`getStats()` returns these fields:
+
+| Field                              | Meaning                                           |
+| ---------------------------------- | ------------------------------------------------- |
+| `state`                            | Refreshed lifecycle state                         |
+| `sampleRate`, `channels`           | Decoded PCM format                                |
+| `bufferedFrames`, `capacityFrames` | Current decoded ring use and capacity             |
+| `bufferedDurationMs`               | Current decoded duration                          |
+| `bytesReceived`                    | Encoded audio bytes accepted from demuxer outputs |
+| `framesDecoded`, `framesPlayed`    | Cumulative decoded and consumed frames            |
+| `underruns`                        | Starvation transitions after playback starts      |
+| `reconnectAttempts`                | Cumulative reconnect attempts                     |
+
+`bytesReceived` excludes framing and metadata bytes. Final statistics and metadata remain readable after natural completion.
+
+## Events and errors
+
+| Event          | Payload and meaning                                  |
+| -------------- | ---------------------------------------------------- |
+| `metadata`     | Latest metadata value or `null`                      |
+| `reconnecting` | `{ attempt, delayMs, maxRetries, error }`            |
+| `ended`        | Clean source and decoded PCM completion              |
+| `error`        | `(error, { action, status?, errorCode?, attempt? })` |
+| `disposed`     | Explicit, signal, or parent disposal                 |
+
+Terminal `ended`, `error`, and `disposed` events are asynchronous and mutually exclusive. `closed` resolves after the terminal listener runs, even if that listener throws.
+
+`closed` never rejects. An unhandled `error` event still throws through normal `EventEmitter` behavior.
+
+The exact `AudioStreamAction` values are:
+
+- `fetch`
+- `response`
+- `source`
+- `demuxer`
+- `create`
+- `write`
+- `end`
+- `restart`
+- `stats`
+- `decoder`
+- `destroy`
+- `setVolume`
+- `setPan`
+- `setGroup`
+
+Transport, response, demuxer, native creation, and decoder setup failures reject with `AudioStreamError`. JavaScript option validation rejects with `TypeError` or `RangeError`.
+
+Invalid source chunks reject or emit a `TypeError`. Cancellation uses an `AbortError` and becomes `disposed` after setup.
+
+Starting a stream after its owning `Audio` was disposed rejects with `Error`. Disposing the owner also disposes pending and active streams.
+
+## Unsupported operations
+
+Streaming does not support WAV, AAC, Ogg, Opus, HLS playlists, seeking, pause, or a public restart operation.
+
+The `restart` error action belongs to internal reconnect work. It is not an `AudioStream` method.
+
+Streams use the combined master tap. OpenTUI does not expose an isolated stream tap.
+
+## Next
+
+- [Audio](/docs/core-concepts/audio)
+- [Audio capture and recording](/docs/application-apis/audio-capture)
+- [Lifecycle and cleanup](/docs/core-concepts/lifecycle)

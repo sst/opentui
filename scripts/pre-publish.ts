@@ -37,6 +37,18 @@ const ALL_PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "core", "dist"),
   },
   {
+    name: "@opentui/three",
+    rootDir: join(rootDir, "packages", "three"),
+    distDir: join(rootDir, "packages", "three", "dist"),
+    requiresCore: true,
+  },
+  {
+    name: "@opentui/qrcode",
+    rootDir: join(rootDir, "packages", "qrcode"),
+    distDir: join(rootDir, "packages", "qrcode", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
@@ -47,6 +59,17 @@ const ALL_PACKAGES: PackageConfig[] = [
     rootDir: join(rootDir, "packages", "solid"),
     distDir: join(rootDir, "packages", "solid", "dist"),
     requiresCore: true,
+  },
+  {
+    name: "@opentui/keymap",
+    rootDir: join(rootDir, "packages", "keymap"),
+    distDir: join(rootDir, "packages", "keymap", "dist"),
+    requiresCore: true,
+  },
+  {
+    name: "@opentui/ssh",
+    rootDir: join(rootDir, "packages", "ssh"),
+    distDir: join(rootDir, "packages", "ssh", "dist"),
   },
 ]
 
@@ -73,6 +96,14 @@ function setupNpmAuth(): void {
     writeFileSync(npmrcPath, npmrcContent)
     console.log("SUCCESS: NPM auth token written to ~/.npmrc")
   }
+}
+
+function isTrustedPublishing(): boolean {
+  return (
+    process.env.GITHUB_ACTIONS === "true" &&
+    Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL) &&
+    Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN)
+  )
 }
 
 function verifyNpmAuth(): void {
@@ -189,7 +220,7 @@ function validatePackage(config: PackageConfig): void {
     console.log(`SUCCESS: All optional dependencies versions match`)
   }
 
-  // For react/solid packages, check @opentui/core dependency version
+  // For packages that publish an @opentui/core dependency, check the version.
   if (config.requiresCore) {
     const coreDependencyVersion = distPackageJson.dependencies?.["@opentui/core"]
     if (coreDependencyVersion !== packageJson.version) {
@@ -255,10 +286,15 @@ function main(): void {
   console.log("OpenTUI Pre-Publish Validation")
   console.log("=".repeat(50))
 
-  // Setup NPM authentication once
-  console.log("\nINFO: Setting up NPM authentication...")
-  setupNpmAuth()
-  verifyNpmAuth()
+  // OIDC credentials are exchanged by `npm publish` itself, so `npm whoami`
+  // cannot verify Trusted Publishing authentication ahead of time.
+  if (isTrustedPublishing()) {
+    console.log("\nINFO: Using npm Trusted Publishing (OIDC)")
+  } else {
+    console.log("\nINFO: Setting up NPM authentication...")
+    setupNpmAuth()
+    verifyNpmAuth()
+  }
 
   // Validate all packages
   console.log("\nINFO: Validating all packages...")

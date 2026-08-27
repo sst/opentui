@@ -1,18 +1,26 @@
-import type { TextBuffer } from "./text-buffer.js"
 import { RGBA } from "./lib/index.js"
-import { resolveRenderLib, type RenderLib } from "./zig.js"
-import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
+import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
+import { type Pointer, type PointerInput, toArrayBuffer, toPointer } from "./platform/ffi.js"
+import type { NativeImage } from "./image.js"
+import type { ImageRenderProtocol } from "./types.js"
+
+function requireInteger(value: number, name: string, min: number, max: number): void {
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new RangeError(`${name} must be an integer from ${min} to ${max}`)
+  }
+}
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
-import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
+import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
-// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
+// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment, bits 7-8: bottomTitleAlignment
 function packDrawOptions(
   border: boolean | BorderSides[],
   shouldFill: boolean,
   titleAlignment: "left" | "center" | "right",
+  bottomTitleAlignment: "left" | "center" | "right",
 ): number {
   let packed = 0
 
@@ -35,7 +43,10 @@ function packDrawOptions(
     right: 2,
   }
   const alignment = alignmentMap[titleAlignment]
+  const bottomAlignment = alignmentMap[bottomTitleAlignment]
+
   packed |= alignment << 5
+  packed |= bottomAlignment << 7
 
   return packed
 }
@@ -44,20 +55,20 @@ export class OptimizedBuffer {
   private static fbIdCounter = 0
   public id: string
   public lib: RenderLib
-  private bufferPtr: Pointer
+  private bufferPtr: OptimizedBufferHandle
   private _width: number
   private _height: number
   private _widthMethod: WidthMethod
   public respectAlpha: boolean = false
   private _rawBuffers: {
     char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
+    fg: Uint16Array
+    bg: Uint16Array
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
 
-  get ptr(): Pointer {
+  get ptr(): OptimizedBufferHandle {
     return this.bufferPtr
   }
 
@@ -68,34 +79,39 @@ export class OptimizedBuffer {
     if (this._destroyed) throw new Error(`Buffer ${this.id} is destroyed`)
   }
 
+  private ensureRawBufferViews(): void {
+    if (this._rawBuffers !== null) {
+      return
+    }
+
+    const size = this._width * this._height
+    const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
+    const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
+    const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
+    const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
+
+    this._rawBuffers = {
+      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
+      fg: new Uint16Array(toArrayBuffer(fgPtr, 0, size * 4 * 2)),
+      bg: new Uint16Array(toArrayBuffer(bgPtr, 0, size * 4 * 2)),
+      attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
+    }
+  }
+
   get buffers(): {
     char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
+    fg: Uint16Array
+    bg: Uint16Array
     attributes: Uint32Array
   } {
     this.guard()
-    if (this._rawBuffers === null) {
-      const size = this._width * this._height
-      const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
-      const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
-      const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
-      const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
-
-      this._rawBuffers = {
-        char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-        fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
-        bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
-        attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
-      }
-    }
-
-    return this._rawBuffers
+    this.ensureRawBufferViews()
+    return this._rawBuffers!
   }
 
   constructor(
     lib: RenderLib,
-    ptr: Pointer,
+    ptr: OptimizedBufferHandle,
     width: number,
     height: number,
     options: { respectAlpha?: boolean; id?: string; widthMethod?: WidthMethod },
@@ -174,8 +190,8 @@ export class OptimizedBuffer {
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
         const cp = char[i]
-        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
-        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFg = RGBA.fromArray(fg.slice(i * 4, i * 4 + 4))
+        const cellBg = RGBA.fromArray(bg.slice(i * 4, i * 4 + 4))
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
@@ -285,7 +301,32 @@ export class OptimizedBuffer {
   }
 
   public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
+    this.guard()
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
+  }
+
+  public colorMatrix(
+    matrix: Float32Array,
+    cellMask: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16) throw new RangeError(`colorMatrix matrix must have length 16, got ${matrix.length}`)
+    const cellMaskCount = Math.floor(cellMask.length / 3)
+    this.lib.bufferColorMatrix(this.bufferPtr, matrix, cellMask, cellMaskCount, strength, target)
+  }
+
+  public colorMatrixUniform(
+    matrix: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16)
+      throw new RangeError(`colorMatrixUniform matrix must have length 16, got ${matrix.length}`)
+    if (strength === 0.0) return
+    this.lib.bufferColorMatrixUniform(this.bufferPtr, matrix, strength, target)
   }
 
   public drawFrameBuffer(
@@ -304,6 +345,8 @@ export class OptimizedBuffer {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
+    // Cached typed arrays alias native memory and are invalid after destroy.
+    this._rawBuffers = null
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
@@ -320,7 +363,7 @@ export class OptimizedBuffer {
   public drawSuperSampleBuffer(
     x: number,
     y: number,
-    pixelDataPtr: Pointer,
+    pixelData: PointerInput | Uint8Array,
     pixelDataLength: number,
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
@@ -330,15 +373,60 @@ export class OptimizedBuffer {
       this.bufferPtr,
       x,
       y,
-      pixelDataPtr,
+      typeof pixelData === "number" || typeof pixelData === "bigint" ? toPointer(pixelData) : pixelData,
       pixelDataLength,
       format,
       alignedBytesPerRow,
     )
   }
 
+  public drawImage(
+    image: NativeImage,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number = 0,
+    pixelHeight: number = 0,
+    sourceX: number = 0,
+    sourceY: number = 0,
+    sourceWidth: number = image.width,
+    sourceHeight: number = image.height,
+    protocol: ImageRenderProtocol = "auto",
+  ): boolean {
+    this.guard()
+    requireInteger(x, "x", -0x80000000, 0x7fffffff)
+    requireInteger(y, "y", -0x80000000, 0x7fffffff)
+    requireInteger(width, "width", 1, 0x7fffffff)
+    requireInteger(height, "height", 1, 0x7fffffff)
+    requireInteger(pixelWidth, "pixelWidth", 0, 0x7fffffff)
+    requireInteger(pixelHeight, "pixelHeight", 0, 0x7fffffff)
+    requireInteger(sourceX, "sourceX", 0, 0xffffffff)
+    requireInteger(sourceY, "sourceY", 0, 0xffffffff)
+    requireInteger(sourceWidth, "sourceWidth", 1, 0xffffffff)
+    requireInteger(sourceHeight, "sourceHeight", 1, 0xffffffff)
+    if (x + width > 0x7fffffff || y + height > 0x7fffffff) {
+      throw new RangeError("image destination coordinates and dimensions exceed i32 bounds")
+    }
+    return this.lib.bufferDrawImage(
+      this.bufferPtr,
+      image.ptr,
+      x,
+      y,
+      width,
+      height,
+      pixelWidth,
+      pixelHeight,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      protocol,
+    )
+  }
+
   public drawPackedBuffer(
-    dataPtr: Pointer,
+    data: PointerInput | Uint8Array,
     dataLen: number,
     posX: number,
     posY: number,
@@ -348,7 +436,7 @@ export class OptimizedBuffer {
     this.guard()
     this.lib.bufferDrawPackedBuffer(
       this.bufferPtr,
-      dataPtr,
+      typeof data === "number" || typeof data === "bigint" ? toPointer(data) : data,
       dataLen,
       posX,
       posY,
@@ -367,7 +455,7 @@ export class OptimizedBuffer {
     bg: RGBA | null = null,
   ): void {
     this.guard()
-    this.lib.bufferDrawGrayscaleBuffer(this.bufferPtr, posX, posY, ptr(intensities), srcWidth, srcHeight, fg, bg)
+    this.lib.bufferDrawGrayscaleBuffer(this.bufferPtr, posX, posY, intensities, srcWidth, srcHeight, fg, bg)
   }
 
   public drawGrayscaleBufferSupersampled(
@@ -380,16 +468,7 @@ export class OptimizedBuffer {
     bg: RGBA | null = null,
   ): void {
     this.guard()
-    this.lib.bufferDrawGrayscaleBufferSupersampled(
-      this.bufferPtr,
-      posX,
-      posY,
-      ptr(intensities),
-      srcWidth,
-      srcHeight,
-      fg,
-      bg,
-    )
+    this.lib.bufferDrawGrayscaleBufferSupersampled(this.bufferPtr, posX, posY, intensities, srcWidth, srcHeight, fg, bg)
   }
 
   public resize(width: number, height: number): void {
@@ -415,13 +494,21 @@ export class OptimizedBuffer {
     backgroundColor: RGBA
     shouldFill?: boolean
     title?: string
+    titleColor?: RGBA
     titleAlignment?: "left" | "center" | "right"
+    bottomTitle?: string
+    bottomTitleAlignment?: "left" | "center" | "right"
   }): void {
     this.guard()
     const style = parseBorderStyle(options.borderStyle, "single")
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
-    const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")
+    const packedOptions = packDrawOptions(
+      options.border,
+      options.shouldFill ?? false,
+      options.titleAlignment || "left",
+      options.bottomTitleAlignment || "left",
+    )
 
     this.lib.bufferDrawBox(
       this.bufferPtr,
@@ -433,7 +520,9 @@ export class OptimizedBuffer {
       packedOptions,
       options.borderColor,
       options.backgroundColor,
+      options.titleColor ?? options.borderColor,
       options.title ?? null,
+      options.bottomTitle ?? null,
     )
   }
 

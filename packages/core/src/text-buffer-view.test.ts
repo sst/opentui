@@ -229,6 +229,23 @@ describe("TextBufferView", () => {
       view.resetSelection()
       expect(view.getSelectedText()).toBe("")
     })
+
+    it("should return null bytes for zero-length selected-text output buffer", () => {
+      buffer.setText("Hello World")
+      view.setSelection(0, 5)
+
+      const selectedBytes = (view as any).lib.textBufferViewGetSelectedTextBytes(view.ptr, 0)
+
+      expect(selectedBytes).toBeNull()
+    })
+
+    it("should return null bytes for zero-length plain-text output buffer", () => {
+      buffer.setText("Hello World")
+
+      const plainBytes = (view as any).lib.textBufferViewGetPlainTextBytes(view.ptr, 0)
+
+      expect(plainBytes).toBeNull()
+    })
   })
 
   describe("selection state", () => {
@@ -291,9 +308,10 @@ describe("TextBufferView", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
 
+      // Inclusive selection: the cell under the focus (5, the space) is selected too.
       const changed1 = view.setLocalSelection(0, 0, 5, 0)
       expect(changed1).toBe(true)
-      expect(view.getSelectedText()).toBe("Hello")
+      expect(view.getSelectedText()).toBe("Hello ")
 
       const changed2 = view.updateLocalSelection(0, 0, 11, 0)
       expect(changed2).toBe(true)
@@ -321,7 +339,7 @@ describe("TextBufferView", () => {
       const changed = view.updateLocalSelection(0, 0, 5, 0)
       expect(changed).toBe(true)
       expect(view.hasSelection()).toBe(true)
-      expect(view.getSelectedText()).toBe("Hello")
+      expect(view.getSelectedText()).toBe("Hello ")
     })
 
     it("should preserve anchor when updating local selection", () => {
@@ -329,16 +347,16 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       view.setLocalSelection(0, 0, 5, 0)
-      expect(view.getSelectedText()).toBe("Hello")
+      expect(view.getSelectedText()).toBe("Hello ")
 
       view.updateLocalSelection(0, 0, 6, 0)
-      expect(view.getSelectedText()).toBe("Hello ")
+      expect(view.getSelectedText()).toBe("Hello W")
 
       view.updateLocalSelection(0, 0, 11, 0)
       expect(view.getSelectedText()).toBe("Hello World")
 
       view.updateLocalSelection(0, 0, 3, 0)
-      expect(view.getSelectedText()).toBe("Hel")
+      expect(view.getSelectedText()).toBe("Hell")
     })
 
     it("should handle backward selection with updateLocalSelection", () => {
@@ -350,6 +368,24 @@ describe("TextBufferView", () => {
       const changed = view.updateLocalSelection(11, 0, 6, 0)
       expect(changed).toBe(true)
       expect(view.getSelectedText()).toBe("World")
+    })
+
+    it("should select a word with word behavior on the same cell", () => {
+      const styledText = stringToStyledText("alpha beta gamma")
+      buffer.setStyledText(styledText)
+
+      const changed = view.setLocalSelection(6, 0, 6, 0, undefined, undefined, "word")
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("beta")
+    })
+
+    it("should keep a cell press zero-width", () => {
+      const styledText = stringToStyledText("alpha beta")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(6, 0, 6, 0)
+      expect(view.getSelectedText()).toBe("")
+      expect(view.hasSelection()).toBe(false)
     })
   })
 
@@ -548,6 +584,17 @@ describe("TextBufferView", () => {
   })
 
   describe("measureForDimensions", () => {
+    it("preserves public result identity", () => {
+      buffer.setStyledText(stringToStyledText("abcdefghij"))
+      view.setWrapMode("char")
+      const first = view.measureForDimensions(10, 10)!
+      const second = view.measureForDimensions(5, 10)!
+
+      expect(first).not.toBe(second)
+      expect(first).toEqual({ lineCount: 1, widthColsMax: 10 })
+      expect(second).toEqual({ lineCount: 2, widthColsMax: 5 })
+    })
+
     it("should measure without modifying cache", () => {
       const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
       buffer.setStyledText(styledText)

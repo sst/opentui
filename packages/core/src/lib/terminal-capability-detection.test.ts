@@ -32,6 +32,17 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\")).toBe(true)
   })
 
+  test("detects XTGETTCAP Ms responses", () => {
+    expect(isCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r4D73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1bP1+r4d73=abc\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=zz\x1b\\")).toBe(true)
+  })
+
   test("detects Kitty graphics responses", () => {
     expect(isCapabilityResponse("\x1b_Gi=1;OK\x1b\\")).toBe(true)
     expect(isCapabilityResponse("\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\")).toBe(true)
@@ -48,6 +59,12 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1b[?0u")).toBe(true)
     expect(isCapabilityResponse("\x1b[?1u")).toBe(true)
     expect(isCapabilityResponse("\x1b[?31u")).toBe(true)
+  })
+
+  test("detects notification capability responses", () => {
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x07")).toBe(true)
+    expect(isCapabilityResponse("\x1b]1337;Capabilities=T2NoH\x1b\\")).toBe(true)
   })
 
   test("does not detect regular keypresses", () => {
@@ -79,6 +96,12 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1b[<35;20;5m")).toBe(false)
     expect(isCapabilityResponse("\x1b[<0;10;10M")).toBe(false)
   })
+
+  test("does not detect arbitrary OSC sequences as capabilities", () => {
+    expect(isCapabilityResponse("\x1b]9;hello\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]777;notify;title;body\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]99;i=other:p=?;p=title\x1b\\")).toBe(false)
+  })
 })
 
 describe("isPixelResolutionResponse", () => {
@@ -106,6 +129,8 @@ describe("parsePixelResolution", () => {
     expect(parsePixelResolution("a")).toBeNull()
     expect(parsePixelResolution("\x1b[A")).toBeNull()
     expect(parsePixelResolution("\x1b[?1016;2$y")).toBeNull()
+    expect(parsePixelResolution("\x1b[4;4294967295;4294967295t")).toBeNull()
+    expect(parsePixelResolution(`\x1b[4;${"9".repeat(400)};80t`)).toBeNull()
   })
 })
 
@@ -150,13 +175,15 @@ describe("renderer capabilities event", () => {
    * multiple emissions and handle them reactively.
    */
   test("kitty terminal emits capabilities event for each response", async () => {
-    const { createTestRenderer } = await import("../testing/test-renderer")
+    const { createTestRenderer } = await import("../testing/test-renderer.js")
     const { renderer } = await createTestRenderer({})
+
+    await renderer.setupTerminal()
 
     const events: any[] = []
     renderer.on("capabilities", (caps) => events.push({ ...caps }))
 
-    // Simulate all 10 Kitty capability responses (as they arrive separately)
+    // Simulate Kitty capability responses as they arrive separately.
     const kittyResponses = [
       "\x1b[?1016;2$y", // 1. sgr_pixels
       "\x1b[?2027;0$y", // 2. unicode query
@@ -164,10 +191,12 @@ describe("renderer capabilities event", () => {
       "\x1b[?1004;2$y", // 4. focus_tracking
       "\x1b[?2004;2$y", // 5. bracketed_paste
       "\x1b[?2026;2$y", // 6. sync
-      "\x1b[1;2R", // 7. explicit_width (CPR)
-      "\x1b[1;3R", // 8. scaled_text (CPR)
-      "\x1bP>|kitty(0.42.2)\x1b\\", // 9. xtversion (triggers kitty detection)
-      "\x1b[?0u", // 10. kitty keyboard query
+      "\x1b[15;42R", // 7. startup cursor position (CPR)
+      "\x1b[1;2R", // 8. explicit_width probe reply (CPR)
+      "\x1b[1;3R", // 9. scaled_text probe reply (CPR)
+      "\x1bP>|kitty(0.42.2)\x1b\\", // 10. xtversion (triggers kitty detection)
+      "\x1b[?0u", // 11. kitty keyboard query
+      "\x1b_Gi=31337;OK\x1b\\", // 12. exact graphics query response
     ]
 
     for (const response of kittyResponses) {
@@ -175,20 +204,20 @@ describe("renderer capabilities event", () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
-    // Should have received 10 capability events
-    expect(events.length).toBe(10)
+    expect(events.length).toBe(12)
 
     // First event: sgr_pixels detected
     expect(events[0].sgr_pixels).toBe(true)
 
-    // After xtversion (event 9): kitty_keyboard should be true
-    expect(events[8].kitty_keyboard).toBe(true)
-    expect(events[8].kitty_graphics).toBe(true)
-    expect(events[8].terminal.name).toBe("kitty")
-    expect(events[8].terminal.version).toBe("0.42.2")
+    // After xtversion (event 10): kitty_keyboard should be true
+    expect(events[9].kitty_keyboard).toBe(true)
+    expect(events[9].kitty_graphics).toBe(true)
+    expect(events[9].notifications).toBe(true)
+    expect(events[9].terminal.name).toBe("kitty")
+    expect(events[9].terminal.version).toBe("0.42.2")
 
     // Final state should have all kitty capabilities
-    const finalCaps = events[9]
+    const finalCaps = events[11]
     expect(finalCaps.kitty_keyboard).toBe(true)
     expect(finalCaps.sgr_pixels).toBe(true)
     expect(finalCaps.color_scheme_updates).toBe(true)
@@ -196,6 +225,7 @@ describe("renderer capabilities event", () => {
     expect(finalCaps.sync).toBe(true)
     expect(finalCaps.explicit_width).toBe(true)
     expect(finalCaps.scaled_text).toBe(true)
+    expect(finalCaps.kitty_graphics).toBe(true)
 
     renderer.destroy()
   })

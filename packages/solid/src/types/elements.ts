@@ -6,6 +6,8 @@ import type {
   BoxRenderable,
   CodeOptions,
   CodeRenderable,
+  ImageRenderable,
+  ImageRenderableOptions,
   InputRenderable,
   InputRenderableOptions,
   KeyEvent,
@@ -28,7 +30,7 @@ import type {
   TextRenderable,
 } from "@opentui/core"
 import type { Ref } from "solid-js"
-import type { JSX } from "../../jsx-runtime"
+import type { JSX } from "../../jsx-runtime.js"
 
 // ============================================================================
 // Core Type System
@@ -48,6 +50,7 @@ export type NonStyledProps =
 /** Solid-specific props for all components */
 export type ElementProps<TRenderable = unknown> = {
   ref?: Ref<TRenderable>
+  [eventName: `on:${string}`]: ((...args: any[]) => void) | undefined
 }
 
 /** Base type for any renderable constructor */
@@ -74,16 +77,18 @@ export type GetNonStyledProperties<TConstructor> =
   TConstructor extends RenderableConstructor<TextRenderable>
     ? NonStyledProps | "content"
     : TConstructor extends RenderableConstructor<BoxRenderable>
-      ? NonStyledProps | "title"
+      ? NonStyledProps | "title" | "bottomTitle"
       : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
-          ? NonStyledProps | "placeholder" | "value"
+          ? NonStyledProps | "minLength" | "maxLength" | "placeholder" | "value"
           : TConstructor extends RenderableConstructor<CodeRenderable>
             ? NonStyledProps | "content" | "filetype" | "syntaxStyle" | "treeSitterClient"
             : TConstructor extends RenderableConstructor<MarkdownRenderable>
               ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-              : NonStyledProps
+              : TConstructor extends RenderableConstructor<ImageRenderable>
+                ? NonStyledProps | "source"
+                : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -157,6 +162,8 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
 }
 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
+
+export type ImageProps = ComponentProps<ImageRenderableOptions, ImageRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
 

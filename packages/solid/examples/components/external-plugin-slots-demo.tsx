@@ -12,7 +12,7 @@ import {
   useRenderer,
 } from "@opentui/solid"
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
-import { resolveExternalPluginCandidates } from "./external-plugin-path"
+import { resolveExternalPluginCandidates } from "./external-plugin-path.js"
 
 const STATUSBAR_LABEL = "host-status"
 const SIDEBAR_SECTION = "external-plugins"

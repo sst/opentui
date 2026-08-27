@@ -12,15 +12,6 @@ describe("solid runtime plugin support", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-support.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-support.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("solid=true")
@@ -28,5 +19,43 @@ describe("solid runtime plugin support", () => {
     expect(stdout).toContain("coreTesting=true")
     expect(stdout).toContain("solidJs=true")
     expect(stdout).toContain("jsx=true")
+  })
+
+  it("loads caller-provided runtime modules through the configurable entrypoint", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-support-configure.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("first=true")
+    expect(stdout).toContain("second=false")
+    expect(stdout).toContain("keymap=true")
+    expect(stdout).toContain("keymapAddons=true")
+    expect(stdout).toContain("keymapExtras=true")
+    expect(stdout).toContain("keymapSolid=true")
+    expect(stdout).toContain("three=true")
+    expect(stdout).toContain("jsx=true")
+  }, 10_000)
+
+  it("throws when modules are added after side-effect installation", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-support-late-addition.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("OpenTUI Solid runtime plugin support is already installed without @opentui/keymap")
+    expect(stdout).toContain("@opentui/solid/runtime-plugin-support/configure")
   })
 })

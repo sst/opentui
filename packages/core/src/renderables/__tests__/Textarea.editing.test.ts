@@ -188,6 +188,85 @@ describe("Textarea - Editing Tests", () => {
 
       expect(editor.plainText).toBe("Hello ")
     })
+
+    it("should delete to line start from middle of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("World")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should join with previous line when deleteToLineStart at col 0", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.gotoLine(1)
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("Line 1Line 2\nLine 3")
+    })
+
+    it("should not delete when deleteToLineStart at row 0 col 0", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("Hello World")
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+    })
+
+    it("should repeatedly delete lines with deleteToLineStart", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3\nLine 4",
+        width: 40,
+        height: 10,
+      })
+
+      // Move to end of line 3 (not the last line)
+      editor.gotoLine(2)
+      editor.gotoLineEnd()
+
+      // First press: clear "Line 3" content
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\nLine 2\n\nLine 4")
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.logicalCursor.col).toBe(0)
+
+      // Second press: join with previous line (delete newline)
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\nLine 2\nLine 4")
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(6)
+
+      // Third press: clear "Line 2" content
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\n\nLine 4")
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
+
+      // Fourth press: join with first line
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\nLine 4")
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(6)
+    })
   })
 
   describe("Cursor Movement via Methods", () => {
@@ -838,10 +917,10 @@ describe("Textarea - Editing Tests", () => {
         currentMockInput.pressArrow("right", { shift: true })
       }
       expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("Hello")
+      expect(editor.getSelectedText()).toBe("Hello ")
 
       currentMockInput.pressKey("BACKSPACE", { shift: true })
-      expect(editor.plainText).toBe(" World")
+      expect(editor.plainText).toBe("World")
       expect(editor.hasSelection()).toBe(false)
     })
 
@@ -1021,10 +1100,10 @@ describe("Textarea - Editing Tests", () => {
         kittyMockInput.pressArrow("right", { shift: true })
       }
       expect(textarea.hasSelection()).toBe(true)
-      expect(textarea.getSelectedText()).toBe("Hello")
+      expect(textarea.getSelectedText()).toBe("Hello ")
 
       kittyMockInput.pressKey("BACKSPACE", { shift: true })
-      expect(textarea.plainText).toBe(" World")
+      expect(textarea.plainText).toBe("World")
       expect(textarea.hasSelection()).toBe(false)
     })
 
@@ -1601,7 +1680,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.hasSelection()).toBe(true)
 
       currentMockInput.pressKey("d", { meta: true })
-      expect(editor.plainText).toBe("lo world foo")
+      expect(editor.plainText).toBe("o world foo")
     })
   })
 

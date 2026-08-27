@@ -306,6 +306,57 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[1]!.id).toBe("second")
       expect(children[2]!.id).toBe("third")
     })
+
+    it("should reinsert multiple fragment children with <Show> before the following static sibling", async () => {
+      const [showContent, setShowContent] = createSignal(true)
+      const expectedVisibleIds = [
+        "top",
+        "fragment-title",
+        "fragment-alpha",
+        "fragment-bravo",
+        "fragment-charlie",
+        "bottom",
+      ]
+      const expectedHiddenIds = ["top", "bottom"]
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <box id="top" />
+            <Show when={showContent()}>
+              <>
+                <box id="fragment-title" />
+                <box id="fragment-alpha" />
+                <box id="fragment-bravo" />
+                <box id="fragment-charlie" />
+              </>
+            </Show>
+            <box id="bottom" />
+          </box>
+        ),
+        { width: 40, height: 20 },
+      )
+
+      const getOrderedIds = () => {
+        const ids = new Set(expectedVisibleIds)
+        const container = testSetup.renderer.root.findDescendantById("container")!
+        return container
+          .getChildren()
+          .map((child) => child.id)
+          .filter((id) => ids.has(id))
+      }
+
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedVisibleIds)
+
+      setShowContent(false)
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedHiddenIds)
+
+      setShowContent(true)
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedVisibleIds)
+    })
   })
 
   describe("<Switch> and <Match> Components", () => {
@@ -887,6 +938,54 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain(content)
       expect(frame).not.toContain("&lt;")
       expect(frame).not.toContain("&gt;")
+    })
+
+    it("only decodes terminated entities in static JSX text", async () => {
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>&register &parameters=1 &lt;&amp;&gt;</text>
+          </box>
+        ),
+        { width: 60, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      expect(testSetup.captureCharFrame()).toContain("&register &parameters=1 <&>")
+    })
+
+    it("preserves dynamic text during creation and replacement", async () => {
+      const [content, setContent] = createSignal("https://example.com/?&reg=US&para=1&times=2 &copy;")
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>{content()}</text>
+          </box>
+        ),
+        { width: 80, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+
+      setContent("&register &parameters=1 &copy;")
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+    })
+
+    it("preserves dynamic content properties", async () => {
+      const [content, setContent] = createSignal("&register &copy;")
+
+      testSetup = await testRender(() => <text content={content()} />, { width: 60, height: 5 })
+
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
+
+      setContent("&parameters=1 &copy;")
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame()).toContain(content())
     })
   })
 })

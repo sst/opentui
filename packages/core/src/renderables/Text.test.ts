@@ -31,11 +31,12 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
+      // Inclusive selection: the cell under the pointer (5) is selected too.
       await currentMouse.drag(text.x, text.y, text.x + 5, text.y)
       await renderOnce()
 
       const selectedText = text.getSelectedText()
-      expect(selectedText).toBe("Hello")
+      expect(selectedText).toBe("Hello ")
     })
 
     it("should handle graphemes correctly", async () => {
@@ -125,10 +126,11 @@ describe("TextRenderable Selection", () => {
       // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 starts at 7
       // Position "n" in "Line 2" is at 7 + 2 = 9
       expect(selection!.start).toBe(9)
-      // Line 2 starts at 14, position after "Line" is 14 + 4 = 18
-      expect(selection!.end).toBe(18)
+      // Line 2 starts at 14; the cell under the pointer (14 + 4, the ' ' of
+      // "Line 3") is included, so the end is 19.
+      expect(selection!.end).toBe(19)
 
-      expect(text.getSelectedText()).toBe("ne 2\nLine")
+      expect(text.getSelectedText()).toBe("ne 2\nLine ")
     })
 
     it("should handle selection across empty lines", async () => {
@@ -144,10 +146,11 @@ describe("TextRenderable Selection", () => {
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 empty (14)
-      // Selecting to (col=2, row=2) on empty line clamps to col=0, so end=14
+      // Selecting to (col=2, row=2) on empty line clamps to col=0, so end=14.
+      // The range includes the line break before the empty logical line.
       expect(selection!.start).toBe(0)
       expect(selection!.end).toBe(14)
-      expect(text.getSelectedText()).toBe("Line 1\nLine 2")
+      expect(text.getSelectedText()).toBe("Line 1\nLine 2\n")
     })
 
     it("should handle selection ending in empty line", async () => {
@@ -163,10 +166,11 @@ describe("TextRenderable Selection", () => {
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 empty (7)
-      // Selecting to (col=3, row=1) on empty line clamps to col=0, so end=7
+      // Selecting to (col=3, row=1) on empty line clamps to col=0, so end=7.
+      // The range includes the line break before the empty logical line.
       expect(selection!.start).toBe(0)
       expect(selection!.end).toBe(7)
-      expect(text.getSelectedText()).toBe("Line 1")
+      expect(text.getSelectedText()).toBe("Line 1\n")
     })
 
     it("should handle selection spanning multiple lines completely", async () => {
@@ -370,13 +374,13 @@ describe("TextRenderable Selection", () => {
 
       await currentMouse.drag(text.x + 0, text.y, text.x + 5, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("Hello")
-      expect(text.getSelection()).toEqual({ start: 0, end: 5 })
+      expect(text.getSelectedText()).toBe("Hello ")
+      expect(text.getSelection()).toEqual({ start: 0, end: 6 })
 
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("World")
-      expect(text.getSelection()).toEqual({ start: 6, end: 11 })
+      expect(text.getSelectedText()).toBe("World ")
+      expect(text.getSelection()).toEqual({ start: 6, end: 12 })
 
       await currentMouse.drag(text.x + 12, text.y, text.x + 16, text.y)
       await renderOnce()
@@ -759,7 +763,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Hello Cruel World")
 
-      text.remove(node2.id)
+      text.remove(node2)
 
       await renderOnce()
 
@@ -780,7 +784,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Test")
 
-      text.remove(node.id)
+      text.remove(node)
 
       await renderOnce()
       expect(text.plainText).toBe("")
@@ -956,7 +960,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Initial A B C D")
 
-      text.remove(nodeB.id)
+      text.remove(nodeB)
 
       await renderOnce()
       expect(text.plainText).toBe("Initial A C D")
@@ -1238,7 +1242,7 @@ describe("TextRenderable Selection", () => {
       await currentMouse.drag(text.x + 4, text.y, text.x + 9, text.y)
       await renderOnce()
 
-      expect(text.getSelectedText()).toBe("Green")
+      expect(text.getSelectedText()).toBe("Green ")
     })
 
     it("should handle StyledText with TextNodeRenderable children", async () => {
@@ -1293,9 +1297,9 @@ describe("TextRenderable Selection", () => {
       const bufferWidth = buffer.width
 
       const ellipsisIdx = text.y * bufferWidth + text.x + 3
-      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
-      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
-      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+      const ellipsisBgR = (bg[ellipsisIdx * 4] & 0xff) / 255
+      const ellipsisBgG = (bg[ellipsisIdx * 4 + 1] & 0xff) / 255
+      const ellipsisBgB = (bg[ellipsisIdx * 4 + 2] & 0xff) / 255
 
       expect(Math.abs(ellipsisBgR - 1.0)).toBeLessThan(0.05)
       expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)
@@ -1323,9 +1327,9 @@ describe("TextRenderable Selection", () => {
       const bufferWidth = buffer.width
 
       const ellipsisIdx = (text.y + 1) * bufferWidth + text.x + 3
-      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
-      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
-      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+      const ellipsisBgR = (bg[ellipsisIdx * 4] & 0xff) / 255
+      const ellipsisBgG = (bg[ellipsisIdx * 4 + 1] & 0xff) / 255
+      const ellipsisBgB = (bg[ellipsisIdx * 4 + 2] & 0xff) / 255
 
       expect(Math.abs(ellipsisBgR - 1.0)).toBeGreaterThan(0.05)
       expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)
@@ -1655,9 +1659,9 @@ describe("TextRenderable Selection", () => {
       const finalFrame = captureFrame()
       expect(finalFrame).toMatchSnapshot()
 
-      expect(firstText.height).toEqual(5)
-      expect(secondText.y).toEqual(5)
-      expect(thirdText.y).toEqual(6)
+      expect(firstText.height).toEqual(4)
+      expect(secondText.y).toEqual(4)
+      expect(thirdText.y).toEqual(5)
     })
   })
 
@@ -2397,7 +2401,7 @@ describe("TextRenderable Selection", () => {
       const charFrame = captureFrame()
 
       // Remove the char text and add word text
-      currentRenderer.root.remove(charText.id)
+      currentRenderer.root.remove(charText)
       await renderOnce()
 
       await createTextRenderable(currentRenderer, {
