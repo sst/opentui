@@ -4,6 +4,8 @@ pub const buffer = @import("buffer.zig");
 pub const renderer = @import("renderer.zig");
 pub const text_buffer = @import("text-buffer.zig");
 pub const text_buffer_view = @import("text-buffer-view.zig");
+/// Preliminary, unstable API. May change or be removed at any time without compatibility guarantees.
+/// Temporary access for native integration until OpenTUI has a native render tree.
 pub const yoga_c = @import("yoga");
 
 pub const BufferedOutput = renderer.BufferedOutput;
