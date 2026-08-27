@@ -62,16 +62,16 @@ Start with the visible symptom. Run the diagnostic in its row, then open the lin
 
 ## Native builds across worktrees
 
-Zig already shares its global cache. For repeated native builds across many worktrees, opt in to sharing the project
-cache too:
+Zig shares its global cache by default. For repeated native builds across many worktrees, you can also share the project
+cache:
 
 ```sh
 export ZIG_LOCAL_CACHE_DIR="$HOME/.cache/opentui/zig-local-0.16.0"
 bun run build:native
 ```
 
-Use a persistent local path and a separate directory for each Zig version. Do not prune it while Zig is running. Delete
-the complete cache only when builds are idle. `bun run clean` does not remove an external cache.
+Use a persistent local directory. Use a separate directory for each Zig version. `bun run clean` does not remove an
+external cache.
 
 ## Next
 
