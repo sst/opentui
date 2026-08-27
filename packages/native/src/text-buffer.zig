@@ -577,6 +577,9 @@ pub const UnifiedTextBuffer = struct {
         if (chunk_bytes.len > 0 and is_ascii) {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
+        if (!is_ascii and std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null) {
+            flags |= TextChunk.Flags.HAS_TAB;
+        }
 
         const chunk_width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method);
 
@@ -1289,12 +1292,20 @@ pub const UnifiedTextBuffer = struct {
     fn refreshTabWidthMetrics(self: *Self) void {
         if (self._rope.metricsGeneration() == self.tab_metrics_generation) return;
 
+        // Tab presence is content-derived, so even a stale persistent root can
+        // use this aggregate to prove that its widths remain valid.
+        if (!self._rope.root.metrics().custom.has_tabs) {
+            self._rope.setMetricsGeneration(self.tab_metrics_generation);
+            return;
+        }
+
         const RefreshContext = struct {
             buffer: *Self,
 
             fn refresh(ctx_ptr: *anyopaque, segment: *const Segment, _: u32) UnifiedRope.Node.WalkerResult {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                 if (segment.asText()) |chunk| {
+                    if (!chunk.hasTab()) return .{};
                     const mutable = @constCast(chunk);
                     const bytes = chunk.getBytes(&ctx.buffer.mem_registry);
                     mutable.width_cols = utf8.calculateTextWidth(
