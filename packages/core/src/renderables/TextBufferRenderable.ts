@@ -7,6 +7,7 @@ import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { NativeMeasureTargetKind, resolveRenderLib, type LineInfo, type NativeRenderableHandle } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -481,6 +482,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this.textBuffer.ptr) {
       buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
     }
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.render)
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 
   destroy(): void {

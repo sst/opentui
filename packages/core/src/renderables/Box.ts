@@ -13,6 +13,7 @@ import {
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { isValidPercentage } from "../lib/renderable.validations.js"
 import type { RenderContext } from "../types.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
@@ -283,6 +284,10 @@ export class BoxRenderable extends Renderable {
       bottomTitle: this._bottomTitle,
       bottomTitleAlignment: this._bottomTitleAlignment,
     })
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 
   protected getScissorRect(): { x: number; y: number; width: number; height: number } {

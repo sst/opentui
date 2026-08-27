@@ -1516,16 +1516,29 @@ export abstract class Renderable extends BaseRenderable {
       renderBuffer = this.frameBuffer
     }
 
-    // Layout and culling are already finalized for this frame. These hooks are
-    // only safe for drawing into the buffer; avoid renderable/reactive mutations.
-    if (this.renderBefore) {
-      this.renderBefore.call(this, renderBuffer, deltaTime)
-    }
+    // Private framebuffers use local coordinates; children have separate commands.
+    const clipLocal = renderBuffer !== buffer && !this.renderBefore && !this.renderAfter
+    if (clipLocal) renderBuffer.pushScissorRect(0, 0, this.width, this.height)
+    try {
+      // Layout and culling are already finalized for this frame. These hooks are
+      // only safe for drawing into the buffer; avoid renderable/reactive mutations.
+      if (this.renderBefore) {
+        this.renderBefore.call(this, renderBuffer, deltaTime)
+      }
 
-    this.renderSelf(renderBuffer, deltaTime)
+      this.renderSelf(renderBuffer, deltaTime)
 
-    if (this.renderAfter) {
-      this.renderAfter.call(this, renderBuffer, deltaTime)
+      if (this.renderAfter) {
+        this.renderAfter.call(this, renderBuffer, deltaTime)
+      }
+    } catch (error) {
+      if (renderBuffer !== buffer) {
+        renderBuffer.clearScissorRects()
+        renderBuffer.clearOpacity()
+      }
+      throw error
+    } finally {
+      if (clipLocal) renderBuffer.popScissorRect()
     }
 
     // Hooks may move the renderable mid-frame, so sample the cached absolute
@@ -1581,6 +1594,11 @@ export abstract class Renderable extends BaseRenderable {
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.render)
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 
   public get isDestroyed(): boolean {
@@ -1796,6 +1814,7 @@ export class RootRenderable extends Renderable {
   private renderListReusable: boolean = false
   private readonly dynamicCommands: RenderCommandRender[] = []
   private fullCompositionRequired = true
+  private compositionVersion = 0
 
   constructor(ctx: RenderContext) {
     super(ctx, {
@@ -1892,6 +1911,7 @@ export class RootRenderable extends Renderable {
     }
 
     const dirty = dirtyRenderables.get(this._ctx)
+    const compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
     let full =
       context.fullCompositionRequired ||
       this.fullCompositionRequired ||
@@ -1899,7 +1919,24 @@ export class RootRenderable extends Renderable {
       renderListChanged ||
       layoutWasDirty ||
       this._liveCount > 0 ||
-      !backgroundColor
+      !backgroundColor ||
+      backgroundColor.a !== 1 ||
+      compositionVersion === 0 ||
+      compositionVersion !== this.compositionVersion ||
+      this.renderList.some((command) => {
+        if (command.action !== "render") return false
+        const node = command.renderable
+        if (node === this) return false
+        // Unknown paint can borrow raw storage or perform whole-buffer operations
+        // on its first invocation. Decide before paint, never replay callbacks.
+        return (
+          node["buffered"] ||
+          node.renderBefore ||
+          node.renderAfter ||
+          !isStableRenderCallback(node.render) ||
+          !isStableRenderCallback(node["renderSelf"])
+        )
+      })
     if (!full && dirty) {
       for (const source of dirty) {
         if (
@@ -1922,6 +1959,7 @@ export class RootRenderable extends Renderable {
       dirty?.clear()
       try {
         this.executeRenderList(buffer, deltaTime, true)
+        this.compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
       } catch (error) {
         this.fullCompositionRequired = true
         buffer.clearScissorRects()
@@ -1950,6 +1988,7 @@ export class RootRenderable extends Renderable {
       buffer.fillRect(0, start, buffer.width, end - start, backgroundColor!)
       buffer.pushScissorRect(0, start, buffer.width, end - start)
       this.executeRenderList(buffer, deltaTime, false, start, end)
+      this.compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
     } catch (error) {
       this.fullCompositionRequired = true
       throw error
@@ -1977,7 +2016,16 @@ export class RootRenderable extends Renderable {
               (command.renderable.screenY < end! && command.renderable.screenY + command.renderable.height > start))
           ) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            const node = command.renderable
+            // Hooks retain their existing translation/overflow behavior on the
+            // full path. Ordinary commands cannot clip separately drawn children.
+            const clipped = !node.renderBefore && !node.renderAfter
+            if (clipped) buffer.pushScissorRect(node.screenX, node.screenY, node.width, node.height)
+            try {
+              node.render(buffer, deltaTime)
+            } finally {
+              if (clipped) buffer.popScissorRect()
+            }
             this._currentRenderable = undefined
           }
           break

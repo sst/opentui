@@ -6,6 +6,7 @@ import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext, Timeout } from "../types.js"
 import { type BoxOptions } from "./Box.js"
 import { SliderRenderable, type SliderOptions } from "./Slider.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
@@ -432,5 +433,9 @@ export class ArrowRenderable extends Renderable {
       default:
         return "?"
     }
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 }

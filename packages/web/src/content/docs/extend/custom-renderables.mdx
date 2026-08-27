@@ -125,11 +125,18 @@ With `buffered: true`, OpenTUI creates a private `OptimizedBuffer` for the rende
 relative to `(0, 0)` in that buffer. OpenTUI resizes and composites it after `renderSelf()`. Buffering does not turn the
 whole child subtree into one offscreen surface.
 
-Every renderable's own `render()`, `renderSelf()`, `renderBefore`, and `renderAfter` drawing must stay inside its computed
-layout rectangle. The renderer uses that rectangle to retain and redraw damaged rows; painting outside it can leave stale
-cells. Children may draw outside a parent's rectangle when its overflow is visible. Direct frame callbacks and
-postprocessors are separate drawing layers and are not subject to the renderable rectangle contract. Raw buffer-array
-writes are not checked and must follow the same bounds when performed by a renderable.
+Ordinary `render()` and `renderSelf()` buffer drawing is clipped to the node's computed layout rectangle. Children have
+separate draw commands and may overflow a parent whose overflow is visible. Existing ancestor and custom scissors still
+apply. Wide-character cleanup can also erase an adjacent cell to preserve the character's integrity.
+
+Draw hooks keep their existing translation and overflow behavior and use full composition, without the node's own
+scissor. Custom paint, private framebuffers, nonopaque renderer backgrounds, and image-bearing frames also use full
+composition. Only known built-in paint functions can retain unchanged rows; overriding paint returns to full composition.
+
+Raw buffer views and whole-buffer operations such as `clear()` and color matrices are not constrained by scissors.
+Exposing the desired buffer's raw storage disables retention for that buffer's lifetime. Frame callbacks and postprocessors
+remain separate full-composition layers. These fallbacks prevent retained residue; they do not sandbox foreign native
+pointers or make borrowed views valid after resize or destruction.
 
 An ancestor with `overflow: "hidden"` or `overflow: "scroll"` clips descendant drawing and hit testing. See
 [Buffer API](/docs/reference/buffer-api) for cell operations.

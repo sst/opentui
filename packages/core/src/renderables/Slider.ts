@@ -2,6 +2,7 @@ import { type RenderableOptions, Renderable } from "../Renderable.js"
 import { type RenderContext } from "../types.js"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { OptimizedBuffer } from "../buffer.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 
 const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
@@ -231,6 +232,10 @@ export class SliderRenderable extends Renderable {
     } else {
       this.renderVertical(buffer)
     }
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 
   private renderHorizontal(buffer: OptimizedBuffer): void {

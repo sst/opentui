@@ -14,6 +14,83 @@ const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+test "composition version rejects image placements and permanently exposed storage" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const bg = ansi.rgbColor(0, 0, 0, 255);
+    const source = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &links });
+    defer source.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const img = try image.createFromRgba(std.testing.allocator, &.{ 0, 0, 255, 128 }, 1, 1, 4);
+    defer img.deinit();
+    const initial = target.getCompositionVersion();
+    target.clear(bg, null);
+    try std.testing.expect(target.getCompositionVersion() != initial);
+    try std.testing.expect(try source.drawImage(img, 1, 0, 0, 2, 1, 0, 0, 0, 0, 1, 1, .blocks));
+    try std.testing.expectEqual(@as(u32, 0), source.getCompositionVersion());
+    target.drawFrameBuffer(0, 0, source, null, null, null, null);
+    try std.testing.expectEqual(@as(u32, 0), target.getCompositionVersion());
+    try target.materializeImageFallback(1);
+    try std.testing.expectEqual(@as(u32, 0), target.getCompositionVersion());
+    target.clear(bg, null);
+    try std.testing.expect(target.getCompositionVersion() != 0);
+    for (0..4) |channel| {
+        const raw = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &links });
+        defer raw.deinit();
+        switch (channel) {
+            0 => _ = raw.getCharPtr(),
+            1 => _ = raw.getFgPtr(),
+            2 => _ = raw.getBgPtr(),
+            else => _ = raw.getAttributesPtr(),
+        }
+        raw.clear(bg, null);
+        try std.testing.expectEqual(@as(u32, 0), raw.getCompositionVersion());
+        try raw.resize(3, 1);
+        try std.testing.expectEqual(@as(u32, 0), raw.getCompositionVersion());
+    }
+}
+
+test "framebuffer wide spans stay inside source and scissor edges" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const source = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &links });
+    defer source.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const fg = ansi.rgbColor(255, 255, 255, 255);
+    const bg = ansi.rgbColor(0, 0, 0, 255);
+    const gid = try pool.alloc("\xe7\x95\x8c");
+    const link_id = try links.alloc("https://example.test");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+    source.set(0, 0, .{ .char = gp.packGraphemeStart(gid, 2), .fg = fg, .bg = bg, .attributes = attributes });
+    for ([_]f32{ 1.0, 0.5 }) |opacity| {
+        for ([_]u32{ 1, 2 }) |clip_x| {
+            target.clear(bg, null);
+            try target.pushScissorRect(@intCast(clip_x), 0, 1, 1);
+            try target.pushOpacity(opacity);
+            target.drawFrameBuffer(1, 0, source, null, null, null, null);
+            target.popOpacity();
+            target.popScissorRect();
+            for (0..4) |x| try std.testing.expectEqual(@as(u32, ' '), target.get(@intCast(x), 0).?.char);
+            try std.testing.expectEqual(link_id, ansi.TextAttributes.getLinkId(target.get(clip_x, 0).?.attributes));
+            try std.testing.expectEqual(@as(u32, 0), ansi.TextAttributes.getLinkId(target.get(3, 0).?.attributes));
+        }
+        target.clear(bg, null);
+        target.drawFrameBuffer(1, 0, source, 0, 0, 1, 1);
+        try std.testing.expectEqual(@as(u32, ' '), target.get(2, 0).?.char);
+    }
+    target.clear(bg, null);
+    target.drawFrameBuffer(1, 0, source, null, null, null, null);
+    try std.testing.expect(gp.isGraphemeChar(target.get(1, 0).?.char));
+    try std.testing.expect(gp.isContinuationChar(target.get(2, 0).?.char));
+    try std.testing.expectEqual(link_id, ansi.TextAttributes.getLinkId(target.get(2, 0).?.attributes));
+}
+
 test "OptimizedBuffer draws image reservation markers" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
