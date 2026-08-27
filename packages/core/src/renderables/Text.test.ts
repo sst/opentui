@@ -64,6 +64,7 @@ describe("TextRenderable Selection", () => {
     } = await createTestRenderer({
       width: 20,
       height: 5,
+      forwardEnvKeys: [],
     }))
   })
 
