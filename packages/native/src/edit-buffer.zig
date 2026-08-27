@@ -821,14 +821,14 @@ pub const EditBuffer = struct {
             if (seg.isBreak() or seg.isLineStart()) break;
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width_cols;
-                const layout = self.tb.getLayoutInfoFor(chunk) catch {
+                const layout = self.tb.getWordLayoutInfoFor(chunk) catch {
                     cols_before = next_cols;
                     passed_cursor = passed_cursor or cursor.col < next_cols;
                     previous_word_class = .other;
                     continue;
                 };
 
-                if (utf8.isCjkAsciiTransition(previous_word_class, layout.word_classes.first) and
+                if (utf8.isCjkAsciiTransition(previous_word_class, layout.first_class) and
                     cols_before > cursor.col and cols_before <= line_width)
                 {
                     const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cols_before) orelse cursor.offset;
@@ -843,7 +843,6 @@ pub const EditBuffer = struct {
                     const local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0;
 
                     for (wrap_breaks) |wrap_break| {
-                        if (!wrap_break.kind.isWordBoundary()) continue;
                         const break_col = wrap_break.col_start;
                         const target_col = cols_before + wrap_break.colEnd();
 
@@ -877,7 +876,7 @@ pub const EditBuffer = struct {
                     // Mark that we've processed/passed the cursor position
                     passed_cursor = true;
                 }
-                previous_word_class = layout.word_classes.last;
+                previous_word_class = layout.last_class;
                 cols_before = next_cols;
             }
         }
@@ -909,25 +908,24 @@ pub const EditBuffer = struct {
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width_cols;
 
-                const layout = self.tb.getLayoutInfoFor(chunk) catch {
+                const layout = self.tb.getWordLayoutInfoFor(chunk) catch {
                     cols_before = next_cols;
                     previous_word_class = .other;
                     continue;
                 };
 
-                if (utf8.isCjkAsciiTransition(previous_word_class, layout.word_classes.first) and cols_before < cursor.col) {
+                if (utf8.isCjkAsciiTransition(previous_word_class, layout.first_class) and cols_before < cursor.col) {
                     last_boundary = cols_before;
                 }
 
                 for (layout.wrap_breaks) |wrap_break| {
-                    if (!wrap_break.kind.isWordBoundary()) continue;
                     const boundary_col = cols_before + wrap_break.colEnd();
                     if (boundary_col < cursor.col) {
                         last_boundary = boundary_col;
                     }
                 }
 
-                previous_word_class = layout.word_classes.last;
+                previous_word_class = layout.last_class;
                 cols_before = next_cols;
                 if (cursor.col <= cols_before) break;
             }

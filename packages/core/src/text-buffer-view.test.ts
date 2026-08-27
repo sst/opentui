@@ -3,6 +3,82 @@ import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
+import { OptimizedBuffer } from "./buffer.js"
+
+for (const method of ["unicode", "wcwidth"] as const) {
+  for (const [name, left, right, cluster, width] of [
+    ["emoji modifier", "\u65e5\u672c\u{1f44b}", "\u{1f3fb}\u8a9e\u6587", "\u{1f44b}\u{1f3fb}", 4],
+    ["ZWJ sequence", "\u65e5\u672c\u{1f469}\u200d", "\u{1f4bb}\u8a9e\u6587", "\u{1f469}\u200d\u{1f4bb}", 4],
+    [
+      "modifier and ZWJ",
+      "\u65e5\u672c\u{1f469}",
+      "\u{1f3fb}\u200d\u{1f4bb}\u8a9e\u6587",
+      "\u{1f469}\u{1f3fb}\u200d\u{1f4bb}",
+      6,
+    ],
+    ["combining cluster control", "\u65e5\u672ca\u0301", "\u8a9e\u6587", "a\u0301", 4],
+  ] as const) {
+    it(`word wrapping keeps an appended ${name} with its base (${method})`, () => {
+      const buffer = TextBuffer.create(method)
+      const view = TextBufferView.create(buffer)
+      const screen = OptimizedBuffer.create(8, 8, method)
+      try {
+        buffer.setText(left)
+        buffer.append(right)
+        view.setWrapMode("word")
+        view.setWrapWidth(width)
+        screen.clear()
+        screen.drawTextBuffer(view, 0, 0)
+        const rows = new TextDecoder()
+          .decode(screen.getRealCharBytes(true))
+          .split("\n")
+          .map((row) => row.trimEnd())
+          .filter(Boolean)
+        expect(rows.join("")).toBe(left + right)
+        if (name !== "combining cluster control") expect(view.lineInfo.lineStartCols).not.toContain(6)
+        expect(rows.some((row) => row.includes(cluster))).toBe(true)
+      } finally {
+        screen.destroy()
+        view.destroy()
+        buffer.destroy()
+      }
+    })
+  }
+}
+
+it("cached word and CJK breaks retain streaming source order", () => {
+  const part = "AB \u65e5\u672c\u3002\u8a9e\u6587 "
+  const layouts = []
+  for (const fragmented of [false, true]) {
+    const buffer = TextBuffer.create("wcwidth")
+    const view = TextBufferView.create(buffer)
+    const screen = OptimizedBuffer.create(10, 256, "wcwidth")
+    try {
+      if (fragmented) {
+        for (let i = 0; i < 64; i++) buffer.append(part)
+      } else {
+        buffer.setText(part.repeat(64))
+      }
+      view.setWrapMode("word")
+      for (const width of [6, 8, 6]) {
+        view.setWrapWidth(width)
+        screen.clear()
+        screen.drawTextBuffer(view, 0, 0)
+        const lines = view.lineInfo
+        layouts.push({
+          rows: new TextDecoder().decode(screen.getRealCharBytes(true)),
+          starts: lines.lineStartCols,
+          widths: lines.lineWidthCols,
+        })
+      }
+    } finally {
+      screen.destroy()
+      view.destroy()
+      buffer.destroy()
+    }
+  }
+  expect(layouts.slice(0, 3)).toEqual(layouts.slice(3))
+})
 
 describe("TextBufferView", () => {
   let buffer: TextBuffer

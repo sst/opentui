@@ -54,6 +54,38 @@ test "TextChunk.getLayoutInfo returns direct byte and column metadata" {
     try testing.expectEqual(@as(u32, 0), zero_width_layout.wrap_breaks[0].width_cols);
 }
 
+test "TextChunk keeps CJK line opportunities out of the word cache" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+    const text = "\u{65e5}\u{672c}\t\u{8a9e}\u{6587}";
+    const mem_id = try registry.register(text, false);
+    var chunk: TextChunk = .{ .mem_id = mem_id, .byte_start = 0, .byte_end = text.len, .width_cols = 10 };
+    _ = try chunk.getLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expect(chunk.cold.?.wrap_breaks != null);
+    for ([_]utf8.WidthMethod{ .unicode, .wcwidth }) |method| {
+        for ([_]u8{ 2, 8 }) |tab_width| {
+            const words = try chunk.getWordLayoutInfo(arena.allocator(), &registry, tab_width, method);
+            try testing.expectEqual(@as(usize, 1), words.wrap_breaks.len);
+            try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, words.wrap_breaks[0].kind);
+            try testing.expectEqual(@as(u32, tab_width), words.wrap_breaks[0].width_cols);
+            const lines = try chunk.getLayoutInfo(arena.allocator(), &registry, tab_width, method);
+            try testing.expectEqual(@as(usize, 1), lines.wrap_breaks.len);
+            try testing.expectEqual(@as(usize, 2), lines.cjk_breaks.len);
+            const cached_words = try chunk.getWordLayoutInfo(arena.allocator(), &registry, tab_width, method);
+            try testing.expectEqual(@intFromPtr(words.wrap_breaks.ptr), @intFromPtr(cached_words.wrap_breaks.ptr));
+            try testing.expectEqual(@as(usize, 1), cached_words.wrap_breaks.len);
+            try testing.expectEqual(@as(usize, 2), chunk.getCachedLayoutInfo(tab_width, method).?.cjk_breaks.len);
+        }
+    }
+    const greek = "\u{3bb}-\u{3bb}";
+    const greek_id = try registry.register(greek, false);
+    var greek_chunk: TextChunk = .{ .mem_id = greek_id, .byte_start = 0, .byte_end = greek.len, .width_cols = 3 };
+    _ = try greek_chunk.getWordLayoutInfo(arena.allocator(), &registry, 2, .unicode);
+    try testing.expect(greek_chunk.getCachedLayoutInfo(2, .unicode) != null);
+}
+
 test "findChunkLayoutInfo classifies direct byte and column break metadata" {
     const Case = struct {
         text: []const u8,

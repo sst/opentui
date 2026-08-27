@@ -1581,7 +1581,8 @@ pub const UnifiedTextBufferView = struct {
             current_line_vline_count: if (calculation == .render) u32 else void = if (calculation == .render) 0 else {},
             pending_word_pieces: if (wrap_mode == .word) std.ArrayListUnmanaged(PendingWordPiece) else void = if (wrap_mode == .word) .empty else {},
             pending_word_width_cols: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
-            pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
+            pending_word_has_split_grapheme: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
+            pending_word_edges: if (wrap_mode == .word) utf8.WordClassEdges else void = if (wrap_mode == .word) .{ .first = .other, .last = .other } else {},
             source_line_has_non_whitespace: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
             word_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
             word_chunk_col_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
@@ -1721,7 +1722,8 @@ pub const UnifiedTextBufferView = struct {
             fn clearPendingWord(wctx: *@This()) void {
                 wctx.pending_word_pieces.clearRetainingCapacity();
                 wctx.pending_word_width_cols = 0;
-                wctx.pending_word_last_class = .other;
+                wctx.pending_word_has_split_grapheme = false;
+                wctx.pending_word_edges = .{ .first = .other, .last = .other };
             }
 
             fn dropPendingWordPrefix(wctx: *@This(), count: usize) void {
@@ -1784,11 +1786,52 @@ pub const UnifiedTextBufferView = struct {
                 };
             }
 
+            fn fitPendingWordWidth(wctx: *@This(), max_width_cols: u32) u32 {
+                // A public append may split a grapheme across chunks. Keep its
+                // parts together, but retain the chunks' source-column units.
+                var break_state: @import("uucode").grapheme.BreakState = .default;
+                var prev_cp: ?u21 = null;
+                var cols: u32 = 0;
+                var fit_cols: u32 = 0;
+                const width_method = wctx.text_buffer.widthMethod();
+                for (wctx.pending_word_pieces.items) |piece| {
+                    const bytes = piece.chunk.getBytes(wctx.text_buffer.memRegistry());
+                    var pos: usize = piece.byte_start;
+                    var width_state: utf8.GraphemeWidthState = undefined;
+                    var local_state: @import("uucode").grapheme.BreakState = .default;
+                    var local_prev_cp: ?u21 = null;
+                    while (pos < piece.byte_end) {
+                        const decoded = utf8.decodeUtf8Unchecked(bytes, pos);
+                        const is_break = utf8.isGraphemeBreak(prev_cp, decoded.cp, &break_state, width_method);
+                        if (is_break) {
+                            if (cols > max_width_cols) return if (fit_cols > 0) fit_cols else cols;
+                            fit_cols = cols;
+                        }
+                        const width = utf8.charWidth(bytes[pos], decoded.cp, wctx.text_buffer.tabWidth());
+                        if (utf8.isGraphemeBreak(local_prev_cp, decoded.cp, &local_state, width_method)) {
+                            width_state = .init(decoded.cp, width, width_method);
+                            cols += width_state.width;
+                        } else {
+                            const before = width_state.width;
+                            width_state.addCodepoint(decoded.cp, width);
+                            cols += width_state.width - before;
+                        }
+                        prev_cp = decoded.cp;
+                        local_prev_cp = decoded.cp;
+                        pos += decoded.len;
+                    }
+                }
+                return if (cols <= max_width_cols or fit_cols == 0) cols else fit_cols;
+            }
+
             fn consumePendingWordPrefix(wctx: *@This(), max_width_cols: u32) bool {
                 if (max_width_cols == 0 or wctx.pending_word_width_cols == 0 or wctx.failed) return false;
 
                 const vline_width_cols_before = wctx.current_vline_width_cols;
-                var remaining_width_cols = max_width_cols;
+                var remaining_width_cols = if (wctx.pending_word_has_split_grapheme)
+                    fitPendingWordWidth(wctx, max_width_cols)
+                else
+                    max_width_cols;
                 var consumed_count: usize = 0;
                 while (consumed_count < wctx.pending_word_pieces.items.len and remaining_width_cols > 0) {
                     const piece = wctx.pending_word_pieces.items[consumed_count];
@@ -1812,6 +1855,7 @@ pub const UnifiedTextBufferView = struct {
                 dropPendingWordPrefix(wctx, consumed_count);
                 const consumed_width_cols = wctx.current_vline_width_cols - vline_width_cols_before;
                 wctx.pending_word_width_cols -= consumed_width_cols;
+                if (wctx.pending_word_width_cols == 0) clearPendingWord(wctx);
                 return consumed_width_cols > 0;
             }
 
@@ -2012,22 +2056,45 @@ pub const UnifiedTextBufferView = struct {
                     info.word_classes
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
-                if (wctx.pending_word_width_cols > 0 and
-                    (utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first) or
-                        utf8.isCjkIntercharacterBreak(wctx.pending_word_last_class, word_classes.first)))
-                {
-                    finalizePendingWord(wctx);
-                    if (wctx.failed) return;
+                if (wctx.pending_word_width_cols > 0 and chunk_bytes.len > 0) {
+                    var state = wctx.pending_word_edges.break_state;
+                    const is_break = (chunk.isAsciiOnly() and (wctx.pending_word_edges.last_cp orelse 0) < 0x80) or
+                        utf8.isGraphemeBreak(wctx.pending_word_edges.last_cp, utf8.decodeUtf8Unchecked(chunk_bytes, 0).cp, &state, wctx.text_buffer.widthMethod());
+                    if (!is_break) {
+                        wctx.pending_word_has_split_grapheme = true;
+                    } else if (utf8.isCjkAsciiTransition(wctx.pending_word_edges.last, word_classes.first) or
+                        utf8.isCjkIntercharacterBreak(wctx.pending_word_edges.last, word_classes.first))
+                    {
+                        finalizePendingWord(wctx);
+                        if (wctx.failed) return;
+                    }
                 }
                 wctx.word_chunk = chunk;
                 wctx.word_chunk_col_start = 0;
                 wctx.word_chunk_byte_start = 0;
-                const last_word_class = if (layout) |info| blk: {
-                    for (info.wrap_breaks) |wrap_break| {
-                        processWordWrapBreakValue(wctx, wrap_break);
-                        if (wctx.failed) return;
+                const edges = if (layout) |info| blk: {
+                    if (info.wrap_breaks.len == 0 or info.cjk_breaks.len == 0) {
+                        const breaks = if (info.wrap_breaks.len == 0) info.cjk_breaks else info.wrap_breaks;
+                        for (breaks) |wrap_break| {
+                            processWordWrapBreakValue(wctx, wrap_break);
+                            if (wctx.failed) return;
+                        }
+                    } else {
+                        var word_idx: usize = 0;
+                        for (info.cjk_breaks) |line_break| {
+                            while (word_idx < info.wrap_breaks.len and info.wrap_breaks[word_idx].byte_start < line_break.byte_start) : (word_idx += 1) {
+                                processWordWrapBreakValue(wctx, info.wrap_breaks[word_idx]);
+                                if (wctx.failed) return;
+                            }
+                            processWordWrapBreakValue(wctx, line_break);
+                            if (wctx.failed) return;
+                        }
+                        for (info.wrap_breaks[word_idx..]) |wrap_break| {
+                            processWordWrapBreakValue(wctx, wrap_break);
+                            if (wctx.failed) return;
+                        }
                     }
-                    break :blk info.word_classes.last;
+                    break :blk info.word_classes;
                 } else blk: {
                     const streamed_layout = utf8.walkChunkLayoutInfoComptime(
                         chunk_bytes,
@@ -2040,7 +2107,7 @@ pub const UnifiedTextBufferView = struct {
                         wctx.failed = true;
                         return;
                     };
-                    break :blk streamed_layout.last;
+                    break :blk streamed_layout;
                 };
 
                 if (wctx.word_chunk_col_start < chunk.width_cols) {
@@ -2052,7 +2119,7 @@ pub const UnifiedTextBufferView = struct {
                         wctx.word_chunk_byte_start,
                         @intCast(chunk_bytes.len),
                     );
-                    if (!wctx.failed) wctx.pending_word_last_class = last_word_class;
+                    if (!wctx.failed) wctx.pending_word_edges = edges;
                     wctx.source_line_has_non_whitespace = true;
                 }
                 wctx.word_chunk = null;

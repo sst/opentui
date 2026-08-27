@@ -117,7 +117,7 @@ pub const LayoutWrapBreakKind = enum(u8) {
     /// that are line-break opportunities only.
     pub fn isWordBoundary(self: LayoutWrapBreakKind) bool {
         return switch (self) {
-            .whitespace, .punctuation, .script_transition => true,
+            .whitespace, .preserved_whitespace, .punctuation, .script_transition => true,
             .none, .cjk_intercharacter => false,
         };
     }
@@ -528,7 +528,7 @@ inline fn asciiCharWidth(byte: u8, tab_width: u8) u32 {
 }
 
 /// Calculate the display width of a character (byte or codepoint) in columns
-inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
+pub inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     if (byte == '\t') {
         return tab_width;
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
@@ -552,7 +552,7 @@ inline fn isValidCodepoint(cp: u21) bool {
 ///   but calculate width using wcwidth (sum of codepoint widths)
 /// - no_zwj mode: use grapheme breaks but treat ZWJ as a break (ignore joining)
 /// - unicode mode: use standard grapheme cluster segmentation
-inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
+pub inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
     // wcwidth mode uses Unicode grapheme clustering for proper rendering
     // (ZWJ sequences, skin tone modifiers stay together), but width is
     // calculated using wcwidth semantics (sum of codepoint widths)
@@ -592,7 +592,7 @@ inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grap
 }
 
 /// State for accumulating grapheme cluster width
-const GraphemeWidthState = struct {
+pub const GraphemeWidthState = struct {
     width: u32 = 0,
     has_width: bool = false,
     is_regional_indicator_pair: bool = false,
@@ -601,7 +601,7 @@ const GraphemeWidthState = struct {
     width_method: WidthMethod,
 
     /// Initialize state with the first codepoint of a grapheme cluster
-    inline fn init(first_cp: u21, first_width: u32, width_method: WidthMethod) GraphemeWidthState {
+    pub inline fn init(first_cp: u21, first_width: u32, width_method: WidthMethod) GraphemeWidthState {
         return .{
             .width = first_width,
             .has_width = (first_width > 0),
@@ -613,7 +613,7 @@ const GraphemeWidthState = struct {
     }
 
     /// Add a codepoint to the current grapheme cluster
-    inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
+    pub inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
         // wcwidth mode: sum all codepoint widths (tmux-style)
         if (self.width_method == .wcwidth) {
             const eaw = uucode.get(.east_asian_width, cp);
@@ -1510,13 +1510,24 @@ pub const RenderClusterInfo = struct {
 };
 
 pub const ChunkLayoutInfo = struct {
+    // Individually ordered lists; wrapping merges them, word motion uses only the first.
     wrap_breaks: []const LayoutWrapBreak,
+    cjk_breaks: []const LayoutWrapBreak = &.{},
     word_classes: WordClassEdges,
 };
 
-// Edge classes preserve CJK/ASCII transition boundaries across rope chunks.
-pub const WordClassEdges = struct { first: WordClass, last: WordClass };
+// Preserve script and grapheme boundaries across rope chunks. A chunk edge
+// inside a grapheme is not a wrapping opportunity, regardless of its script.
+pub const WordClassEdges = struct {
+    first: WordClass,
+    last: WordClass,
+    last_cp: ?u21 = null,
+    break_state: uucode.grapheme.BreakState = .default,
+    has_cjk_breaks: bool = false,
+};
 
+// Cheap endpoint classes; trailing grapheme state and interior opportunities
+// are supplied by the full layout scan.
 pub fn chunkWordClassEdges(text: []const u8) WordClassEdges {
     if (text.len == 0) return .{ .first = .other, .last = .other };
 
@@ -1528,7 +1539,7 @@ pub fn chunkWordClassEdges(text: []const u8) WordClassEdges {
         continuation_count += 1;
     }
     const last = decodeUtf8Unchecked(text, last_start).cp;
-    return .{ .first = classifyWordClass(first), .last = classifyWordClass(last) };
+    return .{ .first = classifyWordClass(first), .last = classifyWordClass(last), .last_cp = last };
 }
 
 inline fn emitLayoutWrapBreak(
@@ -1557,12 +1568,16 @@ inline fn commitLayoutCluster(
     cluster_break_kind: LayoutWrapBreakKind,
     cluster_class: WordClass,
     next_class: ?WordClass,
+    has_cjk_breaks: *bool,
 ) !bool {
     const kind: LayoutWrapBreakKind = blk: {
         if (cluster_break_kind != .none) break :blk cluster_break_kind;
         const next = next_class orelse break :blk .none;
         if (isCjkAsciiTransition(cluster_class, next)) break :blk .script_transition;
-        if (isCjkIntercharacterBreak(cluster_class, next)) break :blk .cjk_intercharacter;
+        if (isCjkIntercharacterBreak(cluster_class, next)) {
+            has_cjk_breaks.* = true;
+            if (!@TypeOf(visitor).word_only) break :blk .cjk_intercharacter;
+        }
         break :blk .none;
     };
     if (kind != .none) {
@@ -1642,6 +1657,59 @@ pub fn findChunkLayoutInfo(
     return walkChunkLayoutInfoComptime(text, tab_width, isASCIIOnly, width_method, &ctx, Context.append);
 }
 
+/// Editor queries do not need to materialize line-only CJK opportunities.
+pub fn findWordChunkLayoutInfo(
+    allocator: std.mem.Allocator,
+    text: []const u8,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    width_method: WidthMethod,
+    wrap_breaks: *std.ArrayListUnmanaged(LayoutWrapBreak),
+) !WordClassEdges {
+    wrap_breaks.clearRetainingCapacity();
+    const Visitor = struct {
+        const word_only = true;
+        allocator: std.mem.Allocator,
+        breaks: *std.ArrayListUnmanaged(LayoutWrapBreak),
+
+        inline fn emit(self: @This(), wrap_break: LayoutWrapBreak) !bool {
+            try self.breaks.append(self.allocator, wrap_break);
+            return true;
+        }
+    };
+    return walkChunkLayoutInfoGeneric(text, tab_width, isASCIIOnly, width_method, Visitor{ .allocator = allocator, .breaks = wrap_breaks });
+}
+
+/// Retained layout stores word and line-only breaks once, in disjoint lists.
+pub fn findLineAndWordChunkLayoutInfo(
+    allocator: std.mem.Allocator,
+    text: []const u8,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    width_method: WidthMethod,
+    line_breaks: *std.ArrayListUnmanaged(LayoutWrapBreak),
+    word_breaks: *std.ArrayListUnmanaged(LayoutWrapBreak),
+) !WordClassEdges {
+    line_breaks.clearRetainingCapacity();
+    word_breaks.clearRetainingCapacity();
+    const Visitor = struct {
+        const word_only = false;
+        allocator: std.mem.Allocator,
+        lines: *std.ArrayListUnmanaged(LayoutWrapBreak),
+        words: *std.ArrayListUnmanaged(LayoutWrapBreak),
+
+        inline fn emit(self: @This(), wrap_break: LayoutWrapBreak) !bool {
+            if (wrap_break.kind.isWordBoundary()) {
+                try self.words.append(self.allocator, wrap_break);
+            } else {
+                try self.lines.append(self.allocator, wrap_break);
+            }
+            return true;
+        }
+    };
+    return walkChunkLayoutInfoGeneric(text, tab_width, isASCIIOnly, width_method, Visitor{ .allocator = allocator, .lines = line_breaks, .words = word_breaks });
+}
+
 pub inline fn walkChunkLayoutInfoComptime(
     text: []const u8,
     tab_width: u8,
@@ -1651,6 +1719,7 @@ pub inline fn walkChunkLayoutInfoComptime(
     comptime callback: anytype,
 ) !WordClassEdges {
     const Visitor = struct {
+        const word_only = false;
         context: @TypeOf(context),
 
         inline fn emit(self: @This(), wrap_break: LayoutWrapBreak) !bool {
@@ -1675,6 +1744,7 @@ fn walkChunkLayoutInfoGeneric(
     }
 
     const first_word_class = classifyWordClass(decodeUtf8Unchecked(text, 0).cp);
+    var has_cjk_breaks = false;
 
     const vector_len = 16;
     var pos: usize = 0;
@@ -1719,6 +1789,7 @@ fn walkChunkLayoutInfoGeneric(
                             cluster_break_kind,
                             cluster_class,
                             first_class,
+                            &has_cjk_breaks,
                         )) return chunkWordClassEdges(text);
                         col += cluster_width_state.width;
                         cluster_started = false;
@@ -1774,6 +1845,7 @@ fn walkChunkLayoutInfoGeneric(
                     cluster_break_kind,
                     cluster_class,
                     curr_class,
+                    &has_cjk_breaks,
                 )) return chunkWordClassEdges(text);
                 col += cluster_width_state.width;
             }
@@ -1810,10 +1882,11 @@ fn walkChunkLayoutInfoGeneric(
             cluster_break_kind,
             cluster_class,
             null,
+            &has_cjk_breaks,
         );
     }
 
-    return .{ .first = first_word_class, .last = if (cluster_started) cluster_class else .other };
+    return .{ .first = first_word_class, .last = if (cluster_started) cluster_class else .other, .last_cp = prev_cp, .break_state = break_state, .has_cjk_breaks = has_cjk_breaks };
 }
 
 /// Find sparse render-cluster metadata for multibyte clusters and tabs.
