@@ -70,6 +70,17 @@ fn composeRow(
     const raw_items = cells.items(.raw);
     const graphemes = cells.items(.grapheme);
     const styles = cells.items(.style);
+    const text_end = if (selection != null) end: {
+        var x = raw_items.len;
+        while (x > 0) {
+            x -= 1;
+            const raw = raw_items[x];
+            if (raw.wide == .spacer_tail or raw.wide == .spacer_head) continue;
+            // Keep explicit spaces and gaps within text, but not unused row tails.
+            if (raw.codepoint() != 0) break :end x + raw.gridWidth();
+        }
+        break :end 0;
+    } else 0;
 
     cell_loop: for (raw_items, 0..) |raw, x| {
         const dest_x = origin_x + @as(i32, @intCast(x));
@@ -82,7 +93,7 @@ fn composeRow(
         var bg = style.bg(&raw, &colors.palette) orelse colors.background;
         if (style.flags.inverse) std.mem.swap(@TypeOf(fg), &fg, &bg);
         if (selection) |range| {
-            if (x >= range[0] and x <= range[1]) std.mem.swap(@TypeOf(fg), &fg, &bg);
+            if (x < text_end and x + raw.gridWidth() > range[0] and x <= range[1]) std.mem.swap(@TypeOf(fg), &fg, &bg);
         }
 
         var stack: [128]u8 = undefined;
