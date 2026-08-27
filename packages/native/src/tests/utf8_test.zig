@@ -793,6 +793,18 @@ const layout_break_golden_tests = [_]LayoutBreakTestCase{
         .input = "a\u{200B}b",
         .expected = &[_]usize{1},
     },
+    .{
+        .name = "cjk run breaks between characters",
+        .input = "你好世界",
+        .expected = &[_]usize{ 0, 3, 6 },
+    },
+    .{
+        // Breaks after 文 and after 。, but none after 字: the full stop
+        // must not start a line.
+        .name = "no break before ideographic full stop",
+        .input = "文字。",
+        .expected = &[_]usize{ 0, 6 },
+    },
 };
 
 fn testLayoutBreaks(test_case: LayoutBreakTestCase, allocator: std.mem.Allocator) !void {
@@ -892,10 +904,11 @@ test "wrap breaks: multibyte at SIMD boundary with script transitions" {
     const text = "Test世界Test";
     @memcpy(buf[0..text.len], text);
 
-    //// Breaks at ASCII<->CJK transitions:
+    //// Breaks at ASCII<->CJK transitions and between CJK characters:
     // - after 't' in "Test" (byte 3)
+    // - after '世' before '界' (byte 4)
     // - after '界' before "Test" (byte 7)
-    const expected = [_]usize{ 3, 7 };
+    const expected = [_]usize{ 3, 4, 7 };
 
     try testLayoutBreaks(.{
         .name = "unicode@boundary",

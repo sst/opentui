@@ -71,6 +71,13 @@ test "findChunkLayoutInfo classifies direct byte and column break metadata" {
         .{ .text = "a\tb", .tab_width = 2, .expected = &.{.{ .byte_start = 1, .col_start = 1, .byte_len = 1, .width_cols = 2, .kind = .whitespace }} },
         .{ .text = "a\tb", .tab_width = 4, .expected = &.{.{ .byte_start = 1, .col_start = 1, .byte_len = 1, .width_cols = 4, .kind = .whitespace }} },
         .{ .text = "ab,cd", .expected = &.{.{ .byte_start = 2, .col_start = 2, .byte_len = 1, .width_cols = 1, .kind = .punctuation }} },
+        .{ .text = "中文", .expected = &.{.{ .byte_start = 0, .col_start = 0, .byte_len = 3, .width_cols = 2, .kind = .cjk_intercharacter }} },
+        .{ .text = "中文A", .expected = &.{
+            .{ .byte_start = 0, .col_start = 0, .byte_len = 3, .width_cols = 2, .kind = .cjk_intercharacter },
+            .{ .byte_start = 3, .col_start = 2, .byte_len = 3, .width_cols = 2, .kind = .script_transition },
+        } },
+        // Break after ideographic punctuation only; 。 must never start a line.
+        .{ .text = "字。", .expected = &.{.{ .byte_start = 3, .col_start = 2, .byte_len = 3, .width_cols = 2, .kind = .punctuation }} },
     };
 
     var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;

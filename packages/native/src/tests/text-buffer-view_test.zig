@@ -1441,7 +1441,8 @@ test "TextBufferView word wrapping - fragmented ASCII CJK transition is a bounda
     view.setWrapMode(.word);
     view.setWrapWidth(5);
 
-    try std.testing.expectEqualSlices(u32, &.{ 3, 4 }, view.getCachedLineInfo().line_width_cols);
+    // "abc日" fills the first line; the CJK run may break between characters.
+    try std.testing.expectEqualSlices(u32, &.{ 5, 2 }, view.getCachedLineInfo().line_width_cols);
 }
 
 test "TextBufferView word wrapping - combining mark keeps base class across chunks" {
@@ -1466,7 +1467,78 @@ test "TextBufferView word wrapping - combining mark keeps base class across chun
 
     view.setWrapMode(.word);
     view.setWrapWidth(4);
-    try std.testing.expectEqualSlices(u32, &.{ 1, 4 }, view.getCachedLineInfo().line_width_cols);
+    // "a\u{0301}日" fills the first line; the CJK run may break between characters.
+    try std.testing.expectEqualSlices(u32, &.{ 3, 2 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - CJK run wraps between characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, space = 1 col, each CJK char = 2 cols.
+    try tb.setText("AB 测试文字");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(6);
+
+    // "AB 测" (5) then "试文字" (6); without intercharacter breaks the CJK run
+    // would drop to its own line and force-break after overflowing.
+    try std.testing.expectEqualSlices(u32, &.{ 5, 6 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - ideographic punctuation never starts a line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("测试。文字");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+
+    // "试。" stays together: no break opportunity exists before 。.
+    try std.testing.expectEqualSlices(u32, &.{ 2, 4, 4 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - CJK break spans chunk boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text = "你好世界";
+    const mem_id = try tb.registerMemBuffer(text, false);
+    var segments: std.ArrayListUnmanaged(seg_mod.Segment) = .empty;
+    defer segments.deinit(std.testing.allocator);
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 0, 6) });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 6, @intCast(text.len)) });
+    try tb.rope().setSegments(segments.items);
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+
+    // The 好|世 chunk edge is a break opportunity, so the run fills both lines
+    // instead of carrying "好" into the second chunk as one word.
+    try std.testing.expectEqualSlices(u32, &.{ 4, 4 }, view.getCachedLineInfo().line_width_cols);
 }
 
 test "TextBufferView wrapping - very narrow width (1 char)" {
