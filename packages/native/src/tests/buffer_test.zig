@@ -814,6 +814,92 @@ test "OptimizedBuffer - transparent framebuffer cell background stays transparen
     try std.testing.expectEqual(@as(u8, 0), ansi.alpha(cell.bg));
 }
 
+test "OptimizedBuffer - drawFrameBuffer modes are independent of disjoint trackers" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const white = ansi.defaultColor(255, 255, 255, 255);
+    const blue = ansi.rgbColor(0, 0, 255, 255);
+    for ([_]bool{ false, true }) |respect_alpha| {
+        for ([_]f32{ 0.0, 0.5, 1.0 }) |opacity| {
+            for ([_]u8{ 0, 128, 255 }) |alpha| {
+                for (0..5) |tracker| {
+                    const src = try OptimizedBuffer.init(std.testing.allocator, 6, 2, .{ .pool = &pool, .link_pool = &links, .respectAlpha = respect_alpha });
+                    defer src.deinit();
+                    const dst = try OptimizedBuffer.init(std.testing.allocator, 6, 2, .{ .pool = &pool, .link_pool = &links });
+                    defer dst.deinit();
+                    dst.clear(blue, null);
+                    const cell = buffer_mod.Cell{
+                        .char = 'X',
+                        .fg = if (alpha == 0) ansi.rgbColor(255, 255, 255, 0) else white,
+                        .bg = ansi.packRGBA8(255, 0, 0, alpha, ansi.packMeta(.indexed, 3)),
+                        .attributes = ansi.TextAttributes.BOLD,
+                    };
+                    src.set(0, 0, cell);
+                    if (tracker == 1 or tracker == 2) {
+                        const tracked = if (tracker == 1) dst else src;
+                        try tracked.drawGrapheme("\xe7\x95\x8c", 2, 0, 1, white, blue, 0);
+                    } else if (tracker == 3 or tracker == 4) {
+                        const tracked = if (tracker == 3) dst else src;
+                        const id = try links.alloc("https://example.com/disjoint");
+                        tracked.set(0, 1, .{ .char = 'L', .fg = white, .bg = blue, .attributes = ansi.TextAttributes.setLinkId(0, id) });
+                    }
+                    try dst.pushOpacity(opacity);
+                    try dst.pushScissorRect(3, 0, 1, 1);
+                    dst.drawFrameBuffer(3, 0, src, 0, 0, 1, 1);
+                    const copied = dst.get(3, 0).?;
+                    if (opacity == 0.0 or (respect_alpha and alpha == 0) or (opacity < 1.0 and alpha == 0)) {
+                        try std.testing.expectEqual(@as(u32, ' '), copied.char);
+                        try std.testing.expectEqual(blue, copied.bg);
+                    } else if (opacity == 1.0 and (!respect_alpha or alpha == 255)) {
+                        try std.testing.expectEqualDeep(cell, copied);
+                    } else {
+                        const effective_alpha: u8 = if (opacity == 0.5) (if (alpha == 255) 128 else 64) else alpha;
+                        try std.testing.expectEqual(@as(u32, 'X'), copied.char);
+                        try std.testing.expectEqual(ansi.rgbColor(effective_alpha, 0, 255 - effective_alpha, 255), copied.bg);
+                        try std.testing.expectEqual(cell.attributes, copied.attributes);
+                    }
+                    try std.testing.expectEqual(@as(u32, ' '), dst.get(4, 0).?.char);
+                }
+            }
+        }
+    }
+}
+
+test "OptimizedBuffer - drawFrameBuffer replacement retains linked graphemes and repairs spans" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const src = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &links });
+    defer src.deinit();
+    const dst = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{ .pool = &pool, .link_pool = &links });
+    defer dst.deinit();
+    const transparent = ansi.rgbColor(1, 2, 3, 0);
+    const id = try links.alloc("https://example.com/copied");
+    try src.drawGrapheme("\xe7\x95\x8c", 2, 0, 0, ansi.rgbColor(255, 255, 255, 255), transparent, ansi.TextAttributes.setLinkId(0, id));
+    const original = src.get(0, 0).?;
+    dst.drawFrameBuffer(1, 0, src, null, null, null, null);
+    try std.testing.expectEqualDeep(original, dst.get(1, 0).?);
+    try std.testing.expect(gp.isContinuationChar(dst.get(2, 0).?.char));
+    src.clear(transparent, null);
+    try std.testing.expectEqualStrings("\xe7\x95\x8c", try pool.get(gp.graphemeIdFromChar(original.char)));
+    try std.testing.expectEqualStrings("https://example.com/copied", try links.get(id));
+
+    // A cropped continuation becomes a space, not an orphaned wide-cell tail.
+    src.drawFrameBuffer(0, 0, dst, 2, 0, 1, 1);
+    try std.testing.expectEqual(@as(u32, ' '), src.get(0, 0).?.char);
+    try std.testing.expectEqual(transparent, src.get(0, 0).?.bg);
+    src.clear(transparent, null);
+    src.set(0, 0, .{ .char = 'X', .fg = transparent, .bg = transparent, .attributes = 0 });
+    dst.drawFrameBuffer(2, 0, src, 0, 0, 1, 1);
+    try std.testing.expectEqual(@as(u32, ' '), dst.get(1, 0).?.char);
+    try std.testing.expectEqualDeep(src.get(0, 0).?, dst.get(2, 0).?);
+    try std.testing.expect(!dst.grapheme_tracker.hasAny());
+    try std.testing.expect(!dst.link_tracker.hasAny());
+}
+
 test "OptimizedBuffer - drawFrameBuffer preserves packed metadata on opaque copy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2590,6 +2676,35 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     try std.testing.expectEqual(ansi.ColorIntent.indexed, ansi.intent(cell.bg));
     try std.testing.expectEqual(@as(u8, 6), ansi.slot(cell.bg));
     try std.testing.expectEqual(@as(u32, 0), cell.attributes);
+}
+
+test "OptimizedBuffer - drawBox transparent borders obey scissor independently of trackers" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.indexedColor(4, 0, 0, 255);
+    const transparent = ansi.rgbColor(0, 0, 0, 0);
+    const clips = [_][3]u32{ .{ 3, 1, 0x2500 }, .{ 3, 4, 0x2500 }, .{ 2, 2, 0x2502 }, .{ 5, 2, 0x2502 } };
+    for ([_]bool{ false, true }) |wide| {
+        for (clips) |clip| {
+            const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 6, .{ .pool = &pool, .link_pool = &links });
+            defer dst.deinit();
+            dst.clear(blue, null);
+            if (wide) try dst.drawGrapheme("\xe7\x95\x8c", 2, 0, 5, white, blue, 0);
+            try dst.pushScissorRect(@intCast(clip[0]), @intCast(clip[1]), 1, 1);
+            try dst.drawBox(2, 1, 4, 4, &border_chars, .{ .top = true, .bottom = true, .left = true, .right = true }, white, transparent, white, false, null, 0, null, 0);
+            for (0..5) |y| {
+                for (0..8) |x| {
+                    const cell = dst.get(@intCast(x), @intCast(y)).?;
+                    try std.testing.expectEqual(if (x == clip[0] and y == clip[1]) clip[2] else @as(u32, ' '), cell.char);
+                    try std.testing.expectEqual(blue, cell.bg);
+                }
+            }
+        }
+    }
 }
 
 test "OptimizedBuffer - drawBox transparent border foreground blends against box background" {

@@ -1436,7 +1436,8 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware and !imageAware) {
+        const blend = frameBuffer.respectAlpha or opacity < 1.0;
+        if (!graphemeAware and !blend and !linkAware and !imageAware) {
             // Fast path: direct memory copy
             const first_source_y = srcY + @as(u32, @intCast(clippedStartY - destY));
             const first_source_x = srcX + @as(u32, @intCast(clippedStartX - destX));
@@ -1569,7 +1570,7 @@ pub const OptimizedBuffer = struct {
                 const srcBg = frameBuffer.buffer.bg[srcIndex];
                 const srcAttr = frameBuffer.buffer.attributes[srcIndex];
 
-                if (ansi.alpha(srcBg) == 0 and ansi.alpha(srcFg) == 0) {
+                if ((blend or gp.isImageChar(srcChar)) and ansi.alpha(srcBg) == 0 and ansi.alpha(srcFg) == 0) {
                     if (gp.isImageChar(srcChar)) {
                         const current = self.get(@intCast(dX), @intCast(dY)) orelse continue;
                         self.set(@intCast(dX), @intCast(dY), makeCell(srcChar, current.fg, current.bg, current.attributes));
@@ -1580,35 +1581,22 @@ pub const OptimizedBuffer = struct {
                 if (graphemeAware) {
                     if (gp.isContinuationChar(srcChar)) {
                         const graphemeId = srcChar & gp.GRAPHEME_ID_MASK;
-                        if (graphemeId != lastDrawnGraphemeId) {
-                            // We haven't drawn the start character for this grapheme (likely out of bounds to the left)
-                            // Draw a space with the same attributes to fill the cell
-                            self.setCellWithAlphaBlendingCell(
-                                @intCast(dX),
-                                @intCast(dY),
-                                makeCell(DEFAULT_SPACE_CHAR, srcFg, srcBg, srcAttr),
-                            );
-                        }
-                        continue;
-                    }
-
-                    if (gp.isGraphemeChar(srcChar)) {
+                        if (graphemeId == lastDrawnGraphemeId) continue;
+                        // The start was clipped out; copy a space instead of an orphaned continuation.
+                        srcChar = DEFAULT_SPACE_CHAR;
+                    } else if (gp.isGraphemeChar(srcChar)) {
                         lastDrawnGraphemeId = srcChar & gp.GRAPHEME_ID_MASK;
                     }
-
-                    self.setCellWithAlphaBlendingCell(
-                        @intCast(dX),
-                        @intCast(dY),
-                        makeCell(srcChar, srcFg, srcBg, srcAttr),
-                    );
-                    continue;
                 }
 
-                self.setCellWithAlphaBlendingRawCell(
-                    @intCast(dX),
-                    @intCast(dY),
-                    makeCell(srcChar, srcFg, srcBg, srcAttr),
-                );
+                const cell = makeCell(srcChar, srcFg, srcBg, srcAttr);
+                if (!blend) {
+                    self.set(@intCast(dX), @intCast(dY), cell);
+                } else if (graphemeAware) {
+                    self.setCellWithAlphaBlendingCell(@intCast(dX), @intCast(dY), cell);
+                } else {
+                    self.setCellWithAlphaBlendingRawCell(@intCast(dX), @intCast(dY), cell);
+                }
             }
         }
     }
@@ -2362,7 +2350,7 @@ pub const OptimizedBuffer = struct {
             if (borderSides.top and isAtActualTop) {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
-                    if (startY >= 0 and startY < @as(i32, @intCast(self.height))) {
+                    if (self.isPointInScissor(drawX, startY)) {
                         if (titleLayout.shouldDraw and drawX >= titleLayout.startX and drawX <= titleLayout.endX) {
                             continue;
                         }
@@ -2398,7 +2386,7 @@ pub const OptimizedBuffer = struct {
             if (borderSides.bottom and isAtActualBottom) {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
-                    if (endY >= 0 and endY < @as(i32, @intCast(self.height))) {
+                    if (self.isPointInScissor(drawX, endY)) {
                         if (bottomTitleLayout.shouldDraw and drawX >= bottomTitleLayout.startX and drawX <= bottomTitleLayout.endX) {
                             continue;
                         }
@@ -2439,7 +2427,7 @@ pub const OptimizedBuffer = struct {
             var drawY = verticalStartY;
             while (drawY <= verticalEndY) : (drawY += 1) {
                 // Left border
-                if (borderSides.left and isAtActualLeft and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
+                if (borderSides.left and isAtActualLeft and self.isPointInScissor(startX, drawY)) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(startX), @intCast(drawY));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
@@ -2461,7 +2449,7 @@ pub const OptimizedBuffer = struct {
                 }
 
                 // Right border
-                if (borderSides.right and isAtActualRight and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
+                if (borderSides.right and isAtActualRight and self.isPointInScissor(endX, drawY)) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(endX), @intCast(drawY));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
