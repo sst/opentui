@@ -29,6 +29,22 @@ class ObservedText extends TextRenderable {
   }
 }
 
+class CustomText extends TextRenderable {
+  sourceOffset = 10
+
+  override get lineInfo() {
+    const info = super.lineInfo
+    return { ...info, lineSources: info.lineSources.map((line) => line + this.sourceOffset) }
+  }
+}
+
+class CustomCode extends CodeRenderable {
+  override get lineInfo() {
+    const info = super.lineInfo
+    return { ...info, lineSources: info.lineSources.map((line) => (line === 1 ? 0 : line)) }
+  }
+}
+
 let setup: TestRendererSetup
 
 afterEach(() => setup?.renderer.destroy())
@@ -52,6 +68,57 @@ async function document(content: string, width = 32, height = 6) {
 }
 
 describe("LineNumber paint window", () => {
+  test("legacy Text lineInfo overrides retain remapped numbers, signs and wrap continuations", async () => {
+    const doc = await document("", 14, 3)
+    doc.numbers.visible = false
+    const text = new CustomText(setup.renderer, {
+      content: "abcdefghijklmno\nx\ny\nz\nend",
+      wrapMode: "char",
+      flexGrow: 1,
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, minWidth: 5, flexShrink: 0 })
+    numbers.setLineSign(10, { before: "+" })
+    doc.card.add(numbers)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n")[0]).toMatch(/^\+\s+11 abcdefgh/)
+    expect(text.getLineSources(0, 3)).toEqual([10, 10, 11])
+    const count = text.virtualLineCount
+    doc.scroll.scrollTo(1)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n")[0]).toBe("      ijklmno ")
+    expect(setup.captureCharFrame().split("\n")[1]).toContain("12 x")
+    text.sourceOffset = 20
+    text.requestRender()
+    await setup.renderOnce()
+    expect(text.virtualLineCount).toBe(count)
+    expect(text.getLineSources(1, 2)).toEqual([20, 21])
+    expect(setup.captureCharFrame().split("\n")[1]).toContain("22 x")
+    expect(numbers["gutter"]!["frameBuffer"]!.height).toBe(3)
+  })
+
+  test("ordinary Text paint does not invoke the complete native lineInfo getter", async () => {
+    const doc = await document("")
+    doc.numbers.visible = false
+    const text = new TextRenderable(setup.renderer, { content: "plain\ntext", flexGrow: 1 })
+    const view = text["textBufferView"]
+    const getter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(view), "logicalLineInfo")!.get!
+    let reads = 0
+    Object.defineProperty(view, "logicalLineInfo", {
+      get: () => {
+        reads++
+        return getter.call(view)
+      },
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, flexShrink: 0 })
+    numbers.highlightLines(0, 1, "#203040")
+    doc.card.add(numbers)
+    await setup.renderOnce()
+    expect(text.getLineSources(0, 2)).toEqual([0, 1])
+    expect(text.scrollHeight).toBe(2)
+    expect(setup.captureCharFrame()).toContain("1 plain")
+    expect(reads).toBe(0)
+  })
+
   test("bounds raster allocation and background work, not natural document geometry", async () => {
     const doc = await document(Array.from({ length: 10000 }, (_, i) => `row-${i + 1}`).join("\n"))
     doc.numbers.highlightLines(0, 9999, { gutter: "#304050", content: "#203040" })
@@ -291,7 +358,7 @@ describe("LineNumber paint window", () => {
   })
 
   test("Code bounded sources track same-row-count conceal mapping changes through real highlighting", async () => {
-    setup = await createTestRenderer({ width: 20, height: 3 })
+    setup = await createTestRenderer({ width: 20, height: 6 })
     const client = new TreeSitterClient({ dataPath: join(tmpdir(), "tree-sitter-line-number-test-data") })
     const style = SyntaxStyle.create()
     const code = new CodeRenderable(setup.renderer, {
@@ -299,31 +366,45 @@ describe("LineNumber paint window", () => {
       filetype: "javascript",
       syntaxStyle: style,
       treeSitterClient: client,
-      onHighlight: () => [[0, 3, "conceal", { conceal: "", concealLines: "" }]],
+      onHighlight: () => [[0, 1, "conceal", { conceal: "", concealLines: "" }]],
+    })
+    const custom = new CustomCode(setup.renderer, {
+      content: code.content,
+      filetype: code.filetype,
+      syntaxStyle: style,
+      treeSitterClient: client,
+      onHighlight: code.onHighlight,
     })
     const numbers = new LineNumberRenderable(setup.renderer, { target: code })
+    const customNumbers = new LineNumberRenderable(setup.renderer, { target: custom })
     setup.renderer.root.add(numbers)
+    setup.renderer.root.add(customNumbers)
     try {
       await setup.renderOnce()
-      await code.highlightingDone
+      await Promise.all([code.highlightingDone, custom.highlightingDone])
       await setup.flush()
-      expect(code.plainText).toBe("c\nd")
-      expect(code.getLineSources(0, 2)).toEqual([2, 3])
-      expect(setup.captureCharFrame()).toContain("3 c")
+      expect(code.plainText).toBe("b\nc\nd")
+      expect(code.getLineSources(0, 3)).toEqual([1, 2, 3])
+      expect(code["_mappedLineInfo"]).toBeUndefined()
+      expect(setup.captureCharFrame().split("\n")[0]).toContain("2 b")
+      expect(custom.getLineSources(0, 3)).toEqual([0, 2, 3])
+      expect(setup.captureCharFrame().split("\n")[3]).toContain("1 b")
       const count = code.virtualLineCount
-      code.onHighlight = () => [[2, 5, "conceal", { conceal: "", concealLines: "" }]]
+      code.onHighlight = () => [[2, 3, "conceal", { conceal: "", concealLines: "" }]]
       code.requestRender()
       await setup.renderOnce()
       await code.highlightingDone
       await setup.flush()
       expect(code.virtualLineCount).toBe(count)
-      expect(code.plainText).toBe("a\nd")
-      expect(code.getLineSources(0, 2)).toEqual([0, 3])
+      expect(code.plainText).toBe("a\nc\nd")
+      expect(code.getLineSources(0, 3)).toEqual([0, 2, 3])
+      expect(code["_mappedLineInfo"]).toBeUndefined()
       expect(code.getLineSources(1, 1)).toEqual(code.lineInfo.lineSources.slice(1, 2))
       expect(setup.captureCharFrame()).toContain("1 a")
       expect(setup.captureCharFrame()).toContain("4 d")
     } finally {
       numbers.destroyRecursively()
+      customNumbers.destroyRecursively()
       await client.destroy()
       style.destroy()
     }

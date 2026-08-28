@@ -190,7 +190,7 @@ export interface LineInfo {
 
 export interface LineInfoProvider {
   get lineInfo(): LineInfo
-  /** Copy source identities for a visual-row range, independent of the viewport, with the same remapping as lineInfo. */
+  // Optional bounded read in visual-row coordinates, preserving lineInfo source remapping.
   getLineSources?(startLine: number, lineCount: number): number[]
   get lineCount(): number
   get virtualLineCount(): number

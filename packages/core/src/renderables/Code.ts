@@ -150,7 +150,10 @@ export class CodeRenderable extends TextBufferRenderable {
   }
 
   public override getLineSources(startLine: number, lineCount: number): number[] {
-    const sources = super.getLineSources(startLine, lineCount)
+    if (this.needsLineInfoFallback(CodeRenderable.prototype)) {
+      return this.lineInfo.lineSources.slice(startLine, startLine + lineCount)
+    }
+    const sources = this.textBufferView.getLineSources(startLine, lineCount)
     const renderedLineSources = this._renderedLineSources
     return renderedLineSources ? sources.map((line) => renderedLineSources[line] ?? line) : sources
   }

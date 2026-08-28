@@ -5277,8 +5277,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferViewGetLineSources(view: Pointer, startLine: number, lineCount: number): number[] {
-    toSafeFFIU32Length(startLine, "source row start")
-    toSafeFFIU32Length(lineCount, "source row count")
+    toSafeFFIU32Length(startLine, "visual row start")
+    toSafeFFIU32Length(lineCount, "visual row count")
     if (lineCount === 0) return []
 
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
