@@ -28,27 +28,29 @@ Design for a terminal app, not a browser. Use the available columns and rows eff
 ## Choose packages
 
 Use Core directly or choose a React or Solid binding for the UI. Recommend companion packages when their features fit
-the task; do not install every package by default.
+the task. Do not install every package by default.
 
 - [`@opentui/core`](docs/core-concepts/renderer.mdx): use imperative renderables and events with `createCliRenderer()`.
 - [`@opentui/react`](docs/bindings/react.mdx): use React components, JSX, and hooks with `createRoot()`.
 - [`@opentui/solid`](docs/bindings/solid.mdx): use Solid components, JSX, and signals with `render()`.
-- [`@opentui/keymap`](docs/keymap/overview.mdx): centralize keyboard bindings and named commands across views, with
-  focus-scoped layers, configurable shortcuts, and multi-key sequences. Start with `createDefaultOpenTuiKeymap()` from
-  `@opentui/keymap/opentui`; use `@opentui/keymap/react` or `@opentui/keymap/solid` for providers and hooks.
-  [Direct keyboard events](docs/core-concepts/keyboard.mdx) or component-local bindings suffice for simple local input.
+- [`@opentui/keymap`](docs/keymap/overview.mdx): centralize keyboard bindings and named commands across views.
+  The package supports focus-scoped layers, configurable shortcuts, and multi-key sequences.
+  Start with `createDefaultOpenTuiKeymap()` from `@opentui/keymap/opentui`.
+  Use `@opentui/keymap/react` or `@opentui/keymap/solid` for providers and hooks.
+  [Direct keyboard events](docs/core-concepts/keyboard.mdx) or component-local bindings are enough for simple local input.
 - [`@opentui/ssh`](docs/reference/ssh.mdx): serve a terminal UI to standard SSH clients without a local app installation.
-  Import `createServer()` from the package root and pass each session's renderer to Core, React, or Solid.
-  There are no framework subpaths; read the SSH guide for authentication, middleware, and session cleanup.
+  Import `createServer()` from the package root. Pass each session's renderer to Core, React, or Solid.
+  The package has no framework subpaths. Read the SSH guide for authentication, middleware, and session cleanup.
 - [`@opentui/qrcode`](docs/reference/qr-encoder.mdx): encode QR matrices, terminal text, or SVG, or display a
-  `QRCodeRenderable`. For JSX, use `registerQRCode()` from `@opentui/qrcode/react` or `@opentui/qrcode/solid`; see the
+  `QRCodeRenderable`. For JSX, use `registerQRCode()` from `@opentui/qrcode/react` or `@opentui/qrcode/solid`. See the
   [QR code component](docs/components/qr-code.mdx).
 - [`@opentui/three`](docs/reference/three.mdx): render Three.js WebGPU scenes in the terminal with `ThreeRenderable`.
-  This integration is Bun-only; check its runtime and dependency requirements before choosing it.
+  This integration supports only Bun. Before you choose it, check its runtime and dependency requirements.
 
-Use [Package entry points](docs/reference/package-entrypoints.mdx) for the full public import list, including testing,
-addons, host adapters, and runtime-module maps. Use the [API and symbol index](docs/reference/api-index.mdx) to find
-exports. Do not substitute source-file deep imports for public package entry points.
+See [Package entry points](docs/reference/package-entrypoints.mdx) for the full list of public imports.
+The list includes testing, addons, host adapters, and runtime-module maps.
+Use the [API and symbol index](docs/reference/api-index.mdx) to find exports.
+Use public package entry points instead of source-file deep imports.
 
 ## Reading order by area
 
@@ -143,4 +145,5 @@ details, start at `docs/plugins/slots.mdx`, then open the Core, React, or Solid 
 
 - Read an entry page first, then read the narrower canonical page for the task.
 - Read the sibling `docs/**/*.mdx` files directly. Do not copy their prose into this file.
-- Use canonical `/docs` URLs for cross-doc references; use their relative `docs/**/*.mdx` paths for links in this file.
+- Use canonical `/docs` URLs for references between documentation pages.
+  For links in this file, use the corresponding relative `docs/**/*.mdx` paths.
