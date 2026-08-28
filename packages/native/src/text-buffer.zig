@@ -977,60 +977,37 @@ pub const UnifiedTextBuffer = struct {
             return;
         }
 
-        // Walk lines to find which lines this highlight affects
-        const Context = struct {
-            buffer: *Self,
-            char_start: u32,
-            char_end: u32,
-            style_id: u32,
-            priority: u8,
-            hl_ref: u16,
-            internal: bool,
-            start_line_idx: ?usize = null,
-
-            fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                const line_start_col_offset = line_info.col_offset;
-                const line_end_col_offset = line_info.col_offset + line_info.width_cols;
-
-                // Skip lines before the highlight
-                if (line_end_col_offset <= ctx.char_start) return;
-                // Stop after the highlight ends
-                if (line_start_col_offset >= ctx.char_end) return;
-
-                // This line overlaps with the highlight
-                const col_start = if (ctx.char_start > line_start_col_offset)
-                    ctx.char_start - line_start_col_offset
-                else
-                    0;
-
-                const col_end = if (ctx.char_end < line_end_col_offset)
-                    ctx.char_end - line_start_col_offset
-                else
-                    line_info.width_cols;
-
-                ctx.buffer.addHighlightInternal(
-                    line_info.line_idx,
-                    col_start,
-                    col_end,
-                    ctx.style_id,
-                    ctx.priority,
-                    ctx.hl_ref,
-                    ctx.internal,
-                ) catch {};
+        // Highlight offsets exclude newlines, unlike rope weights and offsetToCoords.
+        // Seek by line end so empty lines at the starting boundary are skipped too.
+        var left: u32 = 0;
+        var right: u32 = line_count;
+        while (left < right) {
+            const mid = left + (right - left) / 2;
+            const marker = self._rope.getMarker(.linestart, mid) orelse return;
+            const line_end = marker.global_weight - mid + iter_mod.lineWidthAt(&self._rope, mid);
+            if (line_end <= char_start) {
+                left = mid + 1;
+            } else {
+                right = mid;
             }
-        };
+        }
 
-        var ctx: Context = .{
-            .buffer = self,
-            .char_start = char_start,
-            .char_end = char_end,
-            .style_id = style_id,
-            .priority = priority,
-            .hl_ref = hl_ref,
-            .internal = internal,
-        };
-        iter_mod.walkLines(&self._rope, &ctx, Context.callback, false);
+        var line_idx = left;
+        while (line_idx < line_count) : (line_idx += 1) {
+            const marker = self._rope.getMarker(.linestart, line_idx) orelse return;
+            const line_start = marker.global_weight - line_idx;
+            if (line_start >= char_end) break;
+            const width = iter_mod.lineWidthAt(&self._rope, line_idx);
+            self.addHighlightInternal(
+                line_idx,
+                char_start -| line_start,
+                @min(char_end - line_start, width),
+                style_id,
+                priority,
+                hl_ref,
+                internal,
+            ) catch {};
+        }
     }
 
     fn clearInternalHighlights(self: *Self) void {
