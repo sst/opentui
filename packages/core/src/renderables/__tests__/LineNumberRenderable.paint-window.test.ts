@@ -68,6 +68,70 @@ async function document(content: string, width = 32, height = 6) {
 }
 
 describe("LineNumber paint window", () => {
+  test("fractional target scrolling and ancestor translation match native cell coordinates", async () => {
+    setup = await createTestRenderer({ width: 24, height: 3 })
+    const card = new BoxRenderable(setup.renderer, { flexShrink: 0 })
+    const text = new TextRenderable(setup.renderer, {
+      content: Array.from({ length: 10 }, (_, line) => `row-${line}`).join("\n"),
+      height: 6,
+      flexGrow: 1,
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, flexShrink: 0 })
+    for (let line = 0; line < 10; line++) {
+      numbers.setLineSign(line, { before: String.fromCharCode(65 + line) })
+      numbers.setLineColor(line, {
+        gutter: RGBA.fromInts(32 + line * 10, 48, 64),
+        content: RGBA.fromInts(64, 48, 32 + line * 10),
+      })
+    }
+    card.add(numbers)
+    setup.renderer.root.add(card)
+    await setup.renderOnce()
+    for (const [scrollY, translateY, firstSource, firstRow] of [
+      [0, 0, 0, 0],
+      [1, 0, 1, 0],
+      [0, -1, 1, 0],
+      [1, -1, 2, 0],
+      [0, 1, 0, 1],
+      // Node's native integer arguments reject fractions; Bun truncates them toward zero.
+      ...(process.versions.bun
+        ? [
+            [0.5, 0, 0, 0],
+            [1.5, 0, 1, 0],
+            [0, -0.5, 0, 0],
+            [0, -1.5, 1, 0],
+            [0, -1.9, 1, 0],
+            [0.5, -0.5, 0, 0],
+            [1.5, -1.5, 2, 0],
+            [0, 0.5, 0, 0],
+            [0, 1.5, 0, 1],
+          ]
+        : []),
+    ]) {
+      text.scrollY = scrollY
+      card.translateY = translateY
+      await setup.renderOnce()
+      // The renderer loop logs draw failures; assert directly so a stale captured frame cannot pass.
+      expect(() => setup.renderer.root.render(setup.renderer.currentRenderBuffer, 0)).not.toThrow()
+      expect(text.scrollY).toBe(scrollY)
+      expect(card.translateY).toBe(translateY)
+      const rows = setup.captureCharFrame().split("\n")
+      for (let row = 0; row < 3; row++) {
+        if (row < firstRow) {
+          expect(rows[row].trim()).toBe("")
+          continue
+        }
+        const source = firstSource + row - firstRow
+        expect(rows[row].trim()).toBe(`${String.fromCharCode(65 + source)}  ${source + 1} row-${source}`)
+        const bg = setup.renderer.currentRenderBuffer.buffers.bg
+        const gutterOffset = row * 24 * 4
+        const contentOffset = (row * 24 + 20) * 4
+        expect(Array.from(bg.slice(gutterOffset, gutterOffset + 4))).toEqual([32 + source * 10, 48, 64, 255])
+        expect(Array.from(bg.slice(contentOffset, contentOffset + 4))).toEqual([64, 48, 32 + source * 10, 255])
+      }
+    }
+  })
+
   test("legacy Text lineInfo overrides retain remapped numbers, signs and wrap continuations", async () => {
     const doc = await document("", 14, 3)
     doc.numbers.visible = false

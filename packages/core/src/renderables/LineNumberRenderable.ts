@@ -242,8 +242,9 @@ class GutterRenderable extends Renderable {
   protected override handleFrameBufferResize(): void {}
 
   public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+    // Match native integer-cell drawing before deriving the source window.
     const x = this._screenX
-    const y = this._screenY
+    const y = Math.trunc(this._screenY)
     const start = Math.max(0, -y)
     const end = Math.min(this.height, buffer.height - y)
     if (end <= start || x >= buffer.width || x + this.width <= 0) return
@@ -259,9 +260,9 @@ class GutterRenderable extends Renderable {
 
     // Repaint only requested rows. Outer scrolling changes y without changing target.scrollY,
     // and source mappings can change without changing the number of visual rows.
-    this.refreshFrameBuffer(this.frameBuffer, this.target.scrollY + start)
+    this.refreshFrameBuffer(this.frameBuffer, Math.trunc(this.target.scrollY) + start)
     this.markClean()
-    this._ctx.addToHitGrid(x, y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(x, this._screenY, this.width, this.height, this.num)
     buffer.drawFrameBuffer(x, y + start, this.frameBuffer)
   }
 
@@ -525,11 +526,12 @@ export class LineNumberRenderable extends Renderable {
     // Draw full-width line backgrounds before children render
     if (!this.target || !this.gutter || this._lineColorsContent.size === 0) return
 
-    const start = Math.max(0, -this.y)
-    const end = Math.min(this.height, buffer.height - this.y)
+    const y = Math.trunc(this.y)
+    const start = Math.max(0, -y)
+    const end = Math.min(this.height, buffer.height - y)
     if (end <= start || this.x >= buffer.width || this.x + this.width <= 0) return
 
-    const sources = getLineSources(this.target, this.target.scrollY + start, end - start)
+    const sources = getLineSources(this.target, Math.trunc(this.target.scrollY) + start, end - start)
 
     // Calculate the area to fill: from after the gutter (if visible) to the end of our width
     const gutterWidth = this.gutter.visible ? this.gutter.width : 0
@@ -542,7 +544,7 @@ export class LineNumberRenderable extends Renderable {
 
       if (lineBg) {
         // Fill from after gutter to the end of the LineNumberRenderable
-        buffer.fillRect(this.x + gutterWidth, this.y + start + i, contentWidth, 1, lineBg)
+        buffer.fillRect(this.x + gutterWidth, y + start + i, contentWidth, 1, lineBg)
       }
     }
   }
