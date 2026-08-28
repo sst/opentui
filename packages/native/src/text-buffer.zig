@@ -960,7 +960,7 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
-        return self.addHighlightByCharRangeInternal(char_start, char_end, style_id, priority, hl_ref, false);
+        _ = try self.addHighlightByCharRangeInternal(char_start, char_end, style_id, priority, hl_ref, false, null);
     }
 
     fn addHighlightByCharRangeInternal(
@@ -971,33 +971,38 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
         internal: bool,
-    ) TextBufferError!void {
+        line_hint: ?u32,
+    ) TextBufferError!u32 {
         const line_count = self.getLineCount();
         if (char_start >= char_end or line_count == 0) {
-            return;
+            return line_hint orelse 0;
         }
 
         // Highlight offsets exclude newlines, unlike rope weights and offsetToCoords.
         // Seek by line end so empty lines at the starting boundary are skipped too.
-        var left: u32 = 0;
-        var right: u32 = line_count;
-        while (left < right) {
-            const mid = left + (right - left) / 2;
-            const marker = self._rope.getMarker(.linestart, mid) orelse return;
-            const line_end = marker.global_weight - mid + iter_mod.lineWidthAt(&self._rope, mid);
-            if (line_end <= char_start) {
-                left = mid + 1;
-            } else {
-                right = mid;
+        var left = line_hint orelse 0;
+        if (line_hint == null) {
+            var right: u32 = line_count;
+            while (left < right) {
+                const mid = left + (right - left) / 2;
+                const marker = self._rope.getMarker(.linestart, mid) orelse return left;
+                const line_end = marker.global_weight - mid + iter_mod.lineWidthAt(&self._rope, mid);
+                if (line_end <= char_start) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
             }
         }
 
         var line_idx = left;
         while (line_idx < line_count) : (line_idx += 1) {
-            const marker = self._rope.getMarker(.linestart, line_idx) orelse return;
+            const marker = self._rope.getMarker(.linestart, line_idx) orelse return line_idx;
             const line_start = marker.global_weight - line_idx;
-            if (line_start >= char_end) break;
             const width = iter_mod.lineWidthAt(&self._rope, line_idx);
+            const line_end = line_start + width;
+            if (line_end <= char_start) continue;
+            if (line_start >= char_end) break;
             self.addHighlightInternal(
                 line_idx,
                 char_start -| line_start,
@@ -1007,7 +1012,9 @@ pub const UnifiedTextBuffer = struct {
                 hl_ref,
                 internal,
             ) catch {};
+            if (line_end >= char_end) return line_idx;
         }
+        return line_idx;
     }
 
     fn clearInternalHighlights(self: *Self) void {
@@ -1177,6 +1184,7 @@ pub const UnifiedTextBuffer = struct {
             defer self.endHighlightsTransaction();
 
             var char_pos: u32 = 0;
+            var line_hint: u32 = 0;
             for (chunks, 0..) |chunk, i| {
                 const chunk_text = chunk.text_ptr[0..chunk.text_len];
                 const chunk_len = self.measureText(chunk_text);
@@ -1210,7 +1218,15 @@ pub const UnifiedTextBuffer = struct {
                         .attributes = attributes,
                     }) catch continue;
 
-                    self.addHighlightByCharRangeInternal(char_pos, char_pos + chunk_len, style_id, 1, 0, true) catch {};
+                    line_hint = self.addHighlightByCharRangeInternal(
+                        char_pos,
+                        char_pos + chunk_len,
+                        style_id,
+                        1,
+                        0,
+                        true,
+                        line_hint,
+                    ) catch line_hint;
                 }
 
                 char_pos += chunk_len;
