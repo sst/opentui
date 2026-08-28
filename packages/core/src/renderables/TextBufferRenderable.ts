@@ -137,6 +137,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBufferView.logicalLineInfo
   }
 
+  public getLineSources(startLine: number, lineCount: number): number[] {
+    return this.textBufferView.getLineSources(startLine, lineCount)
+  }
+
   public get lineCount(): number {
     return this.textBuffer.getLineCount()
   }
@@ -178,7 +182,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get scrollHeight(): number {
-    return this.lineInfo.lineStartCols.length
+    return this.virtualLineCount
   }
 
   public get maxScrollY(): number {

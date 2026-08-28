@@ -1,0 +1,331 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { OptimizedBuffer } from "../../buffer.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { Selection } from "../../lib/selection.js"
+import { TreeSitterClient } from "../../lib/tree-sitter/index.js"
+import { SyntaxStyle } from "../../syntax-style.js"
+import { createTestRenderer, type TestRendererSetup } from "../../testing/test-renderer.js"
+import { BoxRenderable } from "../Box.js"
+import { CodeRenderable } from "../Code.js"
+import { DiffRenderable } from "../Diff.js"
+import { LineNumberRenderable } from "../LineNumberRenderable.js"
+import { ScrollBoxRenderable } from "../ScrollBox.js"
+import { TextRenderable } from "../Text.js"
+
+class ObservedText extends TextRenderable {
+  lineInfoReads = 0
+  sourceRows = 0
+
+  override get lineInfo() {
+    this.lineInfoReads++
+    return super.lineInfo
+  }
+
+  override getLineSources(startLine: number, lineCount: number) {
+    this.sourceRows += lineCount
+    return super.getLineSources(startLine, lineCount)
+  }
+}
+
+let setup: TestRendererSetup
+
+afterEach(() => setup?.renderer.destroy())
+
+async function document(content: string, width = 32, height = 6) {
+  setup = await createTestRenderer({ width, height })
+  const scroll = new ScrollBoxRenderable(setup.renderer, {
+    width: "100%",
+    height: "100%",
+    scrollbarOptions: { visible: false },
+  })
+  scroll.verticalScrollBar.visible = false
+  scroll.horizontalScrollBar.visible = false
+  const card = new BoxRenderable(setup.renderer, { flexShrink: 0 })
+  const text = new ObservedText(setup.renderer, { content, wrapMode: "char", flexGrow: 1 })
+  const numbers = new LineNumberRenderable(setup.renderer, { target: text, flexShrink: 0 })
+  card.add(numbers)
+  scroll.add(card)
+  setup.renderer.root.add(scroll)
+  return { scroll, card, text, numbers, gutter: numbers["gutter"]! }
+}
+
+describe("LineNumber paint window", () => {
+  test("bounds raster allocation and background work, not natural document geometry", async () => {
+    const doc = await document(Array.from({ length: 10000 }, (_, i) => `row-${i + 1}`).join("\n"))
+    doc.numbers.highlightLines(0, 9999, { gutter: "#304050", content: "#203040" })
+    const colors = doc.numbers.getLineColors().content
+    const get = colors.get.bind(colors)
+    let lookups = 0
+    colors.get = (line) => {
+      lookups++
+      return get(line)
+    }
+    const gutterColors = doc.numbers.getLineColors().gutter
+    const gutterGet = gutterColors.get.bind(gutterColors)
+    let gutterLookups = 0
+    gutterColors.get = (line) => {
+      gutterLookups++
+      return gutterGet(line)
+    }
+    let layoutRasterHeight = 0
+    doc.gutter.onSizeChange = () => {
+      layoutRasterHeight = Math.max(layoutRasterHeight, doc.gutter["frameBuffer"]?.height ?? 0)
+    }
+    await setup.renderOnce()
+    expect(doc.text.height).toBe(10000)
+    expect(doc.numbers.height).toBe(10000)
+    expect(doc.gutter.height).toBe(10000)
+    expect(doc.scroll.scrollHeight).toBe(10000)
+    expect(layoutRasterHeight).toBeLessThanOrEqual(6)
+    expect(doc.gutter["frameBuffer"]!.height).toBe(6)
+    expect(lookups).toBeLessThanOrEqual(6)
+    expect(gutterLookups).toBeLessThanOrEqual(6)
+    expect(setup.captureCharFrame()).toContain("1 row-1")
+
+    doc.numbers.setLineSign(5000, { before: "+", after: "!" })
+    doc.numbers.setLineNumbers(new Map([[5000, 12345]]))
+    doc.scroll.scrollTo(5000)
+    lookups = 0
+    gutterLookups = 0
+    await setup.renderOnce()
+    expect(doc.text.scrollY).toBe(0)
+    expect(doc.gutter.y).toBe(-5000)
+    expect(setup.captureCharFrame().split("\n")[0]).toMatch(/\+\s+12345! row-5001/)
+    expect(doc.gutter["frameBuffer"]!.height).toBe(6)
+    expect(lookups).toBeLessThanOrEqual(6)
+    expect(gutterLookups).toBeLessThanOrEqual(6)
+
+    doc.scroll.scrollTo(9994)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("10000  row-10000")
+    expect(doc.scroll.scrollHeight).toBe(10000)
+  })
+
+  test("offscreen hunks inside a visible card do not request row metadata or allocate rasters", async () => {
+    const doc = await document("visible")
+    const below = new ObservedText(setup.renderer, {
+      content: Array.from({ length: 2000 }, () => "below").join("\n"),
+      flexShrink: 0,
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: below, marginTop: 8, flexShrink: 0 })
+    numbers.highlightLines(0, 1999, "#303030")
+    doc.card.add(numbers)
+    await setup.renderOnce()
+    below.lineInfoReads = 0
+    below.sourceRows = 0
+    await setup.renderOnce()
+    expect(numbers.y).toBeGreaterThanOrEqual(6)
+    expect(below.lineInfoReads).toBe(0)
+    expect(below.sourceRows).toBe(0)
+    expect(numbers["gutter"]!["frameBuffer"]).toBeNull()
+    doc.card.translateX = 1000
+    doc.text.lineInfoReads = 0
+    doc.text.sourceRows = 0
+    await setup.renderOnce()
+    expect(doc.text.lineInfoReads).toBe(0)
+    expect(doc.text.sourceRows).toBe(0)
+  })
+
+  test("visible paint and vertical scroll extents avoid unpacking complete visual-row arrays", async () => {
+    const doc = await document(Array.from({ length: 10000 }, (_, i) => `row-${i + 1}`).join("\n"))
+    doc.numbers.highlightLines(0, 9999, "#203040")
+    await setup.renderOnce()
+    doc.scroll.scrollTo(5000)
+    doc.text.lineInfoReads = 0
+    doc.text.sourceRows = 0
+    await setup.renderOnce()
+    expect(doc.text.scrollHeight).toBe(10000)
+    expect(doc.text.lineInfoReads).toBe(0)
+    expect(doc.text.sourceRows).toBe(13) // Six backgrounds, six gutter rows and their preceding source.
+  })
+
+  test("outer scroll starts on wrapped continuations without repeating numbers or signs", async () => {
+    const doc = await document("abcdefghijklmno\nx\ny\nz\nend", 14, 3)
+    doc.numbers.setLineSign(0, { before: "+" })
+    doc.numbers.setLineColor(0, "#304050")
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n")[0]).toMatch(/^\+\s+1 abcdefghij/)
+    doc.scroll.scrollTo(1)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n")[0]).toBe("    klmno     ")
+    expect(setup.captureCharFrame().split("\n")[1]).toContain("2 x")
+    doc.scroll.scrollTo(2)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n")[0]).toContain("2 x")
+  })
+
+  test("same-row-count content and wrapping mutations refresh numbers and preserve selection", async () => {
+    const doc = await document("abcdefghijklmno\nx\ny\nz\nend", 14, 3)
+    await setup.renderOnce()
+    const count = doc.text.virtualLineCount
+    doc.scroll.scrollTo(1)
+    await setup.renderOnce()
+    doc.text.content = "x\nabcdefghijklmno\ny\nz\nend"
+    await setup.renderOnce()
+    expect(doc.text.virtualLineCount).toBe(count)
+    expect(setup.captureCharFrame().split("\n")[0]).toContain("2 abcdefghijk")
+    const selection = new Selection(doc.text, { x: doc.text.x, y: 0 }, { x: doc.text.x + 2, y: 0 })
+    selection.isStart = true
+    doc.text.onSelectionChanged(selection)
+    expect(doc.text.getSelectedText()).toBe("abc")
+    const bounds = doc.text.getSelection()
+    await setup.renderOnce()
+    expect(doc.text.getSelection()).toEqual(bounds)
+    expect(doc.text.getSelectedText()).toBe("abc")
+    expect(doc.text.plainText).toBe("x\nabcdefghijklmno\ny\nz\nend")
+  })
+
+  test("arbitrary destination heights paint all requested rows, including beyond terminal height", async () => {
+    const doc = await document(Array.from({ length: 30 }, (_, i) => `row-${i + 1}`).join("\n"))
+    doc.numbers.highlightLines(0, 29, { gutter: "#304050", content: "#203040" })
+    await setup.renderOnce()
+    const buffer = OptimizedBuffer.create(32, 30, setup.renderer.widthMethod, { respectAlpha: true })
+    try {
+      buffer.clear(RGBA.fromValues(0, 0, 0, 0))
+      doc.numbers.render(buffer, 0)
+      doc.gutter.render(buffer, 0)
+      doc.text.render(buffer, 0)
+      expect(new TextDecoder().decode(buffer.getRealCharBytes(true))).toContain("30 row-30")
+      const offset = (29 * buffer.width + doc.text.x) * 4
+      expect(Array.from(buffer.buffers.bg.slice(offset, offset + 4))).toEqual([32, 48, 64, 255])
+      expect(doc.gutter["frameBuffer"]!.height).toBe(30)
+      await setup.renderOnce()
+      expect(doc.gutter["frameBuffer"]!.height).toBe(6)
+      expect(doc.gutter.height).toBe(30)
+    } finally {
+      buffer.destroy()
+    }
+  })
+
+  test("moving window matches full-raster translucent color and ancestor opacity composition", async () => {
+    const doc = await document(Array.from({ length: 40 }, (_, i) => `row-${i + 1}`).join("\n"))
+    doc.numbers.bg = RGBA.fromValues(0.2, 0.3, 0.4, 0.35)
+    doc.numbers.fg = RGBA.fromValues(0.9, 0.8, 0.7, 0.65)
+    doc.numbers.setLineColor(20, {
+      gutter: RGBA.fromValues(0.4, 0.2, 0.1, 0.55),
+      content: RGBA.fromValues(0.2, 0.4, 0.1, 0.45),
+    })
+    doc.numbers.setLineSign(20, { before: "+", beforeColor: RGBA.fromValues(1, 0, 0, 0.5) })
+    await setup.renderOnce()
+    const full = OptimizedBuffer.create(32, 40, setup.renderer.widthMethod, { respectAlpha: true })
+    const expected = OptimizedBuffer.create(32, 6, setup.renderer.widthMethod, { respectAlpha: true })
+    const actual = OptimizedBuffer.create(32, 6, setup.renderer.widthMethod, { respectAlpha: true })
+    try {
+      full.clear(RGBA.fromValues(0, 0, 0, 0))
+      doc.gutter.render(full, 0)
+      for (const buffer of [expected, actual]) {
+        buffer.clear(RGBA.fromValues(0.1, 0.2, 0.3, 1))
+        buffer.pushOpacity(0.6)
+        buffer.pushOpacity(0.7)
+      }
+      expected.drawFrameBuffer(0, -20, doc.gutter["frameBuffer"]!)
+      doc.scroll.scrollTo(20)
+      await setup.renderOnce()
+      doc.gutter.render(actual, 0)
+      expect(actual.buffers.char).toEqual(expected.buffers.char)
+      expect(actual.buffers.fg).toEqual(expected.buffers.fg)
+      expect(actual.buffers.bg).toEqual(expected.buffers.bg)
+      expect(actual.buffers.attributes).toEqual(expected.buffers.attributes)
+    } finally {
+      full.destroy()
+      expected.destroy()
+      actual.destroy()
+    }
+  })
+
+  test("split diff asymmetric wrap padding and resize match full-height rendering at deep and end rows", async () => {
+    const doc = await document("", 60, 6)
+    doc.numbers.visible = false
+    doc.card.paddingLeft = 2
+    doc.card.paddingRight = 3
+    doc.card.paddingTop = 1
+    doc.card.paddingBottom = 2
+    const style = SyntaxStyle.create()
+    const diff = new DiffRenderable(setup.renderer, {
+      diff: [
+        "--- a/example.txt",
+        "+++ b/example.txt",
+        "@@ -100,40 +200,41 @@",
+        ...Array.from({ length: 40 }, (_, i) => `-old-${i}${i === 0 ? " long".repeat(15) : ""}`),
+        ...Array.from({ length: 41 }, (_, i) => `+new-${i}${i === 10 ? " wide".repeat(20) : ""}`),
+      ].join("\n"),
+      view: "split",
+      wrapMode: "word",
+      syntaxStyle: style,
+      flexShrink: 0,
+    })
+    doc.card.add(diff)
+    try {
+      for (const width of [60, 36]) {
+        doc.scroll.scrollTo(0)
+        setup.resize(width, 160)
+        await setup.flush()
+        const full = setup.captureCharFrame().split("\n")
+        const fullHeight = doc.card.height
+        const geometry = diff.getChildren().map((side) => side.getChildren().map((child) => child.height))
+        setup.resize(width, 6)
+        await setup.flush()
+        expect(doc.card.height).toBe(fullHeight)
+        for (const row of [20, fullHeight - 6]) {
+          doc.scroll.scrollTo(row)
+          await setup.flush()
+          expect(setup.captureCharFrame().split("\n").slice(0, 6)).toEqual(full.slice(row, row + 6))
+          expect(diff.getChildren().map((side) => side.getChildren().map((child) => child.height))).toEqual(geometry)
+          for (const side of diff.getChildren()) {
+            expect(side).toBeInstanceOf(LineNumberRenderable)
+            const gutter = side.getChildren()[0]
+            const code = side.getChildren()[1]
+            expect(code).toBeInstanceOf(CodeRenderable)
+            if (!(code instanceof CodeRenderable)) throw new Error("Expected a CodeRenderable")
+            expect(gutter.height).toBeGreaterThanOrEqual(code.virtualLineCount)
+            expect(gutter["frameBuffer"]!.height).toBeLessThanOrEqual(6)
+          }
+        }
+      }
+    } finally {
+      diff.destroyRecursively()
+      style.destroy()
+    }
+  })
+
+  test("Code bounded sources track same-row-count conceal mapping changes through real highlighting", async () => {
+    setup = await createTestRenderer({ width: 20, height: 3 })
+    const client = new TreeSitterClient({ dataPath: join(tmpdir(), "tree-sitter-line-number-test-data") })
+    const style = SyntaxStyle.create()
+    const code = new CodeRenderable(setup.renderer, {
+      content: "a\nb\nc\nd",
+      filetype: "javascript",
+      syntaxStyle: style,
+      treeSitterClient: client,
+      onHighlight: () => [[0, 3, "conceal", { conceal: "", concealLines: "" }]],
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: code })
+    setup.renderer.root.add(numbers)
+    try {
+      await setup.renderOnce()
+      await code.highlightingDone
+      await setup.flush()
+      expect(code.plainText).toBe("c\nd")
+      expect(code.getLineSources(0, 2)).toEqual([2, 3])
+      expect(setup.captureCharFrame()).toContain("3 c")
+      const count = code.virtualLineCount
+      code.onHighlight = () => [[2, 5, "conceal", { conceal: "", concealLines: "" }]]
+      code.requestRender()
+      await setup.renderOnce()
+      await code.highlightingDone
+      await setup.flush()
+      expect(code.virtualLineCount).toBe(count)
+      expect(code.plainText).toBe("a\nd")
+      expect(code.getLineSources(0, 2)).toEqual([0, 3])
+      expect(code.getLineSources(1, 1)).toEqual(code.lineInfo.lineSources.slice(1, 2))
+      expect(setup.captureCharFrame()).toContain("1 a")
+      expect(setup.captureCharFrame()).toContain("4 d")
+    } finally {
+      numbers.destroyRecursively()
+      await client.destroy()
+      style.destroy()
+    }
+  })
+})

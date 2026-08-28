@@ -50,6 +50,7 @@
     "test:standalone": "bun scripts/standalone-test.ts",
     "test:js": "bun test --path-ignore-patterns='src/zig/zig-pkg/**'",
     "test:js:node": "bun scripts/test-node.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "test": "bun run test:js"
   },
   "license": "MIT",

@@ -149,6 +149,12 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._mappedLineInfo
   }
 
+  public override getLineSources(startLine: number, lineCount: number): number[] {
+    const sources = super.getLineSources(startLine, lineCount)
+    const renderedLineSources = this._renderedLineSources
+    return renderedLineSources ? sources.map((line) => renderedLineSources[line] ?? line) : sources
+  }
+
   public override get wrapMode(): "none" | "char" | "word" {
     return super.wrapMode
   }
