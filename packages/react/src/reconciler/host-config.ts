@@ -105,10 +105,7 @@ export const hostConfig: HostConfig<
   },
 
   // Reset after commit
-  resetAfterCommit(containerInfo: Container) {
-    // Trigger a render update if needed
-    containerInfo.requestRender()
-  },
+  resetAfterCommit(_containerInfo: Container) {},
 
   // Get root container
   getRootHostContext(rootContainerInstance: Container) {
@@ -166,10 +163,12 @@ export const hostConfig: HostConfig<
     // We could focus the instance here, but we're handling focus in setInitialProperties
   },
 
-  // No explicit requestRender() needed in commit methods — core's property setters
-  // already call requestRender() internally, and resetAfterCommit handles the frame trigger.
   commitUpdate(instance: Instance, type: Type, oldProps: Props, newProps: Props, internalInstanceHandle: any) {
-    updateProperties(instance, type, oldProps, newProps)
+    const changed = updateProperties(instance, type, oldProps, newProps)
+    // Custom catalogue properties and a few legacy public fields do not have
+    // invalidating setters. Scope the fallback to the changed host instance so
+    // incremental rendering can still derive a narrow damage region.
+    if (changed) instance.requestRender()
   },
 
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {

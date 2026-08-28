@@ -225,6 +225,10 @@ export class SliderRenderable extends Renderable {
     }
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === SliderRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.orientation === "horizontal") {
       this.renderHorizontal(buffer)

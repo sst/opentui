@@ -43,6 +43,36 @@ describe("Box Component", () => {
     expect(boxRef.focused).toBe(false)
   })
 
+  it("should repaint a reactive fill change independently of another reactive row", async () => {
+    const [filled, setFilled] = createSignal(true)
+    const [label, setLabel] = createSignal("A")
+
+    testSetup = await testRender(
+      () => (
+        <box width={4} height={2}>
+          <box width={1} height={1} backgroundColor="#ff0000" shouldFill={filled()} />
+          <text width={1} height={1} content={label()} />
+        </box>
+      ),
+      { width: 4, height: 2 },
+    )
+
+    await testSetup.renderOnce()
+    while (Boolean(testSetup.renderer.root.getLayoutNode().isDirty())) await testSetup.renderOnce()
+    expect(RGBA.fromArray(testSetup.renderer.currentRenderBuffer.buffers.bg.slice(0, 4)).toInts()).toEqual([
+      255, 0, 0, 255,
+    ])
+
+    setFilled(false)
+    setLabel("B")
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("B")
+    expect(RGBA.fromArray(testSetup.renderer.currentRenderBuffer.buffers.bg.slice(0, 4)).toInts()).not.toEqual([
+      255, 0, 0, 255,
+    ])
+  })
+
   it("should blend transparent border foreground against the box background", async () => {
     const panel = RGBA.fromHex("#123456")
 

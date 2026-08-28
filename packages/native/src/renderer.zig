@@ -277,6 +277,7 @@ pub const CliRenderer = struct {
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
     hitGridDirty: bool = false,
     hitGridResizeInvalidated: bool = false,
+    reuse_hit_grid_for_frame: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -294,6 +295,7 @@ pub const CliRenderer = struct {
     palette_epoch: u32,
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
+    preserve_next_buffer: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .empty,
     sixelCache: std.AutoHashMapUnmanaged(SixelCacheKey, SixelCacheEntry) = .empty,
     sixelCacheBytes: usize = 0,
@@ -849,6 +851,10 @@ pub const CliRenderer = struct {
         self.renderOffset = offset;
     }
 
+    pub fn setPreserveNextBuffer(self: *CliRenderer, enabled: bool) void {
+        self.preserve_next_buffer = enabled;
+    }
+
     fn renderStatusFromWrite(status: output.WriteStatus) RenderStatus {
         return switch (status) {
             .ok => .rendered,
@@ -858,8 +864,9 @@ pub const CliRenderer = struct {
     }
 
     fn clearSkippedFrameState(self: *CliRenderer) void {
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.preserve_next_buffer) self.nextRenderBuffer.clear(self.backgroundColor, null);
         @memset(self.nextHitGrid, 0);
+        self.reuse_hit_grid_for_frame = false;
     }
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
@@ -871,6 +878,7 @@ pub const CliRenderer = struct {
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.pendingImages.clearRetainingCapacity();
         @memset(self.nextHitGrid, 0);
+        self.reuse_hit_grid_for_frame = false;
         self.force_full_repaint = true;
         self.lastCursorStyleTag = null;
         self.lastCursorBlinking = null;
@@ -883,11 +891,21 @@ pub const CliRenderer = struct {
     }
 
     fn commitPendingHitGrid(self: *CliRenderer) void {
+        if (self.reuse_hit_grid_for_frame) {
+            self.reuse_hit_grid_for_frame = false;
+            self.hitGridDirty = self.hitGridResizeInvalidated;
+            return;
+        }
         self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
         const previous = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;
         self.nextHitGrid = previous;
         @memset(self.nextHitGrid, 0);
+    }
+
+    pub fn preserveHitGridForNextFrame(self: *CliRenderer) void {
+        self.reuse_hit_grid_for_frame = true;
+        self.hitGridClearScissorRects();
     }
 
     fn renderResult(self: *CliRenderer, status: RenderStatus) RenderResult {
@@ -2784,7 +2802,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.preserve_next_buffer) self.nextRenderBuffer.clear(self.backgroundColor, null);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {

@@ -369,9 +369,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this.updateLocalSelection(this.lastLocalSelection)
     }
 
-    this.yogaNode.markDirty()
+    this.invalidateTextLayout()
     this.requestRender()
     this.emit("line-info-change")
+  }
+
+  protected invalidateTextLayout(): void {
+    if (typeof this._width !== "number" || typeof this._height !== "number") this.yogaNode.markDirty()
   }
 
   private setupNativeRenderable(): void {
@@ -456,6 +460,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBufferView.getSelection()
   }
 
+  public override canRenderMultipleDamageRegions(): boolean {
+    return !this.buffered && this.renderBefore === undefined && this.renderAfter === undefined
+  }
+
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
     // Text views do enough per-frame work that avoiding recursive x/y lookups is
@@ -471,6 +479,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
+  }
+
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === TextBufferRenderable.prototype.renderSelf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

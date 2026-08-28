@@ -502,6 +502,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "buffer"],
       returns: "void",
     },
+    rendererSetPreserveNextBuffer: {
+      args: ["u32", "u8"],
+      returns: "void",
+    },
+    rendererPreserveHitGrid: {
+      args: ["u32"],
+      returns: "void",
+    },
     setRenderOffset: {
       args: ["u32", "u32"],
       returns: "void",
@@ -603,6 +611,10 @@ function getOpenTUILib(libPath?: string) {
     bufferClear: {
       args: ["u32", "buffer"],
       returns: "void",
+    },
+    bufferClearRows: {
+      args: ["u32", "u32", "u32", "buffer"],
+      returns: "u8",
     },
     bufferGetCharPtr: {
       args: ["u32"],
@@ -2428,6 +2440,8 @@ export interface RenderLib extends AudioEngineLib {
   setUseThread: (renderer: RendererHandle, useThread: boolean) => void
   setClearOnShutdown: (renderer: RendererHandle, clear: boolean) => void
   setBackgroundColor: (renderer: RendererHandle, color: RGBA) => void
+  rendererSetPreserveNextBuffer: (renderer: RendererHandle, enabled: boolean) => void
+  rendererPreserveHitGrid: (renderer: RendererHandle) => void
   setRenderOffset: (renderer: RendererHandle, offset: number) => void
   resetSplitScrollback: (renderer: RendererHandle, seedRows: number, pinnedRenderOffset: number) => number
   syncSplitScrollback: (renderer: RendererHandle, pinnedRenderOffset: number) => number
@@ -2494,6 +2508,7 @@ export interface RenderLib extends AudioEngineLib {
   getBufferWidth: (buffer: OptimizedBufferHandle) => number
   getBufferHeight: (buffer: OptimizedBufferHandle) => number
   bufferClear: (buffer: OptimizedBufferHandle, color: RGBA) => void
+  bufferClearRows: (buffer: OptimizedBufferHandle, startY: number, rowCount: number, color: RGBA) => boolean
   bufferGetCharPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetFgPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetBgPtr: (buffer: OptimizedBufferHandle) => Pointer
@@ -3718,6 +3733,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setBackgroundColor(renderer, rgbaBuffer(color))
   }
 
+  public rendererSetPreserveNextBuffer(renderer: Pointer, enabled: boolean): void {
+    this.opentui.symbols.rendererSetPreserveNextBuffer(renderer, ffiBool(enabled))
+  }
+
+  public rendererPreserveHitGrid(renderer: Pointer): void {
+    this.opentui.symbols.rendererPreserveHitGrid(renderer)
+  }
+
   public setRenderOffset(renderer: Pointer, offset: number) {
     this.opentui.symbols.setRenderOffset(renderer, offset)
   }
@@ -3901,6 +3924,10 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClear(buffer: Pointer, color: RGBA) {
     this.opentui.symbols.bufferClear(buffer, rgbaBuffer(color))
+  }
+
+  public bufferClearRows(buffer: Pointer, startY: number, rowCount: number, color: RGBA): boolean {
+    return this.opentui.symbols.bufferClearRows(buffer, startY, rowCount, rgbaBuffer(color)) !== 0
   }
 
   public bufferDrawText(

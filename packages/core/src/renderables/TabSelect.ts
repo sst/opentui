@@ -127,6 +127,10 @@ export class TabSelectRenderable extends Renderable {
     return calculateDynamicHeight(this._showUnderline, this._showDescription)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === TabSelectRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible || !this.frameBuffer) return
 

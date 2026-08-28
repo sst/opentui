@@ -507,6 +507,11 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
         if (arguments.length !== 3) return Reflect.apply(fn, undefined, arguments)
         return fn(normalize(arg0, 0), normalize(arg1, 1), normalize(arg2, 2))
       }
+    case 4:
+      return function (arg0: unknown, arg1: unknown, arg2: unknown, arg3: unknown) {
+        if (arguments.length !== 4) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1), normalize(arg2, 2), normalize(arg3, 3))
+      }
   }
 
   return (...args: any[]) => {

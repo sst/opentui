@@ -94,6 +94,10 @@ export class TimeToFirstDrawRenderable extends Renderable {
     this.requestRender()
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === TimeToFirstDrawRenderable.prototype.renderSelf
+  }
+
   protected override renderSelf(buffer: OptimizedBuffer): void {
     if (this._runtimeMs === null) {
       this._runtimeMs = performance.now()

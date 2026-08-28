@@ -484,6 +484,8 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
   public popHitGridScissorRect(): void {}
   public clearHitGridScissorRects(): void {}
+  public preserveHitGrid(): void {}
+  public setHitGridWritesEnabled(_enabled: boolean): void {}
   public requestRender(): void {}
   public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
   public setCursorStyle(_options: CursorStyleOptions): void {}
@@ -806,6 +808,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private rendering: boolean = false
   private renderingNative: boolean = false
+  private hitGridWritesEnabled: boolean = true
   private renderTimeout: TimerHandle | null = null
   private lastTime: number = 0
   private frameCount: number = 0
@@ -821,7 +824,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private liveRequestCounter: number = 0
   private _controlState: RendererControlState = RendererControlState.IDLE
 
-  private frameCallbacks: ((deltaTime: number) => Promise<void>)[] = []
+  private frameCallbacks: Array<{
+    callback: (deltaTime: number) => Promise<void>
+    drawsToBuffer: boolean
+  }> = []
+  private hadFrameDrivenBufferWrites = false
   private renderStats: {
     frameCount: number
     fps: number
@@ -1097,6 +1104,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       feed?.close()
       throw new Error("Failed to create renderer")
     }
+    lib.rendererSetPreserveNextBuffer(rendererPtr, true)
 
     // Threading defaults (on everywhere except linux, where it currently
     // crashes — likely a missing build dep).
@@ -1417,10 +1425,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
     this.capturedRenderable = renderable
+    this.requestRender()
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
-    if (!this._useMouse) return
+    if (!this._useMouse || !this.hitGridWritesEnabled) return
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
@@ -1436,6 +1445,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public clearHitGridScissorRects(): void {
     this.lib.hitGridClearScissorRects(this.rendererPtr)
+  }
+
+  public preserveHitGrid(): void {
+    this.lib.rendererPreserveHitGrid(this.rendererPtr)
+  }
+
+  public setHitGridWritesEnabled(enabled: boolean): void {
+    this.hitGridWritesEnabled = enabled
   }
 
   public get widthMethod(): WidthMethod {
@@ -1537,7 +1554,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.scheduleRenderTimer()
   }
 
-  public requestRender() {
+  public requestRender(renderable?: Renderable) {
+    this.root?.invalidate(renderable)
+
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -2094,7 +2113,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         backingBuffer.resize(width, height)
         backingBuffer.clear(TRANSPARENT_RGBA)
         snapshotContext.frameId += 1
-        internalRoot.render(backingBuffer, 0)
+        internalRoot.render(backingBuffer, 0, TRANSPARENT_RGBA, true, false)
       }
 
       let targetHeight = Math.max(1, surfaceHeight)
@@ -2327,7 +2346,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // Render through normal renderables so split scrollback output uses the same
       // text shaping/styling pipeline as the rest of the renderer.
       snapshotRoot.add(rootRenderable)
-      snapshotRoot.render(snapshotBuffer, 0)
+      snapshotRoot.render(snapshotBuffer, 0, undefined, true, false)
       this.enqueueRenderedScrollbackCommit({
         snapshot: snapshotBuffer,
         rowColumns: snapshot.rowColumns,
@@ -2429,7 +2448,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           x -= 1
           continue
         }
-
         break
       }
 
@@ -4062,22 +4080,33 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
+    this.requestRender()
   }
 
   public removePostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns = this.postProcessFns.filter((fn) => fn !== processFn)
+    this.requestRender()
   }
 
   public clearPostProcessFns(): void {
     this.postProcessFns = []
+    this.requestRender()
   }
 
-  public setFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
-    this.frameCallbacks.push(callback)
+  /**
+   * Register per-frame work. Callbacks are assumed to draw directly into
+   * `nextRenderBuffer` for backwards compatibility. Set `drawsToBuffer: false`
+   * when a callback only updates state so retained row composition stays enabled.
+   */
+  public setFrameCallback(
+    callback: (deltaTime: number) => Promise<void>,
+    options: { drawsToBuffer?: boolean } = {},
+  ): void {
+    this.frameCallbacks.push({ callback, drawsToBuffer: options.drawsToBuffer ?? true })
   }
 
   public removeFrameCallback(callback: (deltaTime: number) => Promise<void>): void {
-    this.frameCallbacks = this.frameCallbacks.filter((cb) => cb !== callback)
+    this.frameCallbacks = this.frameCallbacks.filter((entry) => entry.callback !== callback)
   }
 
   public clearFrameCallbacks(): void {
@@ -4553,6 +4582,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const frameRequests = Array.from(this.animationRequest.values())
       this.animationRequest.clear()
+      const hasFrameDrivenBufferWrites =
+        frameRequests.length > 0 || this.frameCallbacks.some((entry) => entry.drawsToBuffer)
+      const refreshFrameCallbackLayer = hasFrameDrivenBufferWrites || this.hadFrameDrivenBufferWrites
+      this.hadFrameDrivenBufferWrites = hasFrameDrivenBufferWrites
+      if (refreshFrameCallbackLayer) {
+        // Historically native cleared the desired buffer after every published
+        // frame, so frame callbacks always drew into a fresh underlay before the
+        // retained render tree painted over it. Preserve that public ordering.
+        this.nextRenderBuffer.clear(this.backgroundColor)
+      }
       const animationRequestStart = performance.now()
       for (const callback of frameRequests) {
         callback(deltaTime)
@@ -4562,7 +4601,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const animationRequestTime = animationRequestEnd - animationRequestStart
 
       const start = performance.now()
-      for (const frameCallback of this.frameCallbacks) {
+      for (const { callback: frameCallback } of this.frameCallbacks) {
         try {
           await frameCallback(deltaTime)
         } catch (error) {
@@ -4572,7 +4611,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const end = performance.now()
       this.renderStats.frameCallbackTime = end - start
 
-      this.root.render(this.nextRenderBuffer, deltaTime)
+      this.root.render(
+        this.nextRenderBuffer,
+        deltaTime,
+        this.backgroundColor,
+        refreshFrameCallbackLayer ||
+          this.postProcessFns.length > 0 ||
+          this._console.visible ||
+          this.debugOverlay.enabled,
+        !refreshFrameCallbackLayer,
+      )
 
       for (const postProcessFn of this.postProcessFns) {
         postProcessFn(this.nextRenderBuffer, deltaTime)
@@ -4583,6 +4631,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // If destroy() was requested during this frame, skip native work and scheduling.
       if (!this._isDestroyed) {
         const nativeStatus = this.renderNative() ?? "rendered"
+        if (nativeStatus !== "rendered") {
+          // Native rejection does not publish the staged hit grid. Keep the
+          // retained visual buffer, but rebuild both scene and grid together on
+          // the next attempt instead of treating the rejected frame as clean.
+          this.root.invalidate()
+        }
         if (nativeStatus === "rendered") this.frameCount++
         if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
           this.currentFps = this.frameCount

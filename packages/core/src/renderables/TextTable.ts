@@ -423,6 +423,10 @@ export class TextTableRenderable extends Renderable {
     super.onResize(width, height)
   }
 
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === TextTableRenderable.prototype.renderSelf
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (!this.visible || this.isDestroyed) return
 

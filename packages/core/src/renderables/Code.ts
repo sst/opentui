@@ -112,6 +112,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private invalidateHighlights(): void {
     this._highlightsDirty = true
     this._highlightSnapshotId++
+    this.requestRender()
   }
 
   set content(value: string) {
@@ -120,7 +121,6 @@ export class CodeRenderable extends TextBufferRenderable {
       this.invalidateHighlights()
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
-        this.requestRender()
         return
       }
 
@@ -556,6 +556,10 @@ export class CodeRenderable extends TextBufferRenderable {
 
   public getLineHighlights(lineIdx: number) {
     return this.textBuffer.getLineHighlights(lineIdx)
+  }
+
+  protected override hasLayoutBoundedPaint(): boolean {
+    return this.renderSelf === CodeRenderable.prototype.renderSelf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

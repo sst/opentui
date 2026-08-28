@@ -238,6 +238,11 @@ export class OptimizedBuffer {
     this.lib.bufferClear(this.bufferPtr, bg)
   }
 
+  public clearRows(startY: number, rowCount: number, bg: RGBA): boolean {
+    this.guard()
+    return this.lib.bufferClearRows(this.bufferPtr, startY, rowCount, bg)
+  }
+
   public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes: number = 0): void {
     this.guard()
     this.lib.bufferSetCell(this.bufferPtr, x, y, char, fg, bg, attributes)
