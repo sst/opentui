@@ -1,5 +1,9 @@
 # Startup Lifecycle Checkpoint
 
+The [focused first-use continuation](layered-paint-grid-first-use.md) retains this
+runtime and presents an explicit opt-in startup-cost decision. No later runtime
+optimization was accepted; the measurements below remain historical final simple-\*.
+
 Status: **INCOMPLETE**. This is a measured implementation checkpoint, not a
 completed lifecycle solution. Runtime source `d86dd308` follows the historical
 [bulk checkpoint](layered-paint-grid-bulk.md). See the
@@ -60,8 +64,8 @@ scope cleanup, volatile rerecording, raw lifetime and exact-output tests remain.
 
 ## Evidence
 
-- Final rotating matrices cover all nine workloads, ON/OFF, 120x40 and 240x80 at
-  depth4, with seven/five repeats and 1000/600 steady frames. Each process includes
+- Final rotating matrices cover all nine workloads, ON/OFF, 120x40/depth1 and
+  240x80/depth4, with seven/five repeats and 1000/600 steady frames. Each process includes
   the entire 28-frame startup/full/recovery sequence. No forced GC or dropped tails.
 - Strong selective warm gains remain. Small layout/scroll warm means are +2.7/+2.4%,
   with improving p50; broad is +0.6/+2.1% at the two sizes. First capture and several
