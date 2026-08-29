@@ -119,11 +119,6 @@ pub const PaintGrid = struct {
         self.recorded = 0;
         if (!b.rgbaEqual(background, self.background)) self.valid = false;
         self.background = background;
-        if (!self.valid) {
-            @memset(self.dirty, true);
-            for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
-            self.dirty_count = self.dirty.len;
-        }
         if (force_fallback or unsupported or self.target.paint_raw_exposed) {
             if (retained) {
                 self.materialize();
@@ -134,6 +129,12 @@ pub const PaintGrid = struct {
                 self.valid = false;
                 self.fallbacks += 1;
             }
+            return;
+        }
+        if (!self.valid) {
+            @memset(self.dirty, true);
+            for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
+            self.dirty_count = self.dirty.len;
         }
     }
 

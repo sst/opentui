@@ -36,6 +36,60 @@ function snapshot(buffer: OptimizedBuffer) {
   return { char: [...char], fg: [...fg], bg: [...bg], attributes: [...attributes] }
 }
 
+test("paint grid full-paint bursts recover useful skipping with exact output and single callbacks", async () => {
+  async function run(experimentalPaintGrid: boolean) {
+    const { renderer, renderOnce, resize } = await createTestRenderer({ width: 14, height: 4, experimentalPaintGrid })
+    let value = "A"
+    let effect = false
+    const lower = new Paint(renderer, { width: 1, height: 1 }, (buffer, self) => {
+      buffer.drawText(value, self.x + 4, 2, white, blue)
+    })
+    const upper = new Paint(renderer, { width: 1, height: 1, position: "absolute" }, (buffer) => {
+      buffer.drawText("!", 5, 2, white)
+      if (effect) buffer.colorMatrixUniform(new Float32Array([0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
+    })
+    const frames = []
+    const skipped = []
+    try {
+      renderer.root.add(lower)
+      renderer.root.add(upper)
+      for (let frame = 0; frame < 34; frame++) {
+        if (frame >= 4 && frame <= 7) {
+          value = String(frame)
+          renderer.requestRender()
+        }
+        if (frame >= 11 && frame <= 14) lower.translateX = frame % 3
+        if (frame === 18) resize(16, 5)
+        if (frame === 24 || frame === 26) {
+          effect = frame === 24
+          upper.requestRender()
+        }
+        if (frame === 30) {
+          value = "Z"
+          lower.requestRender()
+        }
+        const before = [lower.calls, upper.calls]
+        await renderOnce()
+        expect(lower.calls - before[0]).toBeLessThanOrEqual(1)
+        expect(upper.calls - before[1]).toBeLessThanOrEqual(1)
+        if (frame >= 4 && frame <= 7) {
+          expect(lower.calls - before[0]).toBe(1)
+          expect(upper.calls - before[1]).toBe(1)
+        }
+        frames.push(snapshot(renderer.currentRenderBuffer))
+        skipped.push(renderer.nextRenderBuffer.getPaintStats().skipped)
+      }
+      return { frames, skipped }
+    } finally {
+      renderer.destroy()
+    }
+  }
+  const full = await run(false)
+  const grid = await run(true)
+  expect(grid.frames).toEqual(full.frames)
+  for (const frame of [3, 10, 17, 23, 29, 33]) expect(grid.skipped[frame], `frame ${frame}`).toBeGreaterThan(0)
+})
+
 test("paint grid matches full rendering across unchanged, overlapping, moved and removed custom paint", async () => {
   async function run(experimentalPaintGrid: boolean) {
     const setup = await createTestRenderer({ width: 14, height: 4, experimentalPaintGrid })
@@ -61,6 +115,9 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
     try {
       renderer.root.add(lower)
       renderer.root.add(upper)
+      // Cold rendering is full; the next eligible frame constructs the cache.
+      await renderOnce()
+      lower.calls = upper.calls = 0
       await frame()
       await frame()
       content = "other"
@@ -94,7 +151,7 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
   ])
   expect(grid.stats[1].recomposed).toBe(0)
   expect(grid.stats[2].recomposed).toBe(3)
-  expect(grid.stats.every((frame) => frame.fallback === 0)).toBe(true)
+  expect(grid.stats.slice(0, 3).every((frame) => frame.fallback === 0)).toBe(true)
 })
 
 test("paint grid skips text overrides but preserves hit targets and generic invalidation", async () => {
@@ -110,6 +167,8 @@ test("paint grid skips text overrides but preserves hit targets and generic inva
   try {
     renderer.root.add(text)
     renderer.root.add(custom)
+    await renderOnce()
+    custom.calls = 0
     await renderOnce()
     const first = snapshot(renderer.currentRenderBuffer)
     await renderOnce()
@@ -199,6 +258,8 @@ test("paint grid falls back for late retained raw views without invoking painter
     renderer.root.add(lower)
     renderer.root.add(upper)
     await renderOnce()
+    lower.calls = upper.calls = 0
+    await renderOnce()
     expose = true
     upper.requestRender()
     await renderOnce()
@@ -232,6 +293,8 @@ test("paint grid retries a rejected frame, resizes, and changes background coher
   try {
     renderer.root.add(painter)
     await renderOnce()
+    painter.calls = 0
+    await renderOnce()
     reject = true
     await renderOnce()
     await renderOnce()
@@ -242,7 +305,9 @@ test("paint grid retries a rejected frame, resizes, and changes background coher
     await renderOnce()
     expect(captureCharFrame().split("\n")[0]).toBe("  test      ")
     expect([...renderer.currentRenderBuffer.buffers.bg.slice(0, 4)]).toEqual([...blue.buffer])
-    expect(renderer.nextRenderBuffer.getPaintStats().fallback).toBe(0)
+    for (let frame = 0; frame < 4; frame++) await renderOnce()
+    expect(captureCharFrame().split("\n")[0]).toBe("  test      ")
+    expect(renderer.nextRenderBuffer.getPaintStats().skipped).toBe(1)
   } finally {
     nativeRender.mockRestore()
     renderer.destroy()
@@ -318,6 +383,10 @@ test("paint grid explicit clears and mutable offscreen samples remain observable
         if (frame === 3) renderer.root.remove(upper)
         await renderOnce()
         frames.push(snapshot(renderer.currentRenderBuffer))
+      }
+      for (let frame = 0; frame < 3; frame++) {
+        await renderOnce()
+        expect(snapshot(renderer.currentRenderBuffer)).toEqual(frames[3])
       }
       expect(renderer.nextRenderBuffer.getPaintStats().fallback).toBe(0)
       return frames

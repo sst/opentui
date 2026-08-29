@@ -81,6 +81,13 @@ export class OptimizedBuffer {
   }
 
   /** @internal */
+  public fallbackPaint(): void {
+    this.guard()
+    this.lib.bufferPaintFallback(this.bufferPtr)
+    this.experimentalPaintGrid = false
+  }
+
+  /** @internal */
   public endPaint(abort = false): void {
     this.guard()
     if (!this.lib.bufferPaintEnd(this.bufferPtr, abort)) throw new Error("Paint grid composition failed")

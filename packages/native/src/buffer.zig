@@ -290,8 +290,11 @@ pub const OptimizedBuffer = struct {
         return if (self.paint_grid) |grid| grid.isRecording() else false;
     }
 
-    fn recordPaint(self: *OptimizedBuffer, index: u32, cell: Cell, mode: PaintGrid.Mode) bool {
-        return if (self.paint_grid) |grid| grid.record(index, cell, mode, index) else false;
+    inline fn recordPaint(self: *OptimizedBuffer, index: u32, cell: Cell, mode: PaintGrid.Mode) bool {
+        const grid = self.paint_grid orelse return false;
+        if (!grid.isRecording()) return false;
+        // Keep inactive cell writes cheap without inlining allocation/ownership work.
+        return @call(.never_inline, PaintGrid.record, .{ grid, index, cell, mode, index });
     }
 
     fn recordInheritedText(self: *OptimizedBuffer, x: u32, y: u32, background_x: u32, cell: Cell) bool {

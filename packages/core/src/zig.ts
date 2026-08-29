@@ -885,6 +885,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferPaintBegin: { args: ["u32", "buffer", "u8"], returns: "u8" },
+    bufferPaintFallback: { args: ["u32"], returns: "void" },
     bufferPaintPush: { args: ["u32", "u32", "i32", "i32", "u32", "u32", "u8"], returns: "u8" },
     bufferPaintPop: { args: ["u32"], returns: "void" },
     bufferPaintEnd: { args: ["u32", "u8"], returns: "u8" },
@@ -3060,6 +3061,7 @@ export interface RenderLib extends AudioEngineLib {
   bufferGetCurrentOpacity: (buffer: OptimizedBufferHandle) => number
   bufferClearOpacity: (buffer: OptimizedBufferHandle) => void
   bufferPaintBegin: (buffer: OptimizedBufferHandle, background: RGBA, fallback: boolean) => number
+  bufferPaintFallback: (buffer: OptimizedBufferHandle) => void
   bufferPaintPush: (
     buffer: OptimizedBufferHandle,
     owner: number,
@@ -6030,6 +6032,10 @@ class FFIRenderLib implements RenderLib {
 
   public bufferPaintBegin(buffer: OptimizedBufferHandle, background: RGBA, fallback: boolean): number {
     return this.opentui.symbols.bufferPaintBegin(buffer, background.buffer, fallback ? 1 : 0)
+  }
+
+  public bufferPaintFallback(buffer: OptimizedBufferHandle): void {
+    this.opentui.symbols.bufferPaintFallback(buffer)
   }
 
   public bufferPaintPush(
