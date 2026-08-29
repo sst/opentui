@@ -180,6 +180,59 @@ the image alive. Dispose extra handles and clear or destroy those buffers first.
 Dispose every retained, cloned, decoded, and transformed handle separately. Disposing one retained handle does not
 invalidate another retained handle.
 
+## Reuse pixel storage for continuous input
+
+`NativeImagePool` copies successive RGBA8 frames into a bounded set of fixed-size native allocations. Each successful
+`publishRgba()` returns an immutable `NativeImage`. Use it when a producer supplies repeated frames of the same size.
+
+```typescript
+import { ImageRenderable, NativeImagePool } from "@opentui/core"
+
+const pool = new NativeImagePool({ width: 640, height: 480, capacity: 3 })
+const view = new ImageRenderable(renderer, { width: 80, height: 24 })
+renderer.root.add(view)
+
+function onPixels(pixels: Uint8Array): boolean {
+  const frame = pool.publishRgba(pixels)
+  if (!frame) return false
+  try {
+    view.source = frame
+  } finally {
+    frame.dispose()
+  }
+  return true
+}
+
+// Stop the producer before teardown.
+view.destroy()
+pool.dispose()
+```
+
+The source setter retains the frame synchronously and requests a render when the load settles. Each publication has a
+fresh wrapper and native handle, so source equality and terminal-protocol caches cannot hide a new frame. No explicit
+`requestRender()` call is needed for `ImageRenderable`.
+
+- `new NativeImagePool({ width, height, capacity? })` fixes the dimensions and frame count. Capacity defaults to `3`
+  and must be an integer from `1` through `8`. Native image dimension and memory limits apply on the first publication.
+- `publishRgba(pixels, stride = width * 4)` copies top-left, straight-alpha, sRGB RGBA8 bytes. Row padding is allowed;
+  the input must include the last row's pixels but need not include its trailing padding. Caller memory is not retained.
+- Slots allocate lazily. Pixel storage is bounded by `capacity * width * height * 4` bytes. Reuse does not allocate
+  another pixel buffer, but each publication still creates a JavaScript wrapper and native handle. Encoding and
+  rendering can allocate separately.
+- A slot is reusable only after all published handles and native buffer placements release it. Retained images,
+  renderable sources, and buffer snapshots keep their original pixels. Dispose frames when you no longer need them.
+- When every slot is pinned, `publishRgba()` returns `null`. It does not allocate pixel storage, queue, block, or replace
+  any frame. Drop the incoming frame or retry after consumers release a slot. Invalid input throws instead of reporting busy.
+- Publication is synchronous, with no acquisition token or pending operation to cancel. To cancel input, stop calling
+  `publishRgba()`. `dispose()` is idempotent, rejects future publications, and releases the pool's references without
+  invalidating published frames. Those frames still require disposal.
+- Pools cannot resize. Create a new pool for new dimensions, then dispose the old pool. A published frame cannot use
+  `takeRaw()` while its pool still owns that slot; use `raw()`, `copyTo()`, or dispose the pool first.
+
+Use `bun run bench:image-pool` from `packages/core` to compare fresh imports with pooled publications. The benchmark
+does not create a renderer or perform terminal/GPU work. It measures copying, alpha inspection, handle publication,
+and disposal, not end-to-end display throughput.
+
 ## Transform images
 
 Operations do not mutate the source. Each successful operation returns a new `NativeImage`.
@@ -247,6 +300,7 @@ runs.
 - `invalid-handle`, `unsupported-format`, `unsupported-color-space`, or `malformed-data`
 - `dimension-limit`, `memory-limit`, `invalid-argument`, or `out-of-memory`
 - `output-too-small`, `internal-error`, or `unsupported-feature`
+- `busy` for retained native pool slots; `publishRgba()` returns `null` rather than throwing this status
 
 JavaScript option and geometry validation uses `TypeError` and `RangeError`. All image methods except `dispose()` throw
 after disposal or transfer.

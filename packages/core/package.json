@@ -31,6 +31,7 @@
     "bench:native": "cd ../native && bun run bench --",
     "bench:native:ffi": "cd ../native && bun run bench:ffi",
     "bench:js": "bun src/benchmark/js-benchmark.ts",
+    "bench:image-pool": "bun src/benchmark/image-pool-benchmark.ts",
     "bench:js:node": "bun scripts/bench-js-node.ts",
     "bench:layout": "bun src/benchmark/layout-benchmark.ts",
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",

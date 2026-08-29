@@ -770,6 +770,7 @@ describe("borrowed pointer call sites", () => {
       "imageDecode",
       "imageCreateFromRgba",
       "imageCreateFromPixels",
+      "imageUpdateRgba",
       "imageGetInfo",
       "imageRetain",
       "imageClone",
@@ -804,6 +805,7 @@ describe("borrowed pointer call sites", () => {
       lib.imageDecode(data)
       lib.imageCreateFromRgba(pixels, 1, 1, 4)
       lib.imageCreateFromPixels(pixels, 1, 1, 4, 1, 1)
+      lib.imageUpdateRgba(handle, pixels, 4)
       lib.imageGetInfo(handle)
       lib.imageRetain(handle)
       lib.imageClone(handle)
@@ -835,6 +837,8 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageCreateFromPixels")![0]).toBe(pixels)
       expect(calls.get("imageCreateFromPixels")!.slice(1, 7)).toEqual([4n, 1, 1, 4, 1, 1])
       expect(calls.get("imageCreateFromPixels")![7]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageUpdateRgba")![1]).toBe(pixels)
+      expect(calls.get("imageUpdateRgba")![2]).toBe(4n)
       expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
       expect(calls.get("imageRetain")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
@@ -872,6 +876,7 @@ describe("borrowed pointer call sites", () => {
         imageInfo: () => 0,
         imageDecode: () => 0,
         imageCreateFromRgba: () => 0,
+        imageUpdateRgba: () => 0,
         imageCopyPixels: () => 0,
       },
       (calls) => {
@@ -879,11 +884,13 @@ describe("borrowed pointer call sites", () => {
         lib.imageInfo(empty)
         lib.imageDecode(empty)
         lib.imageCreateFromRgba(empty, 0, 0, 0)
+        lib.imageUpdateRgba(1 as any, empty, 0)
         lib.imageCopyPixels(1 as any, empty, 0, false)
 
         expect(calls.imageInfo[0]![0]).toBeNull()
         expect(calls.imageDecode[0]![0]).toBeNull()
         expect(calls.imageCreateFromRgba[0]![0]).toBeNull()
+        expect(calls.imageUpdateRgba[0]![1]).toBeNull()
         expect(calls.imageCopyPixels[0]![1]).toBeNull()
       },
     )

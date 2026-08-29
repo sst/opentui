@@ -1594,6 +1594,7 @@ function getOpenTUILib(libPath?: string) {
     imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageCreateFromPixels: { args: ["buffer", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageUpdateRgba: { args: ["u32", "ptr", "u64", "u32"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
@@ -3099,6 +3100,7 @@ export interface RenderLib extends AudioEngineLib {
     format: number,
     alpha: number,
   ) => { status: number; handle: ImageHandle | null }
+  imageUpdateRgba: (image: ImageHandle, pixels: Uint8Array, stride: number) => number
   imageDestroy: (image: ImageHandle) => void
   imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
@@ -6611,6 +6613,15 @@ class FFIRenderLib implements RenderLib {
       output,
     )
     return this.imageHandleResult(status, output)
+  }
+
+  public imageUpdateRgba(image: ImageHandle, pixels: Uint8Array, stride: number): number {
+    return this.opentui.symbols.imageUpdateRgba(
+      image,
+      pixels.byteLength === 0 ? null : pixels,
+      BigInt(pixels.byteLength),
+      stride,
+    )
   }
 
   public imageDestroy(image: ImageHandle): void {

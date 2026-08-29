@@ -249,6 +249,7 @@ assert.equal(typeof core.AudioRecorder, "function")
 assert.equal(typeof core.AudioRecorderError, "function")
 assert.equal(typeof core.AudioStreamError, "function")
 assert.equal(typeof core.NativeImage, "function")
+assert.equal(typeof core.NativeImagePool, "function")
 assert.equal(typeof core.ImageRenderable, "function")
 assert.equal(typeof core.Audio.prototype.openCapture, "function")
 assert.equal(typeof core.Audio.prototype.recordToFile, "function")
@@ -294,6 +295,20 @@ try {
   assert.equal(imported.info().hasAlpha, false)
 } finally {
   imported.dispose()
+}
+
+const pool = new core.NativeImagePool({ width: 1, height: 1, capacity: 1 })
+try {
+  for (const red of [255, 128]) {
+    const frame = pool.publishRgba(Uint8Array.of(red, 0, 0, 255))
+    try {
+      assert.deepEqual([...frame.raw().data], [red, 0, 0, 255])
+    } finally {
+      frame.dispose()
+    }
+  }
+} finally {
+  pool.dispose()
 }
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
@@ -375,6 +390,7 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof core.AudioRecorderError).toBe("function")
     expect(typeof core.AudioStreamError).toBe("function")
     expect(typeof core.NativeImage).toBe("function")
+    expect(typeof core.NativeImagePool).toBe("function")
     expect(typeof core.ImageRenderable).toBe("function")
     expect(typeof core.Audio.prototype.openCapture).toBe("function")
     expect(typeof core.Audio.prototype.recordToFile).toBe("function")

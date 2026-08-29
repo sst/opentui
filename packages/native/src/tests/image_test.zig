@@ -5,6 +5,50 @@ fn makeImage(pixels: []const u8, width: u32, height: u32) !*image.Image {
     return image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
 }
 
+test "reusable RGBA updates keep the allocation and reject pinned or invalid writes" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 2 });
+    const first = [_]u8{ 1, 2, 3, 255, 4, 5, 6, 255 };
+    const second = [_]u8{ 7, 8, 9, 128, 0, 0, 0, 0, 10, 11, 12, 255 };
+    const value = try image.createFromRgba(failing.allocator(), &first, 1, 2, 4);
+    defer value.deinit();
+    const pointer = value.pixels.ptr;
+
+    value.retain();
+    try std.testing.expectError(error.Busy, image.updateRgba(value, &second, 8));
+    try std.testing.expectEqualSlices(u8, &first, value.pixels);
+    value.deinit();
+    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, &second, 3));
+    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, second[0..11], 8));
+    try std.testing.expectEqualSlices(u8, &first, value.pixels);
+
+    for (0..1000) |_| {
+        try image.updateRgba(value, &second, 8);
+        try std.testing.expectEqual(pointer, value.pixels.ptr);
+        try std.testing.expectEqualSlices(u8, &[_]u8{ 7, 8, 9, 128, 10, 11, 12, 255 }, value.pixels);
+        try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+        try image.updateRgba(value, &first, 4);
+        try std.testing.expectEqual(@as(u32, 0), value.metadata.has_alpha);
+    }
+    try std.testing.expect(!failing.has_induced_failure);
+}
+
+test "reusable RGBA updates invalidate PNG encoding without changing cloned snapshots" {
+    const value = try makeImage(&.{ 255, 0, 0, 255 }, 1, 1);
+    defer value.deinit();
+    _ = try value.ensureEncodedPng();
+    const snapshot = try value.clone();
+    defer snapshot.deinit();
+
+    try image.updateRgba(value, &.{ 0, 0, 255, 128 }, 4);
+    try std.testing.expect(value.encoded_png == null);
+    const decoded = try image.decode(std.testing.allocator, try value.ensureEncodedPng(), .{});
+    defer decoded.deinit();
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 255, 128 }, try decoded.ensurePixels());
+    try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, snapshot.pixels);
+    try std.testing.expect(snapshot.encoded_png != null);
+    try std.testing.expectError(error.InvalidArgument, image.updateRgba(decoded, &.{ 1, 2, 3, 4 }, 4));
+}
+
 fn decodeBase64(encoded: []const u8) ![]u8 {
     const size = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
     const decoded = try std.testing.allocator.alloc(u8, size);

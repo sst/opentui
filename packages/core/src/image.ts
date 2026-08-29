@@ -135,6 +135,7 @@ const STATUS_MESSAGES = [
   "image output buffer is too small",
   "internal image error",
   "unsupported image feature",
+  "image is retained",
 ] as const
 
 export type ImageErrorCode =
@@ -149,6 +150,7 @@ export type ImageErrorCode =
   | "output-too-small"
   | "internal-error"
   | "unsupported-feature"
+  | "busy"
 
 const STATUS_CODES: readonly ImageErrorCode[] = [
   "internal-error",
@@ -163,8 +165,10 @@ const STATUS_CODES: readonly ImageErrorCode[] = [
   "output-too-small",
   "internal-error",
   "unsupported-feature",
+  "busy",
 ]
 const INVALID_ARGUMENT_STATUS = 7
+const BUSY_STATUS = 12
 
 export class ImageError extends Error {
   public readonly code: ImageErrorCode
@@ -638,5 +642,55 @@ export class NativeImage {
     if (!this.handle) return
     this.lib.imageDestroy(this.handle)
     this.handle = null
+  }
+}
+
+export interface NativeImagePoolOptions {
+  width: number
+  height: number
+  capacity?: number
+}
+
+export class NativeImagePool {
+  private readonly lib: RenderLib
+  private readonly images: NativeImage[] = []
+  private disposed = false
+  public readonly width: number
+  public readonly height: number
+  public readonly capacity: number
+
+  constructor(options: NativeImagePoolOptions) {
+    this.width = requireU32(options.width, "width")
+    this.height = requireU32(options.height, "height")
+    this.capacity = requireU32(options.capacity ?? 3, "capacity")
+    if (this.capacity > 8) throw new RangeError("capacity must be between 1 and 8")
+    this.lib = resolveRenderLib()
+  }
+
+  public publishRgba(pixels: Uint8Array, stride = this.width * 4): NativeImage | null {
+    if (this.disposed) throw new Error("NativeImagePool is disposed")
+    if (!(pixels instanceof Uint8Array)) throw new TypeError("pixels must be a Uint8Array")
+    requireU32(stride, "stride")
+
+    for (const image of this.images) {
+      const status = this.lib.imageUpdateRgba(image.ptr, pixels, stride)
+      if (status === BUSY_STATUS) continue
+      checkStatus(status)
+      // The private owner is never rendered. A fresh handle prevents stale native
+      // cache hits and a fresh wrapper triggers ImageRenderable.source invalidation.
+      return image.retain()
+    }
+    if (this.images.length === this.capacity) return null
+
+    const image = NativeImage.fromRgba(pixels, this.width, this.height, stride)
+    this.images.push(image)
+    return image.retain()
+  }
+
+  public dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    for (const image of this.images) image.dispose()
+    this.images.length = 0
   }
 }
