@@ -163,8 +163,8 @@ test "paint grid nested context cleanup and late raw fallback materialize prefix
     try std.testing.expectEqual(@as(usize, 0), target.scissor_stack.items.len);
     try std.testing.expectEqual(@as(f32, 1), target.getCurrentOpacity());
     try target.drawText("C", 2, 0, white, white, 0);
-    try std.testing.expectEqual(@as(u32, 2), grid.commands.items[0].pending.ops.items[1].owner);
-    try std.testing.expectEqual(@as(u32, 1), grid.commands.items[0].pending.ops.items[2].owner);
+    try std.testing.expectEqual(@as(u32, 1), grid.commands.items[0].context.owner);
+    try std.testing.expect(grid.commands.items[0].rerecord);
     const raw = target.getCharPtr();
     try std.testing.expectEqualSlices(u32, &.{ 'A', 'B', 'C' }, raw[0..3]);
     raw[3] = 'D';

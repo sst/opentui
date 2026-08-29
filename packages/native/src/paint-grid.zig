@@ -7,7 +7,7 @@ const ansi = @import("ansi.zig");
 // pointers into a caller's text/view/framebuffer. Geometry only invalidates a
 // command; damage comes exclusively from its actual drawing.
 pub const PaintGrid = struct {
-    pub const Mode = enum { set, raw, direct, blend, blend_raw, text, inherit, inherit_cell, fill };
+    pub const Mode = enum { set, raw, blend, blend_raw, text, inherit, inherit_cell, fill };
     pub const Op = struct {
         index: u32,
         cell: b.Cell,
@@ -15,7 +15,6 @@ pub const PaintGrid = struct {
         mode: Mode,
         background_index: u32,
         background_group: u32,
-        owner: u32,
         count: u32 = 1,
         text_offset: u32 = std.math.maxInt(u32),
     };
@@ -53,7 +52,7 @@ pub const PaintGrid = struct {
         end: u32 = 0,
         dependencies: bool = false,
     };
-    const Scope = struct { owner: u32, scissor_depth: usize, opacity_depth: usize };
+    const Scope = struct { scissor_depth: usize, opacity_depth: usize };
 
     target: *b.OptimizedBuffer,
     payload: std.heap.ArenaAllocator,
@@ -171,7 +170,7 @@ pub const PaintGrid = struct {
     pub fn push(self: *PaintGrid, owner: u32, x: i32, y: i32, width: u32, height: u32, dirty: bool) !bool {
         const t = self.target;
         const nested = self.stack.items.len != 0;
-        try self.stack.append(t.allocator, .{ .owner = owner, .scissor_depth = t.scissor_stack.items.len, .opacity_depth = t.opacity_stack.items.len });
+        try self.stack.append(t.allocator, .{ .scissor_depth = t.scissor_stack.items.len, .opacity_depth = t.opacity_stack.items.len });
         if (nested) self.markVolatile();
         if (nested or self.fallback) return true;
         if (!self.valid and self.count == 0) try self.prepare();
@@ -217,12 +216,12 @@ pub const PaintGrid = struct {
     pub fn recordSpan(self: *PaintGrid, index: u32, cell: b.Cell, mode: Mode, background_index: u32, count: u32) bool {
         if (!self.isRecording()) return false;
         const t = self.target;
-        const op: Op = .{ .index = index, .cell = cell, .mode = mode, .opacity = t.getCurrentOpacity(), .background_index = background_index, .background_group = if (mode == .inherit) self.background_group else 0, .owner = self.stack.items[self.stack.items.len - 1].owner, .count = count };
+        const op: Op = .{ .index = index, .cell = cell, .mode = mode, .opacity = t.getCurrentOpacity(), .background_index = background_index, .background_group = if (mode == .inherit) self.background_group else 0, .count = count };
         const pending = &self.commands.items[self.count - 1].pending;
         if (count == 1 and pending.ops.items.len != 0 and mode != .inherit and !gp.isClusterChar(cell.char)) {
             const last = &pending.ops.items[pending.ops.items.len - 1];
             if (last.index + last.count == index and last.index / t.width == index / t.width and
-                last.mode == mode and last.owner == op.owner and last.opacity == op.opacity and
+                last.mode == mode and last.opacity == op.opacity and
                 !gp.isClusterChar(last.cell.char) and last.cell.attributes == cell.attributes and
                 b.rgbaEqual(last.cell.fg, cell.fg) and b.rgbaEqual(last.cell.bg, cell.bg))
             {
@@ -292,7 +291,6 @@ pub const PaintGrid = struct {
             .opacity = self.target.getCurrentOpacity(),
             .background_index = 0,
             .background_group = 0,
-            .owner = self.stack.items[self.stack.items.len - 1].owner,
             .count = @intCast(text.len),
             .text_offset = @intCast(pending.chars.items.len),
         });
@@ -304,7 +302,7 @@ pub const PaintGrid = struct {
 
     fn spanEnd(self: *const PaintGrid, op: Op) u32 {
         const width = self.target.width;
-        return @min(op.index + op.count + (if (gp.isGraphemeChar(op.cell.char) and op.mode != .raw and op.mode != .direct) gp.charRightExtent(op.cell.char) else 0), (op.index / width + 1) * width);
+        return @min(op.index + op.count + (if (gp.isGraphemeChar(op.cell.char) and op.mode != .raw) gp.charRightExtent(op.cell.char) else 0), (op.index / width + 1) * width);
     }
 
     fn apply(self: *PaintGrid, stream: Stream, op: Op, dirty_only: bool) void {
@@ -345,7 +343,7 @@ pub const PaintGrid = struct {
         switch (op.mode) {
             .fill => unreachable,
             .set => t.set(x, y, cell),
-            .raw, .direct => {
+            .raw => {
                 // Direct Grid writes intentionally do not repair spans. Preserve
                 // those pixels, but do not retain references to overwritten starts
                 // forever now that the target survives between frames.

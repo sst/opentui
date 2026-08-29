@@ -2326,7 +2326,7 @@ pub const OptimizedBuffer = struct {
                         if (self.paintRecording()) {
                             for (clampedStart..clampedEnd) |cx| {
                                 const index: u32 = @intCast(borderYU32 * bufWidth + cx);
-                                if (!self.recordPaint(index, makeCell(hChar, borderFg, borderBg, 0), .direct)) {
+                                if (!self.recordPaint(index, makeCell(hChar, borderFg, borderBg, 0), .raw)) {
                                     self.buffer.char[index] = hChar;
                                     self.buffer.fg[index] = borderFg;
                                     self.buffer.bg[index] = borderBg;
@@ -2366,7 +2366,7 @@ pub const OptimizedBuffer = struct {
                     if (bx < 0) continue;
 
                     const idx = rowBase + @as(u32, @intCast(bx));
-                    if (self.recordPaint(idx, makeCell(vChar, borderFg, borderBg, 0), .direct)) continue;
+                    if (self.recordPaint(idx, makeCell(vChar, borderFg, borderBg, 0), .raw)) continue;
                     self.buffer.char[idx] = vChar;
                     self.buffer.fg[idx] = borderFg;
                     self.buffer.bg[idx] = borderBg;
