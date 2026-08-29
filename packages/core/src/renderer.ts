@@ -1569,6 +1569,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // feed.idle(). Coalesce normal invalidations into that retry so split-footer
     // output and UI updates cannot start competing render passes while the feed is busy.
     if (this.feedIdleRenderScheduled) {
+      // A new one-shot request after pause/stop replaces the cancelled frame.
+      if (this.ordinaryFrameWaitingForFeed) this.ordinaryFrameWaitControlState = this._controlState
       return
     }
 
@@ -4610,6 +4612,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.rendering = true
     let renderFailed = false
     try {
+      // Admit one ordinary frame at a time, before animation/GPU callbacks or
+      // composition. Drained spans still own memory until Writable callbacks settle.
+      // Control and shutdown writes bypass this gate and preserve committed ANSI.
+      if (this._feed?.isBackpressured()) {
+        this.handleNativeRenderRejection(NATIVE_RENDER_STATUS_SKIPPED)
+        this.immediateRerenderRequested = false
+        return
+      }
+
       // Bump before any work so all callers this iteration see the new id.
       this._frameId++
 

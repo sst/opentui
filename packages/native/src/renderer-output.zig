@@ -853,9 +853,17 @@ pub const FeedBackend = struct {
     }
 
     pub fn shouldSkipFrame(self: *FeedBackend) bool {
-        const stats = self.feed.getStats();
         const cap = self.feed.options.span_queue_capacity;
-        return cap > 0 and stats.pending_spans >= cap;
+        if (cap == 0) return false;
+
+        // Draining transfers spans to consumers; only releasing their chunk
+        // references returns credit. Count queued and in-flight spans once each.
+        var outstanding: u64 = 0;
+        for (self.feed.stateBuffer()) |refcount| {
+            outstanding += refcount;
+            if (outstanding >= cap) return true;
+        }
+        return false;
     }
 
     pub fn prepareFrame(self: *FeedBackend) WriteStatus {
