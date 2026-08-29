@@ -142,6 +142,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/clipboard-native-lifecycle.test.js",
   ".node-test/src/tests/audio.test.js",
   ".node-test/src/tests/image-renderable.test.js",
+  ".node-test/src/tests/image-pool.test.js",
   ".node-test/src/tests/image.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",

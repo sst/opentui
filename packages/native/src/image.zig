@@ -86,6 +86,7 @@ pub const Status = enum(u32) {
     output_too_small = 9,
     internal_error = 10,
     unsupported_feature = 11,
+    busy = 12,
 };
 
 pub const Format = enum(u32) {
@@ -303,6 +304,7 @@ pub fn statusFromError(err: anyerror) Status {
         error.UnsupportedColorSpace => .unsupported_color_space,
         error.InternalError => .internal_error,
         error.InvalidArgument => .invalid_argument,
+        error.Busy => .busy,
         else => .malformed_input,
     };
 }
@@ -769,13 +771,17 @@ fn pixelsHaveTransparency(pixels: []const u8) bool {
     return false;
 }
 
-fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+fn validateRgba(pixels: []const u8, width: u32, height: u32, stride: u32) !u32 {
     const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
     if (stride < row_bytes) return error.InvalidArgument;
     const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
     if (required > pixels.len) return error.InvalidArgument;
+    return row_bytes;
+}
 
+fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+    _ = try validateRgba(pixels, width, height, stride);
     return allocateImage(allocator, .{
         .width = width,
         .height = height,
@@ -790,14 +796,27 @@ fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, hei
 
 pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
     const image = try allocatePixelImport(allocator, pixels, width, height, stride);
-    const row_bytes = width * 4;
-    for (0..height) |y| {
+    errdefer image.deinit();
+    try updateRgba(image, pixels, stride);
+    return image;
+}
+
+// Pool owners must stay private: every publication needs a fresh retained handle
+// because renderer caches key content by handle, not by the pixel allocation.
+pub fn updateRgba(image: *Image, pixels: []const u8, stride: u32) !void {
+    if (image.metadata.format != @intFromEnum(Format.raw_rgba)) return error.InvalidArgument;
+    const row_bytes = try validateRgba(pixels, image.width(), image.height(), stride);
+    if (image.ref_count != 1) return error.Busy;
+    std.debug.assert(image.pixels.len == @as(usize, row_bytes) * image.height());
+
+    image.discardEncoded();
+    image.metadata.has_alpha = 0;
+    for (0..image.height()) |y| {
         const src_offset = y * stride;
         const dst_offset = y * row_bytes;
         @memcpy(image.pixels[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
         if (image.metadata.has_alpha == 0 and pixelsHaveTransparency(pixels[src_offset .. src_offset + row_bytes])) image.metadata.has_alpha = 1;
     }
-    return image;
 }
 
 pub fn createFromPixels(

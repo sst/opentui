@@ -3517,6 +3517,23 @@ test "pixel import FFI validates pointers and enum values without publishing a h
     try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
 }
 
+export fn imageUpdateRgba(
+    image_handle: NativeHandle,
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    stride: u32,
+) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    }
+    const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
+    native_image.updateRgba(image, pixels, stride) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(native_image.Status.ok);
+}
+
 export fn imageDestroy(image_handle: NativeHandle) void {
     const token = handles.beginDestroy(image_handle, .image, native_image.Image) orelse return;
     token.ptr.deinit();
