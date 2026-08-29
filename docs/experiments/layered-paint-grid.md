@@ -1,5 +1,13 @@
 # Layered Paint Grid Optimization
 
+This is the historical first optimization campaign. The completed second pass
+and entire final branch versus actual main are reported in
+[Final Branch Versus Actual Main](layered-paint-grid-main-comparison.md), with
+[compact measurements](layered-paint-grid-main-results.json). That comparison
+finds 14.3% lower equal-weight warm frame time across the nine fixtures, but
+remaining workload, cold, OFF-path and short-sequence regressions. The numbers
+below describe the earlier runtime and must not be read as the final result.
+
 Completed the bounded research-driven matrix: 14 concrete entries, 13 implemented
 and measured, one proven inapplicable; combinations, competing run compression,
 ablations, size/overlap sensitivity, memory and correctness checks. This remains
