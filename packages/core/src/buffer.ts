@@ -67,6 +67,39 @@ export class OptimizedBuffer {
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
+  /** @internal Disabled-by-default layered painting experiment. */
+  public experimentalPaintGrid = false
+  /** @internal Unattributed/live requests must not freeze custom painters. */
+  public experimentalPaintForce = false
+
+  /** @internal */
+  public beginPaint(background: RGBA, fallback: boolean): void {
+    this.guard()
+    const status = this.lib.bufferPaintBegin(this.bufferPtr, background, fallback)
+    if (!status) throw new Error("Paint grid allocation failed")
+    this.experimentalPaintGrid = status === 1
+  }
+
+  /** @internal */
+  public endPaint(abort = false): void {
+    this.guard()
+    if (!this.lib.bufferPaintEnd(this.bufferPtr, abort)) throw new Error("Paint grid composition failed")
+  }
+
+  /** Experimental counters, without exposing writable target memory. */
+  public getPaintStats() {
+    this.guard()
+    const values = new Uint32Array(6)
+    this.lib.bufferPaintStats(this.bufferPtr, values)
+    return {
+      recorded: values[0],
+      skipped: values[1],
+      recomposed: values[2],
+      fallback: values[3],
+      fallbacks: values[4],
+      retainedBytes: values[5],
+    }
+  }
 
   get ptr(): OptimizedBufferHandle {
     return this.bufferPtr

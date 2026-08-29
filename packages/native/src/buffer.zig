@@ -10,6 +10,7 @@ const assert = std.debug.assert;
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
 const native_image = @import("image.zig");
+const PaintGrid = @import("paint-grid.zig").PaintGrid;
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
@@ -197,6 +198,8 @@ pub const OptimizedBuffer = struct {
     scissor_stack: std.ArrayListUnmanaged(ClipRect),
     opacity_stack: std.ArrayListUnmanaged(f32),
     image_placements: std.ArrayListUnmanaged(ImagePlacement),
+    paint_grid: ?*PaintGrid = null,
+    paint_raw_exposed: bool = false,
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -279,24 +282,79 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn getCharPtr(self: *OptimizedBuffer) [*]u32 {
+        self.exposePaintMemory();
         return self.buffer.char.ptr;
     }
 
+    pub fn paintRecording(self: *const OptimizedBuffer) bool {
+        return if (self.paint_grid) |grid| grid.isRecording() else false;
+    }
+
+    fn recordPaint(self: *OptimizedBuffer, index: u32, cell: Cell, mode: PaintGrid.Mode) bool {
+        return if (self.paint_grid) |grid| grid.record(index, cell, mode, index) else false;
+    }
+
+    fn recordInheritedText(self: *OptimizedBuffer, x: u32, y: u32, background_x: u32, cell: Cell) bool {
+        const index = self.validateAndIndex(x, y) orelse return false;
+        var input = cell;
+        input.bg = ansi.rgbColor(0, 0, 0, 0);
+        if (self.paint_grid) |grid| {
+            if (!grid.isRecording()) return false;
+            if (!grid.record(index, input, .inherit, self.coordsToIndex(background_x, y))) {
+                input.bg = self.get(background_x, y).?.bg;
+                self.setTextCell(x, y, input);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    pub fn paintFallback(self: *OptimizedBuffer) void {
+        if (self.paint_grid) |grid| {
+            grid.unsupported_last_frame = true;
+            grid.materialize();
+        }
+    }
+
+    fn exposePaintMemory(self: *OptimizedBuffer) void {
+        self.paint_raw_exposed = true;
+        if (self.paint_grid) |grid| {
+            // Public next-buffer views retain the full-render contract: after
+            // publication they expose a cleared target, not our private cache.
+            if (!grid.active and grid.valid) self.clear(grid.background, null);
+        }
+        self.paintFallback();
+    }
+
+    pub fn beginPaint(self: *OptimizedBuffer, background: RGBA, fallback: bool) !void {
+        if (self.paint_grid == null) self.paint_grid = try PaintGrid.init(self, background);
+        self.paint_grid.?.begin(background, fallback);
+    }
+
+    pub fn preservePaint(self: *const OptimizedBuffer) bool {
+        return if (self.paint_grid) |grid| grid.valid and !self.paint_raw_exposed else false;
+    }
+
     pub fn getFgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.exposePaintMemory();
         return self.buffer.fg.ptr;
     }
 
     pub fn getBgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.exposePaintMemory();
         return self.buffer.bg.ptr;
     }
 
     pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
+        self.exposePaintMemory();
         return self.buffer.attributes.ptr;
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
         const allocator = self.allocator;
         defer allocator.destroy(self);
+
+        if (self.paint_grid) |grid| grid.deinit();
 
         self.clearImagePlacements();
         self.opacity_stack.deinit(self.allocator);
@@ -425,6 +483,10 @@ pub const OptimizedBuffer = struct {
     pub fn resize(self: *OptimizedBuffer, width: u32, height: u32) BufferError!void {
         if (self.width == width and self.height == height) return;
         if (width == 0 or height == 0) return BufferError.InvalidDimensions;
+        if (self.paint_grid) |grid| {
+            grid.deinit();
+            self.paint_grid = null;
+        }
 
         const size = width * height;
 
@@ -454,6 +516,14 @@ pub const OptimizedBuffer = struct {
 
     pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) void {
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
+        if (self.paint_grid) |grid| {
+            if (grid.isRecording()) {
+                for (0..self.buffer.char.len) |index| {
+                    _ = grid.record(@intCast(index), makeCell(cellChar, ansi.rgbColor(255, 255, 255, 255), bg, 0), .set, @intCast(index));
+                }
+                if (!grid.fallback) return;
+            } else if (!grid.replaying) grid.valid = false;
+        }
         self.link_tracker.clear();
         self.grapheme_tracker.clear();
         self.clearImagePlacements();
@@ -472,6 +542,7 @@ pub const OptimizedBuffer = struct {
     /// span cleanup, or continuation propagation.
     pub fn setRaw(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         const index = self.validateAndIndex(x, y) orelse return;
+        if (self.recordPaint(index, cell, .raw)) return;
         self.writeCellAndLinks(index, cell);
     }
 
@@ -492,6 +563,7 @@ pub const OptimizedBuffer = struct {
 
     fn setInternal(self: *OptimizedBuffer, comptime span_cleanup: bool, x: u32, y: u32, cell: Cell) void {
         const index = self.validateAndIndex(x, y) orelse return;
+        if (self.recordPaint(index, cell, .set)) return;
         const prev_char = self.buffer.char[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
         var tracker_replaced = false;
@@ -904,6 +976,7 @@ pub const OptimizedBuffer = struct {
 
     inline fn setCellWithAlphaBlendingCellWithoutImages(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+        if (x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend)) return;
         const opacity = self.getCurrentOpacity();
         if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
@@ -923,6 +996,7 @@ pub const OptimizedBuffer = struct {
 
     inline fn setVisibleCellWithAlphaBlending(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, opacity: f32, fully_transparent: bool) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+        if (x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend)) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
             self.set(x, y, cell);
             return;
@@ -959,6 +1033,7 @@ pub const OptimizedBuffer = struct {
 
     fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+        if (x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend_raw)) return;
 
         const opacity = self.getCurrentOpacity();
         if (opacity == 0.0) return;
@@ -1008,6 +1083,7 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         attributes: u32,
     ) bool {
+        if (self.recordPaint(index, makeCell(char, fg, ansi.rgbColor(0, 0, 0, 0), attributes), .blend)) return true;
         // drawTextBuffer spends a lot of time in generic alpha blending when the
         // common case is really "opaque glyph over transparent bg". In that case
         // the result is just: keep the destination background, write fg/attrs,
@@ -1086,6 +1162,17 @@ pub const OptimizedBuffer = struct {
         const clippedStartY = @max(startY, @as(u32, @intCast(clippedRect.y)));
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
+        if (self.paintRecording()) {
+            var fill_y = clippedStartY;
+            while (fill_y <= clippedEndY) : (fill_y += 1) {
+                var fill_x = clippedStartX;
+                while (fill_x <= clippedEndX) : (fill_x += 1) {
+                    self.setCellWithAlphaBlendingCell(fill_x, fill_y, makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0));
+                }
+            }
+            return;
+        }
 
         if (fully_transparent) {
             const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
@@ -1207,7 +1294,10 @@ pub const OptimizedBuffer = struct {
         );
     }
 
-    inline fn setTextCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+    pub inline fn setTextCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        if (self.validateAndIndex(x, y)) |index| {
+            if (self.recordPaint(index, cell, .text)) return;
+        }
         if (self.image_placements.items.len != 0 and self.cellSpanOverlapsImage(x, y, cell.char)) {
             self.set(x, y, opaqueCell(cell));
             return;
@@ -1337,6 +1427,9 @@ pub const OptimizedBuffer = struct {
             }
 
             var bgColor: RGBA = undefined;
+            if (bg == null) {
+                if (self.paint_grid) |grid| grid.background_group +%= 1;
+            }
             if (bg) |b| {
                 bgColor = b;
             } else if (self.get(charX, y)) |existingCell| {
@@ -1373,6 +1466,7 @@ pub const OptimizedBuffer = struct {
                     if (!self.isPointInScissor(@intCast(tab_x), @intCast(y))) continue;
 
                     const cell = makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes);
+                    if (bg == null and self.recordInheritedText(tab_x, y, charX, cell)) continue;
                     if (explicit_colors_opaque) self.set(tab_x, y, cell) else self.setTextCell(tab_x, y, cell);
                 }
                 advance_cells += cluster_width_cols;
@@ -1389,7 +1483,9 @@ pub const OptimizedBuffer = struct {
             }
 
             const cell = makeCell(encoded_char, fg, bgColor, attributes);
-            if (explicit_colors_opaque) self.set(charX, y, cell) else self.setTextCell(charX, y, cell);
+            if (!(bg == null and self.recordInheritedText(charX, y, charX, cell))) {
+                if (explicit_colors_opaque) self.set(charX, y, cell) else self.setTextCell(charX, y, cell);
+            }
 
             advance_cells += cell_width;
             col += cluster_width_cols;
@@ -1397,6 +1493,11 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn drawFrameBuffer(self: *OptimizedBuffer, destX: i32, destY: i32, frameBuffer: *OptimizedBuffer, sourceX: ?u32, sourceY: ?u32, sourceWidth: ?u32, sourceHeight: ?u32) void {
+        if (frameBuffer.paint_grid) |grid| {
+            if (grid.active) frameBuffer.paintFallback();
+        }
+        if (self.paint_grid) |grid| grid.markVolatile();
+        if (frameBuffer.image_placements.items.len != 0 or self == frameBuffer) self.paintFallback();
         if (self.width == 0 or self.height == 0 or frameBuffer.width == 0 or frameBuffer.height == 0) return;
 
         const opacity = self.getCurrentOpacity();
@@ -1425,7 +1526,7 @@ pub const OptimizedBuffer = struct {
         const destHeight = @as(u32, @intCast(endDestY - startDestY + 1));
         if (!self.isRectInScissor(startDestX, startDestY, destWidth, destHeight)) return;
 
-        const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
+        const graphemeAware = self.paintRecording() or self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny() or frameBuffer.link_tracker.hasAny();
         const imageAware = self.image_placements.items.len != 0 or frameBuffer.image_placements.items.len != 0;
 
@@ -2057,6 +2158,7 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) void {
+        if (self.paint_grid) |grid| grid.markVolatile();
         self.drawTextBufferInternal(EditorView, editor_view, x, y);
     }
 
@@ -2132,6 +2234,18 @@ pub const OptimizedBuffer = struct {
 
                     if (clampedStart < clampedEnd) {
                         const borderYU32 = @as(u32, @intCast(borderY));
+                        if (self.paintRecording()) {
+                            for (clampedStart..clampedEnd) |cx| {
+                                const index: u32 = @intCast(borderYU32 * bufWidth + cx);
+                                if (!self.recordPaint(index, makeCell(hChar, borderFg, borderBg, 0), .direct)) {
+                                    self.buffer.char[index] = hChar;
+                                    self.buffer.fg[index] = borderFg;
+                                    self.buffer.bg[index] = borderBg;
+                                    self.buffer.attributes[index] = 0;
+                                }
+                            }
+                            continue;
+                        }
                         @memset(self.buffer.char[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], hChar);
                         @memset(self.buffer.fg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderFg);
                         @memset(self.buffer.bg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderBg);
@@ -2163,6 +2277,7 @@ pub const OptimizedBuffer = struct {
                     if (bx < 0) continue;
 
                     const idx = rowBase + @as(u32, @intCast(bx));
+                    if (self.recordPaint(idx, makeCell(vChar, borderFg, borderBg, 0), .direct)) continue;
                     self.buffer.char[idx] = vChar;
                     self.buffer.fg[idx] = borderFg;
                     self.buffer.bg[idx] = borderBg;
@@ -2211,7 +2326,7 @@ pub const OptimizedBuffer = struct {
         // When border glyphs are width-1, opaque, and tracker-free, drawing them
         // over a transparent background is just a direct char/fg/attrs write
         // while keeping the destination background unchanged.
-        return self.getCurrentOpacity() == 1.0 and
+        return !self.paintRecording() and self.getCurrentOpacity() == 1.0 and
             ansi.alpha(borderColor) == 255 and
             ansi.alpha(backgroundColor) == 0 and
             !self.grapheme_tracker.hasAny() and
@@ -2544,6 +2659,7 @@ pub const OptimizedBuffer = struct {
         source_height: u32,
         protocol: native_image.RenderProtocol,
     ) !bool {
+        self.paintFallback();
         const opacity = opacityToU8(self.getCurrentOpacity());
         if (opacity == 0) return false;
         if (width == 0 or height == 0 or source_width == 0 or source_height == 0 or

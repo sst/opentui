@@ -511,7 +511,7 @@ export abstract class Renderable extends BaseRenderable {
 
   public requestRender() {
     this.markDirty()
-    this._ctx.requestRender()
+    this._ctx.requestRender(this)
   }
 
   public get translateX(): number {
@@ -1827,7 +1827,35 @@ export class RootRenderable extends Renderable {
           // Skip if renderable was destroyed during a previous render callback
           if (!command.renderable.isDestroyed) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            if (buffer.experimentalPaintGrid) {
+              const renderable = command.renderable
+              const paint = buffer.lib.bufferPaintPush(
+                buffer.ptr,
+                renderable.num,
+                renderable.screenX,
+                renderable.screenY,
+                renderable.width,
+                renderable.height,
+                buffer.experimentalPaintForce ||
+                  renderable.isDirty ||
+                  Boolean(renderable.renderBefore || renderable.renderAfter),
+              )
+              try {
+                if (paint) renderable.render(buffer, deltaTime)
+                else
+                  this._ctx.addToHitGrid(
+                    renderable.screenX,
+                    renderable.screenY,
+                    renderable.width,
+                    renderable.height,
+                    renderable.num,
+                  )
+              } finally {
+                buffer.lib.bufferPaintPop(buffer.ptr)
+              }
+            } else {
+              command.renderable.render(buffer, deltaTime)
+            }
             this._currentRenderable = undefined
           }
           break

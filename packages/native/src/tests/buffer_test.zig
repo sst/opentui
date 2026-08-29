@@ -14,6 +14,284 @@ const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+test "paint grid retains ordered outside-layout inputs and inherited backgrounds" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 12, 4, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 12, 4, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.rgbColor(0, 0, 255, 255);
+    const red = ansi.rgbColor(255, 0, 0, 128);
+    for (0..5) |frame| {
+        control.clear(blue, null);
+        try target.beginPaint(blue, false);
+        const grid = target.paint_grid.?;
+        const lower_dirty = frame != 1;
+        const x: u32 = if (frame < 3) 4 else 6;
+        const text: []const u8 = if (frame < 2) "lower" else "other";
+        const record_lower = try grid.push(1, 0, 0, 1, 1, lower_dirty);
+        try std.testing.expectEqual(lower_dirty, record_lower);
+        if (record_lower) try target.drawText(text, x, 2, white, blue, 0);
+        grid.pop();
+        try control.drawText(text, x, 2, white, blue, 0);
+        if (frame < 4) {
+            const record_upper = try grid.push(2, 0, 0, 1, 1, false);
+            try std.testing.expectEqual(frame == 0, record_upper);
+            if (record_upper) {
+                target.fillRect(4, 2, 5, 1, red);
+                try target.drawText("!", 6, 2, white, null, 0);
+                target.fillRect(6, 2, 1, 1, red);
+            }
+            grid.pop();
+            control.fillRect(4, 2, 5, 1, red);
+            try control.drawText("!", 6, 2, white, null, 0);
+            control.fillRect(6, 2, 1, 1, red);
+        }
+        try grid.finish();
+        try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+        try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+        try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+        if (frame == 1) try std.testing.expectEqual(@as(u32, 0), grid.recomposed);
+        if (frame == 2) try std.testing.expectEqual(@as(u32, 3), grid.recomposed);
+    }
+}
+
+test "paint grid owns covered linked wide glyphs and repairs removed spans" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 8, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    const id = try links.alloc("https://example.com/retained");
+    try target.beginPaint(black, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, false);
+    try target.drawText("界", 4, 0, white, black, ansi.TextAttributes.setLinkId(0, id));
+    grid.pop();
+    _ = try grid.push(2, 0, 0, 1, 1, false);
+    try target.drawText("X", 5, 0, white, black, 0);
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqual(@as(u32, ' '), target.get(4, 0).?.char);
+    try target.beginPaint(black, false);
+    try std.testing.expect(!try grid.push(1, 0, 0, 1, 1, false));
+    grid.pop();
+    try grid.finish();
+    try std.testing.expect(gp.isGraphemeChar(target.get(4, 0).?.char));
+    try std.testing.expect(gp.isContinuationChar(target.get(5, 0).?.char));
+    try std.testing.expectEqual(id, ansi.TextAttributes.getLinkId(target.get(5, 0).?.attributes));
+    try target.beginPaint(black, false);
+    try grid.finish();
+    try std.testing.expect(!target.grapheme_tracker.hasAny());
+    try std.testing.expect(!target.link_tracker.hasAny());
+}
+
+test "paint grid nested context cleanup and late raw fallback materialize prefix once" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 8, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    try target.beginPaint(white, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, false);
+    try target.drawText("A", 0, 0, white, white, 0);
+    _ = try grid.push(2, 0, 0, 1, 1, false);
+    try target.pushScissorRect(1, 0, 1, 1);
+    try target.pushOpacity(0.5);
+    try target.drawText("B", 1, 0, white, white, 0);
+    grid.pop();
+    try std.testing.expectEqual(@as(usize, 0), target.scissor_stack.items.len);
+    try std.testing.expectEqual(@as(f32, 1), target.getCurrentOpacity());
+    try target.drawText("C", 2, 0, white, white, 0);
+    try std.testing.expectEqual(@as(u32, 2), grid.commands.items[0].pending.items[1].owner);
+    try std.testing.expectEqual(@as(u32, 1), grid.commands.items[0].pending.items[2].owner);
+    const raw = target.getCharPtr();
+    try std.testing.expectEqualSlices(u32, &.{ 'A', 'B', 'C' }, raw[0..3]);
+    raw[3] = 'D';
+    grid.pop();
+    try grid.finish();
+    try std.testing.expect(grid.fallback);
+    try std.testing.expectEqual(@as(u32, 'D'), target.get(3, 0).?.char);
+    try target.beginPaint(white, false);
+    try std.testing.expect(grid.fallback);
+    grid.abort();
+    try std.testing.expect(!grid.valid);
+}
+
+test "paint grid direct draw paths match full control under clipping and opacity" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 20, 8, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 20, 8, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    const source = try OptimizedBuffer.init(a, 3, 1, .{ .pool = &pool, .link_pool = &links });
+    defer source.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.rgbColor(0, 0, 255, 255);
+    const transparent = ansi.rgbColor(0, 0, 0, 0);
+    const border = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0x252c, 0x2534, 0x251c, 0x2524, 0x253c };
+    source.clear(ansi.rgbColor(255, 0, 0, 128), 'X');
+    for ([_]f32{ 1, 0.5 }) |opacity| {
+        for ([_]bool{ false, true }) |wide| {
+            control.clear(blue, null);
+            try target.beginPaint(blue, false);
+            const grid = target.paint_grid.?;
+            _ = try grid.push(1, 0, 0, 1, 1, true);
+            for ([_]*OptimizedBuffer{ control, target }) |out| {
+                if (wide) try out.drawText("界", 0, 7, white, blue, 0);
+                try out.pushOpacity(opacity);
+                try out.pushScissorRect(2, 0, 14, 8);
+                out.fillRect(0, 0, 18, 1, ansi.rgbColor(255, 0, 0, 128));
+                try out.drawBox(1, 1, 8, 4, &border, .{ .top = true, .bottom = true, .left = true, .right = true }, white, transparent, white, false, "title", 0, null, 0);
+                out.drawGrid(&border, white, blue, &.{ 10, 13, 18 }, 2, &.{ 0, 3, 5 }, 2, true, true);
+                out.drawFrameBuffer(10, 6, source, null, null, null, null);
+                out.drawGrayscaleBuffer(3, 6, &.{ 0.2, 0.4, 0.8, 1 }, 4, 1, white, transparent);
+                out.popScissorRect();
+                out.popOpacity();
+            }
+            grid.pop();
+            try grid.finish();
+            try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+            try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
+        }
+    }
+}
+
+test "paint grid inherited tabs sample the original cluster background once" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 4, 1, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 4, 1, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 128);
+    const background = ansi.rgbColor(0, 0, 255, 128);
+    control.clear(background, null);
+    try target.beginPaint(background, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, false);
+    for ([_]*OptimizedBuffer{ control, target }) |out| {
+        try out.pushOpacity(0.5);
+        try out.drawText("\t", 0, 0, white, null, 0);
+        out.popOpacity();
+    }
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+}
+
+test "paint grid allocation failure discards metadata without leaking ownership" {
+    const a = std.testing.allocator;
+    for (0..20) |fail_index| {
+        var pool = gp.GraphemePool.init(a);
+        defer pool.deinit();
+        var links = link.LinkPool.init(a);
+        defer links.deinit();
+        var failing = std.testing.FailingAllocator.init(a, .{ .fail_index = fail_index });
+        const target = OptimizedBuffer.init(failing.allocator(), 4, 1, .{ .pool = &pool, .link_pool = &links }) catch continue;
+        const white = ansi.rgbColor(255, 255, 255, 255);
+        if (target.beginPaint(white, false)) {
+            const grid = target.paint_grid.?;
+            if (grid.push(1, 0, 0, 1, 1, true)) |_| {
+                target.set(0, 0, .{ .char = 'X', .fg = white, .bg = white, .attributes = 0 });
+                grid.pop();
+                grid.finish() catch grid.abort();
+            } else |_| grid.abort();
+        } else |_| {}
+        target.deinit();
+        try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+    }
+}
+
+test "paint grid raw grid overwrite releases removed wide and link references" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 8, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const id = try links.alloc("https://example.com/grid");
+    try target.beginPaint(white, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, true);
+    try target.drawText("界", 1, 0, white, white, ansi.TextAttributes.setLinkId(0, id));
+    grid.pop();
+    _ = try grid.push(2, 0, 0, 1, 1, true);
+    target.drawGrid(&([_]u32{'+'} ** 11), white, white, &.{ 0, 4 }, 1, &.{ 0, 1 }, 1, true, true);
+    grid.pop();
+    try grid.finish();
+    try target.beginPaint(white, false);
+    try grid.finish();
+    try std.testing.expect(!target.grapheme_tracker.hasAny());
+    try std.testing.expect(!target.link_tracker.hasAny());
+}
+
+test "paint grid allocation traffic measurement" {
+    const a = std.testing.allocator;
+    for ([_]bool{ false, true }) |enabled| {
+        var tracking = std.testing.FailingAllocator.init(a, .{});
+        var pool = gp.GraphemePool.init(tracking.allocator());
+        defer pool.deinit();
+        var links = link.LinkPool.init(tracking.allocator());
+        defer links.deinit();
+        const target = try OptimizedBuffer.init(tracking.allocator(), 120, 40, .{ .pool = &pool, .link_pool = &links });
+        defer target.deinit();
+        const white = ansi.rgbColor(255, 255, 255, 255);
+        const blue = ansi.rgbColor(0, 0, 255, 255);
+        const text = "row 00 | retained cells and normal text rendering";
+        const start_bytes = tracking.allocated_bytes;
+        const start_count = tracking.alloc_index;
+        var cold_bytes: usize = 0;
+        var cold_count: usize = 0;
+        for (0..24) |frame| {
+            if (enabled) try target.beginPaint(blue, false) else target.clear(blue, null);
+            for (0..80) |i| {
+                const x: u32 = @intCast(i / 40 * 60);
+                const y: u32 = @intCast(i % 40);
+                const paint = if (enabled) try target.paint_grid.?.push(@intCast(i + 1), @intCast(x), @intCast(y), 1, 1, i == 0) else true;
+                if (paint) {
+                    try target.drawText(text, x, y, white, blue, 0);
+                    if (i == 0) target.drawChar(@intCast('0' + frame % 10), x, y, white, blue, 0);
+                }
+                if (enabled) target.paint_grid.?.pop();
+            }
+            if (enabled) try target.paint_grid.?.finish();
+            if (frame == 0) {
+                cold_bytes = tracking.allocated_bytes - start_bytes;
+                cold_count = tracking.alloc_index - start_count;
+            }
+        }
+        std.debug.print("paint-grid-alloc enabled={} cold_allocs={} cold_requested={} warm_allocs={} warm_requested={} retained={} op_stride={}\n", .{
+            enabled,                                                 cold_count,                                         cold_bytes, tracking.alloc_index - start_count - cold_count, tracking.allocated_bytes - start_bytes - cold_bytes,
+            if (enabled) target.paint_grid.?.retainedBytes() else 0, @sizeOf(@import("../paint-grid.zig").PaintGrid.Op),
+        });
+    }
+}
+
 test "OptimizedBuffer draws image reservation markers" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
