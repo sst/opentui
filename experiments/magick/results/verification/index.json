@@ -1,0 +1,166 @@
+[
+  {
+    "name": "native",
+    "command": ["bun", "run", "test:native", "-j2"],
+    "cwd": "packages/core",
+    "exitCode": 0,
+    "seconds": 7.135099527,
+    "tail": [
+      "",
+      "anyzig: .minimum_zig_version '0.16.0' pulled from '/home/simon/src/wt/ot-magick/packages/native/examples/hello/build.zig.zon'",
+      "anyzig: appdata '/home/simon/.local/share/anyzig'",
+      "anyzig: zig '0.16.0' already exists at '/home/simon/.cache/zig/p/N-V-__8AAFFSVRWqblwBIcA-Yqv-u7sbjsJoww8K0mWaHbmJ'",
+      "anyzig: .minimum_zig_version '0.16.0' pulled from '/home/simon/src/wt/ot-magick/packages/native/examples/hello/build.zig.zon'",
+      "anyzig: appdata '/home/simon/.local/share/anyzig'",
+      "anyzig: zig '0.16.0' already exists at '/home/simon/.cache/zig/p/N-V-__8AAFFSVRWqblwBIcA-Yqv-u7sbjsJoww8K0mWaHbmJ'",
+      "rendered 146 and 193 bytes"
+    ]
+  },
+  {
+    "name": "bun",
+    "command": ["bun", "run", "test:js"],
+    "cwd": "packages/core",
+    "exitCode": 0,
+    "seconds": 32.133044778999995,
+    "tail": [
+      "(skip) percent_of_max_main",
+      "(skip) percent_of_min_cross_unstretched",
+      "",
+      " 5537 pass",
+      " 23 skip",
+      " 0 fail",
+      " 239 snapshots, 91614 expect() calls",
+      "Ran 5560 tests across 191 files. [32.10s]"
+    ]
+  },
+  {
+    "name": "node",
+    "command": ["bun", "run", "test:js:node"],
+    "cwd": "packages/core",
+    "exitCode": 0,
+    "seconds": 44.202712162000005,
+    "tail": [
+      "ℹ tests 4800",
+      "ℹ suites 574",
+      "ℹ pass 4794",
+      "ℹ fail 0",
+      "ℹ cancelled 0",
+      "ℹ skipped 6",
+      "ℹ todo 0",
+      "ℹ duration_ms 40542.638604"
+    ]
+  },
+  {
+    "name": "distribution",
+    "command": ["bun", "run", "test:dist", "--skip-build"],
+    "cwd": "packages/core",
+    "exitCode": 0,
+    "seconds": 5.092201988000001,
+    "tail": [
+      "index.test.ts:",
+      "(pass) @opentui/core dist smoke test > imports portable and Bun-only entrypoints [125.99ms]",
+      "",
+      " 1 pass",
+      " 0 fail",
+      " 24 expect() calls",
+      "Ran 1 test across 1 file. [132.00ms]",
+      "Packed dist smoke tests passed"
+    ]
+  },
+  {
+    "name": "gpu-three",
+    "command": ["bun", "test", "src/canvas.test.ts"],
+    "cwd": "packages/three",
+    "exitCode": 0,
+    "seconds": 0.25951938700000754,
+    "tail": [
+      "src/canvas.test.ts:",
+      "(pass) NONE readback preserves padded rgba8unorm frames [54.52ms]",
+      "(pass) NONE readback preserves padded bgra8unorm frames [15.99ms]",
+      "",
+      " 2 pass",
+      " 0 fail",
+      " 32 expect() calls",
+      "Ran 2 tests across 1 file. [252.00ms]"
+    ]
+  },
+  {
+    "name": "gpu-examples",
+    "command": ["bun", "test", "src/magick"],
+    "cwd": "packages/examples",
+    "exitCode": 0,
+    "seconds": 7.883498363999999,
+    "tail": [
+      "(pass) pointer/command-buffers preserves GPU colors, padding, and ownership over many frames [96.03ms]",
+      "(pass) pointer/passes preserves GPU colors, padding, and ownership over many frames [96.04ms]",
+      "(pass) pointer/combined preserves GPU colors, padding, and ownership over many frames [96.02ms]",
+      "",
+      " 33 pass",
+      " 0 fail",
+      " 61494 expect() calls",
+      "Ran 33 tests across 4 files. [7.87s]"
+    ]
+  },
+  {
+    "name": "examples-types",
+    "command": [
+      "bun",
+      "packages/core/node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "packages/examples/src/magick/tsconfig.json"
+    ],
+    "cwd": ".",
+    "exitCode": 0,
+    "seconds": 1.7887592189999997,
+    "tail": [""]
+  },
+  {
+    "name": "sharing",
+    "command": [
+      "make",
+      "verify",
+      "three-verify",
+      "WEBGPU_NODE_MODULES=/home/simon/src/wt/ot-magick/packages/examples/node_modules"
+    ],
+    "cwd": "experiments/magick/gpu-sharing",
+    "exitCode": 0,
+    "seconds": 8.488498651000002,
+    "tail": [
+      "    \"Validation compares FNV1a64 over every RGBA byte to a separately rendered private reference texture\",",
+      "    \"Primary-color calibration also checks every sampled RGBA value exactly\",",
+      "    \"No-readback mode skips validation and forbids both readback entrypoints with an independently tested preload guard\",",
+      "    \"Vulkan bridge records ownership/layout barriers only; its bounded host waits protect command buffer reuse\",",
+      "    \"Pinned Bun private texture wrapper and instance-local Three canvas-format hook; no public API changes\",",
+      "    \"No Vulkan validation layer installed; native Dawn validation scopes checked\"",
+      "  ]",
+      "}"
+    ]
+  },
+  {
+    "name": "format",
+    "command": ["bun", "run", "fmt:check"],
+    "cwd": ".",
+    "exitCode": 0,
+    "seconds": 2.390866233000008,
+    "tail": [
+      "$ oxfmt --check .",
+      "Checking formatting...",
+      "",
+      "All matched files use the correct format.",
+      "Finished in 2327ms on 1353 files using 16 threads."
+    ]
+  },
+  {
+    "name": "lint",
+    "command": ["bun", "run", "lint"],
+    "cwd": ".",
+    "exitCode": 0,
+    "seconds": 0.22463852100000076,
+    "tail": [
+      "$ oxlint .",
+      "Found 0 warnings and 0 errors.",
+      "Finished in 197ms on 947 files with 1 rules using 16 threads."
+    ]
+  }
+]

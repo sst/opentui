@@ -68,6 +68,11 @@ pixel buffer or queue another frame. Retained images and framebuffer snapshots s
 immutable. New publication handles keep the existing renderer caches correct.
 Stop the producer before disposing the pool. Create a new pool to change dimensions.
 
+Keep one GPU adapter per client session. The private adapter now releases its
+per-frame native handles, but repeated adapter creation still retains provider
+resources. Pool resizing does not require repeated GPU-device creation.
+Read [GPU-LIFETIME.md](GPU-LIFETIME.md) for the release ablations and remaining limits.
+
 The example GPU adapter calls its pixel consumer synchronously, before unmapping.
 Do not retain its mapped view. Both pixel APIs finish their owned copy during that
 callback. The optional pointer-mapping benchmark has the same lifetime requirement.
@@ -77,6 +82,10 @@ callback. The optional pointer-mapping benchmark has the same lifetime requireme
 The runner can load Core from another built worktree. Each case uses a fresh process.
 The case files retain the local paths used for the recorded run. Replace their
 `--core` arguments if you move the checkouts.
+
+The initial matrix used benchmark commit `d2639fd9`. The current harness defaults
+to corrected GPU ownership. Use `cases/final.json` for the corrected terminal
+checks, or the lifetime diagnostic for explicit release ablations.
 
 ```sh
 bun packages/examples/src/magick/bench.ts \

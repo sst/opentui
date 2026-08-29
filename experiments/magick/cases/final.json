@@ -1,0 +1,194 @@
+[
+  {
+    "name": "ghostty-640-managed-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1280-managed-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1920-managed-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-640-file-only-topic",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-file-only",
+      "--import=baseline",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1280-file-only-topic",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-file-only",
+      "--import=baseline",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-640-managed-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-managed-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1920-managed-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-640-file-only-topic",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-file-only",
+      "--import=baseline",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-file-only-topic",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-file-only",
+      "--import=baseline",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-640-file-only-fallback",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-file-only",
+      "--import=baseline",
+      "--transport=file",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-managed-soak",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=7200",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-managed-soak",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=7200",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  }
+]

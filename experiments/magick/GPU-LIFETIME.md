@@ -148,6 +148,7 @@ Also record the untreated baseline in a separate process:
 ```sh
 timeout 300s bun packages/examples/src/magick/gpu-lifetime-diagnostic.ts \
   --release=baseline --canvas-view=baseline \
+  --warmup=600 --frames=12000 --fps=0 \
   --output=experiments/magick/results/gpu-lifetime/untreated.json
 ```
 

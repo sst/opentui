@@ -1,0 +1,282 @@
+{
+  "date": "2026-08-29T13:46:52.623Z",
+  "revision": "640ba6965103a75d3b5c4ed57be8f44de9c440f0",
+  "root": "/home/simon/src/wt/ot-magick",
+  "libraryPath": "/home/simon/src/wt/ot-magick/packages/core/node_modules/@opentui/core-linux-x64/libopentui.so",
+  "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+  "sources": {
+    "bench.ts": "161a9b9ed375dd8810ada654ab67b48a3fc644fc8011e704ddbbb8eca58bbf9a",
+    "arena.ts": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+    "pixel-renderer.ts": "582336f89da355d7a0c66210bdf447fbce1e10c5e06391df4bf633ea2363a2f5"
+  },
+  "environment": {
+    "bun": "1.3.14",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "kernel": "7.1.8-arch1-3",
+    "terminal": "WezTerm"
+  },
+  "settings": {
+    "terminal": true,
+    "terminal-pid": "3499898",
+    "import": "pooled-native",
+    "mapping": "pointer",
+    "transport": "zlib",
+    "width": 1920,
+    "height": 1080,
+    "frames": 1,
+    "warmup": 60,
+    "fps": 60,
+    "validate-output": true,
+    "noise": true,
+    "output": "/home/simon/src/wt/ot-magick/experiments/magick/results/validation/wezterm-1920-zlib-noise.json",
+    "run-id": "591de4eb-0e41-4c7d-ba5f-6c7e83af9930",
+    "window-class": "org.opentui.magick.b591de4eb0e414c7dba5f6c7e83af9930",
+    "window-size": "660x500",
+    "particles": 512
+  },
+  "timing": "Native stdout. Service begins at scene update and ends at DSR parser acknowledgement. Not presentation or input-to-photon latency. No output capture/forwarding.",
+  "window": {
+    "address": "0x561cfe924c00",
+    "class": "org.opentui.magick.b591de4eb0e414c7dba5f6c7e83af9930",
+    "pid": 3499898,
+    "size": [660, 500],
+    "xwayland": true
+  },
+  "transportAtStart": {
+    "requested": "zlib",
+    "effective": "raw",
+    "fileState": "disabled",
+    "fallback": "none",
+    "pendingFiles": 0,
+    "pendingBytes": 0
+  },
+  "adapter": {
+    "nextInChain": 0,
+    "vendor": "amd",
+    "architecture": "rdna-3",
+    "device": "amd-radeon-rx-7600-radv-navi33",
+    "description": "radv: Mesa 26.1.7-arch1.1",
+    "backendType": 6,
+    "adapterType": 1,
+    "vendorID": 4098,
+    "deviceID": 29824,
+    "subgroupMinSize": 32,
+    "subgroupMaxSize": 64,
+    "isFallbackAdapter": false
+  },
+  "scene": {
+    "wizards": 4,
+    "tiles": 324,
+    "obstacles": 6,
+    "enemies": 32,
+    "particles": 512,
+    "meshes": 28,
+    "triangles": 15472
+  },
+  "geometry": {
+    "columns": 130,
+    "rows": 42,
+    "resolution": {
+      "width": 1300,
+      "height": 924
+    }
+  },
+  "firstFrameSha256": "c4a91b579cf6401925fa33cf55fb257cada647fba8986312d47daacb77a7cf0a",
+  "summary": {
+    "updateMs": {
+      "n": 1,
+      "mean": 0.062291000000186614,
+      "p50": 0.062291000000186614,
+      "p95": 0.062291000000186614,
+      "p99": 0.062291000000186614,
+      "max": 0.062291000000186614
+    },
+    "prepareMs": {
+      "n": 1,
+      "mean": 0.3640820000000531,
+      "p50": 0.3640820000000531,
+      "p95": 0.3640820000000531,
+      "p99": 0.3640820000000531,
+      "max": 0.3640820000000531
+    },
+    "submitMs": {
+      "n": 1,
+      "mean": 0.9573270000000775,
+      "p50": 0.9573270000000775,
+      "p95": 0.9573270000000775,
+      "p99": 0.9573270000000775,
+      "max": 0.9573270000000775
+    },
+    "readbackMs": {
+      "n": 1,
+      "mean": 1.0862280000001192,
+      "p50": 1.0862280000001192,
+      "p95": 1.0862280000001192,
+      "p99": 1.0862280000001192,
+      "max": 1.0862280000001192
+    },
+    "consumeMs": {
+      "n": 1,
+      "mean": 3.057560999999623,
+      "p50": 3.057560999999623,
+      "p95": 3.057560999999623,
+      "p99": 3.057560999999623,
+      "max": 3.057560999999623
+    },
+    "submissionMs": {
+      "n": 1,
+      "mean": 121.39023700000143,
+      "p50": 121.39023700000143,
+      "p95": 121.39023700000143,
+      "p99": 121.39023700000143,
+      "max": 121.39023700000143
+    },
+    "drainMs": {
+      "n": 1,
+      "mean": 22.614182999999684,
+      "p50": 22.614182999999684,
+      "p95": 22.614182999999684,
+      "p99": 22.614182999999684,
+      "max": 22.614182999999684
+    },
+    "totalMs": {
+      "n": 1,
+      "mean": 144.01288000000022,
+      "p50": 144.01288000000022,
+      "p95": 144.01288000000022,
+      "p99": 144.01288000000022,
+      "max": 144.01288000000022
+    },
+    "rss": {
+      "n": 1,
+      "mean": 310968320,
+      "p50": 310968320,
+      "p95": 310968320,
+      "p99": 310968320,
+      "max": 310968320
+    },
+    "nativeRenderMs": {
+      "n": 1,
+      "mean": 95.182,
+      "p50": 95.182,
+      "p95": 95.182,
+      "p99": 95.182,
+      "max": 95.182
+    },
+    "nativeWriteMs": {
+      "n": 1,
+      "mean": 20.863,
+      "p50": 20.863,
+      "p95": 20.863,
+      "p99": 20.863,
+      "max": 20.863
+    },
+    "file": {
+      "n": 1,
+      "mean": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "zlib": {
+      "n": 1,
+      "mean": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "pendingFiles": {
+      "n": 1,
+      "mean": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "pendingBytes": {
+      "n": 1,
+      "mean": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    }
+  },
+  "throughput": {
+    "seconds": 0.14424740100000052,
+    "completedFramesPerSecond": 6.932533917890114,
+    "clientCpuCores": 0.7738094359148946,
+    "terminalCpuCores": 0.34662669589450573,
+    "over16ms": 1
+  },
+  "capabilities": {
+    "kitty_keyboard": false,
+    "kitty_graphics": true,
+    "rgb": true,
+    "ansi256": true,
+    "unicode": "unicode",
+    "sgr_pixels": true,
+    "color_scheme_updates": false,
+    "explicit_width": false,
+    "scaled_text": false,
+    "sixel": true,
+    "focus_tracking": true,
+    "sync": true,
+    "bracketed_paste": true,
+    "hyperlinks": true,
+    "osc52": true,
+    "osc52_support": "supported",
+    "notifications": true,
+    "explicit_cursor_positioning": false,
+    "remote": false,
+    "multiplexer": "none",
+    "image_protocol": "auto",
+    "terminal": {
+      "name": "WezTerm",
+      "version": "20240203-110809-5046fc22",
+      "from_xtversion": true
+    }
+  },
+  "transportAtEnd": {
+    "requested": "zlib",
+    "effective": "raw",
+    "fileState": "disabled",
+    "fallback": "compression",
+    "pendingFiles": 0,
+    "pendingBytes": 0
+  },
+  "resources": {
+    "fdsStart": 22,
+    "fdsPeak": 22,
+    "fdsEnd": 22
+  },
+  "validation": {
+    "sourceSha256": "36daa951146a215cb6be43a6c7ea5a2cd16e7e71adb5b47a0314f39f6507c483",
+    "encoding": "raw",
+    "acknowledged": false,
+    "wirePixelsCompared": true,
+    "response": "\u001b[0n"
+  },
+  "remainingNewFiles": [],
+  "samples": [
+    {
+      "updateMs": 0.062291000000186614,
+      "prepareMs": 0.3640820000000531,
+      "submitMs": 0.9573270000000775,
+      "readbackMs": 1.0862280000001192,
+      "consumeMs": 3.057560999999623,
+      "submissionMs": 121.39023700000143,
+      "drainMs": 22.614182999999684,
+      "totalMs": 144.01288000000022,
+      "rss": 310968320,
+      "nativeRenderMs": 95.182,
+      "nativeWriteMs": 20.863,
+      "file": 0,
+      "zlib": 0,
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    }
+  ]
+}

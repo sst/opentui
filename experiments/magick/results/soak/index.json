@@ -1,0 +1,176 @@
+[
+  {
+    "name": "ghostty-1280-file-soak",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 7200,
+      "mean": 3.065907758749971,
+      "p50": 2.9193130000057863,
+      "p95": 4.923458000004757,
+      "p99": 5.550963000001502,
+      "max": 8.528624999991735
+    },
+    "prepare": {
+      "n": 7200,
+      "mean": 0.16469273833340478,
+      "p50": 0.16061099999933504,
+      "p95": 0.19988200000079814,
+      "p99": 0.24620199999480974,
+      "max": 2.902773000000252
+    },
+    "throughput": {
+      "seconds": 120.00056996499998,
+      "completedFramesPerSecond": 59.999715018853585,
+      "clientCpuCores": 0.2890647770266197,
+      "terminalCpuCores": 0.045083119201666376,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe894460",
+      "class": "org.opentui.magick.b6982ee2e3cd44fc9a1d490320c001ac3",
+      "pid": 3417367,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0
+  },
+  {
+    "name": "kitty-1280-file-soak",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 7200,
+      "mean": 6.960588252638869,
+      "p50": 6.698500999991666,
+      "p95": 8.732726999995066,
+      "p99": 9.432172000000719,
+      "max": 13.74939500000255
+    },
+    "prepare": {
+      "n": 7200,
+      "mean": 0.16960526930547043,
+      "p50": 0.16348099999595433,
+      "p95": 0.21068200000445358,
+      "p99": 0.24666199999046512,
+      "max": 2.37616799999887
+    },
+    "throughput": {
+      "seconds": 120.00051463000001,
+      "completedFramesPerSecond": 59.99974268610351,
+      "clientCpuCores": 0.2977749813005114,
+      "terminalCpuCores": 0.16316596691582036,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfe8d7430",
+      "class": "org.opentui.magick.b2aca2df0aa1c43c390bdf5dcf6a2c0fc",
+      "pid": 3420729,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0
+  },
+  {
+    "name": "wezterm-640-zlib-soak",
+    "terminal": "wezterm",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 3600,
+      "mean": 9.770950402777734,
+      "p50": 8.794396999997844,
+      "p95": 13.234601000000112,
+      "p99": 15.37645799999882,
+      "max": 21.77170599999954
+    },
+    "prepare": {
+      "n": 3600,
+      "mean": 0.05249124194444436,
+      "p50": 0.050861000003351364,
+      "p95": 0.06971100000009756,
+      "p99": 0.07912999999825843,
+      "max": 0.6221750000004249
+    },
+    "throughput": {
+      "seconds": 60.01194743,
+      "completedFramesPerSecond": 59.98805494854444,
+      "clientCpuCores": 0.2982466453180388,
+      "terminalCpuCores": 0.4562424845808741,
+      "over16ms": 12
+    },
+    "geometry": {
+      "columns": 130,
+      "rows": 42,
+      "resolution": {
+        "width": 1300,
+        "height": 924
+      }
+    },
+    "window": {
+      "address": "0x561cfea3bb20",
+      "class": "org.opentui.magick.be8092450653746c38a9d805dbebdb0f9",
+      "pid": 3423917,
+      "size": [660, 500],
+      "xwayland": true
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  }
+]

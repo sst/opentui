@@ -1,0 +1,828 @@
+[
+  {
+    "name": "ghostty-640-managed-file",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 2.014076466666667,
+      "p50": 1.7338119999999435,
+      "p95": 2.8206210000000738,
+      "p99": 5.2748499999997875,
+      "max": 5.802213999999822
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.06230473333330868,
+      "p50": 0.05774100000053295,
+      "p95": 0.08428099999946426,
+      "p99": 0.1060909999996511,
+      "max": 0.47707400000035705
+    },
+    "throughput": {
+      "seconds": 5.000583332,
+      "completedFramesPerSecond": 59.993000832567674,
+      "clientCpuCores": 0.2847373807148466,
+      "terminalCpuCores": 0.041995100582797366,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe928b70",
+      "class": "org.opentui.magick.beedd50691e2b41529add67f0c4e8a2c6",
+      "pid": 3550739,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "1addbcdc9cddcec3c1fc1ba8f99b73a03c0e32018ff5515fbf42cd5d9bdd1765",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "ghostty-1280-managed-file",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 3.607202260000006,
+      "p50": 3.3341449999998076,
+      "p95": 6.354607999999644,
+      "p99": 7.158534000000145,
+      "max": 11.239775000000009
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.1840577266666666,
+      "p50": 0.17542200000025332,
+      "p95": 0.2476419999998143,
+      "p99": 0.2814520000001721,
+      "max": 0.597805000000335
+    },
+    "throughput": {
+      "seconds": 4.998910041,
+      "completedFramesPerSecond": 60.01308235984717,
+      "clientCpuCores": 0.4157412281786649,
+      "terminalCpuCores": 0.04200915765189302,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe91afa0",
+      "class": "org.opentui.magick.b5b56007262d24f7eb0d02e8835439e58",
+      "pid": 3551033,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "ba4bba78f672fc35a063080a2c985d52e5e4ab15eb33964c379709009d63e8d2",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "ghostty-1920-managed-file",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 5.977988399999984,
+      "p50": 5.27187000000049,
+      "p95": 8.855767000000014,
+      "p99": 9.374921000000086,
+      "max": 9.83173399999987
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.40582906333334906,
+      "p50": 0.3844130000002224,
+      "p95": 0.5332739999994374,
+      "p99": 0.6002439999999751,
+      "max": 0.9969069999997373
+    },
+    "throughput": {
+      "seconds": 4.999570267,
+      "completedFramesPerSecond": 60.005157239247175,
+      "clientCpuCores": 0.689530462798874,
+      "terminalCpuCores": 0.08600739204292095,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe921ce0",
+      "class": "org.opentui.magick.bce98254c0eff4ebe99b201b4fd2b4f98",
+      "pid": 3551324,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "4a5f5d3f5e4da058562e5906cca9c1884b92de4783edf717d431d1dff58ba874",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "d09c35c437887e746a4d6e853f233ac37c20414d98d52e6c111fa452b9d729aa",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "ghostty-640-file-only-topic",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 180,
+      "mean": 2.373492133333337,
+      "p50": 2.2000269999998636,
+      "p95": 2.9124320000000807,
+      "p99": 5.452032000000145,
+      "max": 5.745794000000387
+    },
+    "prepare": {
+      "n": 180,
+      "mean": 0.46105575555555256,
+      "p50": 0.44694299999991927,
+      "p95": 0.5408139999999548,
+      "p99": 0.6729049999999006,
+      "max": 0.6784349999998085
+    },
+    "throughput": {
+      "seconds": 2.9970562820000004,
+      "completedFramesPerSecond": 60.05893218657946,
+      "clientCpuCores": 0.2827010640703076,
+      "terminalCpuCores": 0.033366073436988594,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe921ce0",
+      "class": "org.opentui.magick.b1bda9ab0b3334cd2bdd7f9f405ee0066",
+      "pid": 3551571,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "b8fc40fa2fe5b8eb948ffa20f90d11ea3fdec318",
+    "librarySha256": "ba83974694e601fb25e6a7eab46d22eb9d15162d76ca6e9708d4bbcfb24a6e95",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "f3f19787ea34e06ddcb7c0e4dc730867fb7ba44f1cebe8bf2f8f293c7f6b7017",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "ghostty-1280-file-only-topic",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 180,
+      "mean": 5.366797811111096,
+      "p50": 5.117478000000119,
+      "p95": 8.082962000000407,
+      "p99": 8.831246000000192,
+      "max": 8.928768000000218
+    },
+    "prepare": {
+      "n": 180,
+      "mean": 1.7659938666666828,
+      "p50": 1.7411430000001928,
+      "p95": 1.9173839999998563,
+      "p99": 2.0777859999998327,
+      "max": 2.204225999999835
+    },
+    "throughput": {
+      "seconds": 2.9992529750000005,
+      "completedFramesPerSecond": 60.01494422123561,
+      "clientCpuCores": 0.4867305332922108,
+      "terminalCpuCores": 0.053346617085542766,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe921ce0",
+      "class": "org.opentui.magick.b1a92f4d437d14678a1134745f4b23c0e",
+      "pid": 3551770,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "b8fc40fa2fe5b8eb948ffa20f90d11ea3fdec318",
+    "librarySha256": "ba83974694e601fb25e6a7eab46d22eb9d15162d76ca6e9708d4bbcfb24a6e95",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "32a81a94acd00fed10064cd74f7342ca80727ffbcd4940da418c1c92ce7f3cc2",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-640-managed-file",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 4.732266370000009,
+      "p50": 4.52486399999998,
+      "p95": 5.466451000000234,
+      "p99": 7.914708999999675,
+      "max": 8.467164000000139
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.05423335333333474,
+      "p50": 0.05164100000001781,
+      "p95": 0.07030000000031578,
+      "p99": 0.09050100000058592,
+      "max": 0.46742300000005343
+    },
+    "throughput": {
+      "seconds": 4.998673743,
+      "completedFramesPerSecond": 60.015919306618365,
+      "clientCpuCores": 0.24301125907668586,
+      "terminalCpuCores": 0.09402494024703544,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfea27e20",
+      "class": "org.opentui.magick.be2b5be553be2451f9e77f4f23d76b315",
+      "pid": 3551987,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "1addbcdc9cddcec3c1fc1ba8f99b73a03c0e32018ff5515fbf42cd5d9bdd1765",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-1280-managed-file",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 7.015137749999967,
+      "p50": 6.685939999999391,
+      "p95": 9.586193000000094,
+      "p99": 10.13996700000007,
+      "max": 10.469759000000067
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.17892325333332035,
+      "p50": 0.17257100000006176,
+      "p95": 0.2409909999996671,
+      "p99": 0.25723199999993085,
+      "max": 0.5943539999998393
+    },
+    "throughput": {
+      "seconds": 5.000048184,
+      "completedFramesPerSecond": 59.999421797572026,
+      "clientCpuCores": 0.39160682616333764,
+      "terminalCpuCores": 0.16199843885344448,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfea27e20",
+      "class": "org.opentui.magick.b507e45d7854a48a1a5f3053708ccec5e",
+      "pid": 3552219,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "ba4bba78f672fc35a063080a2c985d52e5e4ab15eb33964c379709009d63e8d2",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-1920-managed-file",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 300,
+      "mean": 10.530687673333356,
+      "p50": 9.737122999999883,
+      "p95": 12.997478000000228,
+      "p99": 13.516841999999997,
+      "max": 16.83445699999993
+    },
+    "prepare": {
+      "n": 300,
+      "mean": 0.3716846266666736,
+      "p50": 0.36168199999974604,
+      "p95": 0.45735400000012305,
+      "p99": 0.5516939999997703,
+      "max": 0.8088859999998022
+    },
+    "throughput": {
+      "seconds": 4.999859002999999,
+      "completedFramesPerSecond": 60.00169201171372,
+      "clientCpuCores": 0.6352709142586197,
+      "terminalCpuCores": 0.2960083472577877,
+      "over16ms": 1
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.bd2640347899a4b6aaab0d6f77061da2c",
+      "pid": 3552439,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "4a5f5d3f5e4da058562e5906cca9c1884b92de4783edf717d431d1dff58ba874",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "d09c35c437887e746a4d6e853f233ac37c20414d98d52e6c111fa452b9d729aa",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-640-file-only-topic",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 180,
+      "mean": 5.410660238888888,
+      "p50": 5.248330000000351,
+      "p95": 6.032995999999912,
+      "p99": 8.322993000000224,
+      "max": 8.402262999999948
+    },
+    "prepare": {
+      "n": 180,
+      "mean": 0.44845356666669306,
+      "p50": 0.43439300000000003,
+      "p95": 0.5031739999999445,
+      "p99": 0.654765000000225,
+      "max": 0.6986950000000434
+    },
+    "throughput": {
+      "seconds": 3.0002055249999993,
+      "completedFramesPerSecond": 59.995889781584225,
+      "clientCpuCores": 0.28359090499308387,
+      "terminalCpuCores": 0.09332693966024214,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.b7e47bd20714143aa8f6768abb05f38e5",
+      "pid": 3552676,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "b8fc40fa2fe5b8eb948ffa20f90d11ea3fdec318",
+    "librarySha256": "ba83974694e601fb25e6a7eab46d22eb9d15162d76ca6e9708d4bbcfb24a6e95",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "f3f19787ea34e06ddcb7c0e4dc730867fb7ba44f1cebe8bf2f8f293c7f6b7017",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-1280-file-only-topic",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 180,
+      "mean": 8.748874016666663,
+      "p50": 8.337172999999893,
+      "p95": 11.295524999999998,
+      "p99": 12.230583000000024,
+      "max": 13.874915000000328
+    },
+    "prepare": {
+      "n": 180,
+      "mean": 1.6998898833333493,
+      "p50": 1.670242000000144,
+      "p95": 1.895944000000327,
+      "p99": 2.0693159999998443,
+      "max": 2.196555999999873
+    },
+    "throughput": {
+      "seconds": 2.9994952400000003,
+      "completedFramesPerSecond": 60.01009689883688,
+      "clientCpuCores": 0.4861801347616074,
+      "terminalCpuCores": 0.1633608193357226,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.b781e42edba7c440fa5e54b97346af844",
+      "pid": 3552852,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "b8fc40fa2fe5b8eb948ffa20f90d11ea3fdec318",
+    "librarySha256": "ba83974694e601fb25e6a7eab46d22eb9d15162d76ca6e9708d4bbcfb24a6e95",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "32a81a94acd00fed10064cd74f7342ca80727ffbcd4940da418c1c92ce7f3cc2",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "wezterm-640-file-only-fallback",
+    "terminal": "wezterm",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 180,
+      "mean": 10.486898444444448,
+      "p50": 9.915315000000192,
+      "p95": 13.509092000000237,
+      "p99": 14.207296999999016,
+      "max": 15.40383699999984
+    },
+    "prepare": {
+      "n": 180,
+      "mean": 0.4812482888888452,
+      "p50": 0.4655940000011469,
+      "p95": 0.6518649999998161,
+      "p99": 0.711395000000266,
+      "max": 0.7286050000002433
+    },
+    "throughput": {
+      "seconds": 2.9994425000000002,
+      "completedFramesPerSecond": 60.01115207242679,
+      "clientCpuCores": 0.3407476556060001,
+      "terminalCpuCores": 0.5901096620455301,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 130,
+      "rows": 42,
+      "resolution": {
+        "width": 1300,
+        "height": 924
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.be11693d260d54fed8e6b343e19e992f0",
+      "pid": 3553119,
+      "size": [660, 500],
+      "xwayland": true
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "b8fc40fa2fe5b8eb948ffa20f90d11ea3fdec318",
+    "librarySha256": "ba83974694e601fb25e6a7eab46d22eb9d15162d76ca6e9708d4bbcfb24a6e95",
+    "transport": {
+      "requested": "file",
+      "effective": "raw",
+      "fileState": "timeout",
+      "fallback": "unavailable",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "ghostty-1280-managed-soak",
+    "terminal": "ghostty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 7200,
+      "mean": 3.2816869748612327,
+      "p50": 2.9852519999985816,
+      "p95": 5.453201000003901,
+      "p99": 6.012716000000182,
+      "max": 9.11891900000046
+    },
+    "prepare": {
+      "n": 7200,
+      "mean": 0.172476177777728,
+      "p50": 0.16671099999803118,
+      "p95": 0.22630199999548495,
+      "p99": 0.25416199999745004,
+      "max": 2.4551680000004126
+    },
+    "throughput": {
+      "seconds": 119.999801844,
+      "completedFramesPerSecond": 60.00009907816361,
+      "clientCpuCores": 0.350253936707659,
+      "terminalCpuCores": 0.050500083390787695,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 118,
+      "rows": 39,
+      "resolution": {
+        "width": 1298,
+        "height": 975
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.b1d806c1c6ba74196abaa86dd010e4fa8",
+      "pid": 3553458,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "77a8305bc4b98d519ada9b4242f3bc8b7709145502f59258602aff125f91d705",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  },
+  {
+    "name": "kitty-1280-managed-soak",
+    "terminal": "kitty",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 7200,
+      "mean": 6.811645788472258,
+      "p50": 6.559330000000045,
+      "p95": 8.904432000002998,
+      "p99": 9.507652000000235,
+      "max": 13.585491999999704
+    },
+    "prepare": {
+      "n": 7200,
+      "mean": 0.16982248305555728,
+      "p50": 0.16433099999994738,
+      "p95": 0.22574200000235578,
+      "p99": 0.24972200000775047,
+      "max": 2.6091210000013234
+    },
+    "throughput": {
+      "seconds": 119.999899182,
+      "completedFramesPerSecond": 60.00005040904235,
+      "clientCpuCores": 0.33253606271350644,
+      "terminalCpuCores": 0.17041680984234947,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 132,
+      "rows": 45,
+      "resolution": {
+        "width": 1320,
+        "height": 990
+      }
+    },
+    "window": {
+      "address": "0x561cfe927d80",
+      "class": "org.opentui.magick.b728b3153d7634207b7e3ea020fb8c799",
+      "pid": 3556636,
+      "size": [660, 500],
+      "xwayland": false
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "c8f6fd9753ddac1dd2993e97f00c8e6da5a89b19",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "file",
+      "effective": "file",
+      "fileState": "ready",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 1,
+    "zlibFraction": 0,
+    "validation": {
+      "sourceSha256": "77a8305bc4b98d519ada9b4242f3bc8b7709145502f59258602aff125f91d705",
+      "encoding": "file",
+      "acknowledged": true,
+      "wirePixelsCompared": false
+    }
+  }
+]

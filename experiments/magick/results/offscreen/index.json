@@ -1,0 +1,1094 @@
+[
+  {
+    "name": "offscreen-640-baseline",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.4564644250000007,
+      "p50": 1.2545799999999758,
+      "p95": 2.0686159999999063,
+      "p99": 4.714206999999988,
+      "max": 5.865177000000017
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.43331386250000486,
+      "p50": 0.4105430000000183,
+      "p95": 0.5160339999999906,
+      "p99": 0.6162249999999858,
+      "max": 3.063935000000015
+    },
+    "throughput": {
+      "seconds": 0.35663961400000005,
+      "completedFramesPerSecond": 672.9482384421826,
+      "clientCpuCores": 1.6540366713160473,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+    "librarySha256": "4193b752b82fdf6518ba21cc5c4995b907bf41943cdd3f1032cc7d385b326655",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-native",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.2649926500000035,
+      "p50": 1.0436779999999999,
+      "p95": 1.7874950000000354,
+      "p99": 4.05225200000001,
+      "max": 4.750838000000044
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.15430677083332825,
+      "p50": 0.1367410000000291,
+      "p95": 0.20740200000000186,
+      "p99": 0.23488200000002735,
+      "max": 2.6558710000000474
+    },
+    "throughput": {
+      "seconds": 0.38097834700000005,
+      "completedFramesPerSecond": 629.9570615754704,
+      "clientCpuCores": 1.4601144773196255,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "cad18c0b5cc01d2566fab269a301e960571e36fe",
+    "librarySha256": "cc2f441092bbc038805a5c9aa34f7b5511d8be9e11d942369dd99f0d77fa0d7a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-pool",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.2861431249999997,
+      "p50": 1.1289290000000847,
+      "p95": 1.9528960000000097,
+      "p99": 4.138413000000014,
+      "max": 5.056260000000066
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.3525679166666689,
+      "p50": 0.3275019999999813,
+      "p95": 0.3466730000000098,
+      "p99": 0.6225849999999582,
+      "max": 2.8386219999999867
+    },
+    "throughput": {
+      "seconds": 0.31761928600000006,
+      "completedFramesPerSecond": 755.6216217928277,
+      "clientCpuCores": 1.7116907693067478,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "211b9f960735260a9486be4de72f65b2101b4d9d",
+    "librarySha256": "047d8bdc1c132777613c8a22082f1a6a3baa06a1fe7069884949a09a5071090a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-pooled",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.180952412500003,
+      "p50": 1.137849000000017,
+      "p95": 1.811183999999912,
+      "p99": 3.9165009999999256,
+      "max": 4.293733999999972
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.048000399999999624,
+      "p50": 0.044541000000094755,
+      "p95": 0.06569999999999254,
+      "p99": 0.09185099999996282,
+      "max": 0.3671229999999923
+    },
+    "throughput": {
+      "seconds": 0.406133646,
+      "completedFramesPerSecond": 590.938481368766,
+      "clientCpuCores": 1.3360601992576602,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-pointer",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.1231123208333373,
+      "p50": 1.132078999999976,
+      "p95": 1.6904329999999845,
+      "p99": 3.8066800000000285,
+      "max": 4.391244000000029
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04509569583333241,
+      "p50": 0.04153999999999769,
+      "p95": 0.0660809999999401,
+      "p99": 0.07252100000005157,
+      "max": 0.3346720000000687
+    },
+    "throughput": {
+      "seconds": 0.39295674099999994,
+      "completedFramesPerSecond": 610.7542509367463,
+      "clientCpuCores": 1.2809196216333645,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 3.356106212499989,
+      "p50": 3.1560049999999364,
+      "p95": 3.8335610000000315,
+      "p99": 6.27773000000002,
+      "max": 6.423300999999924
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.44575316666666776,
+      "p50": 0.41351299999996627,
+      "p95": 0.49443399999995563,
+      "p99": 0.8629169999999249,
+      "max": 3.048524000000043
+    },
+    "throughput": {
+      "seconds": 0.813407349,
+      "completedFramesPerSecond": 295.0551163510572,
+      "clientCpuCores": 1.3020388877750353,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "d1a9d07b15ad6e137b5f0ac849de00ff1c090611",
+    "librarySha256": "ddc5fefbeff1837296df3a6b5bfaf1ceaf4f1a1976f3705351960a3fe4c70632",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  },
+  {
+    "name": "offscreen-640-combined-raw",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.1606410374999971,
+      "p50": 1.1276490000000194,
+      "p95": 1.7421640000000025,
+      "p99": 3.7243599999999333,
+      "max": 3.884959999999978
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.0511470874999965,
+      "p50": 0.04619100000002163,
+      "p95": 0.06792999999993299,
+      "p99": 0.08824099999998225,
+      "max": 0.4938639999999168
+    },
+    "throughput": {
+      "seconds": 0.388498825,
+      "completedFramesPerSecond": 617.7624861542374,
+      "clientCpuCores": 1.3129820920307804,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-640-combined-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 2.8854977458333364,
+      "p50": 2.7582609999999477,
+      "p95": 3.415497000000073,
+      "p99": 5.666855000000055,
+      "max": 6.036217999999963
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04471100416666758,
+      "p50": 0.0399009999999862,
+      "p95": 0.06656099999997878,
+      "p99": 0.07939099999998689,
+      "max": 0.42858300000011695
+    },
+    "throughput": {
+      "seconds": 0.7005148140000002,
+      "completedFramesPerSecond": 342.6051743710875,
+      "clientCpuCores": 1.3065491003306604,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "1883f26349cdb44f5c0cf901a35aa46223b7a35781823da1159bb0d8978c5e28",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  },
+  {
+    "name": "offscreen-641-baseline",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.4469500874999974,
+      "p50": 1.269550000000038,
+      "p95": 2.0293960000000197,
+      "p99": 4.456665000000044,
+      "max": 4.698896999999988
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.45748509583333336,
+      "p50": 0.4123029999999517,
+      "p95": 0.5811939999999822,
+      "p99": 2.838752999999997,
+      "max": 3.041433999999981
+    },
+    "throughput": {
+      "seconds": 0.3542669129999999,
+      "completedFramesPerSecond": 677.4553061352361,
+      "clientCpuCores": 1.660999033234583,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+    "librarySha256": "4193b752b82fdf6518ba21cc5c4995b907bf41943cdd3f1032cc7d385b326655",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-native",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.2521748916666673,
+      "p50": 1.0351779999999735,
+      "p95": 1.7932650000000194,
+      "p99": 3.9434810000000198,
+      "max": 4.2667339999999285
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.14374267916667047,
+      "p50": 0.1364810000000034,
+      "p95": 0.19898200000000088,
+      "p99": 0.24615200000005188,
+      "max": 0.4248529999999846
+    },
+    "throughput": {
+      "seconds": 0.38458601300000006,
+      "completedFramesPerSecond": 624.0476561481188,
+      "clientCpuCores": 1.4778280561128985,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "cad18c0b5cc01d2566fab269a301e960571e36fe",
+    "librarySha256": "cc2f441092bbc038805a5c9aa34f7b5511d8be9e11d942369dd99f0d77fa0d7a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-pool",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.3091604333333298,
+      "p50": 1.142199000000005,
+      "p95": 1.8152749999999287,
+      "p99": 4.174602999999934,
+      "max": 4.656146999999976
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.3382548958333343,
+      "p50": 0.32029200000005176,
+      "p95": 0.3447830000000067,
+      "p99": 0.5720850000000155,
+      "max": 2.9640229999999974
+    },
+    "throughput": {
+      "seconds": 0.323201157,
+      "completedFramesPerSecond": 742.571599148081,
+      "clientCpuCores": 1.6914790933127755,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "211b9f960735260a9486be4de72f65b2101b4d9d",
+    "librarySha256": "047d8bdc1c132777613c8a22082f1a6a3baa06a1fe7069884949a09a5071090a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-pooled",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.1808639499999931,
+      "p50": 1.1250890000000027,
+      "p95": 1.8392949999999928,
+      "p99": 3.755960000000073,
+      "max": 4.505716000000007
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04706973750000098,
+      "p50": 0.04361099999994167,
+      "p95": 0.06475000000000364,
+      "p99": 0.07584100000002536,
+      "max": 0.36939300000005915
+    },
+    "throughput": {
+      "seconds": 0.40701041999999993,
+      "completedFramesPerSecond": 589.6654930849191,
+      "clientCpuCores": 1.3378232429528465,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-pointer",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.1201479416666653,
+      "p50": 1.1210689999999204,
+      "p95": 1.6872829999999794,
+      "p99": 3.7675990000000183,
+      "max": 4.150663000000009
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04589509166666493,
+      "p50": 0.04264999999998054,
+      "p95": 0.06522999999992862,
+      "p99": 0.07468099999999822,
+      "max": 0.35705300000006446
+    },
+    "throughput": {
+      "seconds": 0.396303555,
+      "completedFramesPerSecond": 605.5963843170673,
+      "clientCpuCores": 1.2650529970643338,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 3.3566047833333457,
+      "p50": 3.1481850000000122,
+      "p95": 3.841480000000047,
+      "p99": 6.391020000000026,
+      "max": 6.69643300000007
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.46257261666667,
+      "p50": 0.40923399999996946,
+      "p95": 0.5011639999999034,
+      "p99": 2.9803629999998975,
+      "max": 3.0740349999999808
+    },
+    "throughput": {
+      "seconds": 0.8133601639999999,
+      "completedFramesPerSecond": 295.0722332154935,
+      "clientCpuCores": 1.31006784836834,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "d1a9d07b15ad6e137b5f0ac849de00ff1c090611",
+    "librarySha256": "ddc5fefbeff1837296df3a6b5bfaf1ceaf4f1a1976f3705351960a3fe4c70632",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  },
+  {
+    "name": "offscreen-641-combined-raw",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 1.1435487375000022,
+      "p50": 1.1304589999999735,
+      "p95": 1.7540940000000091,
+      "p99": 4.1628129999999715,
+      "max": 4.322894000000019
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04684602499999594,
+      "p50": 0.042950999999902706,
+      "p95": 0.06457000000000335,
+      "p99": 0.0752509999999802,
+      "max": 0.36207299999989573
+    },
+    "throughput": {
+      "seconds": 0.38649175700000005,
+      "completedFramesPerSecond": 620.9705528079347,
+      "clientCpuCores": 1.292966773415558,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-641-combined-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 2.925467408333336,
+      "p50": 2.7752120000000104,
+      "p95": 3.4800769999999375,
+      "p99": 5.473563999999897,
+      "max": 5.684075000000121
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.04625259583333114,
+      "p50": 0.04270999999994274,
+      "p95": 0.06300099999998565,
+      "p99": 0.07156099999997423,
+      "max": 0.44724300000007133
+    },
+    "throughput": {
+      "seconds": 0.7101770560000001,
+      "completedFramesPerSecond": 337.94389437441913,
+      "clientCpuCores": 1.3013965914438101,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "8c7e05c0e96384c1d93bec28704daa17cb94589c02caf8cafa768ce811ebe287",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  },
+  {
+    "name": "offscreen-1280-baseline",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 4.1968628208333225,
+      "p50": 3.8807709999999815,
+      "p95": 6.789804000000004,
+      "p99": 7.410448999999971,
+      "max": 8.466816999999992
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 1.8425880833333272,
+      "p50": 1.6066019999998389,
+      "p95": 4.313544000000093,
+      "p99": 4.694127000000208,
+      "max": 5.218321999999944
+    },
+    "throughput": {
+      "seconds": 1.0149526150000001,
+      "completedFramesPerSecond": 236.46424123947892,
+      "clientCpuCores": 1.3912718477009884,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+    "librarySha256": "4193b752b82fdf6518ba21cc5c4995b907bf41943cdd3f1032cc7d385b326655",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-native",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 3.0622546041666734,
+      "p50": 2.752491999999961,
+      "p95": 5.505033000000026,
+      "p99": 5.780326000000059,
+      "max": 6.523541000000023
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.7129649208333376,
+      "p50": 0.5393739999999525,
+      "p95": 3.1334040000000414,
+      "p99": 3.54280800000015,
+      "max": 3.795560000000023
+    },
+    "throughput": {
+      "seconds": 0.7423430189999999,
+      "completedFramesPerSecond": 323.30067617972713,
+      "clientCpuCores": 1.529385972443556,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "cad18c0b5cc01d2566fab269a301e960571e36fe",
+    "librarySha256": "cc2f441092bbc038805a5c9aa34f7b5511d8be9e11d942369dd99f0d77fa0d7a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-pool",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 3.7543549708333344,
+      "p50": 3.486377999999945,
+      "p95": 6.211949000000004,
+      "p99": 6.683511999999951,
+      "max": 7.843232000000057
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 1.5272216666666636,
+      "p50": 1.3040199999999231,
+      "p95": 3.9128809999999703,
+      "p99": 4.279463000000078,
+      "max": 4.396704999999997
+    },
+    "throughput": {
+      "seconds": 0.9082874409999999,
+      "completedFramesPerSecond": 264.23353353401706,
+      "clientCpuCores": 1.4071580672665054,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "211b9f960735260a9486be4de72f65b2101b4d9d",
+    "librarySha256": "047d8bdc1c132777613c8a22082f1a6a3baa06a1fe7069884949a09a5071090a",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-pooled",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 2.6143509333333252,
+      "p50": 2.3099389999999858,
+      "p95": 5.004879000000074,
+      "p99": 5.639484000000039,
+      "max": 5.794216000000006
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.19323753749999686,
+      "p50": 0.15885100000002694,
+      "p95": 0.23815200000001369,
+      "p99": 0.9133170000000064,
+      "max": 2.965443999999934
+    },
+    "throughput": {
+      "seconds": 0.6347864780000001,
+      "completedFramesPerSecond": 378.0798872026382,
+      "clientCpuCores": 1.611157507989639,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-pointer",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 2.512081500000001,
+      "p50": 2.2969080000000304,
+      "p95": 3.534497999999985,
+      "p99": 5.419793000000027,
+      "max": 5.762266000000068
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.17435680416666202,
+      "p50": 0.158141999999998,
+      "p95": 0.2329219999999168,
+      "p99": 0.26274199999988923,
+      "max": 2.812332000000083
+    },
+    "throughput": {
+      "seconds": 0.6100111400000001,
+      "completedFramesPerSecond": 393.43543791675665,
+      "clientCpuCores": 1.5141018572218203,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "2b531006fb93d95b6534b0c5670d7552cfe1ce37",
+    "librarySha256": "f826e986ccf000106584a94c42a524fad851951c1366f1ee54044cc67926f2cd",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw"
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 9.816399879166683,
+      "p50": 9.502105000000029,
+      "p95": 12.118256000000201,
+      "p99": 12.607260000000224,
+      "max": 12.912462000000005
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 1.9198441958333177,
+      "p50": 1.6271919999999227,
+      "p95": 4.282754000000068,
+      "p99": 4.51377599999978,
+      "max": 4.577486000000135
+    },
+    "throughput": {
+      "seconds": 2.3653026919999998,
+      "completedFramesPerSecond": 101.46692886780853,
+      "clientCpuCores": 1.1859247484423023,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "d1a9d07b15ad6e137b5f0ac849de00ff1c090611",
+    "librarySha256": "ddc5fefbeff1837296df3a6b5bfaf1ceaf4f1a1976f3705351960a3fe4c70632",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  },
+  {
+    "name": "offscreen-1280-combined-raw",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 2.492128279166671,
+      "p50": 2.3015980000000127,
+      "p95": 4.80905800000005,
+      "p99": 5.295382000000018,
+      "max": 6.702592999999979
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.16382992916666433,
+      "p50": 0.1458909999998923,
+      "p95": 0.19902200000001358,
+      "p99": 0.25661200000001827,
+      "max": 2.7131310000000894
+    },
+    "throughput": {
+      "seconds": 0.605918647,
+      "completedFramesPerSecond": 396.09277778176715,
+      "clientCpuCores": 1.5293587754529034,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "raw",
+      "effective": "raw",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 0
+  },
+  {
+    "name": "offscreen-1280-combined-zlib",
+    "terminal": "offscreen",
+    "exitCode": 0,
+    "timedOut": false,
+    "error": null,
+    "total": {
+      "n": 240,
+      "mean": 8.191080358333336,
+      "p50": 8.05698399999983,
+      "p95": 10.468632999999954,
+      "p99": 10.76502500000015,
+      "max": 10.963296000000014
+    },
+    "prepare": {
+      "n": 240,
+      "mean": 0.1749396833333274,
+      "p50": 0.15918099999998958,
+      "p95": 0.22774200000003475,
+      "p99": 0.2477920000001177,
+      "max": 2.6015800000000127
+    },
+    "throughput": {
+      "seconds": 1.974979041,
+      "completedFramesPerSecond": 121.52027693340973,
+      "clientCpuCores": 1.1834748376957585,
+      "terminalCpuCores": null,
+      "over16ms": 0
+    },
+    "geometry": {
+      "columns": 100,
+      "rows": 32,
+      "resolution": null
+    },
+    "firstFrameSha256": "87f436532ef353843106624940d06d1b5ebf7a8a40161b4c532d717c836b4a8c",
+    "revision": "d2639fd98cf8387223391ec103160cdead1dc0d5",
+    "librarySha256": "8cb804f6f68e748b47e594f82e991c1c96332a13b2ee2db25e55d3452f520149",
+    "transport": {
+      "requested": "zlib",
+      "effective": "zlib",
+      "fileState": "disabled",
+      "fallback": "none",
+      "pendingFiles": 0,
+      "pendingBytes": 0
+    },
+    "fileFraction": 0,
+    "zlibFraction": 1
+  }
+]
