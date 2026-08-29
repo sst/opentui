@@ -36,20 +36,50 @@ try {
 
 ## Accepted sources
 
-| API                                                    | Accepted input                                                                                                    |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `NativeImage.load(source, options?)`                   | Path string, `file:`, HTTP(S), `blob:`, or `data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer` |
-| `NativeImage.decode(data)`                             | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
-| `NativeImage.fromRgba(pixels, width, height, stride?)` | Straight-alpha sRGB RGBA8 `Uint8Array`                                                                            |
-| `imageInfo(data)`                                      | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
+| API                                                       | Accepted input                                                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `NativeImage.load(source, options?)`                      | Path string, `file:`, HTTP(S), `blob:`, or `data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer` |
+| `NativeImage.decode(data)`                                | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
+| `NativeImage.fromRgba(pixels, width, height, stride?)`    | Straight-alpha sRGB RGBA8 `Uint8Array`                                                                            |
+| `NativeImage.fromPixels(pixels, width, height, options?)` | sRGB RGBA8 or BGRA8 `Uint8Array`, with straight or opaque alpha                                                   |
+| `imageInfo(data)`                                         | Encoded `Uint8Array` or `ArrayBuffer`                                                                             |
 
 Format detection reads encoded bytes. It does not trust a filename, URL suffix, response header, or file extension.
 
-`decode()` and `fromRgba()` copy caller data into native ownership. `imageInfo()` returns metadata without retaining an
-image handle. It can decode pixels when validation needs pixel inspection.
+`decode()`, `fromRgba()`, and `fromPixels()` copy caller data into native ownership. `imageInfo()` returns metadata
+without retaining an image handle. It can decode pixels when validation needs pixel inspection.
 
-`fromRgba()` defaults `stride` to `width * 4`. The stride must fit one complete row. The input must contain every row,
-including stride padding.
+Both pixel import methods default `stride` to `width * 4`. The stride must fit one complete row. The input view must
+contain at least `(height - 1) * stride + width * 4` bytes. Padding after the final row is optional.
+
+### Pixel import options
+
+```typescript
+interface PixelImportOptions {
+  stride?: number
+  format?: "rgba8" | "bgra8"
+  alpha?: "straight" | "opaque"
+  colorSpace?: "srgb"
+}
+```
+
+`fromPixels()` defaults to `format: "rgba8"`, `alpha: "straight"`, and `colorSpace: "srgb"`. It copies top-left pixel
+rows into packed native RGBA8 storage, converts BGRA channel order, and detects transparency in one pass.
+`alpha: "opaque"` ignores source alpha and writes 255 into every destination alpha channel. It does not unpremultiply
+RGB values. Premultiplied alpha and color spaces other than sRGB are not supported.
+
+Pass a subarray directly to import a region of a mapped buffer. The native call does not retain or modify the view.
+Keep the source stable during the call; you can reuse, detach, or unmap the buffer after the call returns.
+
+```typescript
+const image = NativeImage.fromPixels(mappedPixels, width, height, {
+  format: "bgra8",
+  stride: bytesPerRow,
+  alpha: "opaque",
+})
+```
+
+The result reports `format: "raw-rgba"` and `colorStatus: "explicit-srgb"`, including for BGRA input.
 
 ### Load options
 
@@ -68,13 +98,13 @@ before it reads the body.
 
 ## Format behavior
 
-| Format   | Decode behavior                                                                                        |
-| -------- | ------------------------------------------------------------------------------------------------------ |
-| PNG      | Supports alpha, sRGB chunks, supported cICP, RGB or grayscale ICC v2/v4 profiles, and EXIF orientation |
-| JPEG     | Produces opaque RGBA8 and applies EXIF orientation                                                     |
-| WebP     | Supports lossy, lossless, and alpha images. Animated WebP is rejected.                                 |
-| GIF      | Decodes the first displayed frame on the logical canvas                                                |
-| Raw RGBA | Uses caller-supplied straight-alpha sRGB RGBA8 pixels                                                  |
+| Format     | Decode behavior                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| PNG        | Supports alpha, sRGB chunks, supported cICP, RGB or grayscale ICC v2/v4 profiles, and EXIF orientation |
+| JPEG       | Produces opaque RGBA8 and applies EXIF orientation                                                     |
+| WebP       | Supports lossy, lossless, and alpha images. Animated WebP is rejected.                                 |
+| GIF        | Decodes the first displayed frame on the logical canvas                                                |
+| Raw pixels | Imports caller-supplied sRGB RGBA8 or BGRA8 into straight-alpha RGBA8 pixels                           |
 
 `NativeImage` does not expose animation frames or timing. GIF becomes one image. Animated WebP reports an unsupported
 feature.

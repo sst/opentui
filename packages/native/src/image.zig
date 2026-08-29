@@ -102,6 +102,9 @@ pub const ColorStatus = enum(u32) {
     explicit_srgb = 1,
 };
 
+pub const PixelFormat = enum(u32) { rgba8 = 0, bgra8 = 1 };
+pub const PixelAlpha = enum(u32) { straight = 0, @"opaque" = 1 };
+
 pub const Info = extern struct {
     width: u32 = 0,
     height: u32 = 0,
@@ -766,14 +769,14 @@ fn pixelsHaveTransparency(pixels: []const u8) bool {
     return false;
 }
 
-pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
     const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
     if (stride < row_bytes) return error.InvalidArgument;
     const preceding_rows = std.math.mul(u64, stride, height -| 1) catch return error.InvalidArgument;
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
     if (required > pixels.len) return error.InvalidArgument;
 
-    const image = try allocateImage(allocator, .{
+    return allocateImage(allocator, .{
         .width = width,
         .height = height,
         .source_width = width,
@@ -783,13 +786,61 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
         .orientation = 1,
         .has_alpha = 0,
     });
-    errdefer image.deinit();
+}
+
+pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+    const image = try allocatePixelImport(allocator, pixels, width, height, stride);
+    const row_bytes = width * 4;
     for (0..height) |y| {
         const src_offset = y * stride;
         const dst_offset = y * row_bytes;
         @memcpy(image.pixels[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
         if (image.metadata.has_alpha == 0 and pixelsHaveTransparency(pixels[src_offset .. src_offset + row_bytes])) image.metadata.has_alpha = 1;
     }
+    return image;
+}
+
+pub fn createFromPixels(
+    allocator: Allocator,
+    pixels: []const u8,
+    width: u32,
+    height: u32,
+    options: struct { stride: u32, format: PixelFormat = .rgba8, alpha: PixelAlpha = .straight },
+) !*Image {
+    const image = try allocatePixelImport(allocator, pixels, width, height, options.stride);
+    const row_bytes = width * 4;
+    const destination = image.pixels;
+    const opaque_mask: @Vector(16, u8) = .{ 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255 };
+    var alpha_lanes: @Vector(16, u8) = @splat(255);
+    var alpha_mask: u32 = 0xff000000;
+    for (0..height) |y| {
+        const src_offset = y * options.stride;
+        const dst_offset = y * row_bytes;
+        var x: usize = 0;
+        while (x + 16 <= row_bytes) : (x += 16) {
+            var output: @Vector(16, u8) = pixels[src_offset + x ..][0..16].*;
+            if (options.format == .bgra8) {
+                output = @shuffle(u8, output, undefined, @Vector(16, i32){
+                    2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15,
+                });
+            }
+            if (options.alpha == .@"opaque") output |= opaque_mask;
+            destination[dst_offset + x ..][0..16].* = output;
+            alpha_lanes &= output;
+        }
+        while (x < row_bytes) : (x += 4) {
+            const src = std.mem.readInt(u32, pixels[src_offset + x ..][0..4], .little);
+            const rgba = if (options.format == .bgra8)
+                (src & 0xff00ff00) | ((src & 0xff) << 16) | ((src >> 16) & 0xff)
+            else
+                src;
+            const output = if (options.alpha == .@"opaque") rgba | 0xff000000 else rgba;
+            std.mem.writeInt(u32, destination[dst_offset + x ..][0..4], output, .little);
+            alpha_mask &= output;
+        }
+    }
+    const vector_alpha = alpha_lanes[3] & alpha_lanes[7] & alpha_lanes[11] & alpha_lanes[15];
+    image.metadata.has_alpha = @intFromBool(alpha_mask != 0xff000000 or vector_alpha != 255);
     return image;
 }
 

@@ -3464,6 +3464,59 @@ export fn imageCreateFromRgba(
     return @intFromEnum(insertImage(image, output));
 }
 
+export fn imageCreateFromPixels(
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    width: u32,
+    height: u32,
+    stride: u32,
+    format: u32,
+    alpha: u32,
+    out_handle: ?*NativeHandle,
+) u32 {
+    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    }
+    const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
+    const pixel_format = std.enums.fromInt(native_image.PixelFormat, format) orelse {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    };
+    const pixel_alpha = std.enums.fromInt(native_image.PixelAlpha, alpha) orelse {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    };
+    const image = native_image.createFromPixels(globalAllocator, pixels, width, height, .{
+        .stride = stride,
+        .format = pixel_format,
+        .alpha = pixel_alpha,
+    }) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(insertImage(image, output));
+}
+
+test "pixel import FFI validates pointers and enum values without publishing a handle" {
+    const pixels = [_]u8{ 3, 2, 1, 0 };
+    const invalid = @intFromEnum(native_image.Status.invalid_argument);
+    var handle: NativeHandle = 123;
+    try std.testing.expectEqual(invalid, imageCreateFromPixels(&pixels, 4, 1, 1, 4, 2, 0, &handle));
+    try std.testing.expectEqual(INVALID_HANDLE, handle);
+    handle = 123;
+    try std.testing.expectEqual(invalid, imageCreateFromPixels(&pixels, 4, 1, 1, 4, 0, 2, &handle));
+    try std.testing.expectEqual(INVALID_HANDLE, handle);
+    try std.testing.expectEqual(invalid, imageCreateFromPixels(&pixels, 4, 1, 1, 4, 0, 0, null));
+    try std.testing.expectEqual(invalid, imageCreateFromPixels(null, 4, 1, 1, 4, 0, 0, &handle));
+    try std.testing.expectEqual(invalid, imageCreateFromPixels(null, 0, 1, 1, 4, 0, 0, &handle));
+    try std.testing.expectEqual(INVALID_HANDLE, handle);
+
+    try std.testing.expectEqual(@as(u32, 0), imageCreateFromPixels(&pixels, 4, 1, 1, 4, 1, 1, &handle));
+    defer imageDestroy(handle);
+    const value = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 255 }, value.pixels);
+    try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
+}
+
 export fn imageDestroy(image_handle: NativeHandle) void {
     const token = handles.beginDestroy(image_handle, .image, native_image.Image) orelse return;
     token.ptr.deinit();

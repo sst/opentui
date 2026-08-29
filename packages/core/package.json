@@ -39,6 +39,7 @@
     "bench:mouse-events": "bun src/benchmark/mouse-event-benchmark.ts",
     "bench:render-compare": "bun src/benchmark/render-runtime-compare.ts",
     "bench:ffi-fast-path": "bun src/benchmark/ffi-fast-path-benchmark.ts",
+    "bench:image-import": "bun src/benchmark/image-import-benchmark.ts",
     "bench:ffi-fast-path-paired": "bun src/benchmark/ffi-fast-path-paired-benchmark.ts",
     "bench:ffi-fast-path-compare": "bun src/benchmark/ffi-fast-path-compare.ts",
     "stress:ffi-fast-path": "bun src/benchmark/ffi-fast-path-stress.ts",

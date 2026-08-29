@@ -286,6 +286,16 @@ try {
   raw.dispose()
 }
 
+const imported = core.NativeImage.fromPixels(Uint8Array.of(99, 3, 2, 1, 0).subarray(1), 1, 1, {
+  format: "bgra8", alpha: "opaque", stride: 256,
+})
+try {
+  assert.deepEqual([...imported.raw().data], [1, 2, 3, 255])
+  assert.equal(imported.info().hasAlpha, false)
+} finally {
+  imported.dispose()
+}
+
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
 const client = new core.TreeSitterClient({ dataPath })
 try {
@@ -383,6 +393,15 @@ describe("${packageJson.name} dist smoke test", () => {
       expect(() => image.info()).toThrow(/disposed/)
     } finally {
       raw.dispose()
+    }
+    const imported = core.NativeImage.fromPixels(Uint8Array.of(99, 3, 2, 1, 0).subarray(1), 1, 1, {
+      format: "bgra8", alpha: "opaque", stride: 256,
+    })
+    try {
+      expect([...imported.raw().data]).toEqual([1, 2, 3, 255])
+      expect(imported.info().hasAlpha).toBe(false)
+    } finally {
+      imported.dispose()
     }
   })
 })
