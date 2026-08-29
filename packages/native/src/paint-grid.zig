@@ -256,7 +256,7 @@ pub const PaintGrid = struct {
 
     pub fn finish(self: *PaintGrid) !void {
         if (self.fallback) {
-            self.active = false;
+            self.abort();
             return;
         }
         const t = self.target;

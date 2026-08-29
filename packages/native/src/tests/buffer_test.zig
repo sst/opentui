@@ -125,6 +125,8 @@ test "paint grid nested context cleanup and late raw fallback materialize prefix
     try grid.finish();
     try std.testing.expect(grid.fallback);
     try std.testing.expectEqual(@as(u32, 'D'), target.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].pending.items.len);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.items.len);
     try target.beginPaint(white, false);
     try std.testing.expect(grid.fallback);
     grid.abort();
