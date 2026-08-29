@@ -1,16 +1,18 @@
 import { dlopen } from "bun:ffi"
+import { realpathSync } from "node:fs"
 import { resolve } from "node:path"
 
 const directory = process.env.WEBGPU_NODE_MODULES
 if (!directory) throw new Error("Set WEBGPU_NODE_MODULES to the installed bun-webgpu node_modules directory")
-const metadata = await Bun.file(resolve(directory, "bun-webgpu/package.json")).json()
+const packagePath = realpathSync(resolve(directory, "bun-webgpu"))
+const metadata = await Bun.file(resolve(packagePath, "package.json")).json()
 if (metadata.version !== "0.1.7") throw new Error("This ABI experiment requires bun-webgpu 0.1.7")
-const library = resolve(directory, "bun-webgpu-linux-x64/libwebgpu_wrapper.so")
+const library = realpathSync(resolve(packagePath, "../bun-webgpu-linux-x64/libwebgpu_wrapper.so"))
 const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(library).arrayBuffer()).digest("hex")
 if (hash !== "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788") {
   throw new Error("The native binary does not match this experiment's pinned Dawn ABI")
 }
-const { setupGlobals } = await import(resolve(directory, "bun-webgpu/index.js"))
+const { setupGlobals } = await import(resolve(packagePath, "index.js"))
 await setupGlobals({ libPath: library })
 const adapter = await navigator.gpu.requestAdapter({
   powerPreference: "high-performance",

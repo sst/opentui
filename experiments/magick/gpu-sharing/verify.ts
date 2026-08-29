@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { realpathSync } from "node:fs"
 import { resolve } from "node:path"
 
 const directory = process.env.WEBGPU_NODE_MODULES
@@ -104,7 +105,8 @@ results.push({ name: "bun-webgpu-enum-mismatch", ...JSON.parse(probe.stdout.toSt
 
 const versions = Bun.spawnSync(["pkg-config", "--modversion", "vulkan", "egl", "glesv2", "gbm", "libdrm"])
 assert.equal(versions.exitCode, 0)
-const library = Bun.file(resolve(directory, "bun-webgpu-linux-x64/libwebgpu_wrapper.so"))
+const packagePath = realpathSync(resolve(directory, "bun-webgpu"))
+const library = Bun.file(resolve(packagePath, "../bun-webgpu-linux-x64/libwebgpu_wrapper.so"))
 const sourceHashes: Record<string, string> = {}
 for (const source of [
   "native-sharing.c",
