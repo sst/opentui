@@ -1,7 +1,8 @@
-import { GPUCanvasContextMock, setupGlobals } from "bun-webgpu"
+import { globalConstructors, GPUCanvasContextMock, setupGlobals } from "bun-webgpu"
 import { toArrayBuffer } from "bun:ffi"
 import { NoToneMapping, SRGBColorSpace, type Camera, type Scene } from "three"
 import { WebGPURenderer } from "three/webgpu"
+import { managePixelGpu, type PixelGpuLifetimeOptions } from "./gpu-lifetime.js"
 
 export interface PixelFrame {
   data: Uint8Array
@@ -28,7 +29,12 @@ export function packRgba(frame: PixelFrame, destination: Uint8Array): void {
   }
 }
 
-export async function createPixelRenderer(width: number, height: number, mapping: "view" | "pointer" = "view") {
+export async function createPixelRenderer(
+  width: number,
+  height: number,
+  mapping: "view" | "pointer" = "view",
+  lifetimeOptions: PixelGpuLifetimeOptions = {},
+) {
   if (
     !Number.isSafeInteger(width) ||
     !Number.isSafeInteger(height) ||
@@ -47,54 +53,83 @@ export async function createPixelRenderer(width: number, height: number, mapping
   const device = await adapter.requestDevice()
   const canvas = { width, height, getContext: () => context, addEventListener() {}, removeEventListener() {} }
   const context = new GPUCanvasContextMock(canvas as unknown as HTMLCanvasElement, width, height)
-  const renderer = new WebGPURenderer({
-    canvas: canvas as unknown as HTMLCanvasElement,
-    device,
-    alpha: false,
-    antialias: false,
-  })
   const stride = Math.ceil((width * 4) / 256) * 256
-  let readback: GPUBuffer
+  let renderer: WebGPURenderer | undefined
+  let lifetime: ReturnType<typeof managePixelGpu> | undefined
+  let readback: GPUBuffer | undefined
+
+  function cleanup() {
+    if (renderer) renderer.onDeviceLost = () => {}
+    try {
+      readback?.destroy()
+    } finally {
+      try {
+        renderer?.dispose()
+      } finally {
+        try {
+          lifetime?.dispose()
+        } finally {
+          try {
+            context.unconfigure()
+          } finally {
+            device.destroy()
+          }
+        }
+      }
+    }
+  }
+
   try {
+    if (!(device instanceof globalConstructors.GPUDevice)) throw new Error("Pixel adapter requires bun-webgpu 0.1.7")
+    lifetime = managePixelGpu(device, context, lifetimeOptions)
+    renderer = new WebGPURenderer({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      device,
+      alpha: false,
+      antialias: false,
+    })
     renderer.outputColorSpace = SRGBColorSpace
     renderer.toneMapping = NoToneMapping
     renderer.setSize(width, height, false)
     await renderer.init()
     readback = device.createBuffer({ size: stride * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
   } catch (error) {
-    renderer.dispose()
-    context.unconfigure()
-    device.destroy()
+    try {
+      cleanup()
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Pixel renderer initialization and cleanup failed")
+    }
     throw error
   }
   let busy = false
   let destroyed = false
   return {
     adapter: adapter.info,
+    ownership: () => lifetime!.snapshot(),
     async draw<T>(scene: Scene, camera: Camera, consume: (frame: PixelFrame) => T) {
       if (busy || destroyed) throw new Error("Pixel renderer is busy or disposed")
       busy = true
       const start = performance.now()
       try {
-        renderer.render(scene, camera)
+        renderer!.render(scene, camera)
         const submitted = performance.now()
         const texture = context.getCurrentTexture()
         const encoder = device.createCommandEncoder()
         encoder.copyTextureToBuffer(
           { texture },
-          { buffer: readback, bytesPerRow: stride, rowsPerImage: height },
+          { buffer: readback!, bytesPerRow: stride, rowsPerImage: height },
           { width, height },
         )
         device.queue.submit([encoder.finish()])
-        await readback.mapAsync(GPUMapMode.READ)
+        await readback!.mapAsync(GPUMapMode.READ)
         const mapped = performance.now()
         let value: T
         try {
           // The consumer is synchronous: it cannot retain this view past unmap.
           const mappedBytes =
             mapping === "pointer"
-              ? toArrayBuffer(readback.getMappedRangePtr(), 0, readback.size)
-              : readback.getMappedRange()
+              ? toArrayBuffer(readback!.getMappedRangePtr(), 0, readback!.size)
+              : readback!.getMappedRange()
           value = consume({
             data: new Uint8Array(mappedBytes),
             width,
@@ -103,7 +138,7 @@ export async function createPixelRenderer(width: number, height: number, mapping
             format: texture.format === "bgra8unorm" ? "bgra8" : "rgba8",
           })
         } finally {
-          readback.unmap()
+          readback!.unmap()
         }
         return {
           submitMs: submitted - start,
@@ -112,18 +147,18 @@ export async function createPixelRenderer(width: number, height: number, mapping
           value,
         }
       } finally {
-        busy = false
+        try {
+          lifetime!.discardPending()
+        } finally {
+          busy = false
+        }
       }
     },
     dispose() {
       if (busy) throw new Error("Cannot dispose a pending readback")
       if (destroyed) return
       destroyed = true
-      readback.destroy()
-      renderer.dispose()
-      context.unconfigure()
-      renderer.onDeviceLost = () => {}
-      device.destroy()
+      cleanup()
     },
   }
 }
