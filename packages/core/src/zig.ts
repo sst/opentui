@@ -1593,6 +1593,7 @@ function getOpenTUILib(libPath?: string) {
     imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageCreateFromPixels: { args: ["buffer", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
@@ -3089,6 +3090,14 @@ export interface RenderLib extends AudioEngineLib {
     width: number,
     height: number,
     stride: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageCreateFromPixels: (
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+    format: number,
+    alpha: number,
   ) => { status: number; handle: ImageHandle | null }
   imageDestroy: (image: ImageHandle) => void
   imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
@@ -6577,6 +6586,28 @@ class FFIRenderLib implements RenderLib {
       width,
       height,
       stride,
+      output,
+    )
+    return this.imageHandleResult(status, output)
+  }
+
+  public imageCreateFromPixels(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+    format: number,
+    alpha: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageCreateFromPixels(
+      pixels,
+      BigInt(pixels.byteLength),
+      width,
+      height,
+      stride,
+      format,
+      alpha,
       output,
     )
     return this.imageHandleResult(status, output)

@@ -86,6 +86,13 @@ export interface RawImage {
   alpha: "straight"
 }
 
+export interface PixelImportOptions {
+  stride?: number
+  format?: PixelFormat
+  alpha?: "straight" | "opaque"
+  colorSpace?: "srgb"
+}
+
 export interface OwnedRawImage extends RawImage {
   dispose(): void
 }
@@ -191,6 +198,8 @@ const PIXEL_FORMAT_BGRA: Record<PixelFormat, boolean> = {
   rgba8: false,
   bgra8: true,
 }
+
+const PIXEL_ALPHA_IDS = { straight: 0, opaque: 1 } as const
 
 const MAX_ENCODED_BYTES = 64 * 1024 * 1024
 
@@ -433,6 +442,28 @@ export class NativeImage {
     requireU32(stride, "stride")
     const lib = resolveRenderLib()
     const result = lib.imageCreateFromRgba(pixels, width, height, stride)
+    checkStatus(result.status)
+    if (!result.handle) throw imageError(10)
+    return NativeImage.fromHandle(lib, result.handle)
+  }
+
+  public static fromPixels(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    options: PixelImportOptions = {},
+  ): NativeImage {
+    if (!(pixels instanceof Uint8Array)) throw new TypeError("pixels must be a Uint8Array")
+    requireU32(width, "width")
+    requireU32(height, "height")
+    const stride = requireU32(options.stride ?? width * 4, "stride")
+    const bgra = requireMappedOption(PIXEL_FORMAT_BGRA, options.format ?? "rgba8", "pixel format")
+    const alpha = requireMappedOption(PIXEL_ALPHA_IDS, options.alpha ?? "straight", "pixel alpha")
+    if (options.colorSpace !== undefined && options.colorSpace !== "srgb") {
+      throw new TypeError(`Unsupported pixel color space: ${String(options.colorSpace)}`)
+    }
+    const lib = resolveRenderLib()
+    const result = lib.imageCreateFromPixels(pixels, width, height, stride, Number(bgra), alpha)
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
     return NativeImage.fromHandle(lib, result.handle)

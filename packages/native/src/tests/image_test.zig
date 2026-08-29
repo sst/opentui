@@ -506,6 +506,123 @@ test "image creation rejects invalid stride and short input" {
     try std.testing.expectError(error.InvalidArgument, image.createFromRgba(std.testing.allocator, pixels[0..15], 2, 2, 8));
 }
 
+test "pixel import converts strided RGBA and BGRA into owned straight RGBA" {
+    const allocator = std.testing.allocator;
+    const expected = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 7, 11, 23, 254 };
+    for ([_]image.PixelFormat{ .rgba8, .bgra8 }) |format| {
+        for ([_]image.PixelAlpha{ .straight, .@"opaque" }) |alpha| {
+            var source = [_]u8{99} ** 24;
+            for (0..4) |index| {
+                const src = index * 4;
+                const dst = 1 + (index / 2) * 11 + (index % 2) * 4;
+                source[dst..][0..4].* = .{
+                    expected[src + @as(usize, if (format == .bgra8) 2 else 0)],
+                    expected[src + 1],
+                    expected[src + @as(usize, if (format == .bgra8) 0 else 2)],
+                    expected[src + 3],
+                };
+            }
+            // The view starts unaligned and omits the final row's padding.
+            const value = try image.createFromPixels(allocator, source[1..20], 2, 2, .{
+                .stride = 11,
+                .format = format,
+                .alpha = alpha,
+            });
+            defer value.deinit();
+            @memset(&source, 0);
+            var output = expected;
+            if (alpha == .@"opaque") {
+                for (0..4) |index| output[index * 4 + 3] = 255;
+            }
+            try std.testing.expectEqualSlices(u8, &output, value.pixels);
+            try std.testing.expectEqual(image.Info{
+                .width = 2,
+                .height = 2,
+                .source_width = 2,
+                .source_height = 2,
+                .format = @intFromEnum(image.Format.raw_rgba),
+                .color_status = @intFromEnum(image.ColorStatus.explicit_srgb),
+                .has_alpha = @intFromBool(alpha == .straight),
+            }, value.info());
+        }
+    }
+}
+
+test "pixel import ignores padding when detecting transparency" {
+    const pixels = [_]u8{ 1, 2, 3, 255, 0, 0, 0, 0, 4, 5, 6, 255 };
+    const value = try image.createFromPixels(std.testing.allocator, &pixels, 1, 2, .{ .stride = 8 });
+    defer value.deinit();
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 255, 4, 5, 6, 255 }, value.pixels);
+    try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
+}
+
+test "pixel import handles vector boundaries and transparency in the final pixel" {
+    for ([_]u32{ 3, 4, 5, 7, 8, 9, 31, 32, 33 }) |width| {
+        const len = width * 4;
+        var pixels = [_]u8{255} ** (33 * 4);
+        for ([_]image.PixelFormat{ .rgba8, .bgra8 }) |format| {
+            for ([_]image.PixelAlpha{ .straight, .@"opaque" }) |alpha| {
+                for ([_]u8{ 255, 0, 128, 254 }) |last_alpha| {
+                    pixels[len - 4 ..][0..4].* = .{ 1, 2, 3, last_alpha };
+                    const value = try image.createFromPixels(std.testing.allocator, pixels[0..len], width, 1, .{
+                        .stride = len + 3,
+                        .format = format,
+                        .alpha = alpha,
+                    });
+                    defer value.deinit();
+                    const expected_alpha: u8 = if (alpha == .@"opaque") 255 else last_alpha;
+                    const expected: [4]u8 = if (format == .bgra8)
+                        .{ 3, 2, 1, expected_alpha }
+                    else
+                        .{ 1, 2, 3, expected_alpha };
+                    try std.testing.expectEqualSlices(u8, &expected, value.pixels[len - 4 ..]);
+                    try std.testing.expectEqual(@intFromBool(expected_alpha != 255), value.info().has_alpha);
+                }
+            }
+        }
+    }
+}
+
+test "pixel import rejects invalid geometry and short input before allocation" {
+    const allocator = std.testing.allocator;
+    const pixels = [_]u8{0} ** 20;
+    for ([_]struct { width: u32, height: u32, stride: u32, len: usize, err: anyerror }{
+        .{ .width = 0, .height = 1, .stride = 4, .len = 4, .err = error.DimensionLimit },
+        .{ .width = 1, .height = 0, .stride = 4, .len = 4, .err = error.DimensionLimit },
+        .{ .width = std.math.maxInt(u32), .height = 1, .stride = 4, .len = 4, .err = error.InvalidArgument },
+        .{ .width = 1, .height = std.math.maxInt(u32), .stride = std.math.maxInt(u32), .len = 4, .err = error.InvalidArgument },
+        .{ .width = 2, .height = 2, .stride = 7, .len = 20, .err = error.InvalidArgument },
+        .{ .width = 2, .height = 2, .stride = 12, .len = 19, .err = error.InvalidArgument },
+        .{ .width = 1, .height = 1, .stride = 4, .len = 0, .err = error.InvalidArgument },
+    }) |case| {
+        try std.testing.expectError(case.err, image.createFromPixels(
+            allocator,
+            pixels[0..case.len],
+            case.width,
+            case.height,
+            .{ .stride = case.stride },
+        ));
+    }
+    const wide = try allocator.alloc(u8, 16_385 * 4);
+    defer allocator.free(wide);
+    try std.testing.expectError(error.DimensionLimit, image.createFromPixels(allocator, wide, 16_385, 1, .{ .stride = 16_385 * 4 }));
+}
+
+test "pixel import cleans up every allocation failure" {
+    const Check = struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            const value = try image.createFromPixels(allocator, &.{ 3, 2, 1, 0 }, 1, 1, .{
+                .stride = 4,
+                .format = .bgra8,
+                .alpha = .@"opaque",
+            });
+            defer value.deinit();
+            try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 255 }, value.pixels);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{});
+}
+
 test "ensureEncodedPng round-trips opaque pixels through the RGB path" {
     const pixels = [_]u8{
         1, 2, 3, 255, 4,  5,  6,  255,
