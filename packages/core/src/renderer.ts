@@ -4565,6 +4565,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.backgroundColor,
           Boolean(
             this.nextRenderBuffer.experimentalPaintForce ||
+            this.root.isPaintGeometryDirty ||
             frameRequests.length ||
             this.frameCallbacks.length ||
             this.postProcessFns.length ||

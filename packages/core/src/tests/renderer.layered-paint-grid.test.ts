@@ -82,6 +82,42 @@ test("paint grid ordinary bursts avoid recording transactions and recover after 
   expect(await run(true)).toEqual(await run(false))
 })
 
+test("paint grid geometry bursts retire the prior recording once and recover", async () => {
+  async function run(experimentalPaintGrid: boolean) {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 12, height: 3, experimentalPaintGrid })
+    const painter = new Paint(renderer, { width: 1, height: 1 }, (buffer, self) => {
+      buffer.drawText("ABC", self.x + 3, 1, white, blue)
+    })
+    const frames = []
+    const begin = spyOn(renderer.nextRenderBuffer.lib, "bufferPaintBegin")
+    const end = spyOn(renderer.nextRenderBuffer.lib, "bufferPaintEnd")
+    try {
+      renderer.root.add(painter)
+      await renderOnce()
+      await renderOnce()
+      begin.mockClear()
+      end.mockClear()
+      for (let i = 1; i <= 4; i++) {
+        painter.translateX = i
+        await renderOnce()
+        frames.push(snapshot(renderer.currentRenderBuffer))
+      }
+      expect(begin).toHaveBeenCalledTimes(experimentalPaintGrid ? 1 : 0)
+      expect(end).not.toHaveBeenCalled()
+      await renderOnce()
+      await renderOnce()
+      frames.push(snapshot(renderer.currentRenderBuffer))
+      if (experimentalPaintGrid) expect(renderer.nextRenderBuffer.getPaintStats().skipped).toBe(1)
+      return frames
+    } finally {
+      begin.mockRestore()
+      end.mockRestore()
+      renderer.destroy()
+    }
+  }
+  expect(await run(true)).toEqual(await run(false))
+})
+
 test("paint grid late full selection preserves the painter scissor and opacity until scope exit", async () => {
   async function run(experimentalPaintGrid: boolean) {
     const { renderer, renderOnce } = await createTestRenderer({ width: 8, height: 2, experimentalPaintGrid })

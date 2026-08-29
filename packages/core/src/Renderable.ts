@@ -1777,6 +1777,11 @@ export class RootRenderable extends Renderable {
     return renderable
   }
 
+  /** @internal Geometry already invalidated before the next layout pass. */
+  public get isPaintGeometryDirty(): boolean {
+    return this.renderList.length !== 0 && this.appliedRenderListRevision !== getRenderListRevision(this._ctx)
+  }
+
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     this._currentRenderable = undefined
     if (!this.visible) return
@@ -1806,7 +1811,7 @@ export class RootRenderable extends Renderable {
     const layoutGeneration = getLayoutGeneration(this._ctx)
     const renderListRevision = getRenderListRevision(this._ctx)
     const hadRenderList = this.renderList.length !== 0
-    const paintGeometryChanged = this.appliedRenderListRevision !== renderListRevision
+    const paintGeometryChanged = this.isPaintGeometryDirty
     const canReuseRenderList =
       this.renderListReusable &&
       this.appliedLayoutGeneration === layoutGeneration &&
