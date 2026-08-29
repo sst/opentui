@@ -1904,7 +1904,10 @@ export fn bufferPaintBegin(buffer_handle: NativeHandle, background: [*]const u16
 export fn bufferPaintPush(buffer_handle: NativeHandle, owner: u32, x: i32, y: i32, width: u32, height: u32, dirty: u8) u8 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 1;
     const grid = object_ptr.paint_grid orelse return 1;
-    return @intFromBool(grid.push(owner, x, y, width, height, dirty != 0) catch return 2);
+    return @intFromBool(grid.push(owner, x, y, width, height, dirty != 0) catch {
+        grid.materialize();
+        return 1;
+    });
 }
 
 export fn bufferPaintFallback(buffer_handle: NativeHandle) void {

@@ -117,6 +117,7 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
       renderer.root.add(upper)
       await frame()
       await frame()
+      await frame()
       content = "other"
       lower.requestRender()
       await frame()
@@ -136,19 +137,22 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
   const full = await run(false)
   const grid = await run(true)
   expect(grid.frames).toEqual(full.frames)
-  expect(full.counts.slice(0, 3)).toEqual([
+  expect(full.counts.slice(0, 4)).toEqual([
     [1, 1],
     [2, 2],
     [3, 3],
+    [4, 4],
   ])
-  expect(grid.counts.slice(0, 3)).toEqual([
+  expect(grid.counts.slice(0, 4)).toEqual([
     [1, 1],
-    [1, 1],
-    [2, 1],
+    [2, 2],
+    [2, 2],
+    [3, 2],
   ])
-  expect(grid.stats[1].recomposed).toBe(0)
-  expect(grid.stats[2].recomposed).toBe(3)
-  expect(grid.stats.slice(0, 3).every((frame) => frame.fallback === 0)).toBe(true)
+  expect(grid.stats[0].fallback).toBe(1)
+  expect(grid.stats[2].recomposed).toBe(0)
+  expect(grid.stats[3].recomposed).toBe(3)
+  expect(grid.stats.slice(1, 4).every((frame) => frame.fallback === 0)).toBe(true)
 })
 
 test("paint grid skips text overrides but preserves hit targets and generic invalidation", async () => {
@@ -167,8 +171,10 @@ test("paint grid skips text overrides but preserves hit targets and generic inva
     await renderOnce()
     const first = snapshot(renderer.currentRenderBuffer)
     await renderOnce()
+    expect(snapshot(renderer.currentRenderBuffer)).toEqual(first)
+    await renderOnce()
     expect(renderer.nextRenderBuffer.getPaintStats().skipped).toBe(2)
-    expect(custom.calls).toBe(1)
+    expect(custom.calls).toBe(2)
     expect(snapshot(renderer.currentRenderBuffer)).toEqual(first)
     await mockMouse.click(1, 0)
     expect(clicks).toBe(1)
@@ -255,15 +261,16 @@ test("paint grid falls back for late retained raw views without invoking painter
     renderer.root.add(lower)
     renderer.root.add(upper)
     await renderOnce()
+    await renderOnce()
     const retained = renderer.nextRenderBuffer.getPaintStats().retainedBytes
     expose = true
     upper.requestRender()
     await renderOnce()
-    expect([lower.calls, upper.calls]).toEqual([1, 2])
+    expect([lower.calls, upper.calls]).toEqual([2, 3])
     expect(renderer.nextRenderBuffer.getPaintStats().fallback).toBe(1)
     expect(renderer.nextRenderBuffer.getPaintStats().retainedBytes).toBeLessThan(retained)
     await renderOnce()
-    expect([lower.calls, upper.calls]).toEqual([2, 3])
+    expect([lower.calls, upper.calls]).toEqual([3, 4])
     expect([...renderer.currentRenderBuffer.buffers.char.slice(0, 5)]).toEqual([65, 66, 67, 68, 69])
   } finally {
     renderer.destroy()
@@ -290,11 +297,12 @@ test("paint grid retries a rejected frame, resizes, and changes background coher
   try {
     renderer.root.add(painter)
     await renderOnce()
+    await renderOnce()
     reject = true
     await renderOnce()
     await renderOnce()
     expect(captureCharFrame().split("\n")[0]).toBe("  test  ")
-    expect(painter.calls).toBe(2)
+    expect(painter.calls).toBe(3)
     resize(12, 3)
     renderer.setBackgroundColor(blue)
     await renderOnce()

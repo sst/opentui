@@ -138,7 +138,7 @@ test "paint grid planned full paint retains ownership but rerecords before skipp
     try target.beginPaint(black, true);
     target.paintFallback();
     try grid.finish();
-    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.ops.items.len);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.items.len);
     try std.testing.expectEqual(@as(usize, 0), grid.refs.capacity);
 }
 
@@ -163,8 +163,8 @@ test "paint grid nested context cleanup and late raw fallback materialize prefix
     try std.testing.expectEqual(@as(usize, 0), target.scissor_stack.items.len);
     try std.testing.expectEqual(@as(f32, 1), target.getCurrentOpacity());
     try target.drawText("C", 2, 0, white, white, 0);
-    try std.testing.expectEqual(@as(u32, 2), grid.commands.items[0].pending.ops.items[1].owner);
-    try std.testing.expectEqual(@as(u32, 1), grid.commands.items[0].pending.ops.items[2].owner);
+    try std.testing.expectEqual(@as(u32, 2), grid.commands.items[0].pending.items[1].owner);
+    try std.testing.expectEqual(@as(u32, 1), grid.commands.items[0].pending.items[2].owner);
     const raw = target.getCharPtr();
     try std.testing.expectEqualSlices(u32, &.{ 'A', 'B', 'C' }, raw[0..3]);
     raw[3] = 'D';
@@ -172,8 +172,8 @@ test "paint grid nested context cleanup and late raw fallback materialize prefix
     try grid.finish();
     try std.testing.expect(grid.fallback);
     try std.testing.expectEqual(@as(u32, 'D'), target.get(3, 0).?.char);
-    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].pending.ops.items.len);
-    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.ops.items.len);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].pending.items.len);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.items.len);
     try target.beginPaint(white, false);
     try std.testing.expect(grid.fallback);
     grid.abort();
@@ -323,7 +323,7 @@ test "paint grid flat index allocation failure releases recordings and retries" 
         grid.abort();
         try std.testing.expect(!grid.valid);
         try std.testing.expectEqual(@as(usize, 0), grid.refs.capacity);
-        try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.ops.capacity);
+        try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.capacity);
         grid.abort();
         failing.fail_index = std.math.maxInt(usize);
         try target.beginPaint(white, false);
@@ -338,7 +338,7 @@ test "paint grid flat index allocation failure releases recordings and retries" 
     try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
 }
 
-test "paint grid owned text span finishes drawing after glyph payload growth failure" {
+test "paint grid text stream reserves once and finishes drawing after growth failure" {
     const a = std.testing.allocator;
     var tracking = std.testing.FailingAllocator.init(a, .{});
     var pool = gp.GraphemePool.init(a);
@@ -359,17 +359,14 @@ test "paint grid owned text span finishes drawing after glyph payload growth fai
     const grid = target.paint_grid.?;
     _ = try grid.push(1, 0, 0, 1, 1, true);
     const allocations = tracking.alloc_index;
-    var content: [200]u8 = undefined;
-    for (&content, 0..) |*char, i| char.* = @intCast('a' + i % 26);
-    try text.setText(content[0..96]);
+    try text.setText(&([_]u8{'a'} ** 96));
     target.drawTextBuffer(view, 0, 0);
     control.drawTextBuffer(view, 0, 0);
-    try std.testing.expect(tracking.alloc_index > allocations);
-    try std.testing.expectEqual(@as(usize, 1), grid.commands.items[0].pending.ops.items.len);
-    try std.testing.expectEqual(@as(u32, 96), grid.commands.items[0].pending.ops.items[0].count);
+    try std.testing.expectEqual(allocations + 1, tracking.alloc_index);
+    try std.testing.expectEqual(@as(usize, 96), grid.commands.items[0].pending.items.len);
     tracking.fail_index = tracking.alloc_index;
     tracking.resize_fail_index = tracking.resize_index;
-    try text.setText(&content);
+    try text.setText(&([_]u8{'b'} ** 200));
     target.drawTextBuffer(view, 0, 0);
     control.drawTextBuffer(view, 0, 0);
     try std.testing.expect(grid.fallback);
@@ -393,34 +390,43 @@ test "paint grid owned text span finishes drawing after glyph payload growth fai
     try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
 }
 
-test "paint grid differing glyph spans own text and preserve precise damage" {
+test "paint grid forced startup allocates cell storage only on an eligible update" {
     const a = std.testing.allocator;
+    var tracking = std.testing.FailingAllocator.init(a, .{});
     var pool = gp.GraphemePool.init(a);
     defer pool.deinit();
     var links = link.LinkPool.init(a);
     defer links.deinit();
-    const target = try OptimizedBuffer.init(a, 40, 2, .{ .pool = &pool, .link_pool = &links });
+    const target = try OptimizedBuffer.init(tracking.allocator(), 40, 2, .{ .pool = &pool, .link_pool = &links });
     defer target.deinit();
     const black = ansi.rgbColor(0, 0, 0, 255);
     const white = ansi.rgbColor(255, 255, 255, 255);
-    for (0..3) |frame| {
-        try target.beginPaint(black, false);
-        const grid = target.paint_grid.?;
-        const paint = try grid.push(1, 0, 0, 1, 1, frame == 1);
-        if (paint) {
-            var source: [12]u8 = "abcdefghijkl".*;
-            if (frame == 1) source[5] = 'X';
-            try target.drawText(&source, 7, 1, white, black, 0);
-            @memset(&source, '!');
-            try std.testing.expectEqual(@as(usize, 1), grid.commands.items[0].pending.ops.items.len);
-        }
-        grid.pop();
-        try grid.finish();
-        const expected: []const u8 = if (frame == 0) "abcdefghijkl" else "abcdeXghijkl";
-        for (expected, 7..) |char, x| try std.testing.expectEqual(@as(u32, char), target.get(@intCast(x), 1).?.char);
-        if (frame == 1) try std.testing.expectEqual(@as(u32, 1), grid.recomposed);
-        if (frame == 2) try std.testing.expectEqual(@as(u32, 0), grid.recomposed);
+    const allocations = tracking.alloc_index;
+    for (0..4) |_| {
+        target.clear(black, null);
+        try target.beginPaint(black, true);
+        try target.drawText("full", 7, 1, white, black, 0);
+        try target.paint_grid.?.finish();
+        try std.testing.expectEqual(@as(usize, 0), target.paint_grid.?.cells.len);
+        try std.testing.expectEqual(@as(u32, 'f'), target.get(7, 1).?.char);
     }
+    try std.testing.expectEqual(allocations + 1, tracking.alloc_index);
+    try target.beginPaint(black, false);
+    tracking.fail_index = tracking.alloc_index + 1;
+    try std.testing.expectError(error.OutOfMemory, target.paint_grid.?.push(1, 0, 0, 1, 1, false));
+    target.paint_grid.?.abort();
+    tracking.fail_index = std.math.maxInt(usize);
+    try target.beginPaint(black, false);
+    const grid = target.paint_grid.?;
+    try std.testing.expect(try grid.push(1, 0, 0, 1, 1, false));
+    try target.drawText("kept", 7, 1, white, black, 0);
+    grid.pop();
+    try grid.finish();
+    try target.beginPaint(black, false);
+    try std.testing.expect(!try grid.push(1, 0, 0, 1, 1, false));
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqual(@as(u32, 'k'), target.get(7, 1).?.char);
 }
 
 test "paint grid allocation traffic measurement" {

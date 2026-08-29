@@ -4,7 +4,30 @@ This is an **incomplete experimental checkpoint**, not a no-regression result.
 The feature remains off by default and PR1466 remains draft. Earlier reports
 describe their pinned implementations, not this replacement candidate.
 
-## Candidate A
+## Current Candidate
+
+- D2+C replaces eager startup capture with ordinary full painting. Cell-index
+  storage and invalid payload preparation happen only at the first actual paint
+  scope, not before Root might select full rendering. Native owns this policy.
+- Existing text draw-boundary specialization now reaches opaque/alpha blending
+  and final setters, rather than specializing only transparent glyphs. Full text
+  loops no longer perform the per-cell recording checks.
+- Cold and continuously full-only scenes retain a192-byte recorder header in
+  the current120x40 matrix. Selective scenes still build their full contributor
+  grid; construction is included in first-update and mixed-transition timings.
+  This is not a claim that caching is free, or that full fallback is incremental.
+- Root ReleaseFast build, native13/Core14 focused checks, original normal and
+  transition four-channel parity pass. Deferred-allocation OOM/retry is tested.
+  Internal initial-cache timing tests now explicitly cover full startup, capture,
+  then skipping; output/input/single-callback/rejection checks are preserved.
+- Seven1000-frame repeats in the original driver and126 fresh-process samples
+  in an observer-free driver are recorded locally. Some full workloads still
+  show overhead. Final matched controls, sensitivity, validation and acceptance
+  remain pending; this checkpoint does not meet the no-regression target yet.
+
+## Alternatives
+
+Candidate A/A2/A3, saved in checkpoint4d70942c and local patches:
 
 - Replace per-cell paint records with ordered row spans sharing preblend colors,
   opacity, mode and actual nested owner identity. Differing scalar glyphs use an
@@ -16,9 +39,15 @@ describe their pinned implementations, not this replacement candidate.
 - Preserve raw/image/effect fallback, callback execution and publication behavior.
   Focused native13/Core14 tests and original normal/transition four-channel
   snapshot parity pass. New tests cover mutable text payload and precise damage.
-- Initial measurements do **not** establish a regression-free CPU improvement.
-  Do not infer a speed claim from memory savings. Full main/60a comparisons,
-  remaining alternatives and final build/distribution validation are pending.
+- A3 additionally replays fill spans through the original native bulk fill
+  implementation and hoists opacity per run. It is not retained in the current
+  candidate: reduced memory did not establish a consistent CPU advantage.
+- B independently fused initial scalar raster/capture and deferred indexing.
+  It passed parity but did not remove cold recording cost; it is not retained.
+
+All variants remain experimental evidence, not a proof that other architectures
+cannot improve the remaining workloads. No arbitrary new purity contract,
+translation assumption or ordinary custom-paint exclusion is introduced.
 
 ## Research
 
@@ -33,6 +62,6 @@ describe their pinned implementations, not this replacement candidate.
   Primitive/clip/opacity dependencies and dirty-region replay. GPU tiles and
   quadtrees are not being imported into this CPU terminal experiment.
 
-Next alternatives are fused initial paint/capture with measured deferred index
-cost, and draw-boundary dispatch into genuinely recorder-free full-render loops.
-No new purity contract, translation assumption or custom-paint exclusion is used.
+The local campaign ledger includes exact variant patches, binary/source/harness
+pins and raw measurements. No external renderer speed numbers are claimed to
+apply to OpenTUI.
