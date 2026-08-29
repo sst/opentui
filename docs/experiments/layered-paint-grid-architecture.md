@@ -20,10 +20,16 @@ describe their pinned implementations, not this replacement candidate.
   transition four-channel parity pass. Deferred-allocation OOM/retry is tested.
   Internal initial-cache timing tests now explicitly cover full startup, capture,
   then skipping; output/input/single-callback/rejection checks are preserved.
-- Seven1000-frame repeats in the original driver and126 fresh-process samples
-  in an observer-free driver are recorded locally. Some full workloads still
-  show overhead. Final matched controls, sensitivity, validation and acceptance
-  remain pending; this checkpoint does not meet the no-regression target yet.
+- [Fresh matched comparisons](layered-paint-grid-architecture-results.md) cover
+  actual main and prior60a, all nine workloads, ON/OFF, cold and mixed transitions,
+  seven1000-frame repeats at120x40 and five600-frame repeats at240x80/depth4.
+  All means, p50/p95/p99 and repeat ranges are retained in compact JSON.
+  Large selective gains coexist with full-workload and short-transition losses.
+  This checkpoint does not meet the no-regression target.
+- Full native2126 pass/8 skip, Bun Core5497/23 skip, guarded Node26.4 Core4754/6
+  skip, packed Bun/Node consumers, React59, Solid271, format/lint pass locally.
+  Exactly2016 captured normal/transition frames match newly captured main bytes.
+  Local checks are not a claim that GitHub CI is green.
 
 ## Alternatives
 
