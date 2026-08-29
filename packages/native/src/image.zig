@@ -785,26 +785,8 @@ fn validateRgba(pixels: []const u8, width: u32, height: u32, stride: u32) !u32 {
     return row_bytes;
 }
 
-fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
-    _ = try validateRgba(pixels, width, height, stride);
-    return allocateImage(allocator, .{
-        .width = width,
-        .height = height,
-        .source_width = width,
-        .source_height = height,
-        .format = @intFromEnum(Format.raw_rgba),
-        .color_status = @intFromEnum(ColorStatus.explicit_srgb),
-        .orientation = 1,
-        .has_alpha = 0,
-    });
-}
-
 pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
     return createFromPixels(allocator, pixels, width, height, .{ .stride = stride });
-}
-
-pub fn updateRgba(image: *Image, pixels: []const u8, stride: u32) !void {
-    return updatePixels(image, pixels, .{ .stride = stride });
 }
 
 pub fn createFromPixels(
@@ -814,7 +796,17 @@ pub fn createFromPixels(
     height: u32,
     options: PixelImportOptions,
 ) !*Image {
-    const image = try allocatePixelImport(allocator, pixels, width, height, options.stride);
+    _ = try validateRgba(pixels, width, height, options.stride);
+    const image = try allocateImage(allocator, .{
+        .width = width,
+        .height = height,
+        .source_width = width,
+        .source_height = height,
+        .format = @intFromEnum(Format.raw_rgba),
+        .color_status = @intFromEnum(ColorStatus.explicit_srgb),
+        .orientation = 1,
+        .has_alpha = 0,
+    });
     errdefer image.deinit();
     try updatePixels(image, pixels, options);
     return image;

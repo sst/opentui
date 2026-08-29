@@ -3538,15 +3538,6 @@ test "pixel import FFI validates pointers and enum values without publishing a h
     try std.testing.expectEqual(@as(u32, 0), value.info().has_alpha);
 }
 
-export fn imageUpdateRgba(
-    image_handle: NativeHandle,
-    pixels_ptr: ?[*]const u8,
-    pixels_len: u64,
-    stride: u32,
-) u32 {
-    return imageUpdatePixels(image_handle, pixels_ptr, pixels_len, stride, 0, 0);
-}
-
 export fn imageUpdatePixels(
     image_handle: NativeHandle,
     pixels_ptr: ?[*]const u8,

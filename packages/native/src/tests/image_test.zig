@@ -14,19 +14,19 @@ test "reusable RGBA updates keep the allocation and reject pinned or invalid wri
     const pointer = value.pixels.ptr;
 
     value.retain();
-    try std.testing.expectError(error.Busy, image.updateRgba(value, &second, 8));
+    try std.testing.expectError(error.Busy, image.updatePixels(value, &second, .{ .stride = 8 }));
     try std.testing.expectEqualSlices(u8, &first, value.pixels);
     value.deinit();
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, &second, 3));
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, second[0..11], 8));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(value, &second, .{ .stride = 3 }));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(value, second[0..11], .{ .stride = 8 }));
     try std.testing.expectEqualSlices(u8, &first, value.pixels);
 
     for (0..1000) |_| {
-        try image.updateRgba(value, &second, 8);
+        try image.updatePixels(value, &second, .{ .stride = 8 });
         try std.testing.expectEqual(pointer, value.pixels.ptr);
         try std.testing.expectEqualSlices(u8, &[_]u8{ 7, 8, 9, 128, 10, 11, 12, 255 }, value.pixels);
         try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
-        try image.updateRgba(value, &first, 4);
+        try image.updatePixels(value, &first, .{ .stride = 4 });
         try std.testing.expectEqual(@as(u32, 0), value.metadata.has_alpha);
     }
     try std.testing.expect(!failing.has_induced_failure);
@@ -46,7 +46,7 @@ test "reusable pixel updates invalidate PNG encoding without changing cloned sna
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 255, 128 }, try decoded.ensurePixels());
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, snapshot.pixels);
     try std.testing.expect(snapshot.encoded_png != null);
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(decoded, &.{ 1, 2, 3, 4 }, 4));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(decoded, &.{ 1, 2, 3, 4 }, .{ .stride = 4 }));
 }
 
 test "reusable pixel updates convert strided 65x3 BGRA without allocating" {

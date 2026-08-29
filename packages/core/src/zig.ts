@@ -1594,7 +1594,6 @@ function getOpenTUILib(libPath?: string) {
     imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageCreateFromPixels: { args: ["buffer", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
-    imageUpdateRgba: { args: ["u32", "ptr", "u64", "u32"], returns: "u32" },
     imageUpdatePixels: { args: ["u32", "buffer", "u64", "u32", "u32", "u32"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
@@ -3107,7 +3106,6 @@ export interface RenderLib extends AudioEngineLib {
     format: number,
     alpha: number,
   ) => { status: number; handle: ImageHandle | null }
-  imageUpdateRgba: (image: ImageHandle, pixels: Uint8Array, stride: number) => number
   imageUpdatePixels: (image: ImageHandle, pixels: Uint8Array, stride: number, format: number, alpha: number) => number
   imageDestroy: (image: ImageHandle) => void
   imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
@@ -6654,16 +6652,6 @@ class FFIRenderLib implements RenderLib {
   }
 
   // Internal pool owners only, not a general image mutation API. Publish with a fresh retained handle.
-  public imageUpdateRgba(image: ImageHandle, pixels: Uint8Array, stride: number): number {
-    return this.opentui.symbols.imageUpdateRgba(
-      image,
-      pixels.byteLength === 0 ? null : pixels,
-      BigInt(pixels.byteLength),
-      stride,
-    )
-  }
-
-  // The same private-owner and fresh-publication preconditions as imageUpdateRgba apply.
   public imageUpdatePixels(
     image: ImageHandle,
     pixels: Uint8Array,
@@ -6671,14 +6659,7 @@ class FFIRenderLib implements RenderLib {
     format: number,
     alpha: number,
   ): number {
-    return this.opentui.symbols.imageUpdatePixels(
-      image,
-      pixels,
-      BigInt(pixels.byteLength),
-      stride,
-      format,
-      alpha,
-    )
+    return this.opentui.symbols.imageUpdatePixels(image, pixels, BigInt(pixels.byteLength), stride, format, alpha)
   }
 
   public imageDestroy(image: ImageHandle): void {
