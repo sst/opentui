@@ -301,9 +301,10 @@ test("a cancelled admission continuation cannot clear a newer wait", async () =>
   renderer.requestRender()
   clock.advance(100)
   await settle()
-  expect(waits).toBe(2)
+  expect(waits).toBe(1)
   releaseOldContinuation()
   await settle()
+  expect(waits).toBe(2)
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
   let idleResolved = false
   void renderer.idle().then(() => {
@@ -324,26 +325,47 @@ test("a cancelled admission continuation cannot clear a newer wait", async () =>
 })
 
 for (const control of ["pause", "stop"] as const) {
-  test(`new one-shot requests after ${control} survive an existing admission wait`, async () => {
+  test(`repeated ${control} bounds admission subscriptions and preserves new requests`, async () => {
     const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+    const feedInternals = feed as unknown as { idleResolvers: Array<() => void> }
     let callbacks = 0
     renderer.setFrameCallback(async () => {
       callbacks++
     })
     renderer.setTerminalTitle("held-before-pause")
-    renderer.start()
-    renderer[control]()
+    const heldBytes = stdout.writableLength
+    let cancelledIdleCount = 0
+    for (let cycle = 0; cycle < 100; cycle++) {
+      renderer.start()
+      renderer[control]()
+      void renderer.idle().then(() => cancelledIdleCount++)
+    }
+    await settle()
+    expect(cancelledIdleCount).toBe(100)
+    expect(feedInternals.idleResolvers.length).toBe(1)
+    expect(stdout.writableLength).toBe(heldBytes)
+
     renderer.requestRender()
     clock.advance(100)
     await settle()
     expect(callbacks).toBe(0)
     expect(feed.isBackpressured()).toBe(true)
+    expect(feedInternals.idleResolvers.length).toBe(1)
+    let idleResolved = false
+    void renderer.idle().then(() => {
+      idleResolved = true
+    })
+    await settle()
+    expect(idleResolved).toBe(false)
+
     stdout.releaseAll()
     await feed.idle()
     clock.advance(100)
     await settle()
     expect(callbacks).toBe(1)
     expect(renderer.isRunning).toBe(false)
+    expect(idleResolved).toBe(true)
+    expect(Buffer.concat(stdout.writes).toString()).toContain("held-before-pause")
   })
 }
 

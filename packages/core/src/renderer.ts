@@ -1021,7 +1021,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _detachFeed: (() => void) | null = null
   private _detachFeedError: (() => void) | null = null
   private feedIdleRenderScheduled = false
-  private feedIdleRenderGeneration = 0
+  private feedIdleWaitPending = false
 
   public get controlState(): RendererControlState {
     return this._controlState
@@ -1490,24 +1490,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private scheduleRenderAfterFeedIdle(): void {
     const feed = this._feed
-    if (
-      !feed ||
-      this.feedIdleRenderScheduled ||
-      this._isDestroyed ||
-      this._controlState === RendererControlState.EXPLICIT_SUSPENDED
-    )
-      return
+    if (!feed || this._isDestroyed || this._controlState === RendererControlState.EXPLICIT_SUSPENDED) return
 
     this.feedIdleRenderScheduled = true
-    const generation = ++this.feedIdleRenderGeneration
+    if (this.feedIdleWaitPending) return
+    this.feedIdleWaitPending = true
     feed.idle().then(() => {
-      if (generation !== this.feedIdleRenderGeneration) return
-      this.feedIdleRenderScheduled = false
-      if (this._isDestroyed) {
-        this.resolveIdleIfNeeded()
+      this.feedIdleWaitPending = false
+      if (!this.feedIdleRenderScheduled) return
+      // New output may arrive after the feed resolves but before this continuation.
+      if (feed.isBackpressured()) {
+        this.scheduleRenderAfterFeedIdle()
         return
       }
 
+      this.feedIdleRenderScheduled = false
       this.scheduleRenderTimer()
       this.resolveIdleIfNeeded()
     })
@@ -1516,7 +1513,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private cancelRenderAfterFeedIdle(): void {
     if (!this.feedIdleRenderScheduled) return
     // Cancel scheduler demand without releasing bytes still owned by the sink.
-    this.feedIdleRenderGeneration++
     this.feedIdleRenderScheduled = false
     this.immediateRerenderRequested = false
   }
