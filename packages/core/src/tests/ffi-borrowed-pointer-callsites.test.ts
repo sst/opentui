@@ -874,7 +874,7 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
-  test("empty image inputs preserve nullable pointer semantics", () => {
+  test("empty image inputs preserve buffer and nullable pointer semantics", () => {
     withStubbedSymbols(
       {
         imageInfo: () => 0,
@@ -897,7 +897,7 @@ describe("borrowed pointer call sites", () => {
         expect(calls.imageDecode[0]![0]).toBeNull()
         expect(calls.imageCreateFromRgba[0]![0]).toBeNull()
         expect(calls.imageUpdateRgba[0]![1]).toBeNull()
-        expect(calls.imageUpdatePixels[0]![1]).toBeNull()
+        expect(calls.imageUpdatePixels[0]![1]).toBe(empty)
         expect(calls.imageCopyPixels[0]![1]).toBeNull()
       },
     )

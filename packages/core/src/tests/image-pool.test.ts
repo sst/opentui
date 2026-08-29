@@ -4,6 +4,24 @@ import { ImageError, NativeImage, NativeImagePool, type PixelImportOptions } fro
 import { resolveRenderLib } from "../zig.js"
 
 describe("NativeImagePool", () => {
+  test("publishes shared pixel views through busy and reused slots", () => {
+    const pixels = new Uint8Array(new SharedArrayBuffer(5), 1)
+    pixels.set([3, 2, 1, 128])
+    const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
+    let frame = pool.publishPixels(pixels, { format: "bgra8" })!
+    try {
+      pixels.set([6, 5, 4, 255])
+      expect(pool.publishPixels(pixels, { format: "bgra8" })).toBeNull()
+      expect(frame.raw().data).toEqual(Uint8Array.of(1, 2, 3, 128))
+      frame.dispose()
+      frame = pool.publishPixels(pixels, { format: "bgra8" })!
+      expect(frame.raw().data).toEqual(Uint8Array.of(4, 5, 6, 255))
+    } finally {
+      frame.dispose()
+      pool.dispose()
+    }
+  })
+
   test.each(["straight", "opaque"] as const)(
     "publishes strided 65x3 BGRA with %s alpha and immutable readers",
     (alpha) => {

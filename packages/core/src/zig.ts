@@ -1595,7 +1595,7 @@ function getOpenTUILib(libPath?: string) {
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageCreateFromPixels: { args: ["buffer", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
     imageUpdateRgba: { args: ["u32", "ptr", "u64", "u32"], returns: "u32" },
-    imageUpdatePixels: { args: ["u32", "ptr", "u64", "u32", "u32", "u32"], returns: "u32" },
+    imageUpdatePixels: { args: ["u32", "buffer", "u64", "u32", "u32", "u32"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
@@ -6673,7 +6673,7 @@ class FFIRenderLib implements RenderLib {
   ): number {
     return this.opentui.symbols.imageUpdatePixels(
       image,
-      pixels.byteLength === 0 ? null : pixels,
+      pixels,
       BigInt(pixels.byteLength),
       stride,
       format,
