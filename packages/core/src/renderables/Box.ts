@@ -271,6 +271,15 @@ export class BoxRenderable extends Renderable {
   public override canUseObservedPaintBounds(): boolean {
     // shouldFill is publicly mutable without invalidation. Never use sparse
     // border observations when it can introduce a new interior footprint.
+    if (
+      Array.isArray(this._border) &&
+      (this._border.includes("top") !== this.borderSides.top ||
+        this._border.includes("bottom") !== this.borderSides.bottom ||
+        this._border.includes("left") !== this.borderSides.left ||
+        this._border.includes("right") !== this.borderSides.right)
+    ) {
+      return false
+    }
     return (
       !this.shouldFill &&
       !this.buffered &&

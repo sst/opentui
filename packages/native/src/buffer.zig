@@ -2359,9 +2359,9 @@ pub const OptimizedBuffer = struct {
         const border_bg_transparent = isFullyTransparent(opacity, borderColor, backgroundColor);
         const has_title = title != null or bottomTitle != null;
         const title_visible = has_title and !isFullyTransparent(opacity, titleColor, backgroundColor);
+        // A visible title does not make invisible borders underlay-independent.
+        if (border_bg_transparent and opacity != 0.0) self.paint_bounds_valid = false;
         if (border_bg_transparent and !title_visible) {
-            // An invisible primitive may cover an image on another underlay.
-            if (opacity != 0.0) self.paint_bounds_valid = false;
             if (self.image_placements.items.len == 0) return;
             if (opacity == 0.0) return;
         }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { BoxRenderable, OptimizedBuffer, Renderable, RGBA, type RenderContext } from "../index.js"
+import { BoxRenderable, NativeImage, OptimizedBuffer, Renderable, RGBA, type RenderContext } from "../index.js"
 import { createTestRenderer } from "../testing.js"
 
 const white = RGBA.fromInts(255, 255, 255)
@@ -209,5 +209,65 @@ test("failed full paints discard observations and unwind native collection", asy
   } finally {
     lib.bufferDrawBox = drawBox
     renderer.destroy()
+  }
+})
+
+test("mutating an exposed border array cannot reuse its old sparse footprint", async () => {
+  const { renderer, renderOnce } = await createTestRenderer({ width: 20, height: 12, useThread: false })
+  renderer.requestRender = (source) => renderer.root.invalidate(source)
+  const dot = new Dot(renderer, 11)
+  const box = new BoxRenderable(renderer, { width: 20, height: 12, border: ["top"], shouldFill: false })
+  renderer.root.add(dot)
+  renderer.root.add(box)
+  try {
+    await renderOnce()
+    const border = box.border
+    if (!Array.isArray(border)) throw new Error("expected border array")
+    border.push("bottom")
+    dot.requestRender()
+    await renderOnce()
+    const partial = snapshot(renderer.currentRenderBuffer)
+    renderer.root.invalidate()
+    await renderOnce()
+    expect(snapshot(renderer.currentRenderBuffer)).toEqual(partial)
+  } finally {
+    renderer.destroy()
+  }
+})
+
+test("transparent borders with visible titles remain conservative over new image underlays", async () => {
+  const { renderer, renderOnce } = await createTestRenderer({ width: 20, height: 12, useThread: false })
+  renderer.requestRender = (source) => renderer.root.invalidate(source)
+  const image = NativeImage.fromRgba(new Uint8Array([220, 40, 50, 255]), 1, 1)
+  const lower = new BoxRenderable(renderer, { width: 1, height: 1, position: "absolute" })
+  let showImage = false
+  ;(lower as any).renderSelf = (buffer: OptimizedBuffer) => {
+    if (showImage) buffer.drawImage(image, 2, 11, 1, 1)
+  }
+  const dot = new Dot(renderer, 11)
+  const box = new BoxRenderable(renderer, {
+    width: 20,
+    height: 12,
+    border: ["top", "bottom"],
+    borderColor: RGBA.fromInts(0, 0, 0, 0),
+    title: "title",
+    titleColor: white,
+    shouldFill: false,
+  })
+  renderer.root.add(lower)
+  renderer.root.add(dot)
+  renderer.root.add(box)
+  try {
+    await renderOnce()
+    showImage = true
+    dot.requestRender()
+    await renderOnce()
+    const partial = snapshot(renderer.currentRenderBuffer)
+    renderer.root.invalidate()
+    await renderOnce()
+    expect(snapshot(renderer.currentRenderBuffer)).toEqual(partial)
+  } finally {
+    renderer.destroy()
+    image.dispose()
   }
 })
