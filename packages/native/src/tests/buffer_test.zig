@@ -252,6 +252,44 @@ test "paint grid raw grid overwrite releases removed wide and link references" {
     try std.testing.expect(!target.link_tracker.hasAny());
 }
 
+test "paint grid flat index allocation failure releases recordings and retries" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    var failing = std.testing.FailingAllocator.init(a, .{});
+    const target = try OptimizedBuffer.init(failing.allocator(), 80, 2, .{ .pool = &pool, .link_pool = &links });
+    errdefer target.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const id = try links.alloc("https://example.com/retry");
+    try links.incref(id);
+    defer links.decref(id) catch {};
+    try target.beginPaint(white, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, true);
+    for (0..20) |i| try target.drawText("界", @intCast(i * 2), 0, white, white, ansi.TextAttributes.setLinkId(0, id));
+    grid.pop();
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, grid.finish());
+    grid.abort();
+    try std.testing.expect(!grid.valid);
+    try std.testing.expectEqual(@as(usize, 0), grid.refs.capacity);
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.capacity);
+    grid.abort();
+    failing.fail_index = std.math.maxInt(usize);
+    try target.beginPaint(white, false);
+    try std.testing.expect(try grid.push(1, 0, 0, 1, 1, false));
+    try target.drawText("界", 4, 0, white, white, ansi.TextAttributes.setLinkId(0, id));
+    grid.pop();
+    try grid.finish();
+    try std.testing.expect(gp.isGraphemeChar(target.buffer.char[4]));
+    try std.testing.expect(gp.isContinuationChar(target.buffer.char[5]));
+    try std.testing.expectEqual(id, ansi.TextAttributes.getLinkId(target.buffer.attributes[5]));
+    target.deinit();
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+}
+
 test "paint grid allocation traffic measurement" {
     const a = std.testing.allocator;
     for ([_]bool{ false, true }) |enabled| {

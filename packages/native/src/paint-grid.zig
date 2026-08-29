@@ -302,8 +302,8 @@ pub const PaintGrid = struct {
         const t = self.target;
         const a = t.allocator;
         var rebuild = false;
-        // Remove old references before releasing their payloads. Equal streams
-        // retain their index and do no composition work, including repeated writes.
+        // Equal streams and equal footprints retain their index. Only changed
+        // footprints rebuild the contiguous references after payload replacement.
         for (self.commands.items, 0..) |*command, ci| {
             if (ci < self.count and !command.recording) continue;
             if (ci < self.count and std.meta.eql(command.ops.items.len, command.pending.items.len)) {
@@ -388,7 +388,7 @@ pub const PaintGrid = struct {
         }
         // Wide writes/repairs and inherited tab backgrounds couple cells. Close
         // damage over those actual spans, not over renderable layout rectangles.
-        const full_replay = self.dirty_count > self.dirty.len / 2;
+        const full_replay = self.dirty_count > self.dirty.len / 4;
         if (full_replay) {
             @memset(self.dirty, true);
             for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
