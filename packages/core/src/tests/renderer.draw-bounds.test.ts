@@ -275,6 +275,37 @@ test("mutating an exposed border array cannot reuse its old sparse footprint", a
   }
 })
 
+test("a custom layout-bounds hook does not opt a Box into observed paint eligibility", async () => {
+  class CustomBox extends BoxRenderable {
+    calls = 0
+    protected hasLayoutBoundedPaint(): boolean {
+      return true
+    }
+    protected renderSelf(buffer: OptimizedBuffer): void {
+      this.calls++
+      buffer.setCell(2, 6, "X", white, blue)
+    }
+  }
+  const { renderer, renderOnce } = await createTestRenderer({ width: 20, height: 12, useThread: false })
+  renderer.requestRender = (source) => renderer.root.invalidate(source)
+  const dot = new Dot(renderer, 6)
+  const custom = new CustomBox(renderer, { width: 20, height: 12, shouldFill: false })
+  renderer.root.add(dot)
+  renderer.root.add(custom)
+  try {
+    await renderOnce()
+    dot.requestRender()
+    await renderOnce()
+    expect(custom.calls).toBe(2)
+    const partial = snapshot(renderer.currentRenderBuffer)
+    renderer.root.invalidate()
+    await renderOnce()
+    expect(snapshot(renderer.currentRenderBuffer)).toEqual(partial)
+  } finally {
+    renderer.destroy()
+  }
+})
+
 test("transparent borders with visible titles remain conservative over new image underlays", async () => {
   const { renderer, renderOnce } = await createTestRenderer({ width: 20, height: 12, useThread: false })
   renderer.requestRender = (source) => renderer.root.invalidate(source)

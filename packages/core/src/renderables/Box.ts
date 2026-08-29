@@ -283,7 +283,8 @@ export class BoxRenderable extends Renderable {
     return (
       !this.shouldFill &&
       !this.buffered &&
-      this.hasLayoutBoundedPaint() &&
+      this.render === Renderable.prototype.render &&
+      this.renderSelf === BoxRenderable.prototype.renderSelf &&
       this.canReuseRenderCommandList() &&
       this.getPaintBounds() !== null
     )
