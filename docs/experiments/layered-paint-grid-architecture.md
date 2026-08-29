@@ -4,7 +4,17 @@ This is an **incomplete experimental checkpoint**, not a no-regression result.
 The feature remains off by default and PR1466 remains draft. Earlier reports
 describe their pinned implementations, not this replacement candidate.
 
-## Current Candidate
+## Continuing Candidate
+
+The current source continues beyond84133b76 with owned glyph spans, bulk fill
+capture/replay, fused initial capture, and wide/inherited dependency closure
+instead of a per-cell reverse index. It also skips redundant geometry scans and
+measured redundant full-target clears, and extends draw-boundary specialization
+to ordinary drawText/fill. See [continuation](layered-paint-grid-continuation.md).
+The performance goal remains INCOMPLETE. The measurements and full-suite counts
+below belong to84133b76, not the newer candidate.
+
+## Previous Candidate
 
 - D2+C replaces eager startup capture with ordinary full painting. Cell-index
   storage and invalid payload preparation happen only at the first actual paint
@@ -46,8 +56,9 @@ Candidate A/A2/A3, saved in checkpoint4d70942c and local patches:
   Focused native13/Core14 tests and original normal/transition four-channel
   snapshot parity pass. New tests cover mutable text payload and precise damage.
 - A3 additionally replays fill spans through the original native bulk fill
-  implementation and hoists opacity per run. It is not retained in the current
-  candidate: reduced memory did not establish a consistent CPU advantage.
+  implementation and hoists opacity per run. It was not retained in84133b76:
+  reduced memory alone did not establish a consistent CPU advantage. The newer
+  continuation combines it with removal of the reverse index and fused capture.
 - B independently fused initial scalar raster/capture and deferred indexing.
   It passed parity but did not remove cold recording cost; it is not retained.
 

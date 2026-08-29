@@ -1822,14 +1822,18 @@ export class RootRenderable extends Renderable {
 
     // Full invalidation should not pay to record and then replay the entire frame.
     if (buffer.experimentalPaintGrid && hadRenderList && !canReuseRenderList) {
-      let changed = 0
-      let painters = 0
-      for (const command of this.renderList) {
-        if (command.action !== "render" || command.renderable === this) continue
-        painters++
-        if (command.renderable.isDirty) changed++
+      if (paintGeometryChanged) {
+        buffer.fallbackPaint()
+      } else {
+        let changed = 0
+        let painters = 0
+        for (const command of this.renderList) {
+          if (command.action !== "render" || command.renderable === this) continue
+          painters++
+          if (command.renderable.isDirty) changed++
+        }
+        if (changed > painters / 2) buffer.fallbackPaint()
       }
-      if (paintGeometryChanged || changed > painters / 2) buffer.fallbackPaint()
     }
 
     // 3. Render all collected renderables

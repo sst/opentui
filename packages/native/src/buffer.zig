@@ -983,8 +983,12 @@ pub const OptimizedBuffer = struct {
     }
 
     inline fn setCellWithAlphaBlendingCellWithoutImages(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        self.setCellWithAlphaBlendingCellWithoutImagesSpecialized(true, x, y, cell);
+    }
+
+    inline fn setCellWithAlphaBlendingCellWithoutImagesSpecialized(self: *OptimizedBuffer, comptime recording: bool, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-        if (x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend)) return;
+        if (recording and x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend)) return;
         const opacity = self.getCurrentOpacity();
         if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
@@ -1044,15 +1048,19 @@ pub const OptimizedBuffer = struct {
     }
 
     fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        self.setCellWithAlphaBlendingRawCellSpecialized(true, x, y, cell);
+    }
+
+    fn setCellWithAlphaBlendingRawCellSpecialized(self: *OptimizedBuffer, comptime recording: bool, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-        if (x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend_raw)) return;
+        if (recording and x < self.width and y < self.height and self.recordPaint(self.coordsToIndex(x, y), cell, .blend_raw)) return;
 
         const opacity = self.getCurrentOpacity();
         if (opacity == 0.0) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
             assert(!gp.isGraphemeChar(cell.char));
             assert(!gp.isContinuationChar(cell.char));
-            self.setRaw(x, y, cell);
+            self.setRawInternal(false, x, y, cell);
             return;
         }
 
@@ -1070,11 +1078,11 @@ pub const OptimizedBuffer = struct {
             const blendedCell = self.blendCells(effectiveCell, dest);
             assert(!gp.isGraphemeChar(blendedCell.char));
             assert(!gp.isContinuationChar(blendedCell.char));
-            self.setRaw(x, y, blendedCell);
+            self.setRawInternal(false, x, y, blendedCell);
         } else {
             assert(!gp.isGraphemeChar(effectiveCell.char));
             assert(!gp.isContinuationChar(effectiveCell.char));
-            self.setRaw(x, y, effectiveCell);
+            self.setRawInternal(false, x, y, effectiveCell);
         }
     }
 
@@ -1179,9 +1187,12 @@ pub const OptimizedBuffer = struct {
         if (self.paintRecording()) {
             var fill_y = clippedStartY;
             while (fill_y <= clippedEndY) : (fill_y += 1) {
+                const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                const index = self.coordsToIndex(clippedStartX, fill_y);
+                if (self.paint_grid.?.recordSpan(index, cell, .fill, index, clippedEndX - clippedStartX + 1)) continue;
                 var fill_x = clippedStartX;
                 while (fill_x <= clippedEndX) : (fill_x += 1) {
-                    self.setCellWithAlphaBlendingCell(fill_x, fill_y, makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0));
+                    self.setCellWithAlphaBlendingCell(fill_x, fill_y, cell);
                 }
             }
             return;
@@ -1242,7 +1253,8 @@ pub const OptimizedBuffer = struct {
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    self.setCellWithAlphaBlendingCell(
+                    self.setCellWithAlphaBlendingCellSpecialized(
+                        false,
                         fillX,
                         fillY,
                         makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0),
@@ -1258,7 +1270,7 @@ pub const OptimizedBuffer = struct {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
                     const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
-                    if (image_aware) self.setCellWithAlphaBlendingRawImageAware(fillX, fillY, cell) else self.setCellWithAlphaBlendingRawCell(fillX, fillY, cell);
+                    if (image_aware) self.setCellWithAlphaBlendingRawImageAware(fillX, fillY, cell) else self.setCellWithAlphaBlendingRawCellSpecialized(false, fillX, fillY, cell);
                 }
             }
         } else {
@@ -1308,18 +1320,22 @@ pub const OptimizedBuffer = struct {
     }
 
     pub inline fn setTextCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (self.validateAndIndex(x, y)) |index| {
+        self.setTextCellSpecialized(true, x, y, cell);
+    }
+
+    inline fn setTextCellSpecialized(self: *OptimizedBuffer, comptime recording: bool, x: u32, y: u32, cell: Cell) void {
+        if (recording) if (self.validateAndIndex(x, y)) |index| {
             if (self.recordPaint(index, cell, .text)) return;
-        }
+        };
         if (self.image_placements.items.len != 0 and self.cellSpanOverlapsImage(x, y, cell.char)) {
-            self.set(x, y, opaqueCell(cell));
+            self.setInternal(true, false, x, y, opaqueCell(cell));
             return;
         }
         if (isRGBAWithAlpha(cell.bg)) {
-            self.setCellWithAlphaBlendingCellWithoutImages(x, y, cell);
+            self.setCellWithAlphaBlendingCellWithoutImagesSpecialized(false, x, y, cell);
             return;
         }
-        self.set(x, y, cell);
+        self.setInternal(true, false, x, y, cell);
     }
 
     pub inline fn drawText(
@@ -1333,7 +1349,8 @@ pub const OptimizedBuffer = struct {
     ) BufferError!void {
         const opacity = self.getCurrentOpacity();
         if (isFullyTransparent(opacity, fg, bg orelse ansi.rgbColor(0, 0, 0, 0)) and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
-        return self.drawVisibleText(text, x, y, fg, bg, attributes);
+        if (self.paintRecording()) return self.drawVisibleText(true, text, x, y, fg, bg, attributes);
+        return self.drawVisibleText(false, text, x, y, fg, bg, attributes);
     }
 
     /// Draw one already-segmented grapheme with an authoritative terminal-cell width.
@@ -1364,6 +1381,7 @@ pub const OptimizedBuffer = struct {
 
     fn drawVisibleText(
         self: *OptimizedBuffer,
+        comptime recording: bool,
         text: []const u8,
         x: u32,
         y: u32,
@@ -1392,7 +1410,7 @@ pub const OptimizedBuffer = struct {
                 for (text, 0..) |byte, offset| {
                     const char_x = x + @as(u32, @intCast(offset));
                     if (char_x >= self.width) break;
-                    self.set(char_x, y, makeCell(byte, fg, background, attributes));
+                    self.setInternal(true, recording, char_x, y, makeCell(byte, fg, background, attributes));
                 }
                 return;
             }
@@ -1440,7 +1458,7 @@ pub const OptimizedBuffer = struct {
             }
 
             var bgColor: RGBA = undefined;
-            if (bg == null) {
+            if (recording and bg == null) {
                 if (self.paint_grid) |grid| grid.background_group +%= 1;
             }
             if (bg) |b| {
@@ -1479,8 +1497,8 @@ pub const OptimizedBuffer = struct {
                     if (!self.isPointInScissor(@intCast(tab_x), @intCast(y))) continue;
 
                     const cell = makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes);
-                    if (bg == null and self.recordInheritedText(tab_x, y, charX, cell)) continue;
-                    if (explicit_colors_opaque) self.set(tab_x, y, cell) else self.setTextCell(tab_x, y, cell);
+                    if (recording and bg == null and self.recordInheritedText(tab_x, y, charX, cell)) continue;
+                    if (explicit_colors_opaque) self.setInternal(true, recording, tab_x, y, cell) else self.setTextCellSpecialized(recording, tab_x, y, cell);
                 }
                 advance_cells += cluster_width_cols;
                 col += cluster_width_cols;
@@ -1496,8 +1514,8 @@ pub const OptimizedBuffer = struct {
             }
 
             const cell = makeCell(encoded_char, fg, bgColor, attributes);
-            if (!(bg == null and self.recordInheritedText(charX, y, charX, cell))) {
-                if (explicit_colors_opaque) self.set(charX, y, cell) else self.setTextCell(charX, y, cell);
+            if (!(recording and bg == null and self.recordInheritedText(charX, y, charX, cell))) {
+                if (explicit_colors_opaque) self.setInternal(true, recording, charX, y, cell) else self.setTextCellSpecialized(recording, charX, y, cell);
             }
 
             advance_cells += cell_width;
