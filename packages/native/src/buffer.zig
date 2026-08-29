@@ -1082,12 +1082,13 @@ pub const OptimizedBuffer = struct {
 
     inline fn trySetTransparentTextCellFast(
         self: *OptimizedBuffer,
+        comptime recording: bool,
         index: u32,
         char: u32,
         fg: RGBA,
         attributes: u32,
     ) bool {
-        if (self.recordPaint(index, makeCell(char, fg, ansi.rgbColor(0, 0, 0, 0), attributes), .blend)) return true;
+        if (recording and self.recordPaint(index, makeCell(char, fg, ansi.rgbColor(0, 0, 0, 0), attributes), .blend)) return true;
         // drawTextBuffer spends a lot of time in generic alpha blending when the
         // common case is really "opaque glyph over transparent bg". In that case
         // the result is just: keep the destination background, write fg/attrs,
@@ -1725,6 +1726,22 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) void {
+        // Recording can stop on allocation failure, but cannot start within a draw.
+        if (self.paintRecording()) {
+            self.drawTextBufferSpecialized(ViewType, true, view, x, y);
+        } else {
+            self.drawTextBufferSpecialized(ViewType, false, view, x, y);
+        }
+    }
+
+    fn drawTextBufferSpecialized(
+        self: *OptimizedBuffer,
+        comptime ViewType: type,
+        comptime recording: bool,
+        view: *ViewType,
+        x: i32,
+        y: i32,
+    ) void {
         const opacity = self.getCurrentOpacity();
         if (opacity == 0.0) return;
 
@@ -2088,7 +2105,7 @@ pub const OptimizedBuffer = struct {
 
                             if (useTransparentTextFastPath) {
                                 const index = self.coordsToIndex(@intCast(tab_x), @intCast(currentY));
-                                if (self.trySetTransparentTextCellFast(index, char, fg, drawAttributes)) {
+                                if (self.trySetTransparentTextCellFast(recording, index, char, fg, drawAttributes)) {
                                     continue;
                                 }
                             }
@@ -2116,7 +2133,7 @@ pub const OptimizedBuffer = struct {
 
                         if (useTransparentTextFastPath) {
                             const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
-                            if (self.trySetTransparentTextCellFast(index, encoded_char, drawFg, drawAttributes)) {
+                            if (self.trySetTransparentTextCellFast(recording, index, encoded_char, drawFg, drawAttributes)) {
                                 document_cell_offset += cluster_width_cols;
                                 currentX += @as(i32, @intCast(cluster_width_cols));
                                 rendered_col_in_vline += cluster_width_cols;

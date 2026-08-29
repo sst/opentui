@@ -190,10 +190,19 @@ pub const PaintGrid = struct {
         if (!self.isRecording()) return false;
         const t = self.target;
         const op: Op = .{ .index = index, .cell = cell, .mode = mode, .opacity = t.getCurrentOpacity(), .background_index = background_index, .background_group = if (mode == .inherit) self.background_group else 0, .owner = self.stack.items[self.stack.items.len - 1].owner };
-        self.commands.items[self.count - 1].pending.append(t.allocator, op) catch {
-            self.materialize();
-            return false;
-        };
+        const pending = &self.commands.items[self.count - 1].pending;
+        if (pending.items.len == pending.capacity) {
+            // A small first reservation avoids repeated cold stream reallocations.
+            const reserve = if (pending.capacity == 0)
+                pending.ensureTotalCapacityPrecise(t.allocator, 128)
+            else
+                pending.ensureTotalCapacity(t.allocator, pending.items.len + 1);
+            reserve catch {
+                self.materialize();
+                return false;
+            };
+        }
+        pending.appendAssumeCapacity(op);
         if (gp.isClusterChar(cell.char)) t.pool.incref(gp.graphemeIdFromChar(cell.char)) catch {};
         const id = ansi.TextAttributes.getLinkId(cell.attributes);
         if (id != 0) t.link_pool.incref(id) catch {};

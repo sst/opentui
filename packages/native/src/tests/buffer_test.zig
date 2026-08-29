@@ -338,6 +338,58 @@ test "paint grid flat index allocation failure releases recordings and retries" 
     try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
 }
 
+test "paint grid text stream reserves once and finishes drawing after growth failure" {
+    const a = std.testing.allocator;
+    var tracking = std.testing.FailingAllocator.init(a, .{});
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(tracking.allocator(), 200, 1, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 200, 1, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    var text = try TextBuffer.init(a, &pool, &links, .unicode);
+    defer text.deinit();
+    var view = try TextBufferView.init(a, text);
+    defer view.deinit();
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    control.clear(black, null);
+    try target.beginPaint(black, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, true);
+    const allocations = tracking.alloc_index;
+    try text.setText(&([_]u8{'a'} ** 96));
+    target.drawTextBuffer(view, 0, 0);
+    control.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(allocations + 1, tracking.alloc_index);
+    try std.testing.expectEqual(@as(usize, 96), grid.commands.items[0].pending.items.len);
+    tracking.fail_index = tracking.alloc_index;
+    tracking.resize_fail_index = tracking.resize_index;
+    try text.setText(&([_]u8{'b'} ** 200));
+    target.drawTextBuffer(view, 0, 0);
+    control.drawTextBuffer(view, 0, 0);
+    try std.testing.expect(grid.fallback);
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+    try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+    try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+    try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
+    tracking.fail_index = std.math.maxInt(usize);
+    tracking.resize_fail_index = std.math.maxInt(usize);
+    try target.beginPaint(black, false);
+    try std.testing.expect(try grid.push(1, 0, 0, 1, 1, false));
+    target.drawTextBuffer(view, 0, 0);
+    grid.pop();
+    try grid.finish();
+    try target.beginPaint(black, false);
+    try std.testing.expect(!try grid.push(1, 0, 0, 1, 1, false));
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+}
+
 test "paint grid allocation traffic measurement" {
     const a = std.testing.allocator;
     for ([_]bool{ false, true }) |enabled| {
