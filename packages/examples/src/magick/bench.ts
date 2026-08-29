@@ -118,7 +118,10 @@ const result: Record<string, unknown> = {
     ),
   ),
   environment: {
-    bun: Bun.version, cpu: cpus()[0]?.model, kernel: release(), terminal: process.env.TERM_PROGRAM,
+    bun: Bun.version,
+    cpu: cpus()[0]?.model,
+    kernel: release(),
+    terminal: process.env.TERM_PROGRAM,
     traceWebGpu: process.env.TRACE_WEBGPU ?? null,
   },
   settings: { ...values, width, height, frames, warmup, fps, particles },
