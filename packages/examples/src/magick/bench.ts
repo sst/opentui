@@ -9,6 +9,7 @@ import { Writable } from "node:stream"
 import type { CliRenderer, KittyImageTransport, NativeImage } from "@opentui/core"
 import { createArena } from "./arena.js"
 import { createPixelRenderer, packRgba, type PixelFrame } from "./pixel-renderer.js"
+import type { PixelGpuRelease } from "./gpu-lifetime.js"
 import { sizeBenchmarkWindow } from "./window.js"
 import { validateOutput } from "./validate-output.js"
 
@@ -20,6 +21,8 @@ const { values } = parseArgs({
     import: { type: "string", default: "baseline" },
     transport: { type: "string", default: "raw" },
     mapping: { type: "string", default: "view" },
+    "gpu-release": { type: "string", default: "combined" },
+    "canvas-view": { type: "string", default: "cached" },
     width: { type: "string", default: "640" },
     height: { type: "string", default: "360" },
     frames: { type: "string", default: "300" },
@@ -50,6 +53,10 @@ if (!["baseline", "native", "pool", "pooled-native"].includes(values.import!))
   throw new Error("--import must be baseline, native, pool, or pooled-native")
 if (!["raw", "zlib", "file"].includes(values.transport!)) throw new Error("--transport must be raw, zlib, or file")
 if (!["view", "pointer"].includes(values.mapping!)) throw new Error("--mapping must be view or pointer")
+if (!["baseline", "command-buffers", "passes", "combined"].includes(values["gpu-release"]!))
+  throw new Error("--gpu-release must be baseline, command-buffers, passes, or combined")
+if (!["baseline", "cached"].includes(values["canvas-view"]!))
+  throw new Error("--canvas-view must be baseline or cached")
 if (values.terminal && (!process.stdout.isTTY || !values.output))
   throw new Error("Terminal runs require a TTY and --output")
 if (values["validate-output"] && !values.terminal) throw new Error("Output validation requires --terminal")
@@ -102,7 +109,7 @@ const result: Record<string, unknown> = {
     .digest("hex"),
   sources: Object.fromEntries(
     await Promise.all(
-      ["bench.ts", "arena.ts", "pixel-renderer.ts"].map(async (name) => [
+      ["bench.ts", "arena.ts", "pixel-renderer.ts", "gpu-lifetime.ts"].map(async (name) => [
         name,
         createHash("sha256")
           .update(await readFile(new URL(`./${name}`, import.meta.url)))
@@ -295,11 +302,15 @@ try {
   }
   await negotiateTransport()
   result.transportAtStart = renderer!.kittyImageTransportStatus ?? { requested: "raw", effective: "raw" }
-  gpu = await createPixelRenderer(width, height, values.mapping as "view" | "pointer")
+  gpu = await createPixelRenderer(width, height, values.mapping as "view" | "pointer", {
+    release: values["gpu-release"] as PixelGpuRelease,
+    cacheCanvasView: values["canvas-view"] === "cached",
+  })
   if (values.import!.startsWith("pool")) pool = new Pool!({ width, height, capacity: 2 })
   if (values.import === "pooled-native" && !pool?.publishPixels)
     throw new Error("Selected core does not implement NativeImagePool.publishPixels")
   result.adapter = gpu.adapter
+  result.gpuOwnershipAtStart = gpu.ownership()
   result.scene = arena.counts
   result.geometry = { columns: renderer!.width, rows: renderer!.height, resolution: renderer!.resolution }
   renderer!.setFrameCallback(async () => {
@@ -426,6 +437,7 @@ try {
     over16ms: samples.filter((sample) => sample.totalMs > 1000 / 60).length,
   }
   result.capabilities = renderer!.capabilities
+  result.gpuOwnershipAtEnd = gpu.ownership()
   result.transportAtEnd = renderer!.kittyImageTransportStatus ?? { requested: "raw", effective: "raw" }
   result.resources = {
     fdsStart,
@@ -450,6 +462,7 @@ try {
     lastImage?.dispose()
     pool?.dispose()
     gpu?.dispose()
+    result.gpuOwnershipDisposed = gpu?.ownership()
   } finally {
     renderer?.destroy()
     sink?.destroy()

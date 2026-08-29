@@ -1,0 +1,89 @@
+{
+  "date": "2026-08-29T14:00:16.190Z",
+  "settings": {
+    "frames": 1,
+    "warmup": 0,
+    "fps": 0,
+    "output": "experiments/magick/results/gpu-lifetime/trace-refused.json",
+    "workload": "frames",
+    "release": "baseline",
+    "canvas-view": "cached",
+    "mapping": "pointer",
+    "width": 1280,
+    "height": 720,
+    "particles": 512,
+    "cycles": 20,
+    "frames-per-cycle": "1",
+    "rss-limit-mib": "2048",
+    "gc": "checkpoints",
+    "framesPerCycle": 1,
+    "rssLimitBytes": 2147483648
+  },
+  "environment": {
+    "bun": "1.3.14",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+    "kernel": "7.1.8-arch1-3",
+    "traceWebgpu": "true",
+    "traceEnabled": true,
+    "debugFfi": "false"
+  },
+  "checkpoints": [
+    {
+      "label": "disposed",
+      "elapsedMs": 1.5906620000000018,
+      "completedFrames": 0,
+      "completedCycles": 0,
+      "forcedGcCount": 0,
+      "gcMs": 0,
+      "rss": 72634368,
+      "heapTotal": 2106368,
+      "heapUsed": 1373362,
+      "external": 470066,
+      "arrayBuffers": 0,
+      "heapSize": 1373362,
+      "heapCapacity": 2497634,
+      "extraMemorySize": 470066,
+      "objectCount": 12839,
+      "protectedObjectCount": 3,
+      "fds": 12,
+      "disposedOwnershipTotals": {}
+    },
+    {
+      "label": "disposed:gc",
+      "elapsedMs": 2.6561100000000017,
+      "completedFrames": 0,
+      "completedCycles": 0,
+      "forcedGcCount": 1,
+      "gcMs": 0.4728740000000009,
+      "rss": 73027584,
+      "heapTotal": 2024448,
+      "heapUsed": 1373362,
+      "external": 475789,
+      "arrayBuffers": 0,
+      "heapSize": 1382237,
+      "heapCapacity": 2372285,
+      "extraMemorySize": 475789,
+      "objectCount": 12891,
+      "protectedObjectCount": 3,
+      "fds": 12,
+      "disposedOwnershipTotals": {}
+    }
+  ],
+  "note": "Headless arena render and readback only. No Core, terminal, pixel import, or retained frame samples. Release counts are binding calls, not a complete native-resource census.",
+  "error": "Error: Refusing TRACE_WEBGPU=true: tracing retains call history\n    at /home/simon/.cache/tmp/opencode/ot-magick-gpu-lifetime/packages/examples/src/magick/gpu-lifetime-diagnostic.ts:121:54",
+  "summary": {
+    "elapsedMs": 2.690290000000001,
+    "cpu": {
+      "user": 4273,
+      "system": 269
+    },
+    "completedFrames": 0,
+    "completedCycles": 0,
+    "checksum": 0,
+    "forcedGcCount": 1,
+    "submitMs": 0,
+    "readbackMs": 0,
+    "consumeMs": 0,
+    "disposedOwnershipTotals": {}
+  }
+}
