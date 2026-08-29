@@ -115,9 +115,8 @@ static void init_dawn(struct dawn_consumer *c) {
     check_errors(c);
 }
 
-static void dawn_import_slot(struct dawn_consumer *c, uint32_t index) {
-    int fd = -1;
-    struct packet packet = receive_packet(REGISTER, true, &fd);
+static void import_dawn_image(struct dawn_consumer *c, uint32_t index, struct packet packet, int fd,
+                              WGPUTextureUsage usage) {
     REQUIRE(packet.slot == index && packet.width == width && packet.height == height, "Dawn slot dimensions");
     REQUIRE(packet.fourcc == DRM_FORMAT_ABGR8888 && packet.modifier == DRM_FORMAT_MOD_LINEAR &&
                 packet.stride >= width * 4 && packet.stride <= INT32_MAX && packet.offset <= INT32_MAX,
@@ -142,14 +141,23 @@ static void dawn_import_slot(struct dawn_consumer *c, uint32_t index) {
     DAWN(wgpuSharedTextureMemoryGetProperties(slot->memory, &properties));
     REQUIRE(properties.format == WGPUTextureFormat_RGBA8Unorm && properties.size.width == width &&
                 properties.size.height == height && properties.size.depthOrArrayLayers == 1 &&
-                (properties.usage & WGPUTextureUsage_TextureBinding),
+                (properties.usage & usage) == usage,
             "Dawn imported texture properties");
     WGPUTextureDescriptor texture = WGPU_TEXTURE_DESCRIPTOR_INIT;
     texture.dimension = WGPUTextureDimension_2D;
     texture.size = properties.size;
     texture.format = properties.format;
-    texture.usage = WGPUTextureUsage_TextureBinding;
+    texture.usage = usage;
     slot->texture = wgpuSharedTextureMemoryCreateTexture(slot->memory, &texture);
+    check_errors(c);
+}
+
+static void dawn_import_slot(struct dawn_consumer *c, uint32_t index) {
+    int fd = -1;
+    struct packet packet = receive_packet(REGISTER, true, &fd);
+    import_dawn_image(c, index, packet, fd, WGPUTextureUsage_TextureBinding);
+    struct dawn_slot *slot = &c->slots[index];
+    wgpuDevicePushErrorScope(c->device, WGPUErrorFilter_Validation);
     slot->view = wgpuTextureCreateView(slot->texture, NULL);
     WGPUBindGroupEntry entries[2] = {WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT};
     entries[0].binding = 0;
@@ -239,6 +247,7 @@ static void dawn_consume_frame(struct dawn_consumer *c, uint32_t sequence) {
     REQUIRE(close(release_fd) == 0, "close Dawn release sync_file");
 }
 
+#ifndef GPU_SHARING_NO_DAWN_CONSUMER
 void dawn_consume(WGPUDevice device, WGPUInstance instance, int32_t socket, uint32_t image_width,
                   uint32_t image_height) {
     is_producer = false;
@@ -270,3 +279,4 @@ void dawn_consume(WGPUDevice device, WGPUInstance instance, int32_t socket, uint
     REQUIRE(close(connection) == 0, "close Dawn connection");
     connection = -1;
 }
+#endif

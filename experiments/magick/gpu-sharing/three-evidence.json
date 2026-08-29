@@ -1,0 +1,703 @@
+{
+  "status": "pass",
+  "recorded_at": "2026-08-29T12:17:56.581Z",
+  "native_gate_commit": "d64ce1a1",
+  "bun_version": "1.3.14",
+  "bun_revision": "0d9b296af33f2b851fcbf4df3e9ec89751734ba4",
+  "source_sha256": {
+    "three-sharing.c": "83c40b9719fbff8046184bb8daa209c41acadc67e3e9a5af152f495f2a0fa1ce",
+    "three-producer.c": "7f037d0e8a8c29c8ae91b2af84b3bd56f699247d29e809b166cf30909b99686d",
+    "three-producer.ts": "329147085a75b7d512226c1e137488ca889e56c3787bc5cad0c9e52c603b0b12",
+    "three-protocol.h": "8ec16b13273f0f825cf8feb49ad8d5f14a4969712e876ec8bcf90e2e385c2b28",
+    "no-readback-guard.c": "b4b33fc519e870e5dcf3557468d87dc47ca655f777ac4468fa247f9242e85aac",
+    "verify-three.ts": "a499cf99ab33ea7981d67c96d5a122ef0c95c1144991c2f159fa01528a45e2e3",
+    "native-sharing.c": "9ef81b769723c83ecc04a6e28cb17cc22ee511c8aef3c50f4bd5651c850a17d9",
+    "dawn-consumer.c": "f3c805ff1ab0ba368b2cf38ea2da637d5335e06f0f3cede839771b658437b73d",
+    "protocol.h": "00ebd4281c05c6d015a9425b540bf3d80872622d555f25ff86f334bf08c993db",
+    "Makefile": "5aa68d5db4f80b7ac6288e5171b2bcb41c94b1ceacb33617ec6493190a5430ff"
+  },
+  "results": [
+    {
+      "name": "arena-65x33",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 8,
+        "mode": "validate",
+        "calibration": false,
+        "reference_hashes": [
+          "b87e5a5a627de585",
+          "5a28f7140efd8705",
+          "24f2585f40a60fcd",
+          "9d0d23986575ee4e",
+          "7df31aba771bb739",
+          "668f6ca1283fd266",
+          "72b9c3bc38a0b031",
+          "3682ccff5754b0de"
+        ],
+        "draws": [
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "validation",
+        "width": 65,
+        "height": 33,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": false,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 8,
+        "consumer_readbacks": 8,
+        "stride": 512,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": [
+          "b87e5a5a627de585",
+          "5a28f7140efd8705",
+          "24f2585f40a60fcd",
+          "9d0d23986575ee4e",
+          "7df31aba771bb739",
+          "668f6ca1283fd266",
+          "72b9c3bc38a0b031",
+          "3682ccff5754b0de"
+        ]
+      },
+      "strace": {
+        "processes": 2,
+        "dma_buf_sends": 2,
+        "sync_file_sends": 16
+      }
+    },
+    {
+      "name": "no-readback-65x33",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 0,
+        "mode": "no-readback",
+        "calibration": false,
+        "reference_hashes": [],
+        "draws": [
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "no-readback",
+        "width": 65,
+        "height": 33,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": false,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 0,
+        "consumer_readbacks": 0,
+        "stride": 512,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": []
+      },
+      "strace": {
+        "processes": 2,
+        "dma_buf_sends": 2,
+        "sync_file_sends": 16
+      },
+      "readback_guard": "glReadPixels and wgpuBufferMapAsync abort on call"
+    },
+    {
+      "name": "calibration-65x33",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 8,
+        "mode": "validate",
+        "calibration": true,
+        "reference_hashes": [
+          "0ef7e4f5d7958413",
+          "335b23cd8081f1ed",
+          "212ef14d77b579ab",
+          "17945fe19e1bbdd1",
+          "0ef7e4f5d7958413",
+          "335b23cd8081f1ed",
+          "212ef14d77b579ab",
+          "17945fe19e1bbdd1"
+        ],
+        "draws": [
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "validation",
+        "width": 65,
+        "height": 33,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": true,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 8,
+        "consumer_readbacks": 8,
+        "stride": 512,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": [
+          "0ef7e4f5d7958413",
+          "335b23cd8081f1ed",
+          "212ef14d77b579ab",
+          "17945fe19e1bbdd1",
+          "0ef7e4f5d7958413",
+          "335b23cd8081f1ed",
+          "212ef14d77b579ab",
+          "17945fe19e1bbdd1"
+        ]
+      }
+    },
+    {
+      "name": "stale-65x33",
+      "status": "pass",
+      "expected_failure": "Three arena digest mismatch",
+      "sequence": 3,
+      "stderr": "Three hash mismatch sequence=3 expected=9d0d23986575ee4e sampled=24f2585f40a60fcd\n{\"status\":\"fail\",\"role\":\"consumer\",\"operation\":\"Three arena digest mismatch\",\"code\":3}"
+    },
+    {
+      "name": "arena-640x360",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 8,
+        "mode": "validate",
+        "calibration": false,
+        "reference_hashes": [
+          "3183018951b51761",
+          "e744a6675cb111d7",
+          "d56facbb70cd7c2c",
+          "4b54c5805cc37913",
+          "f66ebcb6e82aa3dd",
+          "39cb94fa97dc6134",
+          "5afd78f69e2dd732",
+          "3531508d2bce00bd"
+        ],
+        "draws": [
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "validation",
+        "width": 640,
+        "height": 360,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": false,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 8,
+        "consumer_readbacks": 8,
+        "stride": 2560,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": [
+          "3183018951b51761",
+          "e744a6675cb111d7",
+          "d56facbb70cd7c2c",
+          "4b54c5805cc37913",
+          "f66ebcb6e82aa3dd",
+          "39cb94fa97dc6134",
+          "5afd78f69e2dd732",
+          "3531508d2bce00bd"
+        ]
+      }
+    },
+    {
+      "name": "no-readback-640x360",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 0,
+        "mode": "no-readback",
+        "calibration": false,
+        "reference_hashes": [],
+        "draws": [
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          },
+          {
+            "draw_calls": 29,
+            "triangles": 15473
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "no-readback",
+        "width": 640,
+        "height": 360,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": false,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 0,
+        "consumer_readbacks": 0,
+        "stride": 2560,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": []
+      },
+      "strace": {
+        "processes": 2,
+        "dma_buf_sends": 2,
+        "sync_file_sends": 16
+      },
+      "readback_guard": "glReadPixels and wgpuBufferMapAsync abort on call"
+    },
+    {
+      "name": "calibration-640x360",
+      "status": "pass",
+      "producer": {
+        "type": "three-producer",
+        "status": "pass",
+        "arena_module": "/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts",
+        "arena_source_sha256": "b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_git_head": "97cf3a943b23ded8927332f78330df1001e67a38",
+        "arena_version": "sha256:b40602f6611847d09aadaef3632e9cba5aac83174a8f932ffb21e4ed3263de98",
+        "arena_counts": {
+          "wizards": 4,
+          "tiles": 324,
+          "obstacles": 6,
+          "enemies": 32,
+          "particles": 512,
+          "meshes": 28,
+          "triangles": 15472
+        },
+        "three_revision": "177",
+        "three_module": "/home/simon/src/wt/ot-magick/node_modules/.bun/three@0.177.0/node_modules/three/build/three.webgpu.js",
+        "three_renderer_sha256": "3358013e9877bdf6c274dc98405c662f07f091442d0a445759c8f3a73a97a1a3",
+        "bun_webgpu_js_sha256": "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1",
+        "native_library_sha256": "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946d093198788",
+        "native_library_path": "/home/simon/src/wt/ot-magick/node_modules/.bun/bun-webgpu-linux-x64@0.1.7/node_modules/bun-webgpu-linux-x64/libwebgpu_wrapper.so",
+        "shared_render_calls": 8,
+        "reference_render_calls": 8,
+        "mode": "validate",
+        "calibration": true,
+        "reference_hashes": [
+          "9d121f29b37f2b25",
+          "24ec3681a1754325",
+          "459a5e98ca69cb25",
+          "b3f01229fd7df325",
+          "9d121f29b37f2b25",
+          "24ec3681a1754325",
+          "459a5e98ca69cb25",
+          "b3f01229fd7df325"
+        ],
+        "draws": [
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          },
+          {
+            "draw_calls": 1,
+            "triangles": 1
+          }
+        ]
+      },
+      "consumer": {
+        "status": "pass",
+        "producer": "Three.js WebGPURenderer",
+        "consumer": "EGL GLES3 texelFetch",
+        "device": "AMD Radeon RX 7600 (RADV NAVI33)",
+        "mode": "validation",
+        "width": 640,
+        "height": 360,
+        "slots": 2,
+        "frames": 8,
+        "three_render_attachment": true,
+        "calibration": true,
+        "cpu_pixel_transport_bytes": 0,
+        "shared_image_cpu_maps": 0,
+        "bridge_pixel_copy_commands": 0,
+        "producer_reference_readbacks": 8,
+        "consumer_readbacks": 8,
+        "stride": 2560,
+        "image_fd_registrations": 2,
+        "cross_process_fence_transfers": 16,
+        "ownership_bridge_submissions": 18,
+        "format": "RGBA8 LINEAR",
+        "scheduling": "serial two-slot handshake",
+        "hash_algorithm": "FNV1a64 RGBA",
+        "hashes": [
+          "9d121f29b37f2b25",
+          "24ec3681a1754325",
+          "459a5e98ca69cb25",
+          "b3f01229fd7df325",
+          "9d121f29b37f2b25",
+          "24ec3681a1754325",
+          "459a5e98ca69cb25",
+          "b3f01229fd7df325"
+        ]
+      }
+    },
+    {
+      "name": "stale-640x360",
+      "status": "pass",
+      "expected_failure": "Three arena digest mismatch",
+      "sequence": 3,
+      "stderr": "Three hash mismatch sequence=3 expected=4b54c5805cc37913 sampled=d56facbb70cd7c2c\n{\"status\":\"fail\",\"role\":\"consumer\",\"operation\":\"Three arena digest mismatch\",\"code\":3}"
+    },
+    {
+      "name": "guard-blocks-egl-readback",
+      "status": "pass",
+      "blocked_operation": "glReadPixels"
+    },
+    {
+      "name": "guard-blocks-dawn-reference",
+      "status": "pass",
+      "blocked_operation": "wgpuBufferMapAsync"
+    }
+  ],
+  "package_versions": {
+    "vulkan": "1.4.357",
+    "egl": "1.5",
+    "glesv2": "3.2",
+    "gbm": "26.1.7-arch1.1",
+    "libdrm": "2.4.134"
+  },
+  "scope": "Actual Three.js arena output imported by EGL across processes; not a terminal presentation integration",
+  "limits": [
+    "Same-GPU linear RGBA8, single sample, two slots, eight serial frames",
+    "Validation compares FNV1a64 over every RGBA byte to a separately rendered private reference texture",
+    "Primary-color calibration also checks every sampled RGBA value exactly",
+    "No-readback mode skips validation and forbids both readback entrypoints with an independently tested preload guard",
+    "Vulkan bridge records ownership/layout barriers only; its bounded host waits protect command buffer reuse",
+    "Pinned Bun private texture wrapper and instance-local Three canvas-format hook; no public API changes",
+    "No Vulkan validation layer installed; native Dawn validation scopes checked"
+  ]
+}

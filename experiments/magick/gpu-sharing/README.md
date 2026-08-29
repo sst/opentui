@@ -1,12 +1,16 @@
 # Linux GPU image sharing spike
 
+This page describes the original native gate in `d64ce1a1`. The follow-up
+[Three.js producer gate](THREE.md) renders the actual arena into shared images
+and passes them to EGL, including a guarded no-readback mode.
+
 **Both native gates passed on the RX 7600:** Vulkan compute to EGL/GLES, and Vulkan
 compute to the installed `bun-webgpu@0.1.7` Dawn device. Each consumer imports two
 DMA-BUF images once, loads their texels on the GPU, and verifies all pixels across
 eight alternating frames. Neither process maps a shared image or transports CPU
 pixels. `evidence.json` contains the recorded results and failure-path checks.
 
-This is **not Three.js integration, an OpenTUI change, or stock-terminal zero-copy**.
+These original native gates are **not Three.js integration, an OpenTUI change, or stock-terminal zero-copy**.
 The Dawn consumer calls native APIs on Bun's exposed `GPUDevice.ptr`; it does not
 construct a JavaScript `GPUTexture` or attach one to a Three.js material.
 

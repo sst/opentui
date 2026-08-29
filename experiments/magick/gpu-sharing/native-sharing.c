@@ -72,6 +72,7 @@ struct producer {
     VkQueue queue;
     uint32_t family;
     uint32_t external_family, vendor_id, device_id;
+    VkImageUsageFlags image_usage;
     VkCommandPool command_pool;
     VkDescriptorSetLayout descriptor_layout;
     VkDescriptorPool descriptor_pool;
@@ -159,7 +160,7 @@ static void check_external_format(struct producer *p) {
                                                .format = VK_FORMAT_R8G8B8A8_UNORM,
                                                .type = VK_IMAGE_TYPE_2D,
                                                .tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
-                                               .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT};
+                                               .usage = p->image_usage};
     VkExternalImageFormatProperties properties = {.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES};
     VkImageFormatProperties2 output = {.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, .pNext = &properties};
     VK(vkGetPhysicalDeviceImageFormatProperties2(p->physical, &format, &output));
@@ -237,7 +238,7 @@ static void create_image(struct producer *p, struct vk_slot *slot, uint32_t inde
                                .arrayLayers = 1,
                                .samples = VK_SAMPLE_COUNT_1_BIT,
                                .tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
-                               .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                               .usage = p->image_usage,
                                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
     VK(vkCreateImage(p->device, &image, NULL, &slot->image));
@@ -295,6 +296,22 @@ static void create_image(struct producer *p, struct vk_slot *slot, uint32_t inde
                                          .modifier = actual.drmFormatModifier};
 }
 
+static void create_slot_sync(struct producer *p, struct vk_slot *slot) {
+    VkCommandBufferAllocateInfo commands = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                            .commandPool = p->command_pool,
+                                            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                            .commandBufferCount = 1};
+    VK(vkAllocateCommandBuffers(p->device, &commands, &slot->commands));
+    VkExportSemaphoreCreateInfo export = {.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
+                                          .handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT};
+    VkSemaphoreCreateInfo semaphore = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = &export};
+    VK(vkCreateSemaphore(p->device, &semaphore, NULL, &slot->ready));
+    semaphore.pNext = NULL;
+    VK(vkCreateSemaphore(p->device, &semaphore, NULL, &slot->released));
+    VkFenceCreateInfo fence = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VK(vkCreateFence(p->device, &fence, NULL, &slot->submitted));
+}
+
 static void register_slot(struct producer *p, uint32_t index) {
     struct vk_slot *slot = &p->slots[index];
     create_image(p, slot, index);
@@ -311,19 +328,7 @@ static void register_slot(struct producer *p, uint32_t index) {
                                   .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                                   .pImageInfo = &image};
     vkUpdateDescriptorSets(p->device, 1, &write, 0, NULL);
-    VkCommandBufferAllocateInfo commands = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                                            .commandPool = p->command_pool,
-                                            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                                            .commandBufferCount = 1};
-    VK(vkAllocateCommandBuffers(p->device, &commands, &slot->commands));
-    VkExportSemaphoreCreateInfo export = {.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
-                                          .handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT};
-    VkSemaphoreCreateInfo semaphore = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = &export};
-    VK(vkCreateSemaphore(p->device, &semaphore, NULL, &slot->ready));
-    semaphore.pNext = NULL;
-    VK(vkCreateSemaphore(p->device, &semaphore, NULL, &slot->released));
-    VkFenceCreateInfo fence = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    VK(vkCreateFence(p->device, &fence, NULL, &slot->submitted));
+    create_slot_sync(p, slot);
     VkMemoryGetFdInfoKHR fd_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
                                     .memory = slot->memory,
                                     .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT};
@@ -560,7 +565,7 @@ static void init_consumer(struct consumer *c, const char *node) {
                 -1);
 }
 
-static void init_sampling(struct consumer *c) {
+static void init_sampling(struct consumer *c, bool readback) {
     const char *vertex = "#version 300 es\nvoid main(){vec2 "
                          "p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.0-1.0,0.0,1.0);}";
     const char *fragment = "#version 300 es\nprecision highp float;uniform highp sampler2D source_image;out vec4 "
@@ -591,14 +596,14 @@ static void init_sampling(struct consumer *c) {
     REQUIRE(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "validation framebuffer complete");
     glViewport(0, 0, width, height);
     glDisable(GL_DITHER);
-    c->pixels = malloc((size_t)width * height * 4);
-    REQUIRE(c->pixels != NULL, "validation pixel allocation");
+    if (readback) {
+        c->pixels = malloc((size_t)width * height * 4);
+        REQUIRE(c->pixels != NULL, "validation pixel allocation");
+    }
     GL_CHECK();
 }
 
-static void import_slot(struct consumer *c, uint32_t index) {
-    int fd = -1;
-    struct packet packet = receive_packet(REGISTER, true, &fd);
+static void import_egl_image(struct consumer *c, uint32_t index, struct packet packet, int fd) {
     REQUIRE(packet.slot == index && packet.width == width && packet.height == height, "registered slot dimensions");
     REQUIRE(packet.fourcc == DRM_FORMAT_ABGR8888 && packet.modifier == DRM_FORMAT_MOD_LINEAR &&
                 packet.stride >= width * 4 && packet.stride <= INT32_MAX && packet.offset <= INT32_MAX,
@@ -631,6 +636,12 @@ static void import_slot(struct consumer *c, uint32_t index) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     GL_CHECK();
+}
+
+static void import_slot(struct consumer *c, uint32_t index) {
+    int fd = -1;
+    struct packet packet = receive_packet(REGISTER, true, &fd);
+    import_egl_image(c, index, packet, fd);
     send_packet((struct packet){.kind = REGISTER, .slot = index}, -1);
 }
 
@@ -671,7 +682,7 @@ static void consume_frame(struct consumer *c, uint32_t sequence) {
 static void run_consumer(const char *node) {
     struct consumer c = {0};
     init_consumer(&c, node);
-    init_sampling(&c);
+    init_sampling(&c, true);
     for (uint32_t i = 0; i < SLOT_COUNT; i++)
         import_slot(&c, i);
     for (uint32_t sequence = 0; sequence < FRAME_COUNT; sequence++)
@@ -716,6 +727,7 @@ static void json_string(const char *value) {
     putchar('"');
 }
 
+#ifndef GPU_SHARING_NO_MAIN
 int main(int argc, char **argv) {
     REQUIRE(argc == 4 || argc == 5, "usage: native-sharing render-node width height [dawn-consumer.ts]");
     width = dimension(argv[2]);
@@ -750,7 +762,7 @@ int main(int argc, char **argv) {
     connection = sockets[0];
     struct packet hello = receive_packet(HELLO, false, NULL);
     REQUIRE(hello.fourcc == DRM_FORMAT_ABGR8888 && hello.modifier == DRM_FORMAT_MOD_LINEAR, "format agreement");
-    struct producer p = {0};
+    struct producer p = {.image_usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT};
     p.external_family = argc == 5 ? VK_QUEUE_FAMILY_EXTERNAL : VK_QUEUE_FAMILY_FOREIGN_EXT;
     REQUIRE(hello.external_family == p.external_family, "external queue family agreement");
     select_device(&p, argv[1]);
@@ -788,3 +800,4 @@ int main(int argc, char **argv) {
     REQUIRE(fflush(stdout) == 0, "flush result");
     return EXIT_SUCCESS;
 }
+#endif
