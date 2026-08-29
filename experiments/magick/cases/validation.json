@@ -1,0 +1,839 @@
+[
+  {
+    "name": "ghostty-640-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-640-raw-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-640-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-640-zlib-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-640-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-640-file-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1280-raw-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1280-zlib-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1280-file-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1920-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1920-raw-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1920-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1920-zlib-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1920-file",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "ghostty-1920-file-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-640-raw",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-640-raw-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-640-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-640-zlib-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-640-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-640-file-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-raw",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-raw-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-zlib-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1280-file-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1920-raw",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1920-raw-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1920-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1920-zlib-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1920-file",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "kitty-1920-file-noise",
+    "terminal": "kitty",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-640-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-640-raw-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-640-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-640-zlib-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-640-file",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-640-file-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=640",
+      "--height=360",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1280-raw-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1280-zlib-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-file",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1280-file-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1280",
+      "--height=720",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1920-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1920-raw-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=raw",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1920-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1920-zlib-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=zlib",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1920-file",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output"
+    ]
+  },
+  {
+    "name": "wezterm-1920-file-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--import=pooled-native",
+      "--mapping=pointer",
+      "--transport=file",
+      "--width=1920",
+      "--height=1080",
+      "--frames=1",
+      "--warmup=60",
+      "--fps=60",
+      "--validate-output",
+      "--noise"
+    ]
+  }
+]

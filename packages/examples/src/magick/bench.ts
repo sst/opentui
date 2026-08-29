@@ -10,6 +10,7 @@ import type { CliRenderer, KittyImageTransport, NativeImage } from "@opentui/cor
 import { createArena } from "./arena.js"
 import { createPixelRenderer, packRgba, type PixelFrame } from "./pixel-renderer.js"
 import { sizeBenchmarkWindow } from "./window.js"
+import { validateOutput } from "./validate-output.js"
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -31,6 +32,7 @@ const { values } = parseArgs({
     "window-size": { type: "string" },
     noise: { type: "boolean", default: false },
     output: { type: "string" },
+    "validate-output": { type: "boolean", default: false },
   },
 })
 const integer = (key: "width" | "height" | "frames" | "warmup" | "fps" | "particles", min: number, max: number) => {
@@ -50,6 +52,7 @@ if (!["raw", "zlib", "file"].includes(values.transport!)) throw new Error("--tra
 if (!["view", "pointer"].includes(values.mapping!)) throw new Error("--mapping must be view or pointer")
 if (values.terminal && (!process.stdout.isTTY || !values.output))
   throw new Error("Terminal runs require a TTY and --output")
+if (values["validate-output"] && !values.terminal) throw new Error("Output validation requires --terminal")
 const root = resolve(values.core ?? fileURLToPath(new URL("../../../../", import.meta.url)))
 const core: typeof import("@opentui/core") = await import(pathToFileURL(join(root, "packages/core/src/index.ts")).href)
 const Image = core.NativeImage as typeof core.NativeImage & {
@@ -107,7 +110,10 @@ const result: Record<string, unknown> = {
       ]),
     ),
   ),
-  environment: { bun: Bun.version, cpu: cpus()[0]?.model, kernel: release(), terminal: process.env.TERM_PROGRAM },
+  environment: {
+    bun: Bun.version, cpu: cpus()[0]?.model, kernel: release(), terminal: process.env.TERM_PROGRAM,
+    traceWebGpu: process.env.TRACE_WEBGPU ?? null,
+  },
   settings: { ...values, width, height, frames, warmup, fps, particles },
   timing: values.terminal
     ? "Native stdout. Service begins at scene update and ends at DSR parser acknowledgement. Not presentation or input-to-photon latency. No output capture/forwarding."
@@ -136,6 +142,7 @@ function summarize(values: number[]) {
 let renderer: CliRenderer | undefined
 let gpu: Awaited<ReturnType<typeof createPixelRenderer>> | undefined
 let pool: FramePool | undefined
+let lastImage: NativeImage | undefined
 let outputBytes = 0
 const sink = values.terminal
   ? undefined
@@ -373,6 +380,7 @@ try {
       Object.assign(sample, timing)
       try {
         if (index === 0) result.firstFrameSha256 = createHash("sha256").update(image.raw().data).digest("hex")
+        if (values["validate-output"] && index === warmup + frames - 1) lastImage = image.retain()
         if (!renderer!.nextRenderBuffer.drawImage(image, 0, 2, 100, 30, width, height, 0, 0, width, height, "kitty"))
           throw new Error("Image placement rejected")
       } finally {
@@ -424,6 +432,12 @@ try {
     fdsPeak,
     fdsEnd: process.platform === "linux" ? readdirSync("/proc/self/fd").length : null,
   }
+  if (lastImage) {
+    result.validation = await validateOutput(renderer!, lastImage, async (command) => {
+      await drain(command)
+      return reply
+    })
+  }
 } catch (error) {
   result.error = error instanceof Error ? error.stack : String(error)
   process.exitCode = 1
@@ -433,6 +447,7 @@ try {
   renderer?.suspend()
   try {
     arena.dispose()
+    lastImage?.dispose()
     pool?.dispose()
     gpu?.dispose()
   } finally {
