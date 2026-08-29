@@ -2637,6 +2637,35 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     try std.testing.expectEqual(@as(u32, 0), cell.attributes);
 }
 
+test "OptimizedBuffer - drawBox transparent borders obey scissor independently of trackers" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.indexedColor(4, 0, 0, 255);
+    const transparent = ansi.rgbColor(0, 0, 0, 0);
+    const clips = [_][3]u32{ .{ 3, 1, 0x2500 }, .{ 3, 4, 0x2500 }, .{ 2, 2, 0x2502 }, .{ 5, 2, 0x2502 } };
+    for ([_]bool{ false, true }) |wide| {
+        for (clips) |clip| {
+            const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 6, .{ .pool = &pool, .link_pool = &links });
+            defer dst.deinit();
+            dst.clear(blue, null);
+            if (wide) try dst.drawGrapheme("\xe7\x95\x8c", 2, 0, 5, white, blue, 0);
+            try dst.pushScissorRect(@intCast(clip[0]), @intCast(clip[1]), 1, 1);
+            try dst.drawBox(2, 1, 4, 4, &border_chars, .{ .top = true, .bottom = true, .left = true, .right = true }, white, transparent, white, false, null, 0, null, 0);
+            for (0..5) |y| {
+                for (0..8) |x| {
+                    const cell = dst.get(@intCast(x), @intCast(y)).?;
+                    try std.testing.expectEqual(if (x == clip[0] and y == clip[1]) clip[2] else @as(u32, ' '), cell.char);
+                    try std.testing.expectEqual(blue, cell.bg);
+                }
+            }
+        }
+    }
+}
+
 test "OptimizedBuffer - drawBox transparent border foreground blends against box background" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
