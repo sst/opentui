@@ -1,7 +1,13 @@
 import { afterEach, expect, test } from "bun:test"
 import type { NativeSpanFeed } from "../NativeSpanFeed.js"
 import { RGBA } from "../lib/RGBA.js"
-import { CliRenderer, CliRenderEvents, RendererControlState, type CliRendererConfig } from "../renderer.js"
+import {
+  CliRenderer,
+  CliRenderEvents,
+  RendererControlState,
+  createCliRenderer,
+  type CliRendererConfig,
+} from "../renderer.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
@@ -506,3 +512,53 @@ for (const queuedWork of ["retry", "one-shot", "next-tick"] as const) {
     expect(renderer.isRunning).toBe(false)
   })
 }
+
+test("same-turn stop and request renders once without asynchronous frame callbacks", async () => {
+  const stdout = new HeldWriteStream()
+  stdout.held = false
+  const renderer = await createCliRenderer({
+    stdin: createTestStdin(),
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    consoleMode: "disabled",
+  })
+  const feed = (renderer as unknown as { _feed: NativeSpanFeed })._feed
+  cleanups.push(async () => {
+    renderer.destroy()
+    await feed.idle()
+  })
+  let frames = 0
+  let postProcesses = 0
+  renderer.on(CliRenderEvents.FRAME, () => frames++)
+  renderer.addPostProcessFn(() => postProcesses++)
+
+  renderer.requestRender()
+  renderer.stop()
+  renderer.requestRender()
+  await renderer.idle()
+
+  expect({ frames, postProcesses }).toEqual({ frames: 1, postProcesses: 1 })
+})
+
+test("an older activation finalizer cannot clear a newer request", async () => {
+  const { renderer, stdout, clock } = createAdmissionRenderer()
+  stdout.held = false
+  let frames = 0
+  let postProcesses = 0
+  renderer.addPostProcessFn(() => postProcesses++)
+  renderer.on(CliRenderEvents.FRAME, () => {
+    if (++frames !== 1) return
+    queueMicrotask(() => {
+      renderer.stop()
+      renderer.requestRender()
+    })
+  })
+
+  renderer.requestRender()
+  clock.advance(100)
+  await settle()
+  clock.advance(100)
+  await settle()
+
+  expect({ frames, postProcesses }).toEqual({ frames: 2, postProcesses: 2 })
+  await renderer.idle()
+})
