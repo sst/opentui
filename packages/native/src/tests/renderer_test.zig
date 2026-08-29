@@ -3559,6 +3559,70 @@ test "FeedBackend - high water includes drained spans until all consumers releas
     try std.testing.expectEqual(.ok, backend.prepareFrame());
 }
 
+test "FeedBackend - split control batches bypass high water but retain atomic limits" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    for ([_]bool{ false, true }) |bounded| {
+        var opts = native_span_feed.defaultOptions();
+        opts.chunk_size = 64;
+        opts.initial_chunks = 1;
+        opts.span_queue_capacity = 1;
+        opts.max_bytes = if (bounded) 64 else 0;
+        const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+        defer feed.destroy();
+        const cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 20, 4, pool, .{
+            .remote_mode = .remote,
+            .output = .{ .feed = feed },
+        });
+        defer cli_renderer.destroy();
+        const snapshot = try OptimizedBuffer.init(std.testing.allocator, 16, 1, .{
+            .pool = pool,
+            .width_method = .unicode,
+        });
+        defer snapshot.deinit();
+        const text = "captured-text";
+        try snapshot.drawText(text, 0, 0, .{ 1, 1, 1, 1 }, null, 0);
+        try feed.writeAtomic("held");
+        var held: [1]native_span_feed.SpanInfo = undefined;
+        try std.testing.expectEqual(@as(u32, 1), feed.drainSpans(&held));
+        try std.testing.expectEqual(@as(u32, 0), feed.getStats().pending_spans);
+
+        const ordinary = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, text.len, false, true, 3, false, true, true);
+        try std.testing.expectEqual(renderer.RenderStatus.skipped, ordinary.status);
+        const before = cli_renderer.splitScrollback;
+        const control = cli_renderer.commitSplitFooterSnapshotWithOptions(
+            snapshot,
+            text.len,
+            false,
+            true,
+            3,
+            false,
+            .{ .control_output = true },
+        );
+        try std.testing.expectEqual(if (bounded) renderer.RenderStatus.failed else .rendered, control.status);
+        try std.testing.expectEqualStrings("held", held[0].slice());
+        try std.testing.expectEqual(.skipped, cli_renderer.backend.prepareFrame());
+
+        var spans: [32]native_span_feed.SpanInfo = undefined;
+        const count = feed.drainSpans(&spans);
+        if (bounded) {
+            try std.testing.expectEqual(@as(u32, 0), count);
+            try std.testing.expectEqual(before, cli_renderer.splitScrollback);
+        } else {
+            var bytes: [2048]u8 = undefined;
+            var writer: std.Io.Writer = .fixed(&bytes);
+            for (spans[0..count]) |span| try writer.writeAll(span.slice());
+            try std.testing.expect(std.mem.find(u8, writer.buffered(), text) != null);
+        }
+        for (spans[0..count]) |span| feed.markSpanConsumed(span);
+        feed.markSpanConsumed(held[0]);
+        try std.testing.expectEqual(.ok, cli_renderer.backend.prepareFrame());
+    }
+}
+
 test "FeedBackend - prepareFrame commits existing pending bytes before new frames" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 64;

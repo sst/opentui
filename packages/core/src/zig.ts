@@ -2470,6 +2470,7 @@ export interface RenderLib extends AudioEngineLib {
     // multiple stdout snapshots. Defaults preserve old one-call behavior.
     beginFrame?: boolean,
     finalizeFrame?: boolean,
+    controlOutput?: boolean,
   ) => NativeRenderOperationResult
   getNextBuffer: (renderer: RendererHandle) => OptimizedBuffer
   getCurrentBuffer: (renderer: RendererHandle) => OptimizedBuffer
@@ -4290,13 +4291,15 @@ class FFIRenderLib implements RenderLib {
     force: boolean,
     beginFrame: boolean = true,
     finalizeFrame: boolean = true,
+    controlOutput: boolean = false,
   ): NativeRenderOperationResult {
     const flags =
       ffiBool(startOnNewLine) |
       (ffiBool(trailingNewline) << 1) |
       (ffiBool(force) << 2) |
       (ffiBool(beginFrame) << 3) |
-      (ffiBool(finalizeFrame) << 4)
+      (ffiBool(finalizeFrame) << 4) |
+      (ffiBool(controlOutput) << 5)
 
     return this.unpackRenderOperationResult(
       this.opentui.symbols.commitSplitFooterSnapshot(renderer, snapshot.ptr, rowColumns, flags, pinnedRenderOffset),

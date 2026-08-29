@@ -1413,34 +1413,25 @@ export fn commitSplitFooterSnapshot(
     const force = (flags & (1 << 2)) != 0;
     const begin_frame = (flags & (1 << 3)) != 0;
     const finalize_frame = (flags & (1 << 4)) != 0;
+    const control_output = (flags & (1 << 5)) != 0;
 
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
-    if (begin_frame and finalize_frame) {
-        return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
-            snapshot_ptr,
-            rowColumns,
-            start_on_new_line,
-            trailing_newline,
-            pinnedRenderOffset,
-            force,
-            true,
-            true,
-        ));
-    }
-
-    return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
+    return packRenderResult(renderer_ptr.commitSplitFooterSnapshotWithOptions(
         snapshot_ptr,
         rowColumns,
         start_on_new_line,
         trailing_newline,
         pinnedRenderOffset,
         force,
-        begin_frame,
-        finalize_frame,
+        .{
+            .begin_frame = begin_frame,
+            .finalize_frame = finalize_frame,
+            .control_output = control_output,
+        },
     ));
 }
 

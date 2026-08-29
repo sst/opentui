@@ -1107,13 +1107,42 @@ pub const CliRenderer = struct {
         begin_frame: bool,
         finalize_frame: bool,
     ) RenderResult {
+        return self.commitSplitFooterSnapshotWithOptions(
+            snapshot,
+            row_columns,
+            start_on_new_line,
+            trailing_newline,
+            pinned_render_offset,
+            force,
+            .{ .begin_frame = begin_frame, .finalize_frame = finalize_frame },
+        );
+    }
+
+    pub fn commitSplitFooterSnapshotWithOptions(
+        self: *CliRenderer,
+        snapshot: *OptimizedBuffer,
+        row_columns: u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+        pinned_render_offset: u32,
+        force: bool,
+        options: struct {
+            begin_frame: bool = true,
+            finalize_frame: bool = true,
+            control_output: bool = false,
+        },
+    ) RenderResult {
         // Batched commit protocol:
         // - first call starts frame and appends payload
         // - middle calls append payload only
         // - final call renders footer diff/cursor and closes frame
         // This avoids repeated syncSet/syncReset and cursor toggles per chunk.
-        if (begin_frame) {
-            if (self.backend.prepareFrame() != .ok) {
+        if (options.begin_frame) {
+            const ready = if (options.control_output)
+                self.backend.prepareControlFrame()
+            else
+                self.backend.prepareFrame();
+            if (ready != .ok) {
                 const status = self.finishSkippedFrame();
                 return self.renderResult(status);
             }
@@ -1139,7 +1168,7 @@ pub const CliRenderer = struct {
 
                     // Track batch lifetime so subsequent calls can append into the same
                     // output buffer without restarting frame state.
-                    self.splitBatchActive = !finalize_frame;
+                    self.splitBatchActive = !options.finalize_frame;
                     self.splitBatchRedrawFooter = false;
                     self.splitBatchDeltaTime = deltaTime;
 
@@ -1156,7 +1185,7 @@ pub const CliRenderer = struct {
                         break :blk false;
                     };
 
-                    if (finalize_frame) {
+                    if (options.finalize_frame) {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
                         if (self.imageRenderFailed) b.failFrame();
                         write_status = b.endFrame();
@@ -1184,15 +1213,14 @@ pub const CliRenderer = struct {
         // Defensive fallback: if caller forgot begin_frame, execute through a
         // single-call frame instead of appending into undefined batch state.
         if (!self.splitBatchActive) {
-            return self.commitSplitFooterSnapshotBatched(
+            return self.commitSplitFooterSnapshotWithOptions(
                 snapshot,
                 row_columns,
                 start_on_new_line,
                 trailing_newline,
                 pinned_render_offset,
                 force,
-                true,
-                true,
+                .{ .control_output = options.control_output },
             );
         }
 
@@ -1215,7 +1243,7 @@ pub const CliRenderer = struct {
                 };
                 self.splitBatchRedrawFooter = self.splitBatchRedrawFooter or redraw_footer;
 
-                if (finalize_frame) {
+                if (options.finalize_frame) {
                     self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, true);
                     if (self.imageRenderFailed) b.failFrame();
                     write_status = b.endFrame();

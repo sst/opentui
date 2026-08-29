@@ -1020,8 +1020,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _detachFeed: (() => void) | null = null
   private _detachFeedError: (() => void) | null = null
   private feedIdleRenderScheduled = false
-  private ordinaryFrameWaitingForFeed = false
-  private ordinaryFrameWaitControlState: RendererControlState | null = null
+  private feedIdleWaitPending = false
 
   public get controlState(): RendererControlState {
     return this._controlState
@@ -1297,7 +1296,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return id
     }
     global.cancelAnimationFrame = (handle: number) => {
-      this.animationRequest.delete(handle)
+      if (this.animationRequest.delete(handle)) this.dropLive()
     }
 
     const window = global.window
@@ -1490,36 +1489,35 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private scheduleRenderAfterFeedIdle(): void {
     const feed = this._feed
-    if (!feed || this.feedIdleRenderScheduled || this._isDestroyed) return
+    if (!feed || this._isDestroyed) return
 
     this.feedIdleRenderScheduled = true
+    if (this.feedIdleWaitPending) return
+    this.feedIdleWaitPending = true
     feed.idle().then(() => {
-      this.feedIdleRenderScheduled = false
-      const ordinaryFrameWasWaiting = this.ordinaryFrameWaitingForFeed
-      const ordinaryFrameWaitControlState = this.ordinaryFrameWaitControlState
-      this.ordinaryFrameWaitingForFeed = false
-      this.ordinaryFrameWaitControlState = null
-      if (
-        this._isDestroyed ||
-        (ordinaryFrameWasWaiting &&
-          this._controlState !== ordinaryFrameWaitControlState &&
-          (this._controlState === RendererControlState.EXPLICIT_PAUSED ||
-            this._controlState === RendererControlState.EXPLICIT_STOPPED ||
-            this._controlState === RendererControlState.EXPLICIT_SUSPENDED))
-      ) {
-        this.resolveIdleIfNeeded()
+      this.feedIdleWaitPending = false
+      if (!this.feedIdleRenderScheduled) return
+      // New output may arrive after the feed resolves but before this continuation.
+      if (feed.isBackpressured()) {
+        this.scheduleRenderAfterFeedIdle()
         return
       }
 
+      this.feedIdleRenderScheduled = false
       this.scheduleRenderTimer()
       this.resolveIdleIfNeeded()
     })
   }
 
+  private cancelRenderAfterFeedIdle(): void {
+    if (!this.feedIdleRenderScheduled) return
+    // Cancel scheduler demand without releasing bytes still owned by the sink.
+    this.feedIdleRenderScheduled = false
+    this.immediateRerenderRequested = false
+  }
+
   private handleNativeRenderRejection(status: number): "retryable-skip" | "backpressured" | "failed" {
     if (status === NATIVE_RENDER_STATUS_SKIPPED && this._feed) {
-      this.ordinaryFrameWaitingForFeed = true
-      this.ordinaryFrameWaitControlState = this._controlState
       this.scheduleRenderAfterFeedIdle()
       return "retryable-skip"
     }
@@ -1569,19 +1567,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // feed.idle(). Coalesce normal invalidations into that retry so split-footer
     // output and UI updates cannot start competing render passes while the feed is busy.
     if (this.feedIdleRenderScheduled) {
-      // A new one-shot request after pause/stop replaces the cancelled frame.
-      if (this.ordinaryFrameWaitingForFeed) this.ordinaryFrameWaitControlState = this._controlState
       return
     }
 
     if (this._isRunning) {
-      if (!this.rendering && !this.renderTimeout && !this.ordinaryFrameWaitingForFeed) {
+      if (!this.rendering && !this.renderTimeout) {
         this.scheduleRenderTimer()
       }
-      return
-    }
-
-    if (this.ordinaryFrameWaitingForFeed) {
       return
     }
 
@@ -2737,6 +2729,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         forceCommit,
         beginFrame,
         finalizeFrame,
+        drainAll,
       )
       if (nativeResult.status === NATIVE_RENDER_STATUS_SKIPPED) {
         nativeBackpressured = true
@@ -4299,6 +4292,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private internalPause(): void {
     this._isRunning = false
+    this.cancelRenderAfterFeedIdle()
 
     if (this.renderTimeout) {
       this.clock.clearTimeout(this.renderTimeout)
@@ -4316,6 +4310,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private internalStop(): void {
+    this.cancelRenderAfterFeedIdle()
     if (this.isRunning && !this._isDestroyed) {
       this._isRunning = false
 
@@ -4328,12 +4323,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.clock.clearTimeout(this.renderTimeout)
         this.renderTimeout = null
       }
-
-      // If we're currently rendering, the frame will resolve idle when it completes
-      // Otherwise, resolve immediately
-      if (!this.rendering) {
-        this.resolveIdleIfNeeded()
-      }
+    }
+    // An active frame resolves idle when it completes.
+    if (!this.rendering) {
+      this.resolveIdleIfNeeded()
     }
   }
 
@@ -4355,6 +4348,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private cleanupBeforeDestroy(): void {
     if (this._destroyCleanupPrepared) return
     this._destroyCleanupPrepared = true
+    this.cancelRenderAfterFeedIdle()
     if (this.kittyTransportTimer !== null) {
       this.clock.clearInterval(this.kittyTransportTimer)
       this.kittyTransportTimer = null
