@@ -127,6 +127,7 @@
     "src/tests/renderer.core-slot-binding.test.ts",
     "src/tests/renderer.cursor.test.ts",
     "src/tests/renderer.destroy-during-render.test.ts",
+    "src/tests/renderer.frame-admission.test.ts",
     "src/tests/renderer.focus.test.ts",
     "src/tests/renderer.focus-restore.test.ts",
     "src/tests/renderer.input.test.ts",

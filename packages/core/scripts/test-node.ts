@@ -164,6 +164,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderer.core-slot-binding.test.js",
   ".node-test/src/tests/renderer.cursor.test.js",
   ".node-test/src/tests/renderer.destroy-during-render.test.js",
+  ".node-test/src/tests/renderer.frame-admission.test.js",
   ".node-test/src/tests/renderer.focus.test.js",
   ".node-test/src/tests/renderer.focus-restore.test.js",
   ".node-test/src/tests/renderer.input.test.js",

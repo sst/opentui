@@ -3523,6 +3523,42 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     try std.testing.expect(next_cell.char != @as(u32, 'C'));
 }
 
+test "FeedBackend - high water includes drained spans until all consumers release them" {
+    var opts = native_span_feed.defaultOptions();
+    opts.span_queue_capacity = 2;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    defer feed.destroy();
+    var backend = renderer.FeedBackend.create(feed);
+    defer backend.deinit();
+
+    // Two spans in one chunk exercise refcounts, not just the number of chunks.
+    try feed.write("first");
+    try feed.commit();
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
+    try feed.write("second");
+    try feed.commit();
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
+
+    var spans: [2]native_span_feed.SpanInfo = undefined;
+    try std.testing.expectEqual(@as(u32, 2), feed.drainSpans(&spans));
+    try std.testing.expectEqual(@as(u32, 0), feed.getStats().pending_spans);
+    try std.testing.expectEqual(spans[0].chunk_index, spans[1].chunk_index);
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
+
+    // Control writes may grow the feed but must not overwrite committed spans.
+    backend.writeOut("shutdown");
+    try std.testing.expectEqualStrings("first", spans[0].slice());
+    try std.testing.expectEqualStrings("second", spans[1].slice());
+    feed.markSpanConsumed(spans[1]);
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
+    feed.markSpanConsumed(spans[0]);
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
+    try std.testing.expectEqual(@as(u32, 1), feed.drainSpans(&spans));
+    try std.testing.expectEqualStrings("shutdown", spans[0].slice());
+    feed.markSpanConsumed(spans[0]);
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
+}
+
 test "FeedBackend - prepareFrame commits existing pending bytes before new frames" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 64;
