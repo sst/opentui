@@ -1,7 +1,9 @@
 # Bulk Text Inputs And Bounded Closure
 
 Continuation from `c5493f5d`. The owner no-regression goal is still incomplete;
-this is an implementation checkpoint, not an acceptance claim.
+this is a verified implementation checkpoint, not an acceptance claim. Full
+[measurements](layered-paint-grid-bulk-results.md) include all workloads, OFF,
+cold, first capture, mixed totals, tails, counters and memory.
 
 ## Changes
 
@@ -36,13 +38,29 @@ this is an implementation checkpoint, not an acceptance claim.
 - Focused tests cover source destruction after capture, linked input ownership,
   alpha/opacity, clipping, exact one-cell damage and scalar-control equivalence.
   Existing allocation-failure tests cover materialization and retry.
-- Current root ReleaseFast build, native 2134 pass/8 skip and Bun Core suite pass.
-  Short fresh-process trial shows materially lower ordinary text-render medians
-  and first capture around 0.82-0.89 ms for small plain-text scenes. Full rotating
-  main/prior controls and final verification follow; do not extrapolate acceptance.
+- Root ReleaseFast build, native2134/8skip, Bun Core5497/23skip, guarded
+  Node26.4 Core4754/6skip, packed Bun/Node, React59, Solid271 and static checks pass.
+- Final rotating controls cover7x1000 small and5x600 large runs,540 fresh processes.
+  All nine warm mean/p50 medians improve against actual main at both sizes; some
+  paired repeats still lose. Cold and mixed losses remain, especially first capture.
+  The separate original driver verifies2016 four-channel frames against pinned main.
 - Native fixture allocation traffic is 16 backing allocations/106240 requested
   bytes, with 94240 retained bytes including arena slack. Small outside-layout
   retained storage is 173360 bytes. These are not RSS measurements.
 
 Historical reports remain unchanged. Local reproducible diagnostics, rejected
 trial pins and raw data are under the `lifecycle` continuation artifacts.
+
+## Remaining Work
+
+- Attribute cold full-frame overhead on this source using actual renderer method
+  boundaries. Earlier generic per-cell-check and redundant-clear diagnoses are
+  obsolete. No evidence justifies dropping issue1465 correctness or hiding tails.
+- Native TextBuffer capture drawing dropped from274 to64 microseconds in the
+  small boundary diagnostic; scope/FFI/first-use costs remain. That diagnostic is
+  not headline CPU and did not move work into unmeasured setup.
+- Main-Root OFF ablation and a retained-painter helper extraction were measured
+  and removed. The latter did not consistently improve cold/full/selective work.
+- Explore lifecycle simplification only with measured evidence and exact proofs
+  for raw between-frame writes, planned-full ownership, one callback execution,
+  rejection retry and input publication. No redundant JS/native state machine.
