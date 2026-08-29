@@ -1489,7 +1489,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private scheduleRenderAfterFeedIdle(): void {
     const feed = this._feed
-    if (!feed || this.feedIdleRenderScheduled || this._isDestroyed) return
+    if (
+      !feed ||
+      this.feedIdleRenderScheduled ||
+      this._isDestroyed ||
+      this._controlState === RendererControlState.EXPLICIT_SUSPENDED
+    )
+      return
 
     this.feedIdleRenderScheduled = true
     const generation = ++this.feedIdleRenderGeneration
@@ -4146,15 +4152,31 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
       this._controlState = RendererControlState.AUTO_STARTED
       this.internalStart()
+    } else if (
+      this._controlState === RendererControlState.EXPLICIT_SUSPENDED &&
+      this._previousControlState === RendererControlState.IDLE
+    ) {
+      this._previousControlState = RendererControlState.AUTO_STARTED
     }
   }
 
   public dropLive(): void {
-    this.liveRequestCounter = Math.max(0, this.liveRequestCounter - 1)
+    if (this.liveRequestCounter === 0) return
+    this.liveRequestCounter--
+
+    if (
+      this.liveRequestCounter === 0 &&
+      this._controlState === RendererControlState.EXPLICIT_SUSPENDED &&
+      this._previousControlState === RendererControlState.AUTO_STARTED
+    ) {
+      this._previousControlState = RendererControlState.IDLE
+    }
 
     if (this._controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
       this._controlState = RendererControlState.IDLE
-      this.internalPause()
+      // Return to demand-driven mode without cancelling coalesced tree/output updates.
+      this._isRunning = false
+      this.resolveIdleIfNeeded()
     }
   }
 
@@ -4309,18 +4331,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private internalStop(): void {
     this.cancelRenderAfterFeedIdle()
-    if (this.isRunning && !this._isDestroyed) {
-      this._isRunning = false
+    this._isRunning = false
+    this.updateScheduled = false
+    this.immediateRerenderRequested = false
 
-      if (this.memorySnapshotTimer) {
-        this.clock.clearInterval(this.memorySnapshotTimer)
-        this.memorySnapshotTimer = null
-      }
+    if (this.memorySnapshotTimer) {
+      this.clock.clearInterval(this.memorySnapshotTimer)
+      this.memorySnapshotTimer = null
+    }
 
-      if (this.renderTimeout) {
-        this.clock.clearTimeout(this.renderTimeout)
-        this.renderTimeout = null
-      }
+    if (this.renderTimeout) {
+      this.clock.clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
     }
     // An active frame resolves idle when it completes.
     if (!this.rendering) {
