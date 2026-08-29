@@ -1898,7 +1898,12 @@ export fn bufferClearOpacity(buffer_handle: NativeHandle) void {
 export fn bufferPaintBegin(buffer_handle: NativeHandle, background: [*]const u16, fallback: u8) u8 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
     object_ptr.beginPaint(ptrToRGBA(background), fallback != 0) catch return 0;
-    return if (object_ptr.paint_grid.?.fallback) 2 else 1;
+    const grid = object_ptr.paint_grid.?;
+    if (grid.fallback) {
+        grid.finish() catch unreachable;
+        return 2;
+    }
+    return 1;
 }
 
 export fn bufferPaintPush(buffer_handle: NativeHandle, owner: u32, x: i32, y: i32, width: u32, height: u32, dirty: u8) u8 {
@@ -1907,13 +1912,20 @@ export fn bufferPaintPush(buffer_handle: NativeHandle, owner: u32, x: i32, y: i3
     return @intFromBool(grid.push(owner, x, y, width, height, dirty != 0) catch return 2);
 }
 
-export fn bufferPaintFallback(buffer_handle: NativeHandle) void {
-    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+export fn bufferPaintFallback(buffer_handle: NativeHandle) u8 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
     if (object_ptr.paint_grid) |grid| {
-        if (!grid.active or grid.fallback) return;
-        grid.retain_on_fallback = true;
-        grid.materialize();
+        if (!grid.active) return 0;
+        if (!grid.fallback) {
+            grid.retain_on_fallback = true;
+            grid.materialize();
+        }
+        // A painter still owns its stack until its finally-pop. Geometry-only
+        // fallback has no scope and can retire the transaction immediately.
+        if (grid.stack.items.len != 0) return 1;
+        grid.finish() catch unreachable;
     }
+    return 0;
 }
 
 export fn bufferPaintPop(buffer_handle: NativeHandle) void {
@@ -1926,13 +1938,13 @@ export fn bufferPaintEnd(buffer_handle: NativeHandle, abort: u8) u8 {
     const grid = object_ptr.paint_grid orelse return 1;
     if (abort != 0) {
         grid.abort();
-        return 1;
+        return 2;
     }
     grid.finish() catch {
         grid.abort();
         return 0;
     };
-    return 1;
+    return if (grid.valid) 1 else 2;
 }
 
 export fn bufferPaintStats(buffer_handle: NativeHandle, output: [*]u32) void {

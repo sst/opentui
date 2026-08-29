@@ -69,7 +69,6 @@ pub const PaintGrid = struct {
     replaying: bool = false,
     fallback: bool = false,
     retain_on_fallback: bool = false,
-    unsupported_last_frame: bool = false,
     recomposed: u32 = 0,
     skipped: u32 = 0,
     recorded: u32 = 0,
@@ -117,8 +116,8 @@ pub const PaintGrid = struct {
     pub fn begin(self: *PaintGrid, background: ansi.RGBA, force_fallback: bool) void {
         const retained = self.valid;
         self.preserved = retained;
-        const unsupported = self.unsupported_last_frame;
-        self.unsupported_last_frame = false;
+        const unsupported = self.target.paint_unsupported;
+        self.target.paint_unsupported = false;
         self.count = 0;
         self.stack.clearRetainingCapacity();
         self.active = true;

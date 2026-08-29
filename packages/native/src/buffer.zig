@@ -200,6 +200,7 @@ pub const OptimizedBuffer = struct {
     image_placements: std.ArrayListUnmanaged(ImagePlacement),
     paint_grid: ?*PaintGrid = null,
     paint_raw_exposed: bool = false,
+    paint_unsupported: bool = false,
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -313,10 +314,11 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn paintFallback(self: *OptimizedBuffer) void {
+        self.paint_unsupported = true;
         if (self.paint_grid) |grid| {
-            grid.unsupported_last_frame = true;
             grid.retain_on_fallback = false;
             grid.materialize();
+            if (!grid.active) grid.abort();
         }
     }
 

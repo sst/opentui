@@ -36,6 +36,78 @@ function snapshot(buffer: OptimizedBuffer) {
   return { char: [...char], fg: [...fg], bg: [...bg], attributes: [...attributes] }
 }
 
+test("paint grid ordinary bursts avoid recording transactions and recover after raw exposure", async () => {
+  async function run(experimentalPaintGrid: boolean) {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 12, height: 3, experimentalPaintGrid })
+    const begin = spyOn(renderer.nextRenderBuffer.lib, "bufferPaintBegin")
+    const end = spyOn(renderer.nextRenderBuffer.lib, "bufferPaintEnd")
+    let value = "A"
+    const painter = new Paint(renderer, { width: 1, height: 1 }, (buffer) => buffer.drawText(value, 5, 1, white, blue))
+    const frames = []
+    try {
+      renderer.root.add(painter)
+      for (let i = 0; i < 3; i++) {
+        renderer.requestRender()
+        await renderOnce()
+        frames.push(snapshot(renderer.currentRenderBuffer))
+      }
+      expect(begin).not.toHaveBeenCalled()
+      expect(end).not.toHaveBeenCalled()
+      await renderOnce()
+      await renderOnce()
+      const before = painter.calls
+      value = "B"
+      renderer.requestRender()
+      await renderOnce()
+      expect(painter.calls).toBe(before + 1)
+      frames.push(snapshot(renderer.currentRenderBuffer))
+      begin.mockClear()
+      end.mockClear()
+      renderer.nextRenderBuffer.buffers.char[0] = 90
+      renderer.requestRender()
+      await renderOnce()
+      frames.push(snapshot(renderer.currentRenderBuffer))
+      expect(begin).not.toHaveBeenCalled()
+      expect(end).not.toHaveBeenCalled()
+      expect(renderer.currentRenderBuffer.buffers.char[0]).toBe(90)
+      await renderOnce()
+      frames.push(snapshot(renderer.currentRenderBuffer))
+      return frames
+    } finally {
+      begin.mockRestore()
+      end.mockRestore()
+      renderer.destroy()
+    }
+  }
+  expect(await run(true)).toEqual(await run(false))
+})
+
+test("paint grid late full selection preserves the painter scissor and opacity until scope exit", async () => {
+  async function run(experimentalPaintGrid: boolean) {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 8, height: 2, experimentalPaintGrid })
+    const painter = new Paint(renderer, { width: 1, height: 1 }, (buffer) => {
+      buffer.pushScissorRect(2, 0, 2, 1)
+      buffer.pushOpacity(0.5)
+      buffer.drawText("ABCD", 0, 0, white, blue)
+      buffer.fallbackPaint()
+      buffer.drawText("EFGH", 0, 0, white, red)
+      buffer.popOpacity()
+      buffer.popScissorRect()
+    })
+    try {
+      renderer.root.add(painter)
+      await renderOnce()
+      painter.requestRender()
+      await renderOnce()
+      expect(painter.calls).toBe(2)
+      return snapshot(renderer.currentRenderBuffer)
+    } finally {
+      renderer.destroy()
+    }
+  }
+  expect(await run(true)).toEqual(await run(false))
+})
+
 test("paint grid full-paint bursts recover useful skipping with exact output and single callbacks", async () => {
   async function run(experimentalPaintGrid: boolean) {
     const { renderer, renderOnce, resize } = await createTestRenderer({ width: 14, height: 4, experimentalPaintGrid })
@@ -149,7 +221,7 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
     [2, 2],
     [3, 2],
   ])
-  expect(grid.stats[0].fallback).toBe(1)
+  expect(grid.stats[0].retainedBytes).toBe(0)
   expect(grid.stats[2].recomposed).toBe(0)
   expect(grid.stats[3].recomposed).toBe(3)
   expect(grid.stats.slice(1, 4).every((frame) => frame.fallback === 0)).toBe(true)
@@ -358,7 +430,11 @@ test("paint grid detects images, effects and arbitrary callbacks as full renderi
     expect(grid.frame).toEqual(full.frame)
     expect(grid.calls).toBe(2)
     expect(grid.callbacks).toBe(full.callbacks)
-    expect(grid.stats.fallback).toBe(1)
+    if (path === "frame" || path === "post") expect(grid.stats.retainedBytes).toBe(0)
+    else {
+      expect(grid.stats.fallback).toBe(1)
+      expect(grid.stats.recorded).toBe(0)
+    }
   }
 })
 

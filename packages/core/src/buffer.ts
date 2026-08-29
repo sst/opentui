@@ -75,6 +75,9 @@ export class OptimizedBuffer {
   /** @internal */
   public beginPaint(background: RGBA, fallback: boolean): void {
     this.guard()
+    // This flag tracks a recording obligation, not native cache validity. Raw
+    // access can invalidate native state independently, so transitions stay native.
+    if (fallback && !this.experimentalPaintGrid) return
     const status = this.lib.bufferPaintBegin(this.bufferPtr, background, fallback)
     if (!status) throw new Error("Paint grid allocation failed")
     this.experimentalPaintGrid = status === 1
@@ -83,14 +86,16 @@ export class OptimizedBuffer {
   /** @internal */
   public fallbackPaint(): void {
     this.guard()
-    this.lib.bufferPaintFallback(this.bufferPtr)
-    this.experimentalPaintGrid = false
+    this.experimentalPaintGrid = this.lib.bufferPaintFallback(this.bufferPtr)
   }
 
   /** @internal */
   public endPaint(abort = false): void {
     this.guard()
-    if (!this.lib.bufferPaintEnd(this.bufferPtr, abort)) throw new Error("Paint grid composition failed")
+    if (!this.experimentalPaintGrid) return
+    const status = this.lib.bufferPaintEnd(this.bufferPtr, abort)
+    this.experimentalPaintGrid = status === 1
+    if (!status) throw new Error("Paint grid composition failed")
   }
 
   /** Experimental counters, without exposing writable target memory. */

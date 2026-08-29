@@ -4559,7 +4559,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const frameRequests = Array.from(this.animationRequest.values())
       if (this.experimentalPaintGrid) {
-        this.nextRenderBuffer.experimentalPaintGrid = true
         this.nextRenderBuffer.experimentalPaintForce = this.paintForceRequested || this._isRunning
         this.paintForceRequested = false
         this.nextRenderBuffer.beginPaint(
