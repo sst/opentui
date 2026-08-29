@@ -371,8 +371,13 @@ test "paint grid owned text span finishes drawing after glyph payload growth fai
     tracking.fail_index = tracking.alloc_index;
     tracking.resize_fail_index = tracking.resize_index;
     try text.setText(&content);
-    target.drawTextBuffer(view, 0, 0);
-    control.drawTextBuffer(view, 0, 0);
+    // A shared payload arena may satisfy growth from existing capacity. Exhaust
+    // that capacity before asserting the backing allocator failure fallback.
+    for (0..16) |_| {
+        target.drawTextBuffer(view, 0, 0);
+        control.drawTextBuffer(view, 0, 0);
+        if (grid.fallback) break;
+    }
     try std.testing.expect(grid.fallback);
     grid.pop();
     try grid.finish();
@@ -527,6 +532,41 @@ test "paint grid closes transitive covered wide dependencies without a cell inde
         try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
         if (frame == 1) try std.testing.expectEqual(@as(u32, 4), grid.recomposed);
     }
+}
+
+test "paint grid payload arena releases references before repeated reset" {
+    const a = std.testing.allocator;
+    var tracking = std.testing.FailingAllocator.init(a, .{});
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const id = try links.alloc("https://example.com/arena-reset");
+    try links.incref(id);
+    defer links.decref(id) catch {};
+    {
+        const target = try OptimizedBuffer.init(tracking.allocator(), 120, 2, .{ .pool = &pool, .link_pool = &links });
+        defer target.deinit();
+        const white = ansi.rgbColor(255, 255, 255, 255);
+        for (0..20) |_| {
+            try target.beginPaint(white, false);
+            const grid = target.paint_grid.?;
+            for (0..10) |i| {
+                _ = try grid.push(@intCast(i + 1), 0, 0, 1, 1, true);
+                try target.drawText("owned glyph payload", @intCast(i), 0, white, white, ansi.TextAttributes.setLinkId(0, id));
+                try target.drawText("界", @intCast(i * 2), 1, white, white, 0);
+                grid.pop();
+            }
+            try grid.finish();
+            grid.abort();
+            target.clear(white, null);
+            try std.testing.expect(!target.grapheme_tracker.hasAny());
+            try std.testing.expect(!target.link_tracker.hasAny());
+            try std.testing.expectEqual(@as(u32, 1), try links.getRefcount(id));
+            try std.testing.expectEqual(@as(usize, 0), grid.payload.queryCapacity());
+        }
+    }
+    try std.testing.expectEqual(tracking.allocated_bytes, tracking.freed_bytes);
 }
 
 test "paint grid allocation traffic measurement" {

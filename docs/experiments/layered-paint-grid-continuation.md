@@ -8,6 +8,10 @@ remains draft. This is an architectural continuation, not a no-regression claim.
 - Ordered row spans share preblend style and own differing u32 glyph payloads.
   Wide glyphs and inherited backgrounds retain exact dependencies and pool refs.
   No text, framebuffer, or caller-owned pointers outlive their draw call.
+- A target-owned payload arena amortizes small run/glyph vector allocations.
+  Planned full frames and selective updates reuse capacity; abort/unsupported
+  fallback releases references and then frees the arena. Capacity reporting
+  includes unused arena space, not just live run/vector sizes.
 - Fill rows capture/replay through the existing bulk fillRect implementation.
   Invalid retained frames paint while capturing, avoiding a second full replay.
   Late fallback continues the already-painted prefix without rerunning callbacks.
@@ -29,8 +33,8 @@ and recovery costs stay inside complete measured sequences.
 
 ## Evidence So Far
 
-Focused native16 tests and original four-channel normal/transition parity pass.
-The ReleaseFast root build, native2129 (8 skipped), Bun Core5497 (23 skipped),
+Focused native17 tests and original four-channel normal/transition parity pass.
+The ReleaseFast root build, native2130 (8 skipped), Bun Core5497 (23 skipped),
 guarded Node26.4 Core4754 (6 skipped), packed Bun/Node, React59, Solid271 and lint
 pass. New matched main/prior matrices are pending at this checkpoint. These are
 local checks, not a claim of green GitHub CI.
@@ -40,8 +44,10 @@ frame versus one OFF; the new path performs one. Current generic TextBuffer
 frames have zero per-cell recorder checks, not the historical7840. Outside-layout
 OFF still had8692 checks before the drawText/fill specialization.
 
-The native allocation fixture retains126296 bytes with coarse spans/no reverse
-index, versus scalar MB-scale payloads. This is not RSS or total allocator traffic.
+The native allocation fixture retains144900 bytes including arena slack, versus
+126296 without the arena and scalar MB-scale payloads. Initial backing allocations
+fall from170 to16 (156900 requested bytes); warm fixture traffic is zero. Arena
+slack is a measured tradeoff, not hidden live payload. This is not RSS.
 Five1000-frame fresh-process trials show selective gains and lower full-path
 overhead, but still expose first-cache costs and workload-specific regressions.
 No averages, forced GC, or discarded tails are used as acceptance criteria.

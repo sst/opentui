@@ -56,6 +56,7 @@ pub const PaintGrid = struct {
     const Scope = struct { owner: u32, scissor_depth: usize, opacity_depth: usize };
 
     target: *b.OptimizedBuffer,
+    payload: std.heap.ArenaAllocator,
     commands: std.ArrayList(Command) = .empty,
     stack: std.ArrayList(Scope) = .empty,
     dirty: []bool = &.{},
@@ -83,7 +84,7 @@ pub const PaintGrid = struct {
     pub fn init(target: *b.OptimizedBuffer, background: ansi.RGBA) !*PaintGrid {
         const a = target.allocator;
         const self = try a.create(PaintGrid);
-        self.* = .{ .target = target, .background = background };
+        self.* = .{ .target = target, .background = background, .payload = std.heap.ArenaAllocator.init(a) };
         return self;
     }
 
@@ -102,9 +103,10 @@ pub const PaintGrid = struct {
         for (self.commands.items) |*command| {
             self.release(&command.ops);
             self.release(&command.pending);
-            command.ops.deinit(a);
-            command.pending.deinit(a);
+            command.ops.deinit(self.payload.allocator());
+            command.pending.deinit(self.payload.allocator());
         }
+        self.payload.deinit();
         a.free(self.dirty);
         a.free(self.dirty_cells);
         self.commands.deinit(a);
@@ -229,7 +231,7 @@ pub const PaintGrid = struct {
                 // the same preblend style, but never retain a caller-owned view.
                 if (last.text_offset != std.math.maxInt(u32) or last.cell.char != cell.char) {
                     const extra = if (last.text_offset == std.math.maxInt(u32)) last.count + 1 else 1;
-                    pending.chars.ensureTotalCapacity(t.allocator, @max(128, pending.chars.items.len + extra)) catch {
+                    pending.chars.ensureTotalCapacity(self.payload.allocator(), @max(128, pending.chars.items.len + extra)) catch {
                         self.materialize();
                         return false;
                     };
@@ -244,7 +246,7 @@ pub const PaintGrid = struct {
                 return true;
             }
         }
-        pending.ops.append(t.allocator, op) catch {
+        pending.ops.append(self.payload.allocator(), op) catch {
             self.materialize();
             return false;
         };
@@ -380,13 +382,14 @@ pub const PaintGrid = struct {
         self.valid = false;
         while (self.stack.items.len != 0) self.pop();
         if (self.empty) return;
-        const a = self.target.allocator;
         for (self.commands.items) |*command| {
             self.release(&command.ops);
             self.release(&command.pending);
-            command.ops.deinit(a);
-            command.pending.deinit(a);
+            command.ops = .{};
+            command.pending = .{};
         }
+        // All retained pool references are gone before payload storage is reused.
+        _ = self.payload.reset(.free_all);
         self.empty = true;
     }
 
@@ -575,10 +578,7 @@ pub const PaintGrid = struct {
 
     pub fn retainedBytes(self: *const PaintGrid) u64 {
         var bytes: u64 = @sizeOf(PaintGrid) + self.dirty.len * (@sizeOf(bool) + @sizeOf(u32)) + self.commands.capacity * @sizeOf(Command) + self.stack.capacity * @sizeOf(Scope);
-        for (self.commands.items) |command| {
-            bytes += (command.ops.ops.capacity + command.pending.ops.capacity) * @sizeOf(Op);
-            bytes += (command.ops.chars.capacity + command.pending.chars.capacity) * @sizeOf(u32);
-        }
+        bytes += self.payload.queryCapacity();
         return bytes;
     }
 };
