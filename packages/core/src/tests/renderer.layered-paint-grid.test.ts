@@ -115,9 +115,6 @@ test("paint grid matches full rendering across unchanged, overlapping, moved and
     try {
       renderer.root.add(lower)
       renderer.root.add(upper)
-      // Cold rendering is full; the next eligible frame constructs the cache.
-      await renderOnce()
-      lower.calls = upper.calls = 0
       await frame()
       await frame()
       content = "other"
@@ -167,8 +164,6 @@ test("paint grid skips text overrides but preserves hit targets and generic inva
   try {
     renderer.root.add(text)
     renderer.root.add(custom)
-    await renderOnce()
-    custom.calls = 0
     await renderOnce()
     const first = snapshot(renderer.currentRenderBuffer)
     await renderOnce()
@@ -258,8 +253,6 @@ test("paint grid falls back for late retained raw views without invoking painter
     renderer.root.add(lower)
     renderer.root.add(upper)
     await renderOnce()
-    lower.calls = upper.calls = 0
-    await renderOnce()
     expose = true
     upper.requestRender()
     await renderOnce()
@@ -292,8 +285,6 @@ test("paint grid retries a rejected frame, resizes, and changes background coher
   })
   try {
     renderer.root.add(painter)
-    await renderOnce()
-    painter.calls = 0
     await renderOnce()
     reject = true
     await renderOnce()

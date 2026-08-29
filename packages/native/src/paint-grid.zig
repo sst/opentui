@@ -55,6 +55,7 @@ pub const PaintGrid = struct {
     valid: bool = false,
     replaying: bool = false,
     fallback: bool = false,
+    retain_on_fallback: bool = false,
     unsupported_last_frame: bool = false,
     recomposed: u32 = 0,
     skipped: u32 = 0,
@@ -114,6 +115,7 @@ pub const PaintGrid = struct {
         self.stack.clearRetainingCapacity();
         self.active = true;
         self.fallback = false;
+        self.retain_on_fallback = force_fallback and !unsupported and !self.target.paint_raw_exposed;
         self.recomposed = 0;
         self.skipped = 0;
         self.recorded = 0;
@@ -132,6 +134,12 @@ pub const PaintGrid = struct {
             return;
         }
         if (!self.valid) {
+            // Every command will be rerecorded. Reuse its old payload storage
+            // instead of allocating a second stream just to compare invalid data.
+            for (self.commands.items) |*command| {
+                self.release(&command.ops);
+                std.mem.swap(std.ArrayList(Op), &command.ops, &command.pending);
+            }
             @memset(self.dirty, true);
             for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
             self.dirty_count = self.dirty.len;
@@ -297,12 +305,20 @@ pub const PaintGrid = struct {
 
     pub fn finish(self: *PaintGrid) !void {
         if (self.fallback) {
+            if (self.retain_on_fallback) {
+                // Planned full paints keep owned capacity, but recovery must
+                // rerecord every command before any cached paint can be skipped.
+                self.active = false;
+                self.valid = false;
+                while (self.stack.items.len != 0) self.pop();
+                return;
+            }
             self.abort();
             return;
         }
         const t = self.target;
         const a = t.allocator;
-        var rebuild = false;
+        var rebuild = !self.valid;
         // Equal streams and equal footprints retain their index. Only changed
         // footprints rebuild the contiguous references after payload replacement.
         for (self.commands.items, 0..) |*command, ci| {

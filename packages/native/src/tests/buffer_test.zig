@@ -95,6 +95,53 @@ test "paint grid owns covered linked wide glyphs and repairs removed spans" {
     try std.testing.expect(!target.link_tracker.hasAny());
 }
 
+test "paint grid planned full paint retains ownership but rerecords before skipping" {
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const a = tracking.allocator();
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 8, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    const id = try links.alloc("https://example.com/planned-full");
+    try target.beginPaint(black, false);
+    const grid = target.paint_grid.?;
+    _ = try grid.push(1, 0, 0, 1, 1, false);
+    try target.drawText("界", 4, 0, white, black, ansi.TextAttributes.setLinkId(0, id));
+    grid.pop();
+    try grid.finish();
+    const capacity = grid.retainedBytes();
+    try target.beginPaint(black, true);
+    try target.drawText("Z", 4, 0, white, black, 0);
+    try grid.finish();
+    try std.testing.expect(!grid.valid);
+    try std.testing.expectEqual(capacity, grid.retainedBytes());
+    target.clear(black, null);
+    const allocations = tracking.alloc_index;
+    try target.beginPaint(black, false);
+    try std.testing.expect(try grid.push(1, 0, 0, 1, 1, false));
+    try target.drawText("Z", 4, 0, white, black, 0);
+    grid.pop();
+    try grid.finish();
+    try std.testing.expectEqual(allocations, tracking.alloc_index);
+    try std.testing.expectEqual(@as(u32, 'Z'), target.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), target.get(5, 0).?.char);
+    try std.testing.expect(!target.grapheme_tracker.hasAny());
+    try std.testing.expect(!target.link_tracker.hasAny());
+    try target.beginPaint(black, false);
+    try std.testing.expect(!try grid.push(1, 0, 0, 1, 1, false));
+    grid.pop();
+    try grid.finish();
+    try target.beginPaint(black, true);
+    target.paintFallback();
+    try grid.finish();
+    try std.testing.expectEqual(@as(usize, 0), grid.commands.items[0].ops.items.len);
+    try std.testing.expectEqual(@as(usize, 0), grid.refs.capacity);
+}
+
 test "paint grid nested context cleanup and late raw fallback materialize prefix once" {
     const a = std.testing.allocator;
     var pool = gp.GraphemePool.init(a);

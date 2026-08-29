@@ -315,6 +315,7 @@ pub const OptimizedBuffer = struct {
     pub fn paintFallback(self: *OptimizedBuffer) void {
         if (self.paint_grid) |grid| {
             grid.unsupported_last_frame = true;
+            grid.retain_on_fallback = false;
             grid.materialize();
         }
     }

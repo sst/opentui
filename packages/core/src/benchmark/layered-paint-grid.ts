@@ -194,10 +194,15 @@ async function scene(workload: Workload, enabled: boolean) {
 
 const offOnly = process.argv.includes("--off-only")
 const memoryOnly = process.argv.includes("--memory-only")
-if (process.argv.includes("--snapshots") || process.argv.includes("--transitions")) {
+if (
+  process.argv.includes("--snapshots") ||
+  process.argv.includes("--transitions") ||
+  process.argv.includes("--transition-snapshots")
+) {
   const snapshots = process.argv.includes("--snapshots")
+  const capture = snapshots || process.argv.includes("--transition-snapshots")
   const samples = []
-  for (let repeat = 0; repeat < (snapshots ? 1 : repeats); repeat++) {
+  for (let repeat = 0; repeat < (capture ? 1 : repeats); repeat++) {
     for (const workload of workloads) {
       for (const enabled of offOnly ? [false] : repeat % 2 ? [true, false] : [false, true]) {
         const app = await scene(workload, enabled)
@@ -225,7 +230,9 @@ if (process.argv.includes("--snapshots") || process.argv.includes("--transitions
               ms,
               calls: app.calls() - before,
               stats: enabled ? app.renderer.nextRenderBuffer.getPaintStats() : null,
-              channels: snapshot(app.renderer.currentRenderBuffer).map((channel) => channel.toString("base64")),
+              channels: capture
+                ? snapshot(app.renderer.currentRenderBuffer).map((channel) => channel.toString("base64"))
+                : undefined,
             })
           }
         } finally {

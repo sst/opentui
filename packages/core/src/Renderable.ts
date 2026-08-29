@@ -1805,6 +1805,7 @@ export class RootRenderable extends Renderable {
     // 2. Update layout throughout the tree and collect render list
     const layoutGeneration = getLayoutGeneration(this._ctx)
     const renderListRevision = getRenderListRevision(this._ctx)
+    const hadRenderList = this.renderList.length !== 0
     const paintGeometryChanged = this.appliedRenderListRevision !== renderListRevision
     const canReuseRenderList =
       this.renderListReusable &&
@@ -1820,7 +1821,7 @@ export class RootRenderable extends Renderable {
     }
 
     // Full invalidation should not pay to record and then replay the entire frame.
-    if (buffer.experimentalPaintGrid) {
+    if (buffer.experimentalPaintGrid && hadRenderList && !canReuseRenderList) {
       let changed = 0
       let painters = 0
       for (const command of this.renderList) {
