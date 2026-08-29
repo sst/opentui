@@ -1,0 +1,6 @@
+[
+  { "name": "offscreen", "terminal": "offscreen", "args": ["--frames=5", "--warmup=2", "--fps=0"] },
+  { "name": "ghostty", "terminal": "ghostty", "args": ["--frames=5", "--warmup=2", "--fps=60"] },
+  { "name": "kitty", "terminal": "kitty", "args": ["--frames=5", "--warmup=2", "--fps=60"] },
+  { "name": "wezterm", "terminal": "wezterm", "args": ["--frames=5", "--warmup=2", "--fps=60"] }
+]

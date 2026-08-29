@@ -1,0 +1,47 @@
+[
+  {
+    "name": "ghostty-1280-file-soak",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=7200",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-file-soak",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=7200",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-zlib-soak",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=3600",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  }
+]

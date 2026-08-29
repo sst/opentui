@@ -1,0 +1,2 @@
+results/smoke-*.json
+results/smoke-*/

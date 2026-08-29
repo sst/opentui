@@ -1,0 +1,992 @@
+[
+  {
+    "name": "ghostty-640-baseline-a",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-native",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-pool",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-pooled",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-pointer",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-file",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-file",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-baseline-b",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-baseline-a",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-file",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-file",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-pointer",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-pooled",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-pool",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-native",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1280-baseline-b",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-baseline-a",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-native",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-pool",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-pooled",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-pointer",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-file",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-raw",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-file",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-baseline-b",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-baseline-a",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-file",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-raw",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-file",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-pointer",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-pooled",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-pool",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-native",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1280-baseline-b",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-baseline-a",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-native",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-pool",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-pooled",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-pointer",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-file",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-file",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-baseline-b",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=640",
+      "--height=360",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-baseline-a",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-file",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-file",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=file",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-transport",
+      "--import=baseline",
+      "--transport=zlib",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-pointer",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-pooled",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-pool-pixels",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-pool",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-stream",
+      "--import=pool",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-native",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-import",
+      "--import=native",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1280-baseline-b",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1280",
+      "--height=720",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  }
+]

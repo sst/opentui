@@ -1,0 +1,614 @@
+[
+  {
+    "name": "ghostty-640-combined-raw-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-zlib-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-file-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-raw-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-zlib-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1280-combined-file-noise",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "ghostty-1920-baseline",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1920-combined-raw",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1920-combined-zlib",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-1920-combined-file",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-raw-particles",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-zlib-particles",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "ghostty-640-combined-file-particles",
+    "terminal": "ghostty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-raw-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-zlib-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-file-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-raw-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-zlib-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1280-combined-file-noise",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "kitty-1920-baseline",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1920-combined-raw",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1920-combined-zlib",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-1920-combined-file",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-raw-particles",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-zlib-particles",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "kitty-640-combined-file-particles",
+    "terminal": "kitty",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-raw-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-zlib-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-file-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-raw-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-zlib-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1280-combined-file-noise",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1280",
+      "--height=720",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--noise"
+    ]
+  },
+  {
+    "name": "wezterm-1920-baseline",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/.cache/tmp/opencode/ot-magick-baseline",
+      "--import=baseline",
+      "--transport=raw",
+      "--mapping=view",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1920-combined-raw",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1920-combined-zlib",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-1920-combined-file",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=1920",
+      "--height=1080",
+      "--frames=300",
+      "--warmup=60",
+      "--fps=60"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-raw-particles",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=raw",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-zlib-particles",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=zlib",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  },
+  {
+    "name": "wezterm-640-combined-file-particles",
+    "terminal": "wezterm",
+    "args": [
+      "--core=/home/simon/src/wt/ot-magick",
+      "--import=pooled-native",
+      "--transport=file",
+      "--mapping=pointer",
+      "--width=640",
+      "--height=360",
+      "--frames=180",
+      "--warmup=60",
+      "--fps=60",
+      "--particles=4096"
+    ]
+  }
+]
