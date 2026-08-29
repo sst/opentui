@@ -1723,6 +1723,16 @@ export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]cons
 }
 
 // Buffer functions
+export fn bufferBeginPaintBounds(buffer_handle: NativeHandle) void {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.beginPaintBounds();
+}
+
+export fn bufferEndPaintBounds(buffer_handle: NativeHandle, output: *[2]u32) u8 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return @intFromBool(object_ptr.endPaintBounds(output));
+}
+
 export fn bufferClear(buffer_handle: NativeHandle, bg: [*]const u16) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.clear(ptrToRGBA(bg), null);

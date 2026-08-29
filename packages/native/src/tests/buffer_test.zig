@@ -14,6 +14,131 @@ const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+test "paint bounds cover equal writes, clipped fill, copies and wide cleanup" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 8, .{ .pool = &pool, .link_pool = &links });
+    defer dst.deinit();
+    const src = try OptimizedBuffer.init(std.testing.allocator, 2, 2, .{ .pool = &pool, .link_pool = &links });
+    defer src.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.rgbColor(0, 0, 80, 255);
+    var rows: [2]u32 = undefined;
+    dst.clear(blue, null);
+    src.clear(blue, null);
+    dst.beginPaintBounds();
+    dst.fillRect(0, 2, 8, 2, blue);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 2, 4 }, rows);
+    try dst.pushScissorRect(2, 3, 3, 1);
+    dst.beginPaintBounds();
+    dst.fillRect(0, 0, 8, 8, blue);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 3, 4 }, rows);
+    dst.clearScissorRects();
+    dst.beginPaintBounds();
+    dst.drawFrameBuffer(2, 5, src, null, null, null, null);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 5, 7 }, rows);
+    const id = try links.alloc("https://example.com/paint-bounds");
+    try dst.drawGrapheme("\xe7\x95\x8c", 2, 2, 4, white, blue, ansi.TextAttributes.setLinkId(0, id));
+    dst.beginPaintBounds();
+    dst.set(3, 4, .{ .char = 'X', .fg = white, .bg = blue, .attributes = 0 });
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 4, 5 }, rows);
+    try std.testing.expectEqual(@as(u32, ' '), dst.get(2, 4).?.char);
+    try std.testing.expect(!dst.grapheme_tracker.hasAny());
+    try std.testing.expect(!dst.link_tracker.hasAny());
+}
+
+test "paint bounds include direct text stores and potential transparent spaces" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 8, .{ .pool = &pool, .link_pool = &links });
+    defer dst.deinit();
+    const text = try TextBuffer.init(std.testing.allocator, &pool, &links, .unicode);
+    defer text.deinit();
+    try text.setText("abc\n   ");
+    const view = try TextBufferView.init(std.testing.allocator, text);
+    defer view.deinit();
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const blue = ansi.rgbColor(0, 0, 80, 255);
+    dst.clear(blue, null);
+    try dst.drawText("XYZ", 1, 5, white, blue, 0);
+    var rows: [2]u32 = undefined;
+    dst.beginPaintBounds();
+    dst.drawTextBuffer(view, 1, 4);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 4, 6 }, rows);
+    dst.beginPaintBounds();
+    dst.drawTextBuffer(view, 1, 4);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 4, 6 }, rows);
+}
+
+test "paint bounds include direct Box and Grid stores" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 8, .{ .pool = &pool, .link_pool = &links });
+    defer dst.deinit();
+    const chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    const transparent = ansi.rgbColor(0, 0, 0, 0);
+    var rows: [2]u32 = undefined;
+    dst.beginPaintBounds();
+    try dst.drawBox(1, 1, 5, 6, &chars, .{ .top = true }, white, transparent, white, false, null, 0, null, 0);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 1, 2 }, rows);
+    try dst.pushScissorRect(1, 4, 5, 1);
+    dst.beginPaintBounds();
+    try dst.drawBox(1, 1, 5, 6, &chars, .{ .left = true }, white, transparent, white, false, null, 0, null, 0);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 4, 5 }, rows);
+    dst.clearScissorRects();
+    const columns = [_]i32{ 1, 5 };
+    const lines = [_]i32{ 2, 6 };
+    dst.beginPaintBounds();
+    dst.drawGrid(&chars, white, transparent, &columns, 1, &lines, 1, false, true);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ 2, 7 }, rows);
+}
+
+test "paint bounds distinguish empty, zero opacity, nested scopes and raw aliases" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var links = link.LinkPool.init(std.testing.allocator);
+    defer links.deinit();
+    const dst = try OptimizedBuffer.init(std.testing.allocator, 8, 8, .{ .pool = &pool, .link_pool = &links });
+    defer dst.deinit();
+    const blue = ansi.rgbColor(0, 0, 80, 255);
+    var rows: [2]u32 = undefined;
+    dst.beginPaintBounds();
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ std.math.maxInt(u32), 0 }, rows);
+    try dst.pushOpacity(0);
+    dst.beginPaintBounds();
+    dst.fillRect(0, 0, 8, 8, blue);
+    try std.testing.expect(dst.endPaintBounds(&rows));
+    try std.testing.expectEqualDeep([2]u32{ std.math.maxInt(u32), 0 }, rows);
+    dst.clearOpacity();
+    dst.beginPaintBounds();
+    dst.beginPaintBounds();
+    dst.fillRect(0, 1, 8, 1, blue);
+    try std.testing.expect(!dst.endPaintBounds(&rows));
+    try std.testing.expect(!dst.endPaintBounds(&rows));
+    dst.beginPaintBounds();
+    _ = dst.getCharPtr();
+    try std.testing.expect(!dst.endPaintBounds(&rows));
+    dst.beginPaintBounds();
+    try std.testing.expect(!dst.endPaintBounds(&rows));
+}
+
 test "OptimizedBuffer clearRows preserves surrounding rows and clears wide graphemes" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();

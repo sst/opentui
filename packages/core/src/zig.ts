@@ -616,6 +616,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32", "u32", "buffer"],
       returns: "u8",
     },
+    bufferBeginPaintBounds: {
+      args: ["u32"],
+      returns: "void",
+    },
+    bufferEndPaintBounds: {
+      args: ["u32", "buffer"],
+      returns: "u8",
+    },
     bufferGetCharPtr: {
       args: ["u32"],
       returns: "ptr",
@@ -2509,6 +2517,8 @@ export interface RenderLib extends AudioEngineLib {
   getBufferHeight: (buffer: OptimizedBufferHandle) => number
   bufferClear: (buffer: OptimizedBufferHandle, color: RGBA) => void
   bufferClearRows: (buffer: OptimizedBufferHandle, startY: number, rowCount: number, color: RGBA) => boolean
+  bufferBeginPaintBounds: (buffer: OptimizedBufferHandle) => void
+  bufferEndPaintBounds: (buffer: OptimizedBufferHandle, output: Uint32Array) => boolean
   bufferGetCharPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetFgPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetBgPtr: (buffer: OptimizedBufferHandle) => Pointer
@@ -3928,6 +3938,15 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClearRows(buffer: Pointer, startY: number, rowCount: number, color: RGBA): boolean {
     return this.opentui.symbols.bufferClearRows(buffer, startY, rowCount, rgbaBuffer(color)) !== 0
+  }
+
+  public bufferBeginPaintBounds(buffer: OptimizedBufferHandle): void {
+    this.opentui.symbols.bufferBeginPaintBounds(buffer)
+  }
+
+  public bufferEndPaintBounds(buffer: OptimizedBufferHandle, output: Uint32Array): boolean {
+    if (output.length < 2) throw new RangeError("Paint bounds output needs two u32 values")
+    return this.opentui.symbols.bufferEndPaintBounds(buffer, output) !== 0
   }
 
   public bufferDrawText(

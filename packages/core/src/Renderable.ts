@@ -1535,6 +1535,10 @@ export abstract class Renderable extends BaseRenderable {
     return this.renderSelf === Renderable.prototype.renderSelf
   }
 
+  public canUseObservedPaintBounds(): boolean {
+    return false
+  }
+
   protected hasStableRenderListInputs(): boolean {
     return (
       this.onUpdate === Renderable.prototype.onUpdate &&
@@ -1765,6 +1769,7 @@ interface RenderCommandPopScissorRect extends RenderCommandBase {
 interface RenderCommandRender extends RenderCommandBase {
   action: "render"
   renderable: Renderable
+  paintRows?: DirtyRows
 }
 
 interface RenderCommandPushOpacity extends RenderCommandBase {
@@ -1798,6 +1803,8 @@ export class RootRenderable extends Renderable {
   private dirtyRenderables = new Set<Renderable>()
   private spareDirtyRenderables = new Set<Renderable>()
   private fullCompositionRequired = true
+  private dirtyPaintSources = new Set<Renderable>()
+  private paintRowsOutput = new Uint32Array(2)
 
   constructor(ctx: RenderContext) {
     super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
@@ -1823,6 +1830,9 @@ export class RootRenderable extends Renderable {
     if (!renderable) {
       this.dirtyRenderables.clear()
       this.fullCompositionRequired = true
+      for (const command of this.renderList) {
+        if (command.action === "render") command.paintRows = undefined
+      }
     } else if (this.fullCompositionRequired) {
       return
     } else {
@@ -1900,7 +1910,13 @@ export class RootRenderable extends Renderable {
       return
     }
 
-    const dirtyRows = collectDirtyRows(this.dirtyRenderables, this._ctx.height, this)
+    this.dirtyPaintSources.clear()
+    const dirtyRows = collectDirtyRows(this.dirtyRenderables, this._ctx.height, this, this.dirtyPaintSources)
+    // Invalidate before any callback can mark a dirty source/ancestor clean.
+    // Partial paints never replace full observations with damage-clipped bounds.
+    for (const command of this.renderList) {
+      if (command.action === "render" && this.dirtyPaintSources.has(command.renderable)) command.paintRows = undefined
+    }
     const tooManyDamageBands = dirtyRows !== null && dirtyRows.length > MAX_INCREMENTAL_DAMAGE_BANDS
     const dirtyBand = dirtyRows ? boundingRows(dirtyRows) : null
     const damageBands =
@@ -1957,6 +1973,9 @@ export class RootRenderable extends Renderable {
       this._ctx.preserveHitGrid!()
     } catch (error) {
       this.fullCompositionRequired = true
+      for (const command of this.renderList) {
+        if (command.action === "render") command.paintRows = undefined
+      }
       for (const renderable of dirtyRenderables) this.dirtyRenderables.add(renderable)
       buffer.clearScissorRects()
       buffer.clearOpacity()
@@ -1985,6 +2004,9 @@ export class RootRenderable extends Renderable {
       this.renderFull(buffer, deltaTime, backgroundColor, clear)
     } catch (error) {
       this.fullCompositionRequired = true
+      for (const command of this.renderList) {
+        if (command.action === "render") command.paintRows = undefined
+      }
       buffer.clearScissorRects()
       buffer.clearOpacity()
       this._ctx.clearHitGridScissorRects()
@@ -2003,9 +2025,21 @@ export class RootRenderable extends Renderable {
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
-          if (!command.renderable.isDestroyed && (!dirtyRows || intersectsRows(command.renderable, dirtyRows))) {
+          if (command.renderable.isDirty) command.paintRows = undefined
+          if (!command.renderable.isDestroyed && (!dirtyRows || intersectsRows(command, dirtyRows))) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            const observe = !dirtyRows && command.renderable.canUseObservedPaintBounds()
+            if (!dirtyRows) command.paintRows = undefined
+            if (observe) buffer.lib.bufferBeginPaintBounds(buffer.ptr)
+            let completed = false
+            try {
+              command.renderable.render(buffer, deltaTime)
+              completed = true
+            } finally {
+              if (observe && buffer.lib.bufferEndPaintBounds(buffer.ptr, this.paintRowsOutput) && completed) {
+                command.paintRows = { start: this.paintRowsOutput[0], end: this.paintRowsOutput[1] }
+              }
+            }
             this._currentRenderable = undefined
           }
           break
@@ -2080,7 +2114,7 @@ export class RootRenderable extends Renderable {
       if (command.action !== "render") continue
       let intersections = 0
       for (const row of rows) {
-        if (intersectsRows(command.renderable, row)) intersections += 1
+        if (intersectsRows(command, row)) intersections += 1
       }
       if (intersections > 1 && !command.renderable.canRenderMultipleDamageRegions()) return false
     }
@@ -2099,7 +2133,7 @@ export class RootRenderable extends Renderable {
       if (command.action !== "render") continue
       totalRenderables += 1
       for (const row of rows) {
-        if (intersectsRows(command.renderable, row)) intersectingRenderables += 1
+        if (intersectsRows(command, row)) intersectingRenderables += 1
       }
     }
     return totalRenderables > 0 && intersectingRenderables >= totalRenderables * 1.5
@@ -2112,7 +2146,12 @@ export class RootRenderable extends Renderable {
   }
 }
 
-function intersectsRows(renderable: Renderable, rows: DirtyRows): boolean {
+function intersectsRows(command: RenderCommandRender, rows: DirtyRows): boolean {
+  const renderable = command.renderable
+  const observed = command.paintRows
+  if (observed && !renderable.isDirty && renderable.canUseObservedPaintBounds()) {
+    return observed.end > rows.start && observed.start < rows.end
+  }
   const bounds = renderable.getPaintBounds()
   if (!bounds) return true
   const start = bounds.y
@@ -2124,9 +2163,9 @@ function collectDirtyRows(
   renderables: ReadonlySet<Renderable>,
   height: number,
   root: RootRenderable,
+  visited: Set<Renderable>,
 ): DirtyRows[] | null {
   const rows: DirtyRows[] = []
-  const visited = new Set<Renderable>()
   for (const source of renderables) {
     let renderable: Renderable | null = source
     while (renderable && renderable !== root) {

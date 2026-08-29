@@ -197,6 +197,38 @@ pub const OptimizedBuffer = struct {
     scissor_stack: std.ArrayListUnmanaged(ClipRect),
     opacity_stack: std.ArrayListUnmanaged(f32),
     image_placements: std.ArrayListUnmanaged(ImagePlacement),
+    paint_bounds_depth: u32 = 0,
+    paint_rows: [2]u32 = .{ std.math.maxInt(u32), 0 },
+    paint_bounds_valid: bool = false,
+    raw_exposed: bool = false,
+
+    pub fn beginPaintBounds(self: *OptimizedBuffer) void {
+        if (self.paint_bounds_depth == 0) {
+            self.paint_rows = .{ std.math.maxInt(u32), 0 };
+            self.paint_bounds_valid = !self.raw_exposed;
+        } else self.paint_bounds_valid = false;
+        self.paint_bounds_depth += 1;
+    }
+
+    pub fn endPaintBounds(self: *OptimizedBuffer, output: *[2]u32) bool {
+        output.* = self.paint_rows;
+        if (self.paint_bounds_depth == 0) return false;
+        self.paint_bounds_depth -= 1;
+        return self.paint_bounds_depth == 0 and self.paint_bounds_valid and !self.raw_exposed;
+    }
+
+    inline fn recordPaintRows(self: *OptimizedBuffer, start: u32, end: u32) void {
+        if (self.paint_bounds_depth == 0 or start >= end) return;
+        self.paint_rows[0] = @min(self.paint_rows[0], start);
+        self.paint_rows[1] = @max(self.paint_rows[1], end);
+    }
+
+    inline fn recordPaintIndex(self: *OptimizedBuffer, index: u32) void {
+        if (self.paint_bounds_depth != 0) {
+            const y = index / self.width;
+            self.recordPaintRows(y, y + 1);
+        }
+    }
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -279,18 +311,22 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn getCharPtr(self: *OptimizedBuffer) [*]u32 {
+        self.raw_exposed = true;
         return self.buffer.char.ptr;
     }
 
     pub fn getFgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.raw_exposed = true;
         return self.buffer.fg.ptr;
     }
 
     pub fn getBgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.raw_exposed = true;
         return self.buffer.bg.ptr;
     }
 
     pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
+        self.raw_exposed = true;
         return self.buffer.attributes.ptr;
     }
 
@@ -453,6 +489,7 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) void {
+        self.recordPaintRows(0, self.height);
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
         self.link_tracker.clear();
         self.grapheme_tracker.clear();
@@ -476,6 +513,7 @@ pub const OptimizedBuffer = struct {
             const placement_end = placement.y + @as(i64, @intCast(placement.height));
             if (placement_end > dirty_start and placement_start < dirty_end) return false;
         }
+        self.recordPaintRows(start_y, end_y);
 
         var tracked_cells_in_rows = false;
         if (self.grapheme_tracker.hasAny() or self.link_tracker.hasAny()) {
@@ -681,6 +719,8 @@ pub const OptimizedBuffer = struct {
     fn validateAndIndex(self: *OptimizedBuffer, x: u32, y: u32) ?u32 {
         if (x >= self.width or y >= self.height) return null;
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return null;
+        // Wide-cell cleanup and continuation writes stay on this same row.
+        self.recordPaintRows(y, y + 1);
         return self.coordsToIndex(x, y);
     }
 
@@ -1078,6 +1118,8 @@ pub const OptimizedBuffer = struct {
         if (gp.isGraphemeChar(dest_char) or gp.isContinuationChar(dest_char)) return false;
         if (self.image_placements.items.len != 0 and gp.isImageChar(dest_char)) return false;
 
+        // Even an equal-value/preserved glyph can contribute on a different underlay.
+        self.recordPaintIndex(index);
         if (char == DEFAULT_SPACE_CHAR and dest_char != 0 and dest_char != DEFAULT_SPACE_CHAR and gp.encodedCharWidth(dest_char) == 1) {
             return true;
         }
@@ -1119,7 +1161,7 @@ pub const OptimizedBuffer = struct {
 
         const opacity = self.getCurrentOpacity();
         const fully_transparent = isFullyTransparent(opacity, ansi.rgbColor(0, 0, 0, 0), bg);
-        if (fully_transparent and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
+        if (fully_transparent and (opacity == 0.0 or (self.image_placements.items.len == 0 and self.paint_bounds_depth == 0))) return;
 
         const startX = x;
         const startY = y;
@@ -1137,6 +1179,8 @@ pub const OptimizedBuffer = struct {
         const clippedStartY = @max(startY, @as(u32, @intCast(clippedRect.y)));
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+        self.recordPaintRows(clippedStartY, clippedEndY + 1);
+        if (fully_transparent and self.image_placements.items.len == 0) return;
 
         if (fully_transparent) {
             const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
@@ -1486,6 +1530,8 @@ pub const OptimizedBuffer = struct {
         const clippedStartY = @max(startDestY, clippedRect.y);
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+        // Copy-vs-blend paths can depend on destination trackers. Keep their union.
+        self.recordPaintRows(@intCast(clippedStartY), @intCast(clippedEndY + 1));
 
         if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware and !imageAware) {
             // Fast path: direct memory copy
@@ -2195,6 +2241,7 @@ pub const OptimizedBuffer = struct {
 
                     if (clampedStart < clampedEnd) {
                         const borderYU32 = @as(u32, @intCast(borderY));
+                        self.recordPaintRows(borderYU32, borderYU32 + 1);
                         @memset(self.buffer.char[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], hChar);
                         @memset(self.buffer.fg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderFg);
                         @memset(self.buffer.bg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderBg);
@@ -2226,6 +2273,7 @@ pub const OptimizedBuffer = struct {
                     if (bx < 0) continue;
 
                     const idx = rowBase + @as(u32, @intCast(bx));
+                    self.recordPaintRows(@intCast(cy), @intCast(cy + 1));
                     self.buffer.char[idx] = vChar;
                     self.buffer.fg[idx] = borderFg;
                     self.buffer.bg[idx] = borderBg;
@@ -2312,6 +2360,8 @@ pub const OptimizedBuffer = struct {
         const has_title = title != null or bottomTitle != null;
         const title_visible = has_title and !isFullyTransparent(opacity, titleColor, backgroundColor);
         if (border_bg_transparent and !title_visible) {
+            // An invisible primitive may cover an image on another underlay.
+            if (opacity != 0.0) self.paint_bounds_valid = false;
             if (self.image_placements.items.len == 0) return;
             if (opacity == 0.0) return;
         }
@@ -2429,6 +2479,7 @@ pub const OptimizedBuffer = struct {
 
                         if (useTransparentBorderFastPath) {
                             const index = self.coordsToIndex(@intCast(drawX), @intCast(startY));
+                            self.recordPaintRows(@intCast(startY), @intCast(startY + 1));
                             self.buffer.char[index] = char;
                             self.buffer.fg[index] = borderColor;
                             self.buffer.attributes[index] = 0;
@@ -2465,6 +2516,7 @@ pub const OptimizedBuffer = struct {
 
                         if (useTransparentBorderFastPath) {
                             const index = self.coordsToIndex(@intCast(drawX), @intCast(endY));
+                            self.recordPaintRows(@intCast(endY), @intCast(endY + 1));
                             self.buffer.char[index] = char;
                             self.buffer.fg[index] = borderColor;
                             self.buffer.attributes[index] = 0;
@@ -2493,6 +2545,7 @@ pub const OptimizedBuffer = struct {
                 if (borderSides.left and isAtActualLeft and self.isPointInScissor(startX, drawY)) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(startX), @intCast(drawY));
+                        self.recordPaintRows(@intCast(drawY), @intCast(drawY + 1));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
                         self.buffer.fg[index] = borderColor;
                         self.buffer.attributes[index] = 0;
@@ -2515,6 +2568,7 @@ pub const OptimizedBuffer = struct {
                 if (borderSides.right and isAtActualRight and self.isPointInScissor(endX, drawY)) {
                     if (useTransparentBorderFastPath) {
                         const index = self.coordsToIndex(@intCast(endX), @intCast(drawY));
+                        self.recordPaintRows(@intCast(drawY), @intCast(drawY + 1));
                         self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
                         self.buffer.fg[index] = borderColor;
                         self.buffer.attributes[index] = 0;

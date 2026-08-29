@@ -268,6 +268,18 @@ export class BoxRenderable extends Renderable {
     return this.render === Renderable.prototype.render && this.renderSelf === BoxRenderable.prototype.renderSelf
   }
 
+  public override canUseObservedPaintBounds(): boolean {
+    // shouldFill is publicly mutable without invalidation. Never use sparse
+    // border observations when it can introduce a new interior footprint.
+    return (
+      !this.shouldFill &&
+      !this.buffered &&
+      this.hasLayoutBoundedPaint() &&
+      this.canReuseRenderCommandList() &&
+      this.getPaintBounds() !== null
+    )
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
     const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0

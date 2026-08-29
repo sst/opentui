@@ -82,6 +82,7 @@ fn matrixOutput(result: MatrixColor) RGBA {
 /// target: which buffer(s) to apply the matrix to (FG=1, BG=2, Both=3)
 /// No clamping is performed - output values may exceed [0, 1] range
 pub fn colorMatrix(self: anytype, matrix: []const f32, cellMask: []const f32, strength: f32, target: ColorTarget) void {
+    self.paint_bounds_valid = false;
     if (matrix.len < 16 or cellMask.len < 3) return;
     if (@intFromEnum(target) == 0) return;
     if (!math.isFinite(strength)) return;
@@ -144,6 +145,7 @@ pub fn colorMatrix(self: anytype, matrix: []const f32, cellMask: []const f32, st
 /// This uses 4-wide SIMD to process pixels in batches for maximum throughput.
 /// No clamping is performed - output values may exceed [0, 1] range
 pub fn colorMatrixUniform(self: anytype, matrix: []const f32, strength: f32, target: ColorTarget) void {
+    self.paint_bounds_valid = false;
     if (matrix.len < 16 or strength == 0.0) return;
     if (@intFromEnum(target) == 0) return;
     if (!math.isFinite(strength)) return;
