@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { BoxRenderable } from "../renderables/Box.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { OptimizedBuffer } from "../buffer.js"
 import { NativeImage } from "../image.js"
 import { RGBA } from "../lib/RGBA.js"
@@ -25,8 +26,14 @@ const workloads = [
   "generic-request",
   "raw-fallback",
   "image-fallback",
+  "scrollbox",
 ] as const
 type Workload = (typeof workloads)[number]
+const width = Number(process.env.PAINT_WIDTH ?? 120)
+const height = Number(process.env.PAINT_HEIGHT ?? 40)
+const overlapDepth = Number(process.env.PAINT_DEPTH ?? 1)
+const repeats = Number(process.env.PAINT_REPEATS ?? 5)
+const frameCount = Number(process.env.PAINT_FRAMES ?? 100)
 
 class Text extends TextRenderable {
   calls = 0
@@ -59,14 +66,22 @@ function snapshot(buffer: OptimizedBuffer) {
 }
 
 async function scene(workload: Workload, enabled: boolean) {
-  const setup = await createTestRenderer({ width: 120, height: 40, experimentalPaintGrid: enabled })
+  const setup = await createTestRenderer({ width, height, experimentalPaintGrid: enabled })
   const { renderer } = setup
-  const parent = new BoxRenderable(renderer, { width: 120, height: 40, position: "absolute" })
+  const parent =
+    workload === "scrollbox"
+      ? new ScrollBoxRenderable(renderer, {
+          width,
+          height,
+          position: "absolute",
+          contentOptions: { height: height * 2 },
+        })
+      : new BoxRenderable(renderer, { width, height, position: "absolute" })
   renderer.root.add(parent)
   const nodes: (Text | Paint)[] = []
-  for (let i = 0; i < 80; i++) {
-    const left = Math.floor(i / 40) * 60
-    const top = i % 40
+  for (let i = 0; i < height * 2; i++) {
+    const left = workload === "scrollbox" ? 0 : Math.floor(i / height) * (width / 2)
+    const top = workload === "scrollbox" ? i : i % height
     const node =
       workload === "transparent-outside"
         ? new Paint(renderer, { position: "absolute", left, top, width: 1, height: 1 }, (buffer, self) => {
@@ -90,10 +105,16 @@ async function scene(workload: Workload, enabled: boolean) {
   const image =
     workload === "image-fallback" ? NativeImage.fromRgba(new Uint8Array([220, 40, 50, 255]), 1, 1) : undefined
   if (workload === "transparent-outside") {
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < height * 2 * overlapDepth; i++) {
       const node = new Paint(
         renderer,
-        { position: "absolute", left: Math.floor(i / 40) * 60, top: i % 40, width: 1, height: 1 },
+        {
+          position: "absolute",
+          left: Math.floor((i % (height * 2)) / height) * (width / 2),
+          top: i % height,
+          width: 1,
+          height: 1,
+        },
         (buffer, self) => {
           buffer.fillRect(self.x + 12, self.y, 15, 1, overlay)
           buffer.drawText("!", self.x + 18, self.y, white)
@@ -106,16 +127,17 @@ async function scene(workload: Workload, enabled: boolean) {
   if (workload === "raw-fallback" || image) {
     let raw: Uint32Array | undefined
     const node = new Paint(renderer, { width: 1, height: 1, position: "absolute" }, (buffer) => {
-      if (image) buffer.drawImage(image, 115, 39, 1, 1)
+      if (image) buffer.drawImage(image, width - 5, height - 1, 1, 1)
       else {
         raw ??= buffer.buffers.char
-        raw[39 * 120 + 115] = 88
+        raw[(height - 1) * width + width - 5] = 88
       }
     })
     nodes.push(node)
     parent.add(node)
   }
   let compositionMs = 0
+  let finishMs = 0
   const render = renderer.root.render.bind(renderer.root)
   renderer.root.render = (buffer, delta) => {
     const start = performance.now()
@@ -132,15 +154,18 @@ async function scene(workload: Workload, enabled: boolean) {
       try {
         end(abort)
       } finally {
-        compositionMs += performance.now() - start
+        const elapsed = performance.now() - start
+        compositionMs += elapsed
+        finishMs += elapsed
       }
     }
   }
   function mutate(frame: number) {
-    if (workload === "layout-move") parent.translateX = frame % 3
+    if (parent instanceof ScrollBoxRenderable) parent.scrollTo(frame % height)
+    else if (workload === "layout-move") parent.translateX = frame % 3
     else if (workload === "generic-request") renderer.requestRender()
     else if (workload === "localized-text" || workload === "transparent-outside" || workload === "all-changed") {
-      const count = workload === "all-changed" ? 80 : 1
+      const count = workload === "all-changed" ? height * 2 : 1
       for (let i = 0; i < count; i++) {
         const node = nodes[i]
         if (node instanceof Text) {
@@ -158,6 +183,7 @@ async function scene(workload: Workload, enabled: boolean) {
     nodes,
     mutate,
     composition: () => compositionMs,
+    finish: () => finishMs,
     calls: () => nodes.reduce((sum, node) => sum + node.calls, 0),
     destroy() {
       renderer.destroy()
@@ -191,7 +217,7 @@ if (!offOnly && !memoryOnly) {
 }
 
 const samples = []
-for (let repeat = 0; repeat < (memoryOnly ? 1 : 5); repeat++) {
+for (let repeat = 0; repeat < (memoryOnly ? 1 : repeats); repeat++) {
   for (const workload of workloads) {
     for (const enabled of offOnly ? [false] : repeat % 2 ? [true, false] : [false, true]) {
       const app = await scene(workload, enabled)
@@ -209,7 +235,8 @@ for (let repeat = 0; repeat < (memoryOnly ? 1 : 5); repeat++) {
         }
         const initialCalls = app.calls()
         const initialComposition = app.composition()
-        const frames = memoryOnly ? 3 : 100
+        const initialFinish = app.finish()
+        const frames = memoryOnly ? 3 : frameCount
         const times: number[] = []
         let fallbackFrames = 0
         for (let frame = 20; frame < frames + 20; frame++) {
@@ -229,6 +256,7 @@ for (let repeat = 0; repeat < (memoryOnly ? 1 : 5); repeat++) {
           coldStats,
           frameMs: times.reduce((a, b) => a + b, 0) / frames,
           compositionMs: (app.composition() - initialComposition) / frames,
+          finishMs: (app.finish() - initialFinish) / frames,
           callsPerFrame: (app.calls() - initialCalls) / frames,
           fallbackFrames,
           stats: enabled ? app.renderer.nextRenderBuffer.getPaintStats() : null,
@@ -256,14 +284,15 @@ console.log(
     {
       runtime: process.version,
       bun: Bun.version,
-      dimensions: [120, 40],
-      frames: memoryOnly ? 3 : 100,
-      repeats: memoryOnly ? 1 : 5,
+      dimensions: [width, height],
+      overlapDepth,
+      frames: memoryOnly ? 3 : frameCount,
+      repeats: memoryOnly ? 1 : repeats,
       parity: offOnly
         ? "off-only control"
         : memoryOnly
           ? "memory instrumentation only"
-          : "96 paired frames, exact four-channel bytes",
+          : "108 paired frames, exact four-channel bytes",
       samples,
     },
     null,
