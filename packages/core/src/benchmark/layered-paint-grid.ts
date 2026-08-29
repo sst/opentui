@@ -1,6 +1,6 @@
 // Run after the root ReleaseFast build:
 // bun src/benchmark/layered-paint-grid.ts > results.json
-// --off-only also runs against corrected full-render commit e14c2d6a.
+// --off-only also runs against main and corrected full-render commit e14c2d6a.
 import assert from "node:assert/strict"
 import { Buffer } from "node:buffer"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
@@ -194,6 +194,49 @@ async function scene(workload: Workload, enabled: boolean) {
 
 const offOnly = process.argv.includes("--off-only")
 const memoryOnly = process.argv.includes("--memory-only")
+if (process.argv.includes("--snapshots") || process.argv.includes("--transitions")) {
+  const snapshots = process.argv.includes("--snapshots")
+  const samples = []
+  for (let repeat = 0; repeat < (snapshots ? 1 : repeats); repeat++) {
+    for (const workload of workloads) {
+      for (const enabled of offOnly ? [false] : repeat % 2 ? [true, false] : [false, true]) {
+        const app = await scene(workload, enabled)
+        try {
+          for (let frame = 0; frame < 28; frame++) {
+            const start = performance.now()
+            if (snapshots || (frame >= 3 && frame <= 10)) app.mutate(frame)
+            if (!snapshots && frame === 16) app.renderer.requestRender()
+            if (!snapshots && frame === 22) {
+              const node = app.nodes[0]
+              if (node instanceof Text) node.content = "localized recovery"
+              else {
+                node.value++
+                node.requestRender()
+              }
+            }
+            const before = app.calls()
+            await app.renderOnce()
+            const ms = performance.now() - start
+            samples.push({
+              workload,
+              enabled,
+              repeat,
+              frame,
+              ms,
+              calls: app.calls() - before,
+              stats: enabled ? app.renderer.nextRenderBuffer.getPaintStats() : null,
+              channels: snapshot(app.renderer.currentRenderBuffer).map((channel) => channel.toString("base64")),
+            })
+          }
+        } finally {
+          app.destroy()
+        }
+      }
+    }
+  }
+  console.log(JSON.stringify({ dimensions: [width, height], overlapDepth, samples }))
+  process.exit(0)
+}
 if (!offOnly && !memoryOnly) {
   for (const workload of workloads) {
     const full = await scene(workload, false)
