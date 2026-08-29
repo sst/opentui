@@ -16,6 +16,22 @@ pub const PaintGrid = struct {
         background_index: u32,
         background_group: u32,
         owner: u32,
+        count: u32 = 1,
+        text_offset: u32 = std.math.maxInt(u32),
+    };
+    const Stream = struct {
+        ops: std.ArrayList(Op) = .empty,
+        chars: std.ArrayList(u32) = .empty,
+
+        fn charAt(self: Stream, op: Op, offset: usize) u32 {
+            return if (op.text_offset == std.math.maxInt(u32)) op.cell.char else self.chars.items[op.text_offset + offset];
+        }
+
+        fn deinit(self: *Stream, a: std.mem.Allocator) void {
+            self.ops.deinit(a);
+            self.chars.deinit(a);
+            self.* = .{};
+        }
     };
     const Context = struct {
         owner: u32,
@@ -28,8 +44,8 @@ pub const PaintGrid = struct {
     };
     const Command = struct {
         context: Context,
-        ops: std.ArrayList(Op) = .empty,
-        pending: std.ArrayList(Op) = .empty,
+        ops: Stream = .{},
+        pending: Stream = .{},
         recording: bool = false,
         rerecord: bool = false,
         present: bool = false,
@@ -81,13 +97,14 @@ pub const PaintGrid = struct {
         return self;
     }
 
-    fn release(self: *PaintGrid, ops: *std.ArrayList(Op)) void {
-        for (ops.items) |op| {
+    fn release(self: *PaintGrid, stream: *Stream) void {
+        for (stream.ops.items) |op| {
             if (gp.isClusterChar(op.cell.char)) self.target.pool.decref(gp.graphemeIdFromChar(op.cell.char)) catch {};
             const id = ansi.TextAttributes.getLinkId(op.cell.attributes);
             if (id != 0) self.target.link_pool.decref(id) catch {};
         }
-        ops.clearRetainingCapacity();
+        stream.ops.clearRetainingCapacity();
+        stream.chars.clearRetainingCapacity();
     }
 
     pub fn deinit(self: *PaintGrid) void {
@@ -138,7 +155,7 @@ pub const PaintGrid = struct {
             // instead of allocating a second stream just to compare invalid data.
             for (self.commands.items) |*command| {
                 self.release(&command.ops);
-                std.mem.swap(std.ArrayList(Op), &command.ops, &command.pending);
+                std.mem.swap(Stream, &command.ops, &command.pending);
             }
             @memset(self.dirty, true);
             for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
@@ -187,22 +204,43 @@ pub const PaintGrid = struct {
     }
 
     pub fn record(self: *PaintGrid, index: u32, cell: b.Cell, mode: Mode, background_index: u32) bool {
+        return self.recordSpan(index, cell, mode, background_index, 1);
+    }
+
+    pub fn recordSpan(self: *PaintGrid, index: u32, cell: b.Cell, mode: Mode, background_index: u32, count: u32) bool {
         if (!self.isRecording()) return false;
         const t = self.target;
-        const op: Op = .{ .index = index, .cell = cell, .mode = mode, .opacity = t.getCurrentOpacity(), .background_index = background_index, .background_group = if (mode == .inherit) self.background_group else 0, .owner = self.stack.items[self.stack.items.len - 1].owner };
+        const op: Op = .{ .index = index, .cell = cell, .mode = mode, .opacity = t.getCurrentOpacity(), .background_index = background_index, .background_group = if (mode == .inherit) self.background_group else 0, .owner = self.stack.items[self.stack.items.len - 1].owner, .count = count };
         const pending = &self.commands.items[self.count - 1].pending;
-        if (pending.items.len == pending.capacity) {
-            // A small first reservation avoids repeated cold stream reallocations.
-            const reserve = if (pending.capacity == 0)
-                pending.ensureTotalCapacityPrecise(t.allocator, 128)
-            else
-                pending.ensureTotalCapacity(t.allocator, pending.items.len + 1);
-            reserve catch {
-                self.materialize();
-                return false;
-            };
+        if (count == 1 and pending.ops.items.len != 0 and mode != .inherit and !gp.isClusterChar(cell.char)) {
+            const last = &pending.ops.items[pending.ops.items.len - 1];
+            if (last.index + last.count == index and last.index / t.width == index / t.width and
+                last.mode == mode and last.owner == op.owner and last.opacity == op.opacity and
+                !gp.isClusterChar(last.cell.char) and last.cell.attributes == cell.attributes and
+                b.rgbaEqual(last.cell.fg, cell.fg) and b.rgbaEqual(last.cell.bg, cell.bg))
+            {
+                // Solid spans need no glyph payload. Differing scalar glyphs share
+                // the same preblend style, but never retain a caller-owned view.
+                if (last.text_offset != std.math.maxInt(u32) or last.cell.char != cell.char) {
+                    const extra = if (last.text_offset == std.math.maxInt(u32)) last.count + 1 else 1;
+                    pending.chars.ensureTotalCapacity(t.allocator, @max(128, pending.chars.items.len + extra)) catch {
+                        self.materialize();
+                        return false;
+                    };
+                    if (last.text_offset == std.math.maxInt(u32)) {
+                        last.text_offset = @intCast(pending.chars.items.len);
+                        pending.chars.appendNTimesAssumeCapacity(last.cell.char, last.count);
+                    }
+                    pending.chars.appendAssumeCapacity(cell.char);
+                }
+                last.count += 1;
+                return true;
+            }
         }
-        pending.appendAssumeCapacity(op);
+        pending.ops.append(t.allocator, op) catch {
+            self.materialize();
+            return false;
+        };
         if (gp.isClusterChar(cell.char)) t.pool.incref(gp.graphemeIdFromChar(cell.char)) catch {};
         const id = ansi.TextAttributes.getLinkId(cell.attributes);
         if (id != 0) t.link_pool.incref(id) catch {};
@@ -211,10 +249,21 @@ pub const PaintGrid = struct {
 
     fn spanEnd(self: *const PaintGrid, op: Op) u32 {
         const width = self.target.width;
-        return @min(op.index + 1 + (if (gp.isGraphemeChar(op.cell.char) and op.mode != .raw and op.mode != .direct) gp.charRightExtent(op.cell.char) else 0), (op.index / width + 1) * width);
+        return @min(op.index + op.count + (if (gp.isGraphemeChar(op.cell.char) and op.mode != .raw and op.mode != .direct) gp.charRightExtent(op.cell.char) else 0), (op.index / width + 1) * width);
     }
 
-    fn apply(self: *PaintGrid, op: Op) void {
+    fn apply(self: *PaintGrid, stream: Stream, op: Op, dirty_only: bool) void {
+        for (0..op.count) |offset| {
+            const index = op.index + @as(u32, @intCast(offset));
+            if (dirty_only and !self.dirty[index]) continue;
+            var scalar = op;
+            scalar.index = index;
+            scalar.cell.char = stream.charAt(op, offset);
+            self.applyCell(scalar);
+        }
+    }
+
+    fn applyCell(self: *PaintGrid, op: Op) void {
         const t = self.target;
         const x = op.index % t.width;
         const y = op.index / t.width;
@@ -270,7 +319,8 @@ pub const PaintGrid = struct {
         t.clear(self.background, null);
         for (self.commands.items[0..self.count]) |command| {
             self.replay_group = null;
-            for ((if (command.recording) command.pending else command.ops).items) |op| self.apply(op);
+            const stream = if (command.recording) command.pending else command.ops;
+            for (stream.ops.items) |op| self.apply(stream, op, false);
         }
         self.fallback = true;
         self.valid = false;
@@ -288,8 +338,8 @@ pub const PaintGrid = struct {
         for (self.commands.items) |*command| {
             self.release(&command.ops);
             self.release(&command.pending);
-            command.ops.clearAndFree(a);
-            command.pending.clearAndFree(a);
+            command.ops.deinit(a);
+            command.pending.deinit(a);
         }
         self.empty = true;
     }
@@ -298,7 +348,7 @@ pub const PaintGrid = struct {
         command.first = std.math.maxInt(u32);
         command.end = 0;
         command.inherits = false;
-        for (command.ops.items) |op| {
+        for (command.ops.ops.items) |op| {
             command.first = @min(command.first, op.index);
             command.end = @max(command.end, self.spanEnd(op));
             command.inherits = command.inherits or op.mode == .inherit;
@@ -310,6 +360,19 @@ pub const PaintGrid = struct {
         self.dirty[index] = true;
         self.dirty_cells[self.dirty_count] = @intCast(index);
         self.dirty_count += 1;
+    }
+
+    fn equalStyle(old: Op, new: Op) bool {
+        var left = old;
+        var right = new;
+        left.cell.char = 0;
+        right.cell.char = 0;
+        left.text_offset = 0;
+        right.text_offset = 0;
+        // Non-inherited writes do not read a background cell.
+        if (left.mode != .inherit) left.background_index = 0;
+        if (right.mode != .inherit) right.background_index = 0;
+        return std.meta.eql(left, right);
     }
 
     pub fn finish(self: *PaintGrid) !void {
@@ -332,61 +395,49 @@ pub const PaintGrid = struct {
         // footprints rebuild the contiguous references after payload replacement.
         for (self.commands.items, 0..) |*command, ci| {
             if (ci < self.count and !command.recording) continue;
-            if (ci < self.count and std.meta.eql(command.ops.items.len, command.pending.items.len)) {
-                var equal = true;
-                for (command.ops.items, command.pending.items) |old, new| {
-                    if (!std.meta.eql(old, new)) {
-                        equal = false;
-                        break;
-                    }
-                }
-                if (equal) {
-                    self.release(&command.pending);
-                    continue;
-                }
+            if (ci < self.count and command.ops.ops.items.len == command.pending.ops.items.len) {
                 var same_footprint = true;
-                for (command.ops.items, command.pending.items) |old, new| {
-                    if (old.index != new.index or self.spanEnd(old) != self.spanEnd(new)) {
+                for (command.ops.ops.items, command.pending.ops.items) |old, new| {
+                    if (old.index != new.index or old.count != new.count or self.spanEnd(old) != self.spanEnd(new)) {
                         same_footprint = false;
                         break;
                     }
                 }
                 if (same_footprint) {
-                    for (command.ops.items, command.pending.items) |old, new| {
-                        if (!std.meta.eql(old, new)) for (old.index..self.spanEnd(old)) |index| self.markDirty(index);
+                    for (command.ops.ops.items, command.pending.ops.items) |old, new| {
+                        if (!equalStyle(old, new)) {
+                            for (old.index..self.spanEnd(old)) |index| self.markDirty(index);
+                        } else for (0..old.count) |offset| {
+                            if (command.ops.charAt(old, offset) != command.pending.charAt(new, offset)) {
+                                const start = old.index + offset;
+                                const end = if (old.count == 1) self.spanEnd(old) else start + 1;
+                                for (start..end) |index| self.markDirty(index);
+                            }
+                        }
                     }
                     self.release(&command.ops);
-                    std.mem.swap(std.ArrayList(Op), &command.ops, &command.pending);
+                    std.mem.swap(Stream, &command.ops, &command.pending);
                     self.summarize(command);
                     continue;
                 }
             }
             rebuild = true;
-            for (command.ops.items, 0..) |op, oi| {
-                const changed = ci >= self.count or oi >= command.pending.items.len or !std.meta.eql(op, command.pending.items[oi]);
-                for (op.index..self.spanEnd(op)) |index| {
-                    if (changed) self.markDirty(index);
-                }
-            }
+            for (command.ops.ops.items) |op| for (op.index..self.spanEnd(op)) |index| self.markDirty(index);
             if (ci < self.count) {
-                for (command.pending.items, 0..) |op, oi| {
-                    if (oi >= command.ops.items.len or !std.meta.eql(op, command.ops.items[oi])) {
-                        for (op.index..self.spanEnd(op)) |index| self.markDirty(index);
-                    }
-                }
+                for (command.pending.ops.items) |op| for (op.index..self.spanEnd(op)) |index| self.markDirty(index);
             }
             self.release(&command.ops);
             if (ci >= self.count) {
                 command.present = false;
                 continue;
             }
-            std.mem.swap(std.ArrayList(Op), &command.ops, &command.pending);
+            std.mem.swap(Stream, &command.ops, &command.pending);
             self.summarize(command);
         }
         if (rebuild) {
             for (self.cells) |*cell| cell.count = 0;
             var total: usize = 0;
-            for (self.commands.items[0..self.count]) |command| for (command.ops.items) |op| {
+            for (self.commands.items[0..self.count]) |command| for (command.ops.ops.items) |op| {
                 for (op.index..self.spanEnd(op)) |index| {
                     self.cells[index].count += 1;
                     total += 1;
@@ -399,7 +450,7 @@ pub const PaintGrid = struct {
                 offset += cell.count;
                 cell.count = 0;
             }
-            for (self.commands.items[0..self.count], 0..) |command, ci| for (command.ops.items, 0..) |op, oi| {
+            for (self.commands.items[0..self.count], 0..) |command, ci| for (command.ops.ops.items, 0..) |op, oi| {
                 for (op.index..self.spanEnd(op)) |index| {
                     const cell = &self.cells[index];
                     cell.items[cell.count] = .{ .command = @intCast(ci), .op = @intCast(oi) };
@@ -435,7 +486,8 @@ pub const PaintGrid = struct {
                     };
                 }
                 for (self.cells[index].items) |ref| {
-                    const op = self.commands.items[ref.command].ops.items[ref.op];
+                    const op = self.commands.items[ref.command].ops.ops.items[ref.op];
+                    if (op.count != 1) continue;
                     for (op.index..self.spanEnd(op)) |i| if (!self.dirty[i]) {
                         self.markDirty(i);
                     };
@@ -443,7 +495,7 @@ pub const PaintGrid = struct {
             }
             for (self.commands.items[0..self.count]) |command| {
                 if (!command.inherits) continue;
-                for (command.ops.items) |op| {
+                for (command.ops.ops.items) |op| {
                     if (op.mode == .inherit and self.dirty[op.background_index] and !self.dirty[op.index]) {
                         self.markDirty(op.index);
                         expanded = true;
@@ -484,9 +536,7 @@ pub const PaintGrid = struct {
         for (self.commands.items[0..self.count]) |command| {
             if (command.end <= first or command.first >= end) continue;
             self.replay_group = null;
-            for (command.ops.items) |op| {
-                if (self.dirty[op.index]) self.apply(op);
-            }
+            for (command.ops.ops.items) |op| self.apply(command.ops, op, !full_replay);
         }
         for (self.dirty_cells[0..self.dirty_count]) |index| self.dirty[index] = false;
         self.dirty_count = 0;
@@ -496,7 +546,10 @@ pub const PaintGrid = struct {
 
     pub fn retainedBytes(self: *const PaintGrid) u64 {
         var bytes: u64 = @sizeOf(PaintGrid) + self.cells.len * (@sizeOf(CellRefs) + @sizeOf(bool) + @sizeOf(u32)) + self.commands.capacity * @sizeOf(Command) + self.stack.capacity * @sizeOf(Scope);
-        for (self.commands.items) |command| bytes += (command.ops.capacity + command.pending.capacity) * @sizeOf(Op);
+        for (self.commands.items) |command| {
+            bytes += (command.ops.ops.capacity + command.pending.ops.capacity) * @sizeOf(Op);
+            bytes += (command.ops.chars.capacity + command.pending.chars.capacity) * @sizeOf(u32);
+        }
         bytes += self.refs.capacity * @sizeOf(Ref);
         return bytes;
     }

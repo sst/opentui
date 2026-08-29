@@ -1171,9 +1171,12 @@ pub const OptimizedBuffer = struct {
         if (self.paintRecording()) {
             var fill_y = clippedStartY;
             while (fill_y <= clippedEndY) : (fill_y += 1) {
+                const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                const index = self.coordsToIndex(clippedStartX, fill_y);
+                if (self.paint_grid.?.recordSpan(index, cell, .blend, index, clippedEndX - clippedStartX + 1)) continue;
                 var fill_x = clippedStartX;
                 while (fill_x <= clippedEndX) : (fill_x += 1) {
-                    self.setCellWithAlphaBlendingCell(fill_x, fill_y, makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0));
+                    self.setCellWithAlphaBlendingCell(fill_x, fill_y, cell);
                 }
             }
             return;
