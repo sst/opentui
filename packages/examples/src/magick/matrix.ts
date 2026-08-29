@@ -126,6 +126,9 @@ for (const item of cases) {
     data.error = "Benchmark report missing or invalid"
   }
   if (data.settings?.["run-id"] !== runId) data.error = "No report from this invocation"
+  if (data.settings?.["validate-output"] && data.validation?.acknowledged !== true) {
+    data.error ??= "No terminal image acknowledgement"
+  }
   if (!data.error) {
     const key = JSON.stringify([
       data.settings.width,
@@ -155,11 +158,13 @@ for (const item of cases) {
     transport: data.transportAtEnd,
     fileFraction: data.summary?.file?.mean,
     zlibFraction: data.summary?.zlib?.mean,
+    validation: data.validation,
   }
   records.push(record)
   await Bun.write(join(output, "index.json"), JSON.stringify(records, null, 2) + "\n")
   if (timedOut || exitCode !== 0 || data.error) {
     process.stderr.write(`FAILED ${item.name}: ${data.error ?? exitCode}\n`)
     process.exitCode = 1
-  } else process.stderr.write(`${item.name}: P95 ${data.summary.totalMs.p95.toFixed(3)} ms\n`)
+  } else if (data.validation) process.stderr.write(`${item.name}: image acknowledgement checked\n`)
+  else process.stderr.write(`${item.name}: P95 ${data.summary.totalMs.p95.toFixed(3)} ms\n`)
 }
