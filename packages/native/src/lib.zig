@@ -1577,6 +1577,35 @@ export fn processCapabilityResponse(renderer_handle: NativeHandle, responsePtr: 
     object_ptr.processCapabilityResponse(response);
 }
 
+export fn setKittyImageTransport(renderer_handle: NativeHandle, mode: u32) u32 {
+    const object = acquireRenderer(renderer_handle) orelse return 0;
+    if (object.terminalSetup or mode > 2) return 0;
+    object.kittyTransport.mode = @enumFromInt(mode);
+    return 1;
+}
+
+export fn getKittyImageTransport(renderer_handle: NativeHandle, out: [*]u32) void {
+    const object = acquireRenderer(renderer_handle) orelse return;
+    const transport = &object.kittyTransport;
+    out[0..6].* = .{ @intFromEnum(transport.mode), @intFromEnum(transport.effective), @intFromEnum(transport.file_state), @intFromEnum(transport.fallback), transport.pendingCount(), @intCast(transport.pendingBytes()) };
+}
+
+export fn pollKittyImageTransport(renderer_handle: NativeHandle) u32 {
+    const object = acquireRenderer(renderer_handle) orelse return 0;
+    return @intFromBool(object.pollKittyImageTransport());
+}
+
+export fn cancelKittyImageTransport(renderer_handle: NativeHandle, failed: u32) void {
+    const object = acquireRenderer(renderer_handle) orelse return;
+    object.kittyTransport.cancel(if (failed != 0) .io_error else .cancelled);
+    _ = object.pollKittyImageTransport();
+}
+
+export fn processKittyImageReply(renderer_handle: NativeHandle, response: [*]const u8, len: u32) u32 {
+    const object = acquireRenderer(renderer_handle) orelse return 0;
+    return object.processKittyImageReply(response[0..len]);
+}
+
 export fn setCursorColor(renderer_handle: NativeHandle, color: [*]const u16) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
     object_ptr.terminal.setCursorColor(ptrToRGBA(color));

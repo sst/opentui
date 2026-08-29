@@ -106,6 +106,17 @@ registerEnvVar({
   default: false,
 })
 
+export type KittyImageTransport = "raw" | "zlib" | "file"
+
+export interface KittyImageTransportStatus {
+  requested: KittyImageTransport
+  effective: "raw" | "zlib" | "png" | "file"
+  fileState: "disabled" | "probing" | "ready" | "unsupported" | "timeout" | "io-error" | "cancelled"
+  fallback: "none" | "not-ready" | "unavailable" | "budget" | "busy" | "preparation" | "compression"
+  pendingFiles: number
+  pendingBytes: number
+}
+
 export interface CliRendererConfig {
   // Read input from this stream. Defaults to process.stdin. Any `Readable`
   // works; capabilities like `setRawMode` are duck-typed and used when present.
@@ -129,6 +140,9 @@ export interface CliRendererConfig {
   // native startup auto-detects SSH/mosh sessions; custom stdout feed output
   // defaults to remote because it is not connected to the host TTY directly.
   remote?: boolean
+
+  // Raw is the default. File requires a local terminal with medium and upload ACK support.
+  kittyImageTransport?: KittyImageTransport
 
   // Use an in-memory native buffered output destination instead of process stdout.
   // Intended for test helpers that need native rendering without terminal I/O.
@@ -849,6 +863,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
+  private kittyTransportTimer: TimerHandle | null = null
+  private readonly kittyTransportMode: KittyImageTransport
   private terminalKeepAliveTimer: ReturnType<typeof setInterval> | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
@@ -1054,6 +1070,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
     const remoteMode = config.remote ?? (useFeedOutput ? true : undefined)
+    this.kittyTransportMode = config.kittyImageTransport ?? "raw"
+    const transportCode = ["raw", "zlib", "file"].indexOf(this.kittyTransportMode)
+    if (transportCode < 0) throw new TypeError("Invalid kittyImageTransport")
 
     if (rendererTracker.streamOwners.get(stdin)) {
       throw new Error("Cannot create CliRenderer: stdin is already used by another CliRenderer")
@@ -1097,6 +1116,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       feed?.close()
       throw new Error("Failed to create renderer")
     }
+    lib.setKittyImageTransport(rendererPtr, transportCode)
 
     // Threading defaults (on everywhere except linux, where it currently
     // crashes — likely a missing build dep).
@@ -1126,6 +1146,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         })
       })
       this._detachFeedError = feed.onError((code) => {
+        if (this.kittyTransportMode === "file") this.kittyOutputErrorHandler()
         console.error(`[CliRenderer] NativeSpanFeed error: code=${code}`)
       })
     }
@@ -1144,6 +1165,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._footerHeight = footerHeight
 
     this.rendererPtr = rendererPtr
+    if (this.kittyTransportMode === "file") this.stdout.on("error", this.kittyOutputErrorHandler)
     this.clearOnShutdown = config.clearOnShutdown ?? true
     this.lib.setClearOnShutdown(this.rendererPtr, this.clearOnShutdown)
 
@@ -1876,6 +1898,34 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get capabilities(): TerminalCapabilities | null {
     return this._capabilities
+  }
+
+  public get kittyImageTransportStatus(): KittyImageTransportStatus {
+    const [mode, effective, fileState, fallback, pendingFiles, pendingBytes] = this.lib.getKittyImageTransport(
+      this.rendererPtr,
+    )
+    return {
+      requested: (["raw", "zlib", "file"] as const)[mode]!,
+      effective: (["raw", "zlib", "png", "file"] as const)[effective]!,
+      fileState: (["disabled", "probing", "ready", "unsupported", "timeout", "io-error", "cancelled"] as const)[
+        fileState
+      ]!,
+      fallback: (["none", "not-ready", "unavailable", "budget", "busy", "preparation", "compression"] as const)[
+        fallback
+      ]!,
+      pendingFiles,
+      pendingBytes,
+    }
+  }
+
+  public cancelKittyImageTransport(): void {
+    if (this._isDestroyed) return
+    this.lib.cancelKittyImageTransport(this.rendererPtr, false)
+    this.requestRender()
+  }
+
+  private kittyOutputErrorHandler = (): void => {
+    if (!this._isDestroyed) this.lib.cancelKittyImageTransport(this.rendererPtr, true)
   }
 
   public triggerNotification(message: string, title?: string): boolean {
@@ -3201,6 +3251,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+    if (this.kittyTransportMode === "file") {
+      this.kittyTransportTimer = this.clock.setInterval(() => {
+        if (this.lib.pollKittyImageTransport(this.rendererPtr)) this.requestRender()
+      }, 1000)
+    }
 
     if (this.debugOverlay.enabled) {
       this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
@@ -3440,6 +3495,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._keyHandler.processPaste(event.bytes, event.metadata)
         return
       case "response":
+        if (this.kittyTransportMode === "file" && event.sequence.startsWith("\x1b_G")) {
+          const result = this.lib.processKittyImageReply(this.rendererPtr, event.sequence)
+          if (result !== 0) {
+            if (result === 2) this.requestRender()
+            return
+          }
+        }
         if (event.protocol === "osc") {
           for (const subscriber of this.oscSubscribers) {
             subscriber(event.sequence)
@@ -4290,6 +4352,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private cleanupBeforeDestroy(): void {
     if (this._destroyCleanupPrepared) return
     this._destroyCleanupPrepared = true
+    if (this.kittyTransportTimer !== null) {
+      this.clock.clearInterval(this.kittyTransportTimer)
+      this.kittyTransportTimer = null
+    }
+    if (this.kittyTransportMode === "file") {
+      this.stdout.off("error", this.kittyOutputErrorHandler)
+      this.lib.cancelKittyImageTransport(this.rendererPtr, false)
+    }
 
     if (this._usesProcessStdout) {
       process.removeListener("SIGWINCH", this.sigwinchHandler)

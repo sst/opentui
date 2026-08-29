@@ -1618,6 +1618,11 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "ptr", "u32"],
       returns: "void",
     },
+    setKittyImageTransport: { args: ["u32", "u32"], returns: "u32" },
+    getKittyImageTransport: { args: ["u32", "buffer"], returns: "void" },
+    pollKittyImageTransport: { args: ["u32"], returns: "u32" },
+    cancelKittyImageTransport: { args: ["u32", "u32"], returns: "void" },
+    processKittyImageReply: { args: ["u32", "buffer", "u32"], returns: "u32" },
 
     // Unicode encoding API
     encodeUnicode: {
@@ -3142,6 +3147,11 @@ export interface RenderLib extends AudioEngineLib {
 
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
+  setKittyImageTransport: (renderer: RendererHandle, mode: number) => boolean
+  getKittyImageTransport: (renderer: RendererHandle) => Uint32Array
+  pollKittyImageTransport: (renderer: RendererHandle) => boolean
+  cancelKittyImageTransport: (renderer: RendererHandle, failed: boolean) => void
+  processKittyImageReply: (renderer: RendererHandle, response: string) => number
 
   encodeUnicode: (
     text: string,
@@ -6060,6 +6070,29 @@ class FFIRenderLib implements RenderLib {
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, viewOrNull(responseBytes), responseBytes.byteLength)
+  }
+
+  public setKittyImageTransport(renderer: RendererHandle, mode: number): boolean {
+    return this.opentui.symbols.setKittyImageTransport(renderer, mode) !== 0
+  }
+
+  public getKittyImageTransport(renderer: RendererHandle): Uint32Array {
+    const status = new Uint32Array(6)
+    this.opentui.symbols.getKittyImageTransport(renderer, status)
+    return status
+  }
+
+  public pollKittyImageTransport(renderer: RendererHandle): boolean {
+    return this.opentui.symbols.pollKittyImageTransport(renderer) !== 0
+  }
+
+  public cancelKittyImageTransport(renderer: RendererHandle, failed: boolean): void {
+    this.opentui.symbols.cancelKittyImageTransport(renderer, failed ? 1 : 0)
+  }
+
+  public processKittyImageReply(renderer: RendererHandle, response: string): number {
+    const bytes = this.encoder.encode(response)
+    return this.opentui.symbols.processKittyImageReply(renderer, bytes, bytes.byteLength)
   }
 
   public encodeUnicode(
