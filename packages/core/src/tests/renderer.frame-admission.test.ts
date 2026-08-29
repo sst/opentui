@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test"
 import type { NativeSpanFeed } from "../NativeSpanFeed.js"
 import { RGBA } from "../lib/RGBA.js"
-import { CliRenderer, CliRenderEvents, type CliRendererConfig } from "../renderer.js"
+import { CliRenderer, CliRenderEvents, RendererControlState, type CliRendererConfig } from "../renderer.js"
+import { TextRenderable } from "../renderables/Text.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
 import { resolveRenderLib } from "../zig.js"
@@ -359,5 +360,171 @@ for (const control of ["pause", "stop"] as const) {
     expect(renderer.isRunning).toBe(false)
     expect(idleResolved).toBe(true)
     expect(Buffer.concat(stdout.writes).toString()).toContain("held-before-pause")
+  })
+}
+
+for (const releaseBeforeDrop of [false, true]) {
+  test(`dropping the last live owner preserves dirty content with credit ready=${releaseBeforeDrop}`, async () => {
+    const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+    const text = new TextRenderable(renderer, { content: "OLD" })
+    renderer.root.add(text)
+    clock.advance(100)
+    await settle()
+    expect(feed.isBackpressured()).toBe(true)
+    text.live = true
+    text.content = "FINAL"
+    if (releaseBeforeDrop) {
+      stdout.releaseAll()
+      await feed.idle()
+    }
+    text.live = false
+    expect(renderer.controlState).toBe(RendererControlState.IDLE)
+    stdout.releaseAll()
+    await feed.idle()
+    clock.advance(100)
+    await settle()
+    expect(new TextDecoder().decode(renderer.currentRenderBuffer.getRealCharBytes()).startsWith("FINAL")).toBe(true)
+    await renderer.idle()
+    expect(renderer.isRunning).toBe(false)
+  })
+}
+
+test("cancelling the last RAF preserves independently captured stdout", async () => {
+  const { renderer, stdout, clock, feed } = createAdmissionRenderer(80, 24, { screenMode: "split-footer" })
+  renderer.setTerminalTitle("held-before-raf")
+  let callbacks = 0
+  const raf = requestAnimationFrame(() => callbacks++)
+  stdout.write("captured-before-cancel\n")
+  cancelAnimationFrame(raf)
+  stdout.releaseAll()
+  await feed.idle()
+  clock.advance(100)
+  await settle()
+  expect(Buffer.concat(stdout.writes).toString()).toContain("captured-before-cancel")
+  expect(callbacks).toBe(0)
+  expect(renderer.isRunning).toBe(false)
+  await renderer.idle()
+})
+
+test("suspending an empty split footer cannot rearm an admission wait", async () => {
+  const { renderer, stdout, clock, feed } = createAdmissionRenderer(80, 24, { screenMode: "split-footer" })
+  stdout.held = false
+  await renderer.setupTerminal()
+  renderer.stdin.emit("data", Buffer.from("\x1b[12;1R"))
+  clock.advance(200)
+  await settle()
+  await feed.idle()
+  stdout.held = true
+  for (let i = 0; i < 4096; i++) renderer.setTerminalTitle(`held-${i}`)
+  let callbacks = 0
+  renderer.setFrameCallback(async () => {
+    callbacks++
+  })
+  renderer.start()
+  renderer.suspend()
+  let idleResolved = false
+  void renderer.idle().then(() => {
+    idleResolved = true
+  })
+  await settle()
+  expect(idleResolved).toBe(true)
+  expect(feed.isBackpressured()).toBe(true)
+  stdout.releaseAll()
+  await feed.idle()
+  clock.advance(100)
+  await settle()
+  expect(callbacks).toBe(0)
+  expect(renderer.controlState).toBe(RendererControlState.EXPLICIT_SUSPENDED)
+})
+
+for (const explicitStart of [false, true]) {
+  test(`resume reconciles removed live owners without cancelling explicit start=${explicitStart}`, async () => {
+    const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+    renderer.setTerminalTitle("held-before-suspend")
+    if (explicitStart) renderer.start()
+    let callbacks = 0
+    const raf = requestAnimationFrame(() => callbacks++)
+    renderer.suspend()
+    cancelAnimationFrame(raf)
+    stdout.releaseAll()
+    await feed.idle()
+    renderer.resume()
+    await feed.idle()
+    await settle()
+    clock.advance(100)
+    await settle()
+    expect(callbacks).toBe(0)
+    expect(renderer.liveRequestCount).toBe(0)
+    expect(renderer.isRunning).toBe(explicitStart)
+    if (!explicitStart) {
+      expect(renderer.controlState).toBe(RendererControlState.IDLE)
+      await renderer.idle()
+    }
+  })
+}
+
+test("resume preserves ownerless auto mode selected explicitly", async () => {
+  const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+  renderer.setTerminalTitle("held-before-auto")
+  renderer.start()
+  renderer.auto()
+  renderer.suspend()
+  stdout.releaseAll()
+  await feed.idle()
+  renderer.resume()
+  await feed.idle()
+  clock.advance(100)
+  await settle()
+  expect(renderer.liveRequestCount).toBe(0)
+  expect(renderer.controlState).toBe(RendererControlState.AUTO_STARTED)
+  expect(renderer.isRunning).toBe(true)
+})
+
+test("a new live owner while suspended restores automatic rendering", async () => {
+  const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+  renderer.setTerminalTitle("held-before-new-owner")
+  const raf = requestAnimationFrame(() => {})
+  renderer.suspend()
+  cancelAnimationFrame(raf)
+  renderer.requestLive()
+  stdout.releaseAll()
+  await feed.idle()
+  renderer.resume()
+  await feed.idle()
+  clock.advance(100)
+  await settle()
+  expect(renderer.liveRequestCount).toBe(1)
+  expect(renderer.controlState).toBe(RendererControlState.AUTO_STARTED)
+  expect(renderer.isRunning).toBe(true)
+})
+
+for (const queuedWork of ["retry", "one-shot", "next-tick"] as const) {
+  test(`stop cancels a queued ${queuedWork} without cancelling later requests`, async () => {
+    const { renderer, stdout, clock, feed, internals } = createAdmissionRenderer()
+    let callbacks = 0
+    renderer.setFrameCallback(async () => {
+      callbacks++
+    })
+    if (queuedWork === "retry") {
+      renderer.setTerminalTitle("held-before-stop")
+      await internals.loop()
+      stdout.releaseAll()
+      await feed.idle()
+    } else {
+      stdout.held = false
+      if (queuedWork === "next-tick") clock.advance(100)
+      renderer.requestRender()
+    }
+    expect(renderer.getSchedulerState().hasScheduledRender).toBe(true)
+    renderer.stop()
+    clock.advance(100)
+    await settle()
+    expect(callbacks).toBe(0)
+    await renderer.idle()
+    renderer.requestRender()
+    clock.advance(100)
+    await settle()
+    expect(callbacks).toBe(1)
+    expect(renderer.isRunning).toBe(false)
   })
 }
