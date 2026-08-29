@@ -832,6 +832,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private minTargetFrameTime: number = 1000 / this._maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
+  private updateGeneration = 0
 
   private liveRequestCounter: number = 0
   private _controlState: RendererControlState = RendererControlState.IDLE
@@ -1586,21 +1587,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
+      const generation = ++this.updateGeneration
       const now = this.normalizeClockTime(this.clock.now(), this.lastTime)
       const elapsed = this.getElapsedMs(now, this.lastTime)
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
       if (delay === 0) {
-        process.nextTick(() => this.activateFrame())
+        process.nextTick(() => this.activateFrame(generation))
         return
       }
 
-      this.clock.setTimeout(() => this.activateFrame(), delay)
+      this.clock.setTimeout(() => this.activateFrame(generation), delay)
     }
   }
 
-  private async activateFrame() {
-    if (!this.updateScheduled) {
+  private async activateFrame(generation: number) {
+    if (generation !== this.updateGeneration || !this.updateScheduled) {
       this.resolveIdleIfNeeded()
       return
     }
@@ -1608,7 +1610,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     try {
       await this.loop()
     } finally {
-      this.updateScheduled = false
+      if (generation === this.updateGeneration) this.updateScheduled = false
       this.resolveIdleIfNeeded()
     }
   }
@@ -4191,8 +4193,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       // Invalidate any queued idle one-shot frame.
       // start()/live/resume transition to the continuous loop, so queued
-      // activateFrame callbacks must no-op via !updateScheduled.
+      // activateFrame callbacks must not consume a later one-shot request.
       this.updateScheduled = false
+      this.updateGeneration++
 
       if (this.memorySnapshotInterval > 0) {
         this.startMemorySnapshotTimer()
@@ -4212,6 +4215,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._controlState = RendererControlState.EXPLICIT_SUSPENDED
     this.updateScheduled = false
+    this.updateGeneration++
     this.internalPause()
 
     if (this._terminalIsSetup) {
@@ -4329,6 +4333,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.cancelRenderAfterFeedIdle()
     this._isRunning = false
     this.updateScheduled = false
+    this.updateGeneration++
     this.immediateRerenderRequested = false
 
     if (this.memorySnapshotTimer) {
