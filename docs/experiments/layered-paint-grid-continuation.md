@@ -36,8 +36,9 @@ and recovery costs stay inside complete measured sequences.
 Focused native17 tests and original four-channel normal/transition parity pass.
 The ReleaseFast root build, native2130 (8 skipped), Bun Core5497 (23 skipped),
 guarded Node26.4 Core4754 (6 skipped), packed Bun/Node, React59, Solid271 and lint
-pass. New matched main/prior matrices are pending at this checkpoint. These are
-local checks, not a claim of green GitHub CI.
+pass. [Matched main/prior results](layered-paint-grid-continuation-results.md)
+include rotating controls at both sizes and2016 exact four-channel frame matches.
+These are local checks, not a claim of green GitHub CI.
 
 Separate diagnostic counters found layout/scroll performed two target clears per
 frame versus one OFF; the new path performs one. Current generic TextBuffer
@@ -48,10 +49,16 @@ The native allocation fixture retains144900 bytes including arena slack, versus
 126296 without the arena and scalar MB-scale payloads. Initial backing allocations
 fall from170 to16 (156900 requested bytes); warm fixture traffic is zero. Arena
 slack is a measured tradeoff, not hidden live payload. This is not RSS.
-Five1000-frame fresh-process trials show selective gains and lower full-path
-overhead, but still expose first-cache costs and workload-specific regressions.
+Seven1000-frame repeats at120x40 and five600-frame repeats at240x80/depth4 rotate
+main/current/prior control order and alternate ON/OFF. Selective gains and smaller
+full-path overhead coexist with first-cache costs and workload-specific regressions.
 No averages, forced GC, or discarded tails are used as acceptance criteria.
 
 Exact variant patches, native/source/harness pins, failures, diagnostic counters,
 raw timings and the finite ledger are preserved in the local continuation
 artifacts. Research sources remain in the architecture document.
+
+Remaining risks include worst-case CPU cost of long transitive wide-dependency
+chains: correctness is covered, but the ordinary nine-workload CPU fixtures do
+not stress that shape. Dependency closure can revisit wide commands. This is not
+a proof that the simpler index-free representation wins for every kind of text.
