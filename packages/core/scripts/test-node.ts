@@ -166,6 +166,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderer.focus-restore.test.js",
   ".node-test/src/tests/renderer.input.test.js",
   ".node-test/src/tests/renderer.incremental-paint.test.js",
+  ".node-test/src/tests/renderer.draw-bounds.test.js",
   ".node-test/src/tests/renderer.mouse.test.js",
   ".node-test/src/tests/renderer.palette.test.js",
   ".node-test/src/tests/renderer.scrollback-surface.test.js",
