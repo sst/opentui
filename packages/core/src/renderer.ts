@@ -172,6 +172,8 @@ export interface CliRendererConfig {
 
   // Run these hooks after each render pass.
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
+  /** Experimental retained cell contributions. Disabled by default. */
+  experimentalPaintGrid?: boolean
 
   // Track mouse move events. Defaults to true.
   enableMouseMovement?: boolean
@@ -799,6 +801,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameTimes: number[] = []
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
+  private experimentalPaintGrid = false
+  private paintForceRequested = true
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private waitingForPixelResolution: boolean = false
   private pixelResolutionRequeryPending: boolean = false
@@ -1199,6 +1203,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
+    this.experimentalPaintGrid = config.experimentalPaintGrid ?? false
     this.prependedInputHandlers = config.prependInputHandlers || []
 
     this.root = new RootRenderable(this)
@@ -1537,7 +1542,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.scheduleRenderTimer()
   }
 
-  public requestRender() {
+  public requestRender(source?: Renderable) {
+    if (!source || source === this.root || this.rendering) this.paintForceRequested = true
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -4552,6 +4558,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const overallStart = performance.now()
 
       const frameRequests = Array.from(this.animationRequest.values())
+      if (this.experimentalPaintGrid) {
+        this.nextRenderBuffer.experimentalPaintForce = this.paintForceRequested || this._isRunning
+        this.paintForceRequested = false
+        this.nextRenderBuffer.beginPaint(
+          this.backgroundColor,
+          Boolean(
+            this.nextRenderBuffer.experimentalPaintForce ||
+            this.root.isPaintGeometryDirty ||
+            frameRequests.length ||
+            this.frameCallbacks.length ||
+            this.postProcessFns.length ||
+            this._console.visible ||
+            this.debugOverlay.enabled,
+          ),
+        )
+      }
       this.animationRequest.clear()
       const animationRequestStart = performance.now()
       for (const callback of frameRequests) {
@@ -4573,6 +4595,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderStats.frameCallbackTime = end - start
 
       this.root.render(this.nextRenderBuffer, deltaTime)
+      if (this.experimentalPaintGrid) this.nextRenderBuffer.endPaint()
 
       for (const postProcessFn of this.postProcessFns) {
         postProcessFn(this.nextRenderBuffer, deltaTime)
@@ -4583,6 +4606,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // If destroy() was requested during this frame, skip native work and scheduling.
       if (!this._isDestroyed) {
         const nativeStatus = this.renderNative() ?? "rendered"
+        if (this.experimentalPaintGrid && nativeStatus !== "rendered") this.nextRenderBuffer.endPaint(true)
         if (nativeStatus === "rendered") this.frameCount++
         if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
           this.currentFps = this.frameCount
@@ -4658,6 +4682,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     } catch (error) {
       renderFailed = true
+      if (this.experimentalPaintGrid && !this._isDestroyed) {
+        this.nextRenderBuffer.endPaint(true)
+        this.nextRenderBuffer.clearScissorRects()
+        this.nextRenderBuffer.clearOpacity()
+        this.clearHitGridScissorRects()
+      }
       const renderError = error instanceof Error ? error : new Error(String(error))
       const event: CliRendererErrorEvent = { error: renderError, renderable: this.root.takeCurrentRenderable() }
       const handled = this.emit(CliRenderEvents.RENDER_ERROR, event)

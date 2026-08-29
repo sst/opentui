@@ -1,0 +1,3305 @@
+{
+  "method": "median and full range of repeat means; paired OFF/ON order alternates; final/main14x300, prior/corrected7x300; sensitivity5x100; transition timing separate from exact snapshot capture",
+  "workloads": [
+    "unchanged",
+    "localized-text",
+    "transparent-outside",
+    "layout-move",
+    "all-changed",
+    "generic-request",
+    "raw-fallback",
+    "image-fallback",
+    "scrollbox"
+  ],
+  "phases": {
+    "total28": [0, 27],
+    "startup3": [0, 2],
+    "burst8": [3, 10],
+    "recovery2": [11, 12],
+    "forced1": [16, 16],
+    "forcedRecovery2": [17, 18],
+    "localized2": [22, 23]
+  },
+  "totals": {
+    "main": {
+      "frameMs": 0.857469,
+      "coldMs": 2.605954
+    },
+    "prior": {
+      "frameMs": 0.84788,
+      "coldMs": 0.971328
+    },
+    "corrected": {
+      "frameMs": 0.86689,
+      "coldMs": 2.688052
+    }
+  },
+  "pins": {
+    "main-complete": {
+      "head": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+      "library": "20cfa1938076a2aeff50903fa7c4985c58e5ad023130228588c2271c1172e7d3",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "main-published": {
+      "head": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+      "library": "d728c0c8a64e93859aadbad8879560688f8a80efa368f2812eaaa02ddf1bf9ee",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "prior-complete": {
+      "head": "29ca3ced7cd0c237b2bb1af52f2f94c0acff7351",
+      "library": "edb8508d04f72b2dab636e57084f902bb9d96be6cc9437894a56bb799d143880",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "release": {
+      "head": "5dddbd67259467fe6acf7041dca99d3ff701e794",
+      "library": "ec8b15f1d363f31b46362445f2ea7ef14559f7e5376a202135eab19bfa6bb5df",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "release-repeat": {
+      "head": "5dddbd67259467fe6acf7041dca99d3ff701e794",
+      "library": "ec8b15f1d363f31b46362445f2ea7ef14559f7e5376a202135eab19bfa6bb5df",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "corrected-complete": {
+      "head": "e14c2d6a208eb927e31c6cbd8d80eb21f51fb5e2",
+      "library": "c0242b55045327e469bd0b076932a19359a93f498cda4353e51c1220e97241f5",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "300",
+        "PAINT_REPEATS": "7"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "main-complete-large": {
+      "head": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+      "library": "d728c0c8a64e93859aadbad8879560688f8a80efa368f2812eaaa02ddf1bf9ee",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "100",
+        "PAINT_DEPTH": "4",
+        "PAINT_WIDTH": "240",
+        "PAINT_REPEATS": "5",
+        "PAINT_HEIGHT": "80"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "prior-complete-large": {
+      "head": "29ca3ced7cd0c237b2bb1af52f2f94c0acff7351",
+      "library": "edb8508d04f72b2dab636e57084f902bb9d96be6cc9437894a56bb799d143880",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "100",
+        "PAINT_DEPTH": "4",
+        "PAINT_WIDTH": "240",
+        "PAINT_REPEATS": "5",
+        "PAINT_HEIGHT": "80"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    },
+    "release-large": {
+      "head": "5dddbd67259467fe6acf7041dca99d3ff701e794",
+      "library": "ec8b15f1d363f31b46362445f2ea7ef14559f7e5376a202135eab19bfa6bb5df",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {
+        "PAINT_FRAMES": "100",
+        "PAINT_DEPTH": "4",
+        "PAINT_WIDTH": "240",
+        "PAINT_REPEATS": "5",
+        "PAINT_HEIGHT": "80"
+      },
+      "buildOptions": {
+        "gpaSafeStats": false,
+        "gpaMemoryLimitTracking": false
+      }
+    }
+  },
+  "memory": {
+    "main-memory": {
+      "pins": {
+        "head": "202e1e6a0013252b6d0cd08c034e25f21d55f220",
+        "library": "2e2334abcdc17603b7cef79aa6995cd4c65d83224a0a23d161985a1c3c4fa778",
+        "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+        "instrumentation": "ReleaseFast gpa-safe-stats; not CPU evidence"
+      },
+      "samples": [
+        {
+          "workload": "unchanged",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "localized-text",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224960,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -58,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "transparent-outside",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 67717,
+          "coldRequestedDelta": 67717,
+          "activeAllocationDelta": 2,
+          "coldAllocationDelta": 2,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "layout-move",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 517914,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "all-changed",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 384022,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -56,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "generic-request",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "raw-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "image-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 225703,
+          "coldRequestedDelta": 225559,
+          "activeAllocationDelta": 43,
+          "coldAllocationDelta": 42,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "scrollbox",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 216808,
+          "coldRequestedDelta": 118473,
+          "activeAllocationDelta": -49,
+          "coldAllocationDelta": 95,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        }
+      ]
+    },
+    "prior-memory": {
+      "pins": {
+        "head": "29ca3ced7cd0c237b2bb1af52f2f94c0acff7351",
+        "library": "d7f2aabc233b1a36e5b12a5035fa05641f1768c66be5622c9fd2a1c8f3c28137",
+        "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+        "instrumentation": "ReleaseFast gpa-safe-stats; not CPU evidence"
+      },
+      "samples": [
+        {
+          "workload": "unchanged",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "unchanged",
+          "enabled": true,
+          "retainedBytes": 450960,
+          "liveRequestedDelta": 675942,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 29,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "localized-text",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224960,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -58,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "localized-text",
+          "enabled": true,
+          "retainedBytes": 454128,
+          "liveRequestedDelta": 679088,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 35,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "transparent-outside",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 67717,
+          "coldRequestedDelta": 67717,
+          "activeAllocationDelta": 2,
+          "coldAllocationDelta": 2,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "transparent-outside",
+          "enabled": true,
+          "retainedBytes": 762696,
+          "liveRequestedDelta": 830413,
+          "coldRequestedDelta": 825517,
+          "activeAllocationDelta": 37,
+          "coldAllocationDelta": 36,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "layout-move",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 517914,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "layout-move",
+          "enabled": true,
+          "retainedBytes": 704400,
+          "liveRequestedDelta": 1222314,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 19,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "all-changed",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 384022,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -56,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "all-changed",
+          "enabled": true,
+          "retainedBytes": 704400,
+          "liveRequestedDelta": 1088422,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": -90,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "generic-request",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "generic-request",
+          "enabled": true,
+          "retainedBytes": 704400,
+          "liveRequestedDelta": 929382,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 19,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "raw-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "raw-fallback",
+          "enabled": true,
+          "retainedBytes": 150352,
+          "liveRequestedDelta": 375334,
+          "coldRequestedDelta": 375334,
+          "activeAllocationDelta": 7,
+          "coldAllocationDelta": 7,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "image-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 225703,
+          "coldRequestedDelta": 225559,
+          "activeAllocationDelta": 43,
+          "coldAllocationDelta": 42,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "image-fallback",
+          "enabled": true,
+          "retainedBytes": 150352,
+          "liveRequestedDelta": 376055,
+          "coldRequestedDelta": 375911,
+          "activeAllocationDelta": 11,
+          "coldAllocationDelta": 10,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "scrollbox",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 216808,
+          "coldRequestedDelta": 118473,
+          "activeAllocationDelta": -49,
+          "coldAllocationDelta": 95,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "scrollbox",
+          "enabled": true,
+          "retainedBytes": 430752,
+          "liveRequestedDelta": 647560,
+          "coldRequestedDelta": 419337,
+          "activeAllocationDelta": -36,
+          "coldAllocationDelta": -94,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        }
+      ]
+    },
+    "final-memory": {
+      "pins": {
+        "head": "5dddbd67259467fe6acf7041dca99d3ff701e794",
+        "library": "b3043bd17e9bdc10212492f127b85f7600cd8242da0712679a08d48575d26c42",
+        "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+        "instrumentation": "ReleaseFast gpa-safe-stats; not CPU evidence"
+      },
+      "samples": [
+        {
+          "workload": "unchanged",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "unchanged",
+          "enabled": true,
+          "retainedBytes": 450960,
+          "liveRequestedDelta": 675942,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 29,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "localized-text",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224960,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -58,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "localized-text",
+          "enabled": true,
+          "retainedBytes": 454128,
+          "liveRequestedDelta": 679088,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 35,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "transparent-outside",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 67717,
+          "coldRequestedDelta": 67717,
+          "activeAllocationDelta": 2,
+          "coldAllocationDelta": 2,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "transparent-outside",
+          "enabled": true,
+          "retainedBytes": 762696,
+          "liveRequestedDelta": 830413,
+          "coldRequestedDelta": 825517,
+          "activeAllocationDelta": 37,
+          "coldAllocationDelta": 36,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "layout-move",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 517914,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "layout-move",
+          "enabled": true,
+          "retainedBytes": 450960,
+          "liveRequestedDelta": 968874,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 29,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "all-changed",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 384022,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": -56,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "all-changed",
+          "enabled": true,
+          "retainedBytes": 450960,
+          "liveRequestedDelta": 834982,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": -113,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "generic-request",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "generic-request",
+          "enabled": true,
+          "retainedBytes": 450960,
+          "liveRequestedDelta": 675942,
+          "coldRequestedDelta": 675942,
+          "activeAllocationDelta": 29,
+          "coldAllocationDelta": 29,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "raw-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 224982,
+          "coldRequestedDelta": 224982,
+          "activeAllocationDelta": 39,
+          "coldAllocationDelta": 39,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "raw-fallback",
+          "enabled": true,
+          "retainedBytes": 150352,
+          "liveRequestedDelta": 375334,
+          "coldRequestedDelta": 375334,
+          "activeAllocationDelta": 7,
+          "coldAllocationDelta": 7,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "image-fallback",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 225703,
+          "coldRequestedDelta": 225559,
+          "activeAllocationDelta": 43,
+          "coldAllocationDelta": 42,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "image-fallback",
+          "enabled": true,
+          "retainedBytes": 150352,
+          "liveRequestedDelta": 376055,
+          "coldRequestedDelta": 375911,
+          "activeAllocationDelta": 11,
+          "coldAllocationDelta": 10,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "scrollbox",
+          "enabled": false,
+          "retainedBytes": 0,
+          "liveRequestedDelta": 216808,
+          "coldRequestedDelta": 118473,
+          "activeAllocationDelta": -49,
+          "coldAllocationDelta": 95,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        },
+        {
+          "workload": "scrollbox",
+          "enabled": true,
+          "retainedBytes": 300864,
+          "liveRequestedDelta": 517672,
+          "coldRequestedDelta": 419337,
+          "activeAllocationDelta": 16,
+          "coldAllocationDelta": -94,
+          "buildOptions": {
+            "gpaSafeStats": true,
+            "gpaMemoryLimitTracking": true
+          }
+        }
+      ]
+    }
+  },
+  "rows": {
+    "main": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.08523, 0.082096, 0.141348, 14],
+        "coldMs": [0.498587, 0.412406, 3.842953, 14],
+        "compositionMs": [0.070109, 0.067998, 0.115049, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.079948, 2.877627, 8.998352, 14],
+          "startup3": [0.688352, 0.625949, 3.946571, 14],
+          "burst8": [0.730059, 0.676568, 1.582626, 14],
+          "recovery2": [0.177055, 0.165832, 0.354046, 14],
+          "forced1": [0.088855, 0.082756, 0.215398, 14],
+          "forcedRecovery2": [0.178841, 0.166963, 0.362922, 14],
+          "localized2": [0.278773, 0.254737, 0.721738, 14]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.163732, 0.148649, 0.256004, 14],
+        "coldMs": [0.479714, 0.414269, 1.0059, 14],
+        "compositionMs": [0.131688, 0.120186, 0.199627, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.621055, 3.389645, 7.669059, 14],
+          "startup3": [0.666969, 0.616946, 1.724015, 14],
+          "burst8": [1.325305, 1.192333, 2.243581, 14],
+          "recovery2": [0.182252, 0.167184, 0.258692, 14],
+          "forced1": [0.089716, 0.082636, 0.157429, 14],
+          "forcedRecovery2": [0.189804, 0.1642, 0.258003, 14],
+          "localized2": [0.253175, 0.233446, 0.380469, 14]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.206841, 0.201836, 0.274362, 14],
+        "coldMs": [0.722627, 0.653011, 3.698383, 14],
+        "compositionMs": [0.187173, 0.182692, 0.248165, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [160, 160, 160, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [6.618883, 6.256027, 25.120302, 14],
+          "startup3": [1.260635, 1.068263, 8.011578, 14],
+          "burst8": [1.788438, 1.678576, 4.731721, 14],
+          "recovery2": [0.4241, 0.399727, 4.589455, 14],
+          "forced1": [0.210309, 0.196578, 0.529574, 14],
+          "forcedRecovery2": [0.418401, 0.394488, 1.095964, 14],
+          "localized2": [0.434981, 0.408631, 1.043937, 14]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.225966, 0.22021, 0.232746, 14],
+        "coldMs": [0.509695, 0.436662, 0.629147, 14],
+        "compositionMs": [0.089708, 0.08567, 0.095731, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.125657, 3.92222, 14.490791, 14],
+          "startup3": [0.695728, 0.623616, 9.276079, 14],
+          "burst8": [1.827327, 1.73639, 4.838758, 14],
+          "recovery2": [0.176488, 0.167164, 0.232663, 14],
+          "forced1": [0.084398, 0.081013, 0.169648, 14],
+          "forcedRecovery2": [0.167649, 0.163327, 0.213905, 14],
+          "localized2": [0.27606, 0.251962, 0.426859, 14]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [1.508921, 1.446736, 1.802758, 14],
+        "coldMs": [0.45077, 0.404564, 0.515242, 14],
+        "compositionMs": [0.267428, 0.24926, 0.284538, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [16.075531, 13.27683, 24.321758, 14],
+          "startup3": [0.651736, 0.631631, 0.811574, 14],
+          "burst8": [13.562958, 11.056302, 22.022955, 14],
+          "recovery2": [0.185526, 0.178231, 0.224962, 14],
+          "forced1": [0.086767, 0.084518, 0.097108, 14],
+          "forcedRecovery2": [0.173263, 0.169407, 0.228969, 14],
+          "localized2": [0.284428, 0.252424, 0.830784, 14]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.087509, 0.08267, 0.110391, 14],
+        "coldMs": [0.458347, 0.418937, 0.703247, 14],
+        "compositionMs": [0.071475, 0.068604, 0.095249, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [2.900784, 2.786386, 3.574824, 14],
+          "startup3": [0.639678, 0.59211, 0.696087, 14],
+          "burst8": [0.697552, 0.674627, 0.778271, 14],
+          "recovery2": [0.16826, 0.165011, 0.198522, 14],
+          "forced1": [0.086962, 0.082065, 0.09857, 14],
+          "forcedRecovery2": [0.171847, 0.165913, 0.19127, 14],
+          "localized2": [0.263115, 0.239262, 0.290521, 14]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.088082, 0.082766, 0.133418, 14],
+        "coldMs": [0.514668, 0.468192, 0.839945, 14],
+        "compositionMs": [0.073051, 0.068433, 0.115485, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [2.961743, 2.860771, 4.187376, 14],
+          "startup3": [0.680304, 0.640581, 0.977043, 14],
+          "burst8": [0.695916, 0.673091, 1.964507, 14],
+          "recovery2": [0.168701, 0.162047, 0.205311, 14],
+          "forced1": [0.085595, 0.081143, 0.161306, 14],
+          "forcedRecovery2": [0.177931, 0.163438, 0.213835, 14],
+          "localized2": [0.276114, 0.249027, 0.326075, 14]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.087651, 0.083879, 0.106321, 14],
+        "coldMs": [0.495859, 0.446217, 0.903371, 14],
+        "compositionMs": [0.072812, 0.069495, 0.09036, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.051475, 2.957558, 8.437203, 14],
+          "startup3": [0.698962, 0.635356, 6.032184, 14],
+          "burst8": [0.723999, 0.694956, 0.915794, 14],
+          "recovery2": [0.173244, 0.166813, 0.216298, 14],
+          "forced1": [0.094664, 0.084468, 0.123538, 14],
+          "forcedRecovery2": [0.17827, 0.170619, 0.273657, 14],
+          "localized2": [0.291322, 0.263569, 0.344995, 14]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.126495, 0.115274, 0.169033, 14],
+        "coldMs": [0.619441, 0.553672, 2.311008, 14],
+        "compositionMs": [0.082658, 0.073772, 0.120186, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [40, 40, 40, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.419174, 3.938509, 7.938378, 14],
+          "startup3": [0.923162, 0.813518, 2.879157, 14],
+          "burst8": [1.323264, 1.13243, 2.270051, 14],
+          "recovery2": [0.242253, 0.19725, 0.32265, 14],
+          "forced1": [0.112406, 0.097748, 0.19064, 14],
+          "forcedRecovery2": [0.248092, 0.203329, 0.325935, 14],
+          "localized2": [0.346472, 0.291161, 0.396181, 14]
+        }
+      }
+    ],
+    "prior": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.09762, 0.094181, 0.109324, 7],
+        "coldMs": [0.500591, 0.450325, 0.5392, 7],
+        "compositionMs": [0.08215, 0.079318, 0.092795, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.306196, 3.174817, 9.616414, 7],
+          "startup3": [0.708415, 0.647415, 4.180205, 7],
+          "burst8": [0.799406, 0.760115, 1.782554, 7],
+          "recovery2": [0.188657, 0.186973, 0.367758, 7],
+          "forced1": [0.09862, 0.093772, 0.228287, 7],
+          "forcedRecovery2": [0.198933, 0.188617, 0.388741, 7],
+          "localized2": [0.284924, 0.279816, 0.817713, 7]
+        }
+      },
+      {
+        "workload": "unchanged",
+        "enabled": true,
+        "frameMs": [0.037697, 0.030788, 0.046018, 7],
+        "coldMs": [1.366578, 1.109196, 1.679333, 7],
+        "compositionMs": [0.027524, 0.020458, 0.03485, 7],
+        "finishMs": [0.000201, 0.00015, 0.000216, 7],
+        "callsPerFrame": [0, 0, 0, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [450960, 450960, 450960, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.152651, 2.889401, 8.029511, 7],
+          "startup3": [1.352346, 1.100032, 2.9342, 7],
+          "burst8": [0.240576, 0.215778, 1.257574, 7],
+          "recovery2": [0.074022, 0.053722, 0.246886, 7],
+          "forced1": [1.095135, 0.827428, 1.773486, 7],
+          "forcedRecovery2": [0.067483, 0.059871, 0.256961, 7],
+          "localized2": [0.185312, 0.179923, 0.511818, 7]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.177388, 0.170715, 0.203189, 7],
+        "coldMs": [0.461712, 0.441401, 0.55904, 7],
+        "compositionMs": [0.141886, 0.13837, 0.165239, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.760901, 3.579522, 5.35437, 7],
+          "startup3": [0.70402, 0.634355, 0.956094, 7],
+          "burst8": [1.282651, 1.24293, 2.005961, 7],
+          "recovery2": [0.19041, 0.185321, 0.28317, 7],
+          "forced1": [0.100022, 0.092912, 0.133242, 7],
+          "forcedRecovery2": [0.188647, 0.186344, 0.304542, 7],
+          "localized2": [0.255439, 0.246355, 0.379126, 7]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": true,
+        "frameMs": [0.117114, 0.109785, 0.19126, 7],
+        "coldMs": [1.100353, 1.031649, 1.436814, 7],
+        "compositionMs": [0.082114, 0.079791, 0.131927, 7],
+        "finishMs": [0.001183, 0.001037, 0.00213, 7],
+        "callsPerFrame": [1, 1, 1, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [454128, 454128, 454128, 7],
+        "recomposed": [1, 1, 1, 7],
+        "transitions": {
+          "total28": [4.139495, 3.407724, 7.368292, 7],
+          "startup3": [1.429835, 1.145872, 1.707116, 7],
+          "burst8": [0.823812, 0.779235, 1.471437, 7],
+          "recovery2": [0.061212, 0.055764, 0.099632, 7],
+          "forced1": [1.439419, 0.911806, 4.38022, 7],
+          "forcedRecovery2": [0.069034, 0.060342, 0.110368, 7],
+          "localized2": [0.178211, 0.165893, 0.324824, 7]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.231168, 0.213372, 0.281404, 7],
+        "coldMs": [0.721367, 0.65754, 1.211542, 7],
+        "compositionMs": [0.210344, 0.193974, 0.259651, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [160, 160, 160, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [6.926266, 6.76922, 19.385535, 7],
+          "startup3": [1.211342, 1.125621, 7.055888, 7],
+          "burst8": [1.863335, 1.801769, 4.894551, 7],
+          "recovery2": [0.449363, 0.426338, 1.142617, 7],
+          "forced1": [0.218483, 0.209969, 0.343161, 7],
+          "forcedRecovery2": [0.438337, 0.42744, 0.984417, 7],
+          "localized2": [0.467872, 0.437395, 1.116658, 7]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": true,
+        "frameMs": [0.072155, 0.062197, 0.085511, 7],
+        "coldMs": [4.332016, 3.175367, 7.472862, 7],
+        "compositionMs": [0.056052, 0.047321, 0.069936, 7],
+        "finishMs": [0.013133, 0.012813, 0.01407, 7],
+        "callsPerFrame": [1, 1, 1, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [762696, 762696, 762696, 7],
+        "recomposed": [52, 52, 52, 7],
+        "transitions": {
+          "total28": [9.367492, 7.158663, 14.322515, 7],
+          "startup3": [4.697641, 3.351035, 7.399391, 7],
+          "burst8": [0.632913, 0.562485, 1.517887, 7],
+          "recovery2": [0.087032, 0.083197, 0.295188, 7],
+          "forced1": [2.764262, 2.520201, 3.448283, 7],
+          "forcedRecovery2": [0.098319, 0.092, 0.30289, 7],
+          "localized2": [0.128576, 0.108114, 0.380288, 7]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.238522, 0.231134, 0.376586, 7],
+        "coldMs": [0.456784, 0.446609, 0.492099, 7],
+        "compositionMs": [0.097082, 0.093679, 0.136287, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.287964, 4.184542, 6.297425, 7],
+          "startup3": [0.678162, 0.640455, 1.460211, 7],
+          "burst8": [1.878457, 1.837111, 2.849633, 7],
+          "recovery2": [0.189319, 0.188006, 0.250021, 7],
+          "forced1": [0.095034, 0.092911, 0.103988, 7],
+          "forcedRecovery2": [0.187857, 0.187115, 0.205622, 7],
+          "localized2": [0.286796, 0.275678, 0.366778, 7]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": true,
+        "frameMs": [0.400924, 0.397417, 0.415948, 7],
+        "coldMs": [1.367429, 1.121144, 1.630939, 7],
+        "compositionMs": [0.26675, 0.264013, 0.273868, 7],
+        "finishMs": [0.144612, 0.142436, 0.150543, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [704400, 704400, 704400, 7],
+        "recomposed": [4800, 4800, 4800, 7],
+        "transitions": {
+          "total28": [5.593895, 5.450097, 8.679819, 7],
+          "startup3": [1.155405, 1.116779, 1.642166, 7],
+          "burst8": [3.698623, 3.595377, 5.933754, 7],
+          "recovery2": [0.061965, 0.058088, 0.090487, 7],
+          "forced1": [0.126572, 0.123458, 0.195036, 7],
+          "forcedRecovery2": [0.062725, 0.056466, 0.087965, 7],
+          "localized2": [0.195106, 0.178992, 0.311634, 7]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [1.588463, 1.461429, 1.633039, 7],
+        "coldMs": [0.463614, 0.428712, 7.596359, 7],
+        "compositionMs": [0.278758, 0.261837, 0.336027, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [18.720452, 14.87952, 21.092457, 7],
+          "startup3": [0.675467, 0.64439, 1.246586, 7],
+          "burst8": [16.28556, 12.439021, 18.362286, 7],
+          "recovery2": [0.202247, 0.197261, 0.241677, 7],
+          "forced1": [0.097197, 0.095946, 0.11159, 7],
+          "forcedRecovery2": [0.196439, 0.191892, 0.214136, 7],
+          "localized2": [0.300387, 0.282008, 0.321939, 7]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": true,
+        "frameMs": [1.710712, 1.652519, 1.830566, 7],
+        "coldMs": [1.105641, 1.04574, 1.171121, 7],
+        "compositionMs": [0.441545, 0.420425, 0.468555, 7],
+        "finishMs": [0.129463, 0.12382, 0.132447, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [704400, 704400, 704400, 7],
+        "recomposed": [4800, 4800, 4800, 7],
+        "transitions": {
+          "total28": [18.698138, 15.364098, 26.025699, 7],
+          "startup3": [1.202167, 1.049275, 1.482333, 7],
+          "burst8": [16.239029, 13.543962, 23.936133, 7],
+          "recovery2": [0.066942, 0.062024, 0.107614, 7],
+          "forced1": [0.131199, 0.127394, 0.194285, 7],
+          "forcedRecovery2": [0.067713, 0.05957, 0.106242, 7],
+          "localized2": [0.205322, 0.174236, 0.279644, 7]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.094508, 0.093546, 0.155116, 7],
+        "coldMs": [0.459689, 0.443885, 0.502444, 7],
+        "compositionMs": [0.079669, 0.078859, 0.134768, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.158415, 3.078771, 3.628848, 7],
+          "startup3": [0.652302, 0.63877, 0.760336, 7],
+          "burst8": [0.77735, 0.758162, 0.854029, 7],
+          "recovery2": [0.191341, 0.185062, 0.201056, 7],
+          "forced1": [0.094754, 0.09249, 0.113352, 7],
+          "forcedRecovery2": [0.193896, 0.185331, 0.212214, 7],
+          "localized2": [0.283881, 0.263982, 0.310642, 7]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": true,
+        "frameMs": [0.132213, 0.125169, 0.152118, 7],
+        "coldMs": [1.191, 1.07254, 1.379738, 7],
+        "compositionMs": [0.120631, 0.113534, 0.140398, 7],
+        "finishMs": [0.013591, 0.013382, 0.013868, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [704400, 704400, 704400, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.575586, 3.649068, 5.077268, 7],
+          "startup3": [1.372748, 1.061455, 1.482182, 7],
+          "burst8": [2.355731, 1.794077, 2.845926, 7],
+          "recovery2": [0.061724, 0.058399, 0.103967, 7],
+          "forced1": [0.139743, 0.123017, 0.147995, 7],
+          "forcedRecovery2": [0.05929, 0.056015, 0.081994, 7],
+          "localized2": [0.193245, 0.189248, 0.248718, 7]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.098787, 0.093543, 0.188315, 7],
+        "coldMs": [0.547112, 0.458667, 1.373648, 7],
+        "compositionMs": [0.084099, 0.078821, 0.156466, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.271414, 3.169779, 7.850976, 7],
+          "startup3": [0.716348, 0.674025, 1.088976, 7],
+          "burst8": [0.792192, 0.755098, 0.909973, 7],
+          "recovery2": [0.190169, 0.186413, 0.772374, 7],
+          "forced1": [0.096747, 0.093613, 0.114815, 7],
+          "forcedRecovery2": [0.193985, 0.188357, 0.255478, 7],
+          "localized2": [0.285224, 0.27701, 1.26948, 7]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": true,
+        "frameMs": [0.118492, 0.117005, 0.128695, 7],
+        "coldMs": [1.48634, 1.085821, 5.106725, 7],
+        "compositionMs": [0.10149, 0.100505, 0.111535, 7],
+        "finishMs": [0.000147, 0.000128, 0.00022, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [300, 300, 300, 7],
+        "retainedBytes": [150352, 150352, 150352, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.769611, 4.534025, 10.745328, 7],
+          "startup3": [1.656708, 1.361121, 1.988964, 7],
+          "burst8": [0.956783, 0.949564, 4.870176, 7],
+          "recovery2": [0.237642, 0.233725, 0.247676, 7],
+          "forced1": [0.116787, 0.115956, 0.135576, 7],
+          "forcedRecovery2": [0.245473, 0.235538, 0.267417, 7],
+          "localized2": [0.346136, 0.330473, 2.091971, 7]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.09702, 0.095153, 0.099291, 7],
+        "coldMs": [0.503386, 0.484456, 0.998949, 7],
+        "compositionMs": [0.082071, 0.080573, 0.083604, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.334615, 3.190448, 6.655456, 7],
+          "startup3": [0.691191, 0.650929, 1.47958, 7],
+          "burst8": [0.82244, 0.78934, 0.868931, 7],
+          "recovery2": [0.194506, 0.189609, 0.23013, 7],
+          "forced1": [0.096666, 0.095766, 0.112431, 7],
+          "forcedRecovery2": [0.201066, 0.192032, 0.248017, 7],
+          "localized2": [0.298434, 0.276269, 0.486511, 7]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": true,
+        "frameMs": [0.121194, 0.118463, 0.127982, 7],
+        "coldMs": [1.1445, 1.061544, 2.029276, 7],
+        "compositionMs": [0.104074, 0.102362, 0.10996, 7],
+        "finishMs": [0.000136, 0.000115, 0.000148, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [300, 300, 300, 7],
+        "retainedBytes": [150352, 150352, 150352, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.883013, 4.566622, 5.390785, 7],
+          "startup3": [1.627495, 1.38104, 1.675877, 7],
+          "burst8": [1.004528, 0.96746, 1.511147, 7],
+          "recovery2": [0.247516, 0.237441, 0.265123, 7],
+          "forced1": [0.120594, 0.11889, 0.182477, 7],
+          "forcedRecovery2": [0.240365, 0.236751, 0.251392, 7],
+          "localized2": [0.36196, 0.345465, 0.485058, 7]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.127882, 0.122455, 0.18213, 7],
+        "coldMs": [0.576847, 0.50656, 0.975813, 7],
+        "compositionMs": [0.083843, 0.078507, 0.130534, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [40, 40, 40, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.269076, 3.793356, 7.976125, 7],
+          "startup3": [0.862951, 0.751632, 2.927531, 7],
+          "burst8": [1.294297, 1.1515, 2.262419, 7],
+          "recovery2": [0.227235, 0.207787, 0.400639, 7],
+          "forced1": [0.133773, 0.101063, 0.179553, 7],
+          "forcedRecovery2": [0.22363, 0.20403, 0.286345, 7],
+          "localized2": [0.320987, 0.280907, 0.385727, 7]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": true,
+        "frameMs": [0.224353, 0.21267, 0.231343, 7],
+        "coldMs": [1.038409, 0.837343, 3.587895, 7],
+        "compositionMs": [0.183811, 0.172887, 0.191899, 7],
+        "finishMs": [0.083438, 0.082583, 0.084572, 7],
+        "callsPerFrame": [40, 40, 40, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [430752, 430752, 430752, 7],
+        "recomposed": [4800, 4800, 4800, 7],
+        "transitions": {
+          "total28": [5.418409, 4.26248, 6.348882, 7],
+          "startup3": [1.737202, 1.25061, 2.002644, 7],
+          "burst8": [2.076837, 1.872578, 2.534334, 7],
+          "recovery2": [0.173784, 0.122306, 0.266755, 7],
+          "forced1": [0.141035, 0.117819, 0.166753, 7],
+          "forcedRecovery2": [0.156959, 0.117819, 0.185713, 7],
+          "localized2": [0.240657, 0.181466, 0.296251, 7]
+        }
+      }
+    ],
+    "final": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.096423, 0.092261, 0.118443, 14],
+        "coldMs": [0.485998, 0.442282, 0.808078, 14],
+        "compositionMs": [0.080943, 0.076942, 0.101168, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.198763, 3.044051, 9.774993, 14],
+          "startup3": [0.698271, 0.630136, 3.818292, 14],
+          "burst8": [0.76439, 0.7368, 2.257052, 14],
+          "recovery2": [0.190339, 0.180935, 0.512738, 14],
+          "forced1": [0.093703, 0.090888, 0.213043, 14],
+          "forcedRecovery2": [0.192272, 0.181576, 0.38192, 14],
+          "localized2": [0.283657, 0.266404, 0.769008, 14]
+        }
+      },
+      {
+        "workload": "unchanged",
+        "enabled": true,
+        "frameMs": [0.035076, 0.027755, 0.044354, 14],
+        "coldMs": [1.275002, 1.036666, 3.184179, 14],
+        "compositionMs": [0.024936, 0.017583, 0.033922, 14],
+        "finishMs": [0.000177, 0.000138, 0.000249, 14],
+        "callsPerFrame": [0, 0, 0, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [450960, 450960, 450960, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [2.891826, 2.420307, 6.74351, 14],
+          "startup3": [1.533219, 1.154164, 2.783058, 14],
+          "burst8": [0.262369, 0.234988, 1.256608, 14],
+          "recovery2": [0.064268, 0.060211, 0.242418, 14],
+          "forced1": [0.114539, 0.103737, 0.227585, 14],
+          "forcedRecovery2": [0.284853, 0.264011, 0.516594, 14],
+          "localized2": [0.230615, 0.213444, 0.542774, 14]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.179508, 0.165523, 0.214325, 14],
+        "coldMs": [0.496899, 0.450634, 0.573421, 14],
+        "compositionMs": [0.142795, 0.13468, 0.173507, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.904835, 3.487129, 8.017022, 14],
+          "startup3": [0.696818, 0.621976, 1.065408, 14],
+          "burst8": [1.344728, 1.236539, 2.226714, 14],
+          "recovery2": [0.199278, 0.183069, 0.279154, 14],
+          "forced1": [0.097313, 0.090717, 0.143958, 14],
+          "forcedRecovery2": [0.19387, 0.181246, 0.328799, 14],
+          "localized2": [0.265348, 0.244713, 0.429853, 14]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": true,
+        "frameMs": [0.127094, 0.114362, 0.16223, 14],
+        "coldMs": [1.219292, 1.044107, 3.042823, 14],
+        "compositionMs": [0.09807, 0.086714, 0.115603, 14],
+        "finishMs": [0.001274, 0.001125, 0.001394, 14],
+        "callsPerFrame": [1, 1, 1, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [454128, 454128, 454128, 14],
+        "recomposed": [1, 1, 1, 14],
+        "transitions": {
+          "total28": [3.541504, 2.948031, 6.778952, 14],
+          "startup3": [1.350872, 1.096305, 2.284972, 14],
+          "burst8": [1.028424, 0.957786, 2.076374, 14],
+          "recovery2": [0.071413, 0.060582, 0.232764, 14],
+          "forced1": [0.114499, 0.10554, 0.202368, 14],
+          "forcedRecovery2": [0.282064, 0.267987, 0.459988, 14],
+          "localized2": [0.195738, 0.173293, 0.365736, 14]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.228522, 0.222614, 0.264862, 14],
+        "coldMs": [0.702973, 0.655707, 0.80988, 14],
+        "compositionMs": [0.206642, 0.202553, 0.241807, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [160, 160, 160, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [7.226285, 6.596336, 16.856921, 14],
+          "startup3": [1.216823, 1.126281, 3.366235, 14],
+          "burst8": [1.924213, 1.804081, 4.422448, 14],
+          "recovery2": [0.442687, 0.420819, 1.095315, 14],
+          "forced1": [0.22054, 0.208607, 0.950894, 14],
+          "forcedRecovery2": [0.455697, 0.42139, 1.024727, 14],
+          "localized2": [0.453654, 0.426388, 1.182306, 14]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": true,
+        "frameMs": [0.071045, 0.06667, 0.09376, 14],
+        "coldMs": [4.948213, 3.139931, 6.683855, 14],
+        "compositionMs": [0.055133, 0.050125, 0.078149, 14],
+        "finishMs": [0.013007, 0.01219, 0.013969, 14],
+        "callsPerFrame": [1, 1, 1, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [762696, 762696, 762696, 14],
+        "recomposed": [52, 52, 52, 14],
+        "transitions": {
+          "total28": [6.695669, 5.179471, 15.721218, 14],
+          "startup3": [4.558711, 3.21834, 13.568115, 14],
+          "burst8": [0.576031, 0.516995, 1.19822, 14],
+          "recovery2": [0.087768, 0.083076, 0.235898, 14],
+          "forced1": [0.26001, 0.228167, 0.520401, 14],
+          "forcedRecovery2": [0.65185, 0.59183, 1.052549, 14],
+          "localized2": [0.11769, 0.103227, 0.255147, 14]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.239729, 0.233685, 0.266335, 14],
+        "coldMs": [0.481601, 0.44143, 0.569195, 14],
+        "compositionMs": [0.100247, 0.095163, 0.117848, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.3482, 4.137025, 5.269443, 14],
+          "startup3": [0.676713, 0.640192, 0.881739, 14],
+          "burst8": [1.927247, 1.802739, 2.342577, 14],
+          "recovery2": [0.197776, 0.185542, 0.234716, 14],
+          "forced1": [0.098595, 0.089966, 0.141756, 14],
+          "forcedRecovery2": [0.190941, 0.180483, 0.234987, 14],
+          "localized2": [0.294366, 0.274557, 0.403974, 14]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": true,
+        "frameMs": [0.257549, 0.248648, 0.32168, 14],
+        "coldMs": [1.268903, 1.109636, 2.089695, 14],
+        "compositionMs": [0.115313, 0.107095, 0.153891, 14],
+        "finishMs": [0.000213, 0.000151, 0.000272, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [450960, 450960, 450960, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.909309, 4.129313, 10.90092, 14],
+          "startup3": [1.421129, 1.123017, 1.704511, 14],
+          "burst8": [2.005996, 1.884101, 8.562538, 14],
+          "recovery2": [0.289925, 0.255488, 1.517365, 14],
+          "forced1": [0.113878, 0.101263, 0.149237, 14],
+          "forcedRecovery2": [0.275754, 0.255638, 0.317162, 14],
+          "localized2": [0.234621, 0.207165, 0.316371, 14]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [1.621602, 1.457672, 1.685362, 14],
+        "coldMs": [0.479144, 0.444845, 0.527231, 14],
+        "compositionMs": [0.285644, 0.259333, 0.31837, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [16.884903, 13.191275, 25.126906, 14],
+          "startup3": [0.677094, 0.62565, 0.750471, 14],
+          "burst8": [14.367309, 10.811186, 22.620118, 14],
+          "recovery2": [0.199533, 0.192482, 0.261417, 14],
+          "forced1": [0.095745, 0.093943, 0.117178, 14],
+          "forcedRecovery2": [0.196624, 0.185673, 0.224341, 14],
+          "localized2": [0.304868, 0.270551, 0.451176, 14]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": true,
+        "frameMs": [1.624698, 1.532558, 1.992022, 14],
+        "coldMs": [1.123628, 1.005608, 1.687424, 14],
+        "compositionMs": [0.283459, 0.271099, 0.369689, 14],
+        "finishMs": [0.000407, 0.00036, 0.000728, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [450960, 450960, 450960, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [20.274723, 14.890282, 25.372769, 14],
+          "startup3": [1.45404, 1.070697, 1.975171, 14],
+          "burst8": [17.535613, 12.378628, 22.626928, 14],
+          "recovery2": [0.305875, 0.291133, 0.345966, 14],
+          "forced1": [0.112161, 0.103588, 0.180073, 14],
+          "forcedRecovery2": [0.285208, 0.271612, 0.314958, 14],
+          "localized2": [0.261958, 0.232223, 0.304803, 14]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.095053, 0.092016, 0.15019, 14],
+        "coldMs": [0.474095, 0.450014, 0.629196, 14],
+        "compositionMs": [0.080143, 0.07721, 0.134111, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.236982, 3.055481, 3.47045, 14],
+          "startup3": [0.699192, 0.643377, 0.863542, 14],
+          "burst8": [0.751281, 0.717802, 0.860047, 14],
+          "recovery2": [0.193273, 0.182176, 0.223239, 14],
+          "forced1": [0.093266, 0.090397, 0.13193, 14],
+          "forcedRecovery2": [0.185196, 0.181145, 0.261887, 14],
+          "localized2": [0.28674, 0.266565, 0.352165, 14]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": true,
+        "frameMs": [0.108373, 0.098423, 0.128125, 14],
+        "coldMs": [1.192301, 1.053551, 1.863471, 14],
+        "compositionMs": [0.09229, 0.082923, 0.112472, 14],
+        "finishMs": [0.000166, 0.000132, 0.000194, 14],
+        "callsPerFrame": [80, 80, 80, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [450960, 450960, 450960, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.619341, 3.122593, 6.740671, 14],
+          "startup3": [1.413677, 1.125099, 4.752512, 14],
+          "burst8": [0.8164, 0.78214, 1.340808, 14],
+          "recovery2": [0.27731, 0.260055, 0.425856, 14],
+          "forced1": [0.103517, 0.099852, 0.185222, 14],
+          "forcedRecovery2": [0.278594, 0.253455, 0.428581, 14],
+          "localized2": [0.244496, 0.224361, 0.405085, 14]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.102614, 0.091591, 0.139612, 14],
+        "coldMs": [0.519605, 0.473489, 1.135315, 14],
+        "compositionMs": [0.083414, 0.076814, 0.12242, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.223454, 3.128251, 3.656466, 14],
+          "startup3": [0.732639, 0.649305, 1.101082, 14],
+          "burst8": [0.778924, 0.753885, 0.839566, 14],
+          "recovery2": [0.191341, 0.185102, 0.203659, 14],
+          "forced1": [0.093797, 0.091149, 0.116978, 14],
+          "forcedRecovery2": [0.186965, 0.182738, 0.200966, 14],
+          "localized2": [0.288093, 0.266525, 0.317131, 14]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": true,
+        "frameMs": [0.098827, 0.095291, 0.130041, 14],
+        "coldMs": [1.25357, 1.081603, 1.661915, 14],
+        "compositionMs": [0.084049, 0.080118, 0.105776, 14],
+        "finishMs": [0.000185, 0.000128, 0.000239, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [150352, 150352, 150352, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.295353, 3.810703, 7.235485, 14],
+          "startup3": [1.711585, 1.273717, 3.15854, 14],
+          "burst8": [0.822735, 0.767036, 1.418016, 14],
+          "recovery2": [0.200915, 0.189788, 0.3617, 14],
+          "forced1": [0.098104, 0.094183, 0.269991, 14],
+          "forcedRecovery2": [0.196614, 0.187454, 0.372997, 14],
+          "localized2": [0.304588, 0.279514, 0.569706, 14]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.096373, 0.093, 0.105652, 14],
+        "coldMs": [0.509814, 0.456143, 0.839406, 14],
+        "compositionMs": [0.08098, 0.078567, 0.09051, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [3.615501, 3.140006, 6.619241, 14],
+          "startup3": [0.711161, 0.627855, 1.25673, 14],
+          "burst8": [0.840531, 0.77123, 4.130695, 14],
+          "recovery2": [0.202342, 0.188677, 0.362461, 14],
+          "forced1": [0.105109, 0.094223, 0.161305, 14],
+          "forcedRecovery2": [0.19091, 0.186603, 0.226514, 14],
+          "localized2": [0.302073, 0.277281, 0.537737, 14]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": true,
+        "frameMs": [0.101418, 0.097627, 0.111231, 14],
+        "coldMs": [1.183117, 1.116226, 2.207625, 14],
+        "compositionMs": [0.085899, 0.082304, 0.095427, 14],
+        "finishMs": [0.000116, 0.000102, 0.000173, 14],
+        "callsPerFrame": [81, 81, 81, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [150352, 150352, 150352, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.364561, 3.895571, 5.516421, 14],
+          "startup3": [1.499688, 1.301979, 1.769629, 14],
+          "burst8": [0.876592, 0.790902, 1.35623, 14],
+          "recovery2": [0.202116, 0.194486, 0.2237, 14],
+          "forced1": [0.099361, 0.096657, 0.110047, 14],
+          "forcedRecovery2": [0.211281, 0.194385, 1.103778, 14],
+          "localized2": [0.313486, 0.293646, 0.392717, 14]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.128894, 0.119344, 0.152186, 14],
+        "coldMs": [0.580377, 0.462233, 1.012358, 14],
+        "compositionMs": [0.084572, 0.077176, 0.101011, 14],
+        "finishMs": [0, 0, 0, 14],
+        "callsPerFrame": [40, 40, 40, 14],
+        "fallbackFrames": [0, 0, 0, 14],
+        "retainedBytes": [0, 0, 0, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [4.396066, 3.884281, 7.565273, 14],
+          "startup3": [0.879526, 0.726573, 2.764932, 14],
+          "burst8": [1.340963, 1.198341, 2.159261, 14],
+          "recovery2": [0.239594, 0.198882, 0.292714, 14],
+          "forced1": [0.12847, 0.09897, 0.233865, 14],
+          "forcedRecovery2": [0.232272, 0.195867, 1.745322, 14],
+          "localized2": [0.323376, 0.30346, 0.382982, 14]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": true,
+        "frameMs": [0.146417, 0.132685, 0.20973, 14],
+        "coldMs": [0.822249, 0.702597, 1.153442, 14],
+        "compositionMs": [0.099671, 0.088304, 0.154794, 14],
+        "finishMs": [0.000127, 0.000109, 0.000259, 14],
+        "callsPerFrame": [40, 40, 40, 14],
+        "fallbackFrames": [300, 300, 300, 14],
+        "retainedBytes": [300864, 300864, 300864, 14],
+        "recomposed": [0, 0, 0, 14],
+        "transitions": {
+          "total28": [5.030313, 4.263928, 16.57166, 14],
+          "startup3": [1.256394, 1.080701, 1.546809, 14],
+          "burst8": [1.416133, 1.232783, 1.925857, 14],
+          "recovery2": [0.847433, 0.63133, 11.081336, 14],
+          "forced1": [0.1281, 0.114514, 0.151911, 14],
+          "forcedRecovery2": [0.291147, 0.262789, 0.336902, 14],
+          "localized2": [0.228848, 0.195156, 0.327488, 14]
+        }
+      }
+    ],
+    "corrected": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.08968, 0.082738, 0.166202, 7],
+        "coldMs": [0.468212, 0.419147, 2.959399, 7],
+        "compositionMs": [0.075398, 0.068242, 0.143678, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.151127, 2.886917, 11.045021, 7],
+          "startup3": [0.72953, 0.65117, 3.607134, 7],
+          "burst8": [0.730139, 0.673142, 1.498997, 7],
+          "recovery2": [0.17817, 0.166524, 7.829343, 7],
+          "forced1": [0.08507, 0.083507, 0.174756, 7],
+          "forcedRecovery2": [0.180304, 0.166594, 0.329231, 7],
+          "localized2": [0.300607, 0.263881, 0.658442, 7]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.161808, 0.153418, 0.22096, 7],
+        "coldMs": [0.480701, 0.42725, 0.718432, 7],
+        "compositionMs": [0.130402, 0.123843, 0.175022, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.49908, 3.370059, 5.560514, 7],
+          "startup3": [0.637479, 0.63026, 0.993089, 7],
+          "burst8": [1.316613, 1.180875, 2.32173, 7],
+          "recovery2": [0.172322, 0.170679, 0.237922, 7],
+          "forced1": [0.089686, 0.084658, 0.12533, 7],
+          "forcedRecovery2": [0.179703, 0.170259, 0.260365, 7],
+          "localized2": [0.249779, 0.246815, 0.369502, 7]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.207886, 0.204156, 0.246627, 7],
+        "coldMs": [0.746194, 0.63758, 2.314058, 7],
+        "compositionMs": [0.188134, 0.18475, 0.224658, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [160, 160, 160, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [6.781929, 6.385939, 19.272945, 7],
+          "startup3": [1.224612, 1.083787, 3.250723, 7],
+          "burst8": [1.793406, 1.712925, 4.328041, 7],
+          "recovery2": [0.429253, 0.400969, 1.003637, 7],
+          "forced1": [0.213175, 0.202358, 0.507672, 7],
+          "forcedRecovery2": [0.416884, 0.404275, 1.234487, 7],
+          "localized2": [0.457175, 0.40781, 0.990215, 7]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.224543, 0.215848, 0.233669, 7],
+        "coldMs": [0.504036, 0.470224, 0.822811, 7],
+        "compositionMs": [0.090885, 0.085555, 0.095467, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.14351, 3.998106, 7.998126, 7],
+          "startup3": [0.668276, 0.602396, 0.811364, 7],
+          "burst8": [1.965819, 1.752484, 5.645502, 7],
+          "recovery2": [0.177981, 0.170819, 0.214426, 7],
+          "forced1": [0.085339, 0.084198, 0.141556, 7],
+          "forcedRecovery2": [0.17077, 0.167233, 0.207425, 7],
+          "localized2": [0.275008, 0.262489, 0.346377, 7]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [1.464864, 1.440582, 1.763457, 7],
+        "coldMs": [0.44693, 0.420509, 0.519549, 7],
+        "compositionMs": [0.262194, 0.251802, 0.266653, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [16.916255, 13.253771, 22.430889, 7],
+          "startup3": [0.64526, 0.613884, 0.723729, 7],
+          "burst8": [14.550208, 10.949487, 19.831941, 7],
+          "recovery2": [0.180895, 0.178541, 0.238863, 7],
+          "forced1": [0.089296, 0.084899, 0.112541, 7],
+          "forcedRecovery2": [0.180094, 0.169538, 0.206904, 7],
+          "localized2": [0.290682, 0.282079, 0.336431, 7]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.083863, 0.082238, 0.100145, 7],
+        "coldMs": [0.441721, 0.426698, 0.466339, 7],
+        "compositionMs": [0.069568, 0.068178, 0.084242, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [80, 80, 80, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [2.891755, 2.76971, 3.220117, 7],
+          "startup3": [0.614375, 0.587012, 0.700245, 7],
+          "burst8": [0.708126, 0.670908, 0.774849, 7],
+          "recovery2": [0.178, 0.167294, 0.185812, 7],
+          "forced1": [0.089196, 0.082535, 0.131439, 7],
+          "forcedRecovery2": [0.171891, 0.165431, 0.21014, 7],
+          "localized2": [0.272715, 0.244231, 0.296482, 7]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.086528, 0.083099, 0.112824, 7],
+        "coldMs": [0.49957, 0.447541, 0.801018, 7],
+        "compositionMs": [0.071243, 0.068785, 0.098438, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.02397, 2.860537, 6.446047, 7],
+          "startup3": [0.680064, 0.625241, 0.945807, 7],
+          "burst8": [0.683768, 0.674583, 3.963786, 7],
+          "recovery2": [0.169187, 0.165602, 0.190991, 7],
+          "forced1": [0.086331, 0.082796, 0.138911, 7],
+          "forcedRecovery2": [0.17109, 0.165732, 0.195787, 7],
+          "localized2": [0.280487, 0.266755, 0.334448, 7]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.085436, 0.084502, 0.095695, 7],
+        "coldMs": [0.468051, 0.446619, 1.126262, 7],
+        "compositionMs": [0.071152, 0.070357, 0.081325, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [81, 81, 81, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [3.026554, 2.963797, 3.815822, 7],
+          "startup3": [0.662106, 0.619293, 1.079732, 7],
+          "burst8": [0.725997, 0.687615, 0.827397, 7],
+          "recovery2": [0.173995, 0.169498, 0.241457, 7],
+          "forced1": [0.092941, 0.08561, 0.122326, 7],
+          "forcedRecovery2": [0.183659, 0.168957, 0.224041, 7],
+          "localized2": [0.276089, 0.267987, 0.306647, 7]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.123918, 0.114826, 0.174746, 7],
+        "coldMs": [0.556977, 0.520241, 2.208007, 7],
+        "compositionMs": [0.080742, 0.073594, 0.124467, 7],
+        "finishMs": [0, 0, 0, 7],
+        "callsPerFrame": [40, 40, 40, 7],
+        "fallbackFrames": [0, 0, 0, 7],
+        "retainedBytes": [0, 0, 0, 7],
+        "recomposed": [0, 0, 0, 7],
+        "transitions": {
+          "total28": [4.337366, 3.749604, 7.574053, 7],
+          "startup3": [0.887729, 0.78225, 2.656729, 7],
+          "burst8": [1.330755, 1.15056, 2.081983, 7],
+          "recovery2": [0.237501, 0.198782, 0.377415, 7],
+          "forced1": [0.115025, 0.109527, 0.208327, 7],
+          "forcedRecovery2": [0.237851, 0.204251, 0.317543, 7],
+          "localized2": [0.326306, 0.292906, 0.410974, 7]
+        }
+      }
+    ],
+    "mainLarge": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.205849, 0.201974, 0.294025, 5],
+        "coldMs": [1.187195, 1.161827, 4.461593, 5],
+        "compositionMs": [0.152533, 0.149623, 0.234094, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [6.838488, 6.798242, 15.137954, 5],
+          "startup3": [1.648736, 1.597629, 5.469105, 5],
+          "burst8": [1.606674, 1.578069, 3.100364, 5],
+          "recovery2": [0.396173, 0.387419, 0.708977, 5],
+          "forced1": [0.198302, 0.195277, 0.403674, 5],
+          "forcedRecovery2": [0.419318, 0.394118, 0.711252, 5],
+          "localized2": [0.576437, 0.553201, 1.160634, 5]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.363823, 0.326383, 0.374186, 5],
+        "coldMs": [1.237682, 1.136688, 1.492159, 5],
+        "compositionMs": [0.295424, 0.264619, 0.310075, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.828986, 7.601456, 12.936179, 5],
+          "startup3": [1.665913, 1.5594, 2.4404, 5],
+          "burst8": [2.560305, 2.534544, 4.806287, 5],
+          "recovery2": [0.402812, 0.392247, 0.707526, 5],
+          "forced1": [0.205943, 0.194646, 0.490496, 5],
+          "forcedRecovery2": [0.40079, 0.392367, 0.60542, 5],
+          "localized2": [0.521303, 0.516877, 0.881561, 5]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.885087, 0.874287, 0.915398, 5],
+        "coldMs": [2.646894, 2.375381, 5.441964, 5],
+        "compositionMs": [0.825088, 0.813131, 0.851249, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [800, 800, 800, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [27.873486, 24.137446, 40.31722, 5],
+          "startup3": [4.269631, 3.927521, 10.188589, 5],
+          "burst8": [7.175679, 6.568535, 11.178593, 5],
+          "recovery2": [1.70348, 1.592522, 2.069766, 5],
+          "forced1": [0.824153, 0.784503, 1.01938, 5],
+          "forcedRecovery2": [1.6573, 1.576396, 2.307327, 5],
+          "localized2": [1.658922, 1.575375, 2.020923, 5]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.547108, 0.528136, 0.571205, 5],
+        "coldMs": [1.17093, 1.121505, 1.673133, 5],
+        "compositionMs": [0.205244, 0.189578, 0.229737, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [9.609843, 9.406111, 10.238413, 5],
+          "startup3": [1.70287, 1.647704, 1.786755, 5],
+          "burst8": [4.16464, 4.129598, 4.712225, 5],
+          "recovery2": [0.419628, 0.396323, 0.478968, 5],
+          "forced1": [0.205943, 0.198492, 0.260556, 5],
+          "forcedRecovery2": [0.419387, 0.402702, 0.461331, 5],
+          "localized2": [0.568475, 0.548774, 0.591659, 5]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [3.23867, 3.146463, 3.799019, 5],
+        "coldMs": [1.102376, 1.056486, 1.287998, 5],
+        "compositionMs": [0.570261, 0.560698, 0.70521, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [36.131777, 31.235284, 40.591192, 5],
+          "startup3": [1.567644, 1.542443, 1.626844, 5],
+          "burst8": [30.11344, 25.862826, 35.263969, 5],
+          "recovery2": [0.421762, 0.415442, 0.468762, 5],
+          "forced1": [0.200986, 0.198422, 0.204672, 5],
+          "forcedRecovery2": [0.41411, 0.404164, 0.419288, 5],
+          "localized2": [0.580663, 0.569446, 0.628827, 5]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.21491, 0.202665, 0.252063, 5],
+        "coldMs": [1.246475, 1.13189, 2.73625, 5],
+        "compositionMs": [0.159259, 0.150435, 0.187176, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [6.942483, 6.690912, 6.990989, 5],
+          "startup3": [1.638961, 1.541613, 1.673444, 5],
+          "burst8": [1.669928, 1.601384, 1.694406, 5],
+          "recovery2": [0.401159, 0.389112, 0.440941, 5],
+          "forced1": [0.199663, 0.196008, 0.210049, 5],
+          "forcedRecovery2": [0.397464, 0.391636, 0.406968, 5],
+          "localized2": [0.566332, 0.535414, 0.584809, 5]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.21728, 0.199467, 0.254395, 5],
+        "coldMs": [1.639022, 1.064308, 1.857924, 5],
+        "compositionMs": [0.159517, 0.148239, 0.19944, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.025993, 6.764341, 7.592494, 5],
+          "startup3": [1.662397, 1.563637, 2.039712, 5],
+          "burst8": [1.772105, 1.618439, 1.838537, 5],
+          "recovery2": [0.404575, 0.392046, 0.45993, 5],
+          "forced1": [0.19697, 0.195868, 0.218372, 5],
+          "forcedRecovery2": [0.393759, 0.391134, 0.481001, 5],
+          "localized2": [0.597559, 0.57237, 0.702718, 5]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.23885, 0.210064, 0.264528, 5],
+        "coldMs": [1.178101, 1.149327, 1.989415, 5],
+        "compositionMs": [0.185377, 0.154183, 0.207322, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.858555, 6.757394, 10.096647, 5],
+          "startup3": [1.59239, 1.540872, 2.200345, 5],
+          "burst8": [1.842572, 1.602357, 4.718663, 5],
+          "recovery2": [0.438996, 0.39416, 2.750781, 5],
+          "forced1": [0.216048, 0.196699, 0.260546, 5],
+          "forcedRecovery2": [0.418906, 0.393618, 0.421741, 5],
+          "localized2": [0.633674, 0.547012, 0.666734, 5]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.36971, 0.349101, 0.40805, 5],
+        "coldMs": [1.329051, 1.169738, 3.180965, 5],
+        "compositionMs": [0.21459, 0.199444, 0.235822, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [80, 80, 80, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [9.489906, 8.668209, 12.881401, 5],
+          "startup3": [1.826598, 1.647625, 4.059991, 5],
+          "burst8": [3.00037, 2.855781, 3.65799, 5],
+          "recovery2": [0.503005, 0.459108, 0.667865, 5],
+          "forced1": [0.249839, 0.24333, 0.315279, 5],
+          "forcedRecovery2": [0.511397, 0.470025, 0.589867, 5],
+          "localized2": [0.690911, 0.578349, 0.713324, 5]
+        }
+      }
+    ],
+    "priorLarge": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.22802, 0.22321, 0.263129, 5],
+        "coldMs": [1.161336, 1.143348, 1.229619, 5],
+        "compositionMs": [0.174237, 0.17053, 0.208149, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.791193, 7.532953, 22.526834, 5],
+          "startup3": [1.827708, 1.615816, 8.153856, 5],
+          "burst8": [1.865216, 1.853469, 5.637681, 5],
+          "recovery2": [0.44789, 0.447169, 1.376462, 5],
+          "forced1": [0.231222, 0.219875, 0.616467, 5],
+          "forcedRecovery2": [0.483645, 0.449063, 1.107634, 5],
+          "localized2": [0.655647, 0.616387, 3.245284, 5]
+        }
+      },
+      {
+        "workload": "unchanged",
+        "enabled": true,
+        "frameMs": [0.08989, 0.078735, 0.10999, 5],
+        "coldMs": [2.896783, 2.819607, 3.556608, 5],
+        "compositionMs": [0.055631, 0.043292, 0.075562, 5],
+        "finishMs": [0.000336, 0.000322, 0.0004, 5],
+        "callsPerFrame": [0, 0, 0, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1183800, 1183800, 1183800, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [10.125323, 7.429484, 18.24691, 5],
+          "startup3": [3.548305, 3.134466, 8.296662, 5],
+          "burst8": [0.602747, 0.58472, 2.187946, 5],
+          "recovery2": [0.152912, 0.143798, 0.463765, 5],
+          "forced1": [3.156929, 2.299485, 5.557159, 5],
+          "forcedRecovery2": [0.194145, 0.154515, 0.273426, 5],
+          "localized2": [0.570568, 0.404364, 0.741788, 5]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.347119, 0.342607, 0.395243, 5],
+        "coldMs": [1.141815, 1.116817, 1.850934, 5],
+        "compositionMs": [0.285675, 0.27923, 0.325657, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [8.574935, 8.006789, 12.018832, 5],
+          "startup3": [1.668296, 1.560842, 1.972378, 5],
+          "burst8": [2.951638, 2.594485, 4.495965, 5],
+          "recovery2": [0.47389, 0.44088, 0.754947, 5],
+          "forced1": [0.231392, 0.217601, 0.403854, 5],
+          "forcedRecovery2": [0.450575, 0.441041, 0.812977, 5],
+          "localized2": [0.567352, 0.530146, 0.664921, 5]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": true,
+        "frameMs": [0.19057, 0.183278, 0.206213, 5],
+        "coldMs": [3.059311, 2.981022, 3.870554, 5],
+        "compositionMs": [0.148885, 0.14043, 0.156989, 5],
+        "finishMs": [0.00143, 0.001384, 0.001649, 5],
+        "callsPerFrame": [1, 1, 1, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1186968, 1186968, 1186968, 5],
+        "recomposed": [1, 1, 1, 5],
+        "transitions": {
+          "total28": [9.983722, 7.601329, 12.543105, 5],
+          "startup3": [3.2044, 2.923495, 5.069488, 5],
+          "burst8": [2.017398, 1.550228, 2.63013, 5],
+          "recovery2": [0.221216, 0.140554, 0.259744, 5],
+          "forced1": [2.317513, 1.742449, 5.287207, 5],
+          "forcedRecovery2": [0.167334, 0.145852, 0.221706, 5],
+          "localized2": [0.406609, 0.370233, 0.496624, 5]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.90628, 0.887969, 0.94825, 5],
+        "coldMs": [2.390434, 2.213495, 2.586372, 5],
+        "compositionMs": [0.845516, 0.825998, 0.884667, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [800, 800, 800, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [31.065608, 26.368271, 38.964414, 5],
+          "startup3": [4.405788, 4.278164, 9.608315, 5],
+          "burst8": [10.362803, 7.200077, 13.475415, 5],
+          "recovery2": [1.75609, 1.704111, 5.0246, 5],
+          "forced1": [0.878476, 0.865506, 0.924706, 5],
+          "forcedRecovery2": [1.75627, 1.733355, 1.892698, 5],
+          "localized2": [1.815209, 1.755169, 2.162888, 5]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": true,
+        "frameMs": [0.262083, 0.25747, 0.448832, 5],
+        "coldMs": [18.784096, 16.176983, 36.067982, 5],
+        "compositionMs": [0.220679, 0.214069, 0.401063, 5],
+        "finishMs": [0.036315, 0.032655, 0.039092, 5],
+        "callsPerFrame": [1, 1, 1, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [2524992, 2524992, 2524992, 5],
+        "recomposed": [52, 52, 52, 5],
+        "transitions": {
+          "total28": [42.647758, 37.421346, 58.563479, 5],
+          "startup3": [18.620697, 16.814872, 21.413793, 5],
+          "burst8": [2.051659, 1.998507, 2.801168, 5],
+          "recovery2": [0.476955, 0.394179, 1.311715, 5],
+          "forced1": [16.39242, 15.26759, 33.59342, 5],
+          "forcedRecovery2": [0.480171, 0.422763, 0.574043, 5],
+          "localized2": [0.498308, 0.450355, 0.7829, 5]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.552616, 0.54937, 0.557238, 5],
+        "coldMs": [1.182698, 1.148817, 1.917234, 5],
+        "compositionMs": [0.211339, 0.205157, 0.216617, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [10.196564, 9.775754, 12.190944, 5],
+          "startup3": [1.680805, 1.574604, 1.843914, 5],
+          "burst8": [4.339677, 4.213878, 5.180024, 5],
+          "recovery2": [0.452088, 0.448002, 1.784473, 5],
+          "forced1": [0.224652, 0.212643, 0.235758, 5],
+          "forcedRecovery2": [0.490346, 0.456464, 0.50725, 5],
+          "localized2": [0.641385, 0.557007, 0.698893, 5]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": true,
+        "frameMs": [0.959975, 0.900347, 0.975716, 5],
+        "coldMs": [3.000071, 2.853518, 4.216731, 5],
+        "compositionMs": [0.625439, 0.577861, 0.64752, 5],
+        "finishMs": [0.330609, 0.322971, 0.334317, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1690680, 1690680, 1690680, 5],
+        "recomposed": [19200, 19200, 19200, 5],
+        "transitions": {
+          "total28": [15.632506, 13.701269, 18.449241, 5],
+          "startup3": [3.680005, 2.98653, 4.972799, 5],
+          "burst8": [10.149722, 8.908302, 11.333122, 5],
+          "recovery2": [0.156649, 0.138761, 0.257321, 5],
+          "forced1": [0.271232, 0.268148, 0.387599, 5],
+          "forcedRecovery2": [0.161034, 0.142366, 0.212774, 5],
+          "localized2": [0.435131, 0.371724, 1.136648, 5]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [3.267237, 3.212887, 3.440024, 5],
+        "coldMs": [1.125711, 1.055644, 1.969764, 5],
+        "compositionMs": [0.594986, 0.572514, 0.649143, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [31.820034, 28.993326, 40.094806, 5],
+          "startup3": [1.548575, 1.486489, 2.568384, 5],
+          "burst8": [26.028118, 23.231506, 34.451264, 5],
+          "recovery2": [0.471867, 0.458307, 0.481753, 5],
+          "forced1": [0.229829, 0.221397, 0.232794, 5],
+          "forcedRecovery2": [0.469753, 0.448912, 0.498167, 5],
+          "localized2": [0.622446, 0.606142, 0.86182, 5]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": true,
+        "frameMs": [3.699716, 3.436395, 3.815714, 5],
+        "coldMs": [3.410435, 2.702419, 4.078911, 5],
+        "compositionMs": [0.960913, 0.877383, 1.045919, 5],
+        "finishMs": [0.279369, 0.26558, 0.29061, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1690680, 1690680, 1690680, 5],
+        "recomposed": [19200, 19200, 19200, 5],
+        "transitions": {
+          "total28": [42.140437, 35.763748, 50.291957, 5],
+          "startup3": [3.975013, 2.998179, 5.439521, 5],
+          "burst8": [36.280275, 30.221533, 44.331106, 5],
+          "recovery2": [0.161706, 0.155857, 0.212874, 5],
+          "forced1": [0.281047, 0.273266, 0.406328, 5],
+          "forcedRecovery2": [0.158651, 0.158492, 0.232373, 5],
+          "localized2": [0.399777, 0.365006, 0.482454, 5]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.224538, 0.222827, 0.267501, 5],
+        "coldMs": [1.159272, 1.064869, 1.196609, 5],
+        "compositionMs": [0.171414, 0.169614, 0.205646, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.267479, 7.175649, 8.471015, 5],
+          "startup3": [1.567794, 1.507532, 1.656689, 5],
+          "burst8": [1.773908, 1.757933, 1.933059, 5],
+          "recovery2": [0.447381, 0.429282, 0.455032, 5],
+          "forced1": [0.22363, 0.216379, 0.493751, 5],
+          "forcedRecovery2": [0.446149, 0.43363, 0.48732, 5],
+          "localized2": [0.607594, 0.563186, 1.338314, 5]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": true,
+        "frameMs": [0.287262, 0.268439, 0.389277, 5],
+        "coldMs": [2.929493, 2.798855, 4.627835, 5],
+        "compositionMs": [0.252249, 0.234653, 0.353912, 5],
+        "finishMs": [0.028656, 0.028067, 0.029565, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1690680, 1690680, 1690680, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [11.781961, 9.232534, 16.476606, 5],
+          "startup3": [3.858837, 3.112582, 6.067014, 5],
+          "burst8": [4.669168, 4.094274, 8.819165, 5],
+          "recovery2": [0.159342, 0.14476, 0.214707, 5],
+          "forced1": [0.295259, 0.263952, 0.301959, 5],
+          "forcedRecovery2": [0.178541, 0.150138, 0.18407, 5],
+          "localized2": [0.43468, 0.419518, 0.544377, 5]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.226776, 0.219633, 0.273725, 5],
+        "coldMs": [1.198041, 1.141826, 1.49299, 5],
+        "compositionMs": [0.173641, 0.166664, 0.219444, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.64195, 7.31431, 8.302412, 5],
+          "startup3": [1.707276, 1.556435, 2.485948, 5],
+          "burst8": [1.802851, 1.780218, 1.833596, 5],
+          "recovery2": [0.441972, 0.438787, 0.444245, 5],
+          "forced1": [0.220295, 0.218011, 0.245864, 5],
+          "forcedRecovery2": [0.457055, 0.443925, 0.514212, 5],
+          "localized2": [0.625991, 0.584499, 0.836422, 5]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": true,
+        "frameMs": [0.273781, 0.269324, 0.287674, 5],
+        "coldMs": [2.932859, 2.687175, 3.827709, 5],
+        "compositionMs": [0.213954, 0.211156, 0.227561, 5],
+        "finishMs": [0.000246, 0.000213, 0.000273, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [581992, 581992, 581992, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [11.849793, 10.27515, 13.250671, 5],
+          "startup3": [4.540833, 3.356902, 6.142598, 5],
+          "burst8": [2.254165, 2.164231, 2.4063, 5],
+          "recovery2": [0.553962, 0.548424, 0.574352, 5],
+          "forced1": [0.274958, 0.266796, 0.311974, 5],
+          "forcedRecovery2": [0.545909, 0.542044, 0.575034, 5],
+          "localized2": [0.726684, 0.695658, 0.760006, 5]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.229145, 0.226335, 0.264855, 5],
+        "coldMs": [1.204752, 1.154676, 1.663349, 5],
+        "compositionMs": [0.174226, 0.172861, 0.210996, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.706407, 7.490637, 11.59643, 5],
+          "startup3": [1.76271, 1.680985, 2.068926, 5],
+          "burst8": [1.817111, 1.782391, 1.856214, 5],
+          "recovery2": [0.445748, 0.442002, 0.465578, 5],
+          "forced1": [0.228217, 0.220485, 0.443134, 5],
+          "forcedRecovery2": [0.459919, 0.439398, 0.877024, 5],
+          "localized2": [0.617339, 0.606462, 0.687605, 5]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": true,
+        "frameMs": [0.279112, 0.273787, 0.28124, 5],
+        "coldMs": [2.867149, 2.757562, 4.520933, 5],
+        "compositionMs": [0.220064, 0.214054, 0.221082, 5],
+        "finishMs": [0.000198, 0.000183, 0.000258, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [581992, 581992, 581992, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [11.030242, 10.450304, 16.57865, 5],
+          "startup3": [3.712994, 3.276292, 5.097409, 5],
+          "burst8": [2.33639, 2.176558, 2.80133, 5],
+          "recovery2": [0.540522, 0.536756, 0.635796, 5],
+          "forced1": [0.285854, 0.270441, 0.365266, 5],
+          "forcedRecovery2": [0.543296, 0.538448, 0.557528, 5],
+          "localized2": [0.780557, 0.700736, 0.797743, 5]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.339986, 0.332932, 0.435135, 5],
+        "coldMs": [1.185983, 1.150108, 1.553222, 5],
+        "compositionMs": [0.192914, 0.185047, 0.2716, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [80, 80, 80, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [10.877609, 9.528356, 14.328862, 5],
+          "startup3": [2.047123, 1.786726, 4.500202, 5],
+          "burst8": [3.429693, 3.072932, 4.631041, 5],
+          "recovery2": [0.579972, 0.476004, 0.778814, 5],
+          "forced1": [0.36204, 0.261177, 0.472779, 5],
+          "forcedRecovery2": [0.575695, 0.526441, 0.846817, 5],
+          "localized2": [0.681886, 0.654344, 0.768077, 5]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": true,
+        "frameMs": [0.588914, 0.563979, 0.67832, 5],
+        "coldMs": [2.527893, 2.075285, 2.949935, 5],
+        "compositionMs": [0.456409, 0.434601, 0.547564, 5],
+        "finishMs": [0.220939, 0.220174, 0.222744, 5],
+        "callsPerFrame": [80, 80, 80, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1138416, 1138416, 1138416, 5],
+        "recomposed": [3941, 3941, 3941, 5],
+        "transitions": {
+          "total28": [14.28016, 12.195708, 26.546847, 5],
+          "startup3": [4.999301, 3.837594, 10.840881, 5],
+          "burst8": [5.728941, 4.538259, 12.043999, 5],
+          "recovery2": [0.389152, 0.278202, 0.480039, 5],
+          "forced1": [0.319335, 0.24963, 0.401791, 5],
+          "forcedRecovery2": [0.361199, 0.291352, 0.38157, 5],
+          "localized2": [0.489965, 0.377323, 0.502714, 5]
+        }
+      }
+    ],
+    "finalLarge": [
+      {
+        "workload": "unchanged",
+        "enabled": false,
+        "frameMs": [0.228613, 0.226457, 0.278691, 5],
+        "coldMs": [1.268918, 1.181786, 1.297882, 5],
+        "compositionMs": [0.173714, 0.170732, 0.220842, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.711454, 7.383355, 16.179005, 5],
+          "startup3": [1.682455, 1.65128, 6.020608, 5],
+          "burst8": [1.825393, 1.767914, 3.143457, 5],
+          "recovery2": [0.442002, 0.42815, 0.73723, 5],
+          "forced1": [0.219474, 0.215898, 0.419187, 5],
+          "forcedRecovery2": [0.453229, 0.430975, 0.7436, 5],
+          "localized2": [0.629826, 0.606571, 1.314186, 5]
+        }
+      },
+      {
+        "workload": "unchanged",
+        "enabled": true,
+        "frameMs": [0.082992, 0.076848, 0.125145, 5],
+        "coldMs": [2.946827, 2.837181, 4.311751, 5],
+        "compositionMs": [0.045879, 0.041722, 0.08517, 5],
+        "finishMs": [0.000341, 0.000315, 0.00038, 5],
+        "callsPerFrame": [0, 0, 0, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1183800, 1183800, 1183800, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.527895, 5.924472, 14.523865, 5],
+          "startup3": [4.52155, 3.028221, 10.735781, 5],
+          "burst8": [0.632892, 0.602015, 1.970373, 5],
+          "recovery2": [0.206443, 0.15138, 0.419868, 5],
+          "forced1": [0.278573, 0.268808, 0.351734, 5],
+          "forcedRecovery2": [0.679623, 0.604238, 0.961991, 5],
+          "localized2": [0.47431, 0.437775, 0.989474, 5]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": false,
+        "frameMs": [0.337883, 0.329736, 0.39317, 5],
+        "coldMs": [1.170809, 1.142506, 1.90211, 5],
+        "compositionMs": [0.274935, 0.267799, 0.326378, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [8.214892, 7.9926, 10.058746, 5],
+          "startup3": [1.569204, 1.561082, 2.028823, 5],
+          "burst8": [2.735366, 2.608171, 3.636125, 5],
+          "recovery2": [0.448292, 0.432738, 0.546551, 5],
+          "forced1": [0.220935, 0.214516, 0.261517, 5],
+          "forcedRecovery2": [0.444856, 0.430744, 0.484697, 5],
+          "localized2": [0.563096, 0.540361, 0.685582, 5]
+        }
+      },
+      {
+        "workload": "localized-text",
+        "enabled": true,
+        "frameMs": [0.218509, 0.213153, 0.252455, 5],
+        "coldMs": [3.109255, 2.753504, 4.085357, 5],
+        "compositionMs": [0.17203, 0.169363, 0.207941, 5],
+        "finishMs": [0.001556, 0.001521, 0.001621, 5],
+        "callsPerFrame": [1, 1, 1, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [1186968, 1186968, 1186968, 5],
+        "recomposed": [1, 1, 1, 5],
+        "transitions": {
+          "total28": [8.918244, 8.719633, 10.198875, 5],
+          "startup3": [4.627922, 3.438784, 5.052196, 5],
+          "burst8": [2.406716, 2.059599, 2.840206, 5],
+          "recovery2": [0.195907, 0.152843, 0.25657, 5],
+          "forced1": [0.279876, 0.270692, 0.300997, 5],
+          "forcedRecovery2": [0.636748, 0.600432, 0.762348, 5],
+          "localized2": [0.431586, 0.383973, 0.508843, 5]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": false,
+        "frameMs": [0.915801, 0.911648, 0.952875, 5],
+        "coldMs": [2.437003, 2.356971, 4.072067, 5],
+        "compositionMs": [0.85455, 0.849848, 0.883916, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [800, 800, 800, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [33.493909, 26.782573, 47.760036, 5],
+          "startup3": [4.448719, 4.068692, 9.315133, 5],
+          "burst8": [7.782105, 7.2465, 9.658287, 5],
+          "recovery2": [1.792033, 1.788227, 5.82448, 5],
+          "forced1": [1.125149, 0.877533, 1.932166, 5],
+          "forcedRecovery2": [2.384854, 1.69833, 3.658809, 5],
+          "localized2": [1.967961, 1.805703, 3.001631, 5]
+        }
+      },
+      {
+        "workload": "transparent-outside",
+        "enabled": true,
+        "frameMs": [0.331101, 0.292646, 0.501319, 5],
+        "coldMs": [16.577327, 16.112261, 39.062481, 5],
+        "compositionMs": [0.288466, 0.251004, 0.443754, 5],
+        "finishMs": [0.036565, 0.034499, 0.075062, 5],
+        "callsPerFrame": [1, 1, 1, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [2524992, 2524992, 2524992, 5],
+        "recomposed": [52, 52, 52, 5],
+        "transitions": {
+          "total28": [28.987725, 27.415666, 41.537963, 5],
+          "startup3": [19.618159, 18.492918, 20.675293, 5],
+          "burst8": [2.193972, 2.10608, 3.382448, 5],
+          "recovery2": [0.484837, 0.38878, 0.634574, 5],
+          "forced1": [1.00061, 0.94084, 1.296199, 5],
+          "forcedRecovery2": [2.389711, 2.229487, 3.537987, 5],
+          "localized2": [0.501652, 0.442112, 0.624469, 5]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": false,
+        "frameMs": [0.549265, 0.54526, 0.564032, 5],
+        "coldMs": [1.286194, 1.177058, 3.420928, 5],
+        "compositionMs": [0.212287, 0.202101, 0.218598, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [9.967493, 9.882577, 17.954128, 5],
+          "startup3": [1.683198, 1.565919, 1.700954, 5],
+          "burst8": [4.460679, 4.240624, 12.203624, 5],
+          "recovery2": [0.444345, 0.440319, 0.457585, 5],
+          "forced1": [0.215217, 0.212202, 0.222618, 5],
+          "forcedRecovery2": [0.437916, 0.434561, 0.456524, 5],
+          "localized2": [0.643197, 0.630329, 0.690909, 5]
+        }
+      },
+      {
+        "workload": "layout-move",
+        "enabled": true,
+        "frameMs": [0.628643, 0.587236, 0.985426, 5],
+        "coldMs": [3.031135, 2.920827, 4.089584, 5],
+        "compositionMs": [0.275629, 0.24543, 0.464661, 5],
+        "finishMs": [0.000319, 0.00031, 0.000533, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [1183800, 1183800, 1183800, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [11.11976, 10.051933, 17.818911, 5],
+          "startup3": [3.992636, 2.91635, 8.11531, 5],
+          "burst8": [4.585427, 4.348755, 6.820864, 5],
+          "recovery2": [0.620773, 0.585931, 1.306605, 5],
+          "forced1": [0.254537, 0.240525, 0.288458, 5],
+          "forcedRecovery2": [0.633733, 0.582365, 0.740345, 5],
+          "localized2": [0.443694, 0.418857, 0.575395, 5]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": false,
+        "frameMs": [3.219203, 3.150469, 3.337402, 5],
+        "coldMs": [1.183158, 1.116897, 1.245833, 5],
+        "compositionMs": [0.583096, 0.568055, 0.616666, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [37.57756, 27.939449, 52.445744, 5],
+          "startup3": [1.648956, 1.530255, 2.203828, 5],
+          "burst8": [28.168587, 22.380743, 45.997128, 5],
+          "recovery2": [0.4878, 0.465197, 0.817453, 5],
+          "forced1": [0.221366, 0.217992, 0.230821, 5],
+          "forcedRecovery2": [0.452648, 0.441241, 0.50023, 5],
+          "localized2": [0.63196, 0.588976, 0.65849, 5]
+        }
+      },
+      {
+        "workload": "all-changed",
+        "enabled": true,
+        "frameMs": [3.315616, 3.164801, 3.653673, 5],
+        "coldMs": [2.947028, 2.700463, 3.597687, 5],
+        "compositionMs": [0.596664, 0.58553, 0.689662, 5],
+        "finishMs": [0.000736, 0.00071, 0.000837, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [1183800, 1183800, 1183800, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [36.766492, 28.653725, 46.340187, 5],
+          "startup3": [3.044675, 2.80403, 7.373224, 5],
+          "burst8": [30.808471, 22.990662, 33.185969, 5],
+          "recovery2": [0.650559, 0.628645, 0.775068, 5],
+          "forced1": [0.25705, 0.248198, 0.261688, 5],
+          "forcedRecovery2": [0.645821, 0.59851, 3.333444, 5],
+          "localized2": [0.481041, 0.416923, 0.603167, 5]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": false,
+        "frameMs": [0.222481, 0.217715, 0.302333, 5],
+        "coldMs": [1.195006, 1.155796, 1.969312, 5],
+        "compositionMs": [0.16874, 0.165618, 0.246127, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.202313, 7.112415, 8.613218, 5],
+          "startup3": [1.54009, 1.495142, 1.728517, 5],
+          "burst8": [1.776449, 1.732593, 2.25818, 5],
+          "recovery2": [0.438547, 0.431396, 0.5388, 5],
+          "forced1": [0.223961, 0.214155, 0.247456, 5],
+          "forcedRecovery2": [0.435321, 0.430454, 0.555425, 5],
+          "localized2": [0.590777, 0.564167, 0.675617, 5]
+        }
+      },
+      {
+        "workload": "generic-request",
+        "enabled": true,
+        "frameMs": [0.22861, 0.224511, 0.235839, 5],
+        "coldMs": [3.094692, 2.789929, 10.137604, 5],
+        "compositionMs": [0.175091, 0.172173, 0.181016, 5],
+        "finishMs": [0.000223, 0.000206, 0.000253, 5],
+        "callsPerFrame": [160, 160, 160, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [1183800, 1183800, 1183800, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.663142, 7.455407, 8.666446, 5],
+          "startup3": [3.024374, 2.835229, 3.809708, 5],
+          "burst8": [1.859154, 1.806474, 2.039328, 5],
+          "recovery2": [0.624439, 0.607122, 0.660924, 5],
+          "forced1": [0.251131, 0.240005, 0.252344, 5],
+          "forcedRecovery2": [0.607332, 0.584068, 0.662377, 5],
+          "localized2": [0.462481, 0.410133, 0.523756, 5]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": false,
+        "frameMs": [0.226084, 0.218372, 0.299072, 5],
+        "coldMs": [1.236879, 1.139361, 1.300897, 5],
+        "compositionMs": [0.171494, 0.16565, 0.245042, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.637293, 7.163855, 9.258858, 5],
+          "startup3": [1.712752, 1.550606, 1.943573, 5],
+          "burst8": [1.809911, 1.768417, 1.823551, 5],
+          "recovery2": [0.437575, 0.433849, 0.481351, 5],
+          "forced1": [0.222939, 0.216198, 0.255298, 5],
+          "forcedRecovery2": [0.456955, 0.449674, 1.027471, 5],
+          "localized2": [0.620864, 0.577918, 0.732202, 5]
+        }
+      },
+      {
+        "workload": "raw-fallback",
+        "enabled": true,
+        "frameMs": [0.229475, 0.227283, 0.267404, 5],
+        "coldMs": [2.943452, 2.787225, 3.036203, 5],
+        "compositionMs": [0.176543, 0.174198, 0.204773, 5],
+        "finishMs": [0.000238, 0.000228, 0.000294, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [581992, 581992, 581992, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [9.32196, 9.02179, 13.332145, 5],
+          "startup3": [3.358072, 3.242036, 6.39719, 5],
+          "burst8": [1.911333, 1.814358, 2.531485, 5],
+          "recovery2": [0.460841, 0.442372, 0.514342, 5],
+          "forced1": [0.231872, 0.218932, 0.265033, 5],
+          "forcedRecovery2": [0.455392, 0.438155, 0.488091, 5],
+          "localized2": [0.65174, 0.578408, 0.724411, 5]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": false,
+        "frameMs": [0.226766, 0.218885, 0.305021, 5],
+        "coldMs": [1.219533, 1.191199, 1.913177, 5],
+        "compositionMs": [0.171907, 0.166256, 0.234927, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [7.865084, 7.271771, 8.81926, 5],
+          "startup3": [1.685831, 1.571779, 2.041191, 5],
+          "burst8": [1.834309, 1.760385, 1.941852, 5],
+          "recovery2": [0.466069, 0.430004, 0.476553, 5],
+          "forced1": [0.232183, 0.216549, 0.252624, 5],
+          "forcedRecovery2": [0.469954, 0.438607, 0.760596, 5],
+          "localized2": [0.614564, 0.568593, 1.191861, 5]
+        }
+      },
+      {
+        "workload": "image-fallback",
+        "enabled": true,
+        "frameMs": [0.238685, 0.227219, 0.261952, 5],
+        "coldMs": [2.85611, 2.796189, 5.384, 5],
+        "compositionMs": [0.181389, 0.174073, 0.200858, 5],
+        "finishMs": [0.00019, 0.000163, 0.000215, 5],
+        "callsPerFrame": [161, 161, 161, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [581992, 581992, 581992, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [10.616872, 9.030636, 11.203723, 5],
+          "startup3": [4.577115, 3.195246, 4.81748, 5],
+          "burst8": [1.936631, 1.807148, 2.348008, 5],
+          "recovery2": [0.45405, 0.444917, 0.472277, 5],
+          "forced1": [0.241617, 0.232003, 0.247055, 5],
+          "forcedRecovery2": [0.470605, 0.454129, 0.495494, 5],
+          "localized2": [0.615886, 0.590247, 0.633292, 5]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": false,
+        "frameMs": [0.3632, 0.326359, 0.439803, 5],
+        "coldMs": [1.247215, 1.135326, 1.489864, 5],
+        "compositionMs": [0.204167, 0.180913, 0.276006, 5],
+        "finishMs": [0, 0, 0, 5],
+        "callsPerFrame": [80, 80, 80, 5],
+        "fallbackFrames": [0, 0, 0, 5],
+        "retainedBytes": [0, 0, 0, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [13.324034, 10.2129, 14.455126, 5],
+          "startup3": [1.944234, 1.738452, 5.52938, 5],
+          "burst8": [4.406215, 3.157959, 6.917901, 5],
+          "recovery2": [0.495633, 0.472388, 0.550748, 5],
+          "forced1": [0.258944, 0.236099, 0.497226, 5],
+          "forcedRecovery2": [0.518447, 0.467982, 0.942081, 5],
+          "localized2": [0.673043, 0.560431, 1.035754, 5]
+        }
+      },
+      {
+        "workload": "scrollbox",
+        "enabled": true,
+        "frameMs": [0.377662, 0.363766, 0.525997, 5],
+        "coldMs": [2.574842, 2.202536, 3.111537, 5],
+        "compositionMs": [0.22106, 0.211581, 0.316176, 5],
+        "finishMs": [0.000237, 0.000168, 0.000294, 5],
+        "callsPerFrame": [80, 80, 80, 5],
+        "fallbackFrames": [100, 100, 100, 5],
+        "retainedBytes": [877488, 877488, 877488, 5],
+        "recomposed": [0, 0, 0, 5],
+        "transitions": {
+          "total28": [14.409283, 11.029911, 17.888618, 5],
+          "startup3": [3.358222, 3.166071, 6.446655, 5],
+          "burst8": [3.755817, 2.983193, 5.525916, 5],
+          "recovery2": [2.037066, 1.274417, 2.25148, 5],
+          "forced1": [0.309671, 0.258072, 0.486008, 5],
+          "forcedRecovery2": [0.635586, 0.568704, 0.986909, 5],
+          "localized2": [0.438696, 0.398906, 0.771271, 5]
+        }
+      }
+    ]
+  },
+  "statFields": ["median", "min", "max", "n (null for exploratory summaries)"],
+  "precision": "milliseconds rounded to six decimal places; unrounded raw data retained locally",
+  "trials": [
+    {
+      "id": "r1-guard",
+      "head": "3dab25d1912c7d931832ca6b3d758e5336e53487",
+      "patch": "8df356407ebb8192a15748d0fb7a9bf4828e4b1cd67e7ec5e74c2729f8c18625",
+      "library": "7b62ec9f9ec28ccaf76a393048e4fd0b98bff518e4b9ce46e1c36888c2aeab20",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.030039, 0.02822, 0.030983, null],
+        [0.103905, 0.097323, 0.179883, null],
+        [0.07217, 0.063576, 0.20948, null],
+        [0.397922, 0.384593, 0.426685, null],
+        [1.721054, 1.639148, 2.255906, null],
+        [0.134157, 0.126451, 0.213009, null],
+        [0.101139, 0.097955, 0.128367, null],
+        [0.110012, 0.104325, 0.144055, null],
+        [0.251672, 0.219635, 0.317273, null]
+      ],
+      "offMs": [
+        [0.097422, 0.094068, 0.138808, null],
+        [0.16584, 0.153701, 0.197804, null],
+        [0.252102, 0.222178, 0.359436, null],
+        [0.237467, 0.236761, 0.301518, null],
+        [1.597018, 1.539645, 1.903539, null],
+        [0.094834, 0.09386, 0.13753, null],
+        [0.096687, 0.095237, 0.112014, null],
+        [0.09671, 0.094481, 0.098127, null],
+        [0.133922, 0.123551, 0.146088, null]
+      ],
+      "coldMs": [
+        [1.358934, 1.105269, 2.032036, null],
+        [1.162847, 1.028513, 1.378664, null],
+        [4.486156, 3.184097, 6.255213, null],
+        [1.601593, 1.168905, 2.789388, null],
+        [1.093151, 1.025718, 4.117685, null],
+        [1.215126, 1.074232, 1.42867, null],
+        [1.346846, 1.058508, 1.918525, null],
+        [1.231621, 1.045949, 1.40207, null],
+        [0.922201, 0.777812, 1.382971, null]
+      ],
+      "retainedBytes": [450960, 454128, 762696, 704400, 704400, 704400, 150352, 150352, 430752]
+    },
+    {
+      "id": "r2-full",
+      "head": "3dab25d1912c7d931832ca6b3d758e5336e53487",
+      "patch": "158c0fd6ff0cfeee08c785311591ca510f63f952d596953bc57462f25958df51",
+      "library": "171c0671c09f5eb128739b018a52cc1a405d6b1183965bed1dcce97604d0cd7c",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.030973, 0.030541, 0.044854, null],
+        [0.111329, 0.101065, 0.129031, null],
+        [0.070888, 0.058505, 0.098158, null],
+        [0.269496, 0.263166, 0.296815, null],
+        [1.665932, 1.616374, 1.972054, null],
+        [0.121491, 0.117995, 0.129875, null],
+        [0.120017, 0.119675, 0.126603, null],
+        [0.123152, 0.118912, 0.173562, null],
+        [0.153093, 0.148729, 0.230201, null]
+      ],
+      "offMs": [
+        [0.098543, 0.097462, 0.150904, null],
+        [0.181029, 0.169822, 0.210369, null],
+        [0.264544, 0.219612, 0.320655, null],
+        [0.24109, 0.235206, 0.27381, null],
+        [1.596572, 1.540551, 2.102093, null],
+        [0.097436, 0.095074, 0.102525, null],
+        [0.095854, 0.093925, 0.163164, null],
+        [0.098479, 0.095329, 0.104269, null],
+        [0.134862, 0.127962, 0.335146, null]
+      ],
+      "coldMs": [
+        [0.570176, 0.530386, 0.630679, null],
+        [0.557747, 0.508583, 0.599371, null],
+        [0.822831, 0.775078, 0.828129, null],
+        [0.549745, 0.540151, 0.785413, null],
+        [0.571648, 0.542093, 0.778824, null],
+        [0.55982, 0.523195, 0.625871, null],
+        [0.560381, 0.52659, 0.627764, null],
+        [0.569345, 0.550837, 0.650899, null],
+        [0.681286, 0.59891, 1.303821, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 150352, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r2-r3",
+      "head": "3dab25d1912c7d931832ca6b3d758e5336e53487",
+      "patch": "91ff0e259906bf49e26cfb8cecf7c5f83e601d949d387732fd1d5d59334c361b",
+      "library": "1cb17377f98e853718d4245fdf9f9e31988b560ed0ea97c35825ad6a19cf353e",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.031002, 0.029144, 0.050678, null],
+        [0.114772, 0.098187, 0.133371, null],
+        [0.068825, 0.060901, 0.101346, null],
+        [0.269099, 0.263351, 0.350957, null],
+        [1.690503, 1.527391, 1.846555, null],
+        [0.12013, 0.116676, 0.120843, null],
+        [0.118444, 0.115477, 0.132088, null],
+        [0.122733, 0.118129, 0.17068, null],
+        [0.151472, 0.148447, 0.172331, null]
+      ],
+      "offMs": [
+        [0.10402, 0.096251, 0.192625, null],
+        [0.186139, 0.164417, 0.213624, null],
+        [0.266612, 0.218752, 0.448349, null],
+        [0.239404, 0.232995, 0.253088, null],
+        [1.546859, 1.493337, 2.131141, null],
+        [0.096956, 0.095338, 0.097436, null],
+        [0.097366, 0.095653, 0.164645, null],
+        [0.100291, 0.097563, 0.110229, null],
+        [0.131074, 0.125445, 0.170963, null]
+      ],
+      "coldMs": [
+        [0.566852, 0.53961, 0.640293, null],
+        [0.55313, 0.494001, 0.60519, null],
+        [0.832475, 0.767587, 3.637427, null],
+        [0.604318, 0.543176, 0.71754, null],
+        [0.522664, 0.483304, 0.544527, null],
+        [0.526821, 0.50645, 0.567984, null],
+        [0.568173, 0.54621, 0.602486, null],
+        [0.562404, 0.517196, 0.723569, null],
+        [0.616327, 0.576556, 0.705782, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 150352, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r1-r2-r3",
+      "head": "3dab25d1912c7d931832ca6b3d758e5336e53487",
+      "patch": "b85a94e416058591fc9fcabd8d1890252d63f1e7eb1801e709b11c5cb148def1",
+      "library": "8ab7187843265e5a7881b5440c6bb8e3c0386da0063777369121c619c1352d1e",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.030404, 0.026292, 0.035792, null],
+        [0.131497, 0.098932, 0.161492, null],
+        [0.064153, 0.056793, 0.12453, null],
+        [0.247945, 0.244791, 0.314703, null],
+        [1.633465, 1.58381, 1.843207, null],
+        [0.09762, 0.095465, 0.110822, null],
+        [0.095934, 0.095233, 0.182418, null],
+        [0.098367, 0.096338, 0.104078, null],
+        [0.139276, 0.129902, 0.141814, null]
+      ],
+      "offMs": [
+        [0.092925, 0.091602, 0.174007, null],
+        [0.170111, 0.157044, 0.230561, null],
+        [0.223399, 0.220346, 0.291407, null],
+        [0.241379, 0.236427, 0.284862, null],
+        [1.551656, 1.480756, 2.064863, null],
+        [0.093477, 0.091483, 0.166882, null],
+        [0.093351, 0.091641, 0.111867, null],
+        [0.095026, 0.094085, 0.131477, null],
+        [0.132617, 0.123263, 0.146863, null]
+      ],
+      "coldMs": [
+        [0.604919, 0.500771, 0.669708, null],
+        [0.519239, 0.494912, 0.643017, null],
+        [0.789219, 0.717951, 1.368389, null],
+        [0.573932, 0.522855, 0.629476, null],
+        [0.522424, 0.479489, 0.590548, null],
+        [0.52037, 0.457185, 0.597878, null],
+        [0.563807, 0.530486, 0.925997, null],
+        [0.558589, 0.48692, 0.662127, null],
+        [0.652141, 0.566921, 0.654945, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 150352, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r2-reuse",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "140523edef8be4d8b20c63cb385ec0b56b623fb18e506ee6d134e92d70d85f79",
+      "library": "10c20e73a0bc3c9b818734495570e55ee2cfd5b996c9e3e667edbcbc92ece798",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.040953, 0.030575, 0.052969, null],
+        [0.126162, 0.109789, 0.187767, null],
+        [0.064893, 0.06003, 0.112722, null],
+        [0.252482, 0.249995, 0.344313, null],
+        [1.702616, 1.646855, 1.857568, null],
+        [0.098624, 0.097679, 0.11548, null],
+        [0.098402, 0.096791, 0.099868, null],
+        [0.149541, 0.101159, 0.155059, null],
+        [0.14223, 0.137649, 0.177699, null]
+      ],
+      "offMs": [
+        [0.108591, 0.093306, 0.147321, null],
+        [0.169969, 0.163692, 0.22231, null],
+        [0.283517, 0.22261, 0.377691, null],
+        [0.242923, 0.235324, 0.324032, null],
+        [1.596345, 1.567506, 2.30698, null],
+        [0.094708, 0.092383, 0.106058, null],
+        [0.095199, 0.092752, 0.143735, null],
+        [0.095454, 0.094585, 0.103168, null],
+        [0.127887, 0.125726, 0.148705, null]
+      ],
+      "coldMs": [
+        [0.535824, 0.523386, 0.71075, null],
+        [0.538639, 0.49992, 0.589366, null],
+        [0.795099, 0.746555, 0.98006, null],
+        [0.610438, 0.544788, 0.81603, null],
+        [0.568093, 0.523456, 0.571528, null],
+        [0.574393, 0.472839, 0.617549, null],
+        [0.5925, 0.577328, 0.982323, null],
+        [0.612, 0.544487, 0.897164, null],
+        [0.619832, 0.591429, 0.699293, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 150352, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r2-reuse-large",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "140523edef8be4d8b20c63cb385ec0b56b623fb18e506ee6d134e92d70d85f79",
+      "library": "10c20e73a0bc3c9b818734495570e55ee2cfd5b996c9e3e667edbcbc92ece798",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {
+        "PAINT_DEPTH": "4",
+        "PAINT_WIDTH": "240",
+        "PAINT_HEIGHT": "80"
+      },
+      "onMs": [
+        [0.073878, 0.070656, 0.081634, null],
+        [0.232118, 0.208092, 0.25162, null],
+        [0.249272, 0.236538, 0.43857, null],
+        [0.63368, 0.595745, 0.679591, null],
+        [3.50593, 3.353795, 3.752258, null],
+        [0.230492, 0.22653, 0.316457, null],
+        [0.23125, 0.224873, 0.449853, null],
+        [0.23524, 0.229323, 0.250474, null],
+        [0.38501, 0.373352, 0.436824, null]
+      ],
+      "offMs": [
+        [0.224746, 0.22063, 0.235045, null],
+        [0.363926, 0.32816, 0.387344, null],
+        [0.920295, 0.896951, 0.942379, null],
+        [0.568728, 0.54593, 0.587705, null],
+        [3.393256, 3.288521, 3.523553, null],
+        [0.223915, 0.219828, 0.319438, null],
+        [0.226075, 0.221005, 0.231445, null],
+        [0.228483, 0.22122, 0.263484, null],
+        [0.346808, 0.336712, 0.41278, null]
+      ],
+      "coldMs": [
+        [1.327948, 1.247557, 1.35525, null],
+        [1.303541, 1.215378, 1.316721, null],
+        [2.688046, 2.522805, 3.034973, null],
+        [1.301728, 1.237541, 1.50012, null],
+        [1.298383, 1.187946, 1.405316, null],
+        [1.307117, 1.288218, 1.330883, null],
+        [1.455572, 1.432277, 1.473691, null],
+        [1.358585, 1.29565, 1.416914, null],
+        [1.342931, 1.305394, 1.595245, null]
+      ],
+      "retainedBytes": [1183800, 1186992, 2524992, 581992, 556992, 556992, 556992, 556992, 556992]
+    },
+    {
+      "id": "r4-retain",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "5b17da7d7b92ffc83a455b80176f339dca62d589e81f8f7123856e000719e3c4",
+      "library": "e422bfac6e7e26e64e924265760a897874eb2784813e3706fd5045b28ec4723a",
+      "harness": "b81833bb0506b638eac5e52cb4d4dc8694f430983104b6fb57f2c8548cf3b2b8",
+      "env": {},
+      "onMs": [
+        [0.030203, 0.028346, 0.051654, null],
+        [0.119955, 0.106698, 0.169469, null],
+        [0.067624, 0.06138, 0.103094, null],
+        [0.255789, 0.251247, 0.2605, null],
+        [1.587612, 1.529947, 1.91902, null],
+        [0.099124, 0.098129, 0.107935, null],
+        [0.09893, 0.097131, 0.291338, null],
+        [0.108094, 0.098771, 0.116614, null],
+        [0.145053, 0.135454, 0.213042, null]
+      ],
+      "offMs": [
+        [0.119197, 0.096428, 0.144573, null],
+        [0.164389, 0.159769, 0.221363, null],
+        [0.237424, 0.218316, 0.347178, null],
+        [0.24434, 0.235178, 0.27336, null],
+        [1.556281, 1.504656, 2.099706, null],
+        [0.099103, 0.094144, 0.160777, null],
+        [0.099902, 0.094394, 0.152919, null],
+        [0.099095, 0.097221, 0.251758, null],
+        [0.141943, 0.12153, 0.191562, null]
+      ],
+      "coldMs": [
+        [0.581544, 0.517417, 0.745433, null],
+        [0.523836, 0.501872, 0.57878, null],
+        [0.819746, 0.755258, 0.872486, null],
+        [0.550386, 0.533521, 0.689838, null],
+        [0.590648, 0.469844, 0.784282, null],
+        [0.534562, 0.483134, 0.764603, null],
+        [0.535404, 0.515294, 0.549465, null],
+        [0.530837, 0.510055, 0.556346, null],
+        [0.680644, 0.532539, 0.844084, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 450960, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r4-eager-clean",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "9f6432ce31fd756eaaf3d5bc5be1d9c513e76e9c117aaa26cfdf1fae78ce4f8a",
+      "library": "e422bfac6e7e26e64e924265760a897874eb2784813e3706fd5045b28ec4723a",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {},
+      "onMs": [
+        [0.028807, 0.027726, 0.037154, null],
+        [0.115386, 0.106401, 0.15987, null],
+        [0.069644, 0.059486, 0.092757, null],
+        [0.25507, 0.250096, 0.276645, null],
+        [1.621207, 1.484515, 1.691134, null],
+        [0.096971, 0.095291, 0.100619, null],
+        [0.097898, 0.096464, 0.099501, null],
+        [0.101162, 0.099704, 0.114686, null],
+        [0.148637, 0.136187, 0.205655, null]
+      ],
+      "offMs": [
+        [0.094458, 0.093836, 0.13393, null],
+        [0.15896, 0.150428, 0.196457, null],
+        [0.272074, 0.219302, 0.314211, null],
+        [0.23918, 0.234022, 0.330084, null],
+        [1.511514, 1.457044, 1.831871, null],
+        [0.094171, 0.093803, 0.100682, null],
+        [0.097755, 0.092844, 0.13717, null],
+        [0.09666, 0.092939, 0.113976, null],
+        [0.155629, 0.123338, 0.16205, null]
+      ],
+      "coldMs": [
+        [1.38679, 1.112161, 1.434351, null],
+        [1.178262, 1.086393, 1.524799, null],
+        [3.746118, 3.285166, 6.66789, null],
+        [1.432549, 1.174586, 1.9729, null],
+        [1.093884, 1.084179, 1.207436, null],
+        [1.408732, 1.052891, 1.710011, null],
+        [1.103589, 1.062496, 1.423294, null],
+        [1.198733, 1.033272, 1.872458, null],
+        [0.878777, 0.758103, 1.122888, null]
+      ],
+      "retainedBytes": [450960, 454128, 762696, 450960, 450960, 450960, 150352, 150352, 300864]
+    },
+    {
+      "id": "r4-deferred-clean",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "b7cb72258dc3623a6e03ec6b3b524b24c54275e3d3bc04ad6d8c2002a5627f0a",
+      "library": "e422bfac6e7e26e64e924265760a897874eb2784813e3706fd5045b28ec4723a",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {},
+      "onMs": [
+        [0.029361, 0.028126, 0.033382, null],
+        [0.118772, 0.109605, 0.170001, null],
+        [0.06946, 0.061051, 0.083644, null],
+        [0.256798, 0.25203, 0.412746, null],
+        [1.633114, 1.547254, 1.682755, null],
+        [0.098622, 0.095503, 0.104748, null],
+        [0.099485, 0.097571, 0.101507, null],
+        [0.10821, 0.097854, 0.147417, null],
+        [0.146246, 0.137647, 0.200395, null]
+      ],
+      "offMs": [
+        [0.100037, 0.094473, 0.149553, null],
+        [0.154355, 0.150034, 0.177309, null],
+        [0.249716, 0.217693, 0.343887, null],
+        [0.265549, 0.234448, 0.278867, null],
+        [1.636124, 1.470785, 2.041037, null],
+        [0.093433, 0.092367, 0.14613, null],
+        [0.094832, 0.092567, 0.113079, null],
+        [0.098089, 0.094097, 0.102264, null],
+        [0.150676, 0.129797, 0.166445, null]
+      ],
+      "coldMs": [
+        [0.55228, 0.520662, 0.579771, null],
+        [0.524768, 0.492099, 3.086694, null],
+        [0.844174, 0.823803, 0.974702, null],
+        [0.601155, 0.570437, 0.652022, null],
+        [0.598531, 0.538009, 0.739935, null],
+        [0.580914, 0.49964, 0.844053, null],
+        [0.577819, 0.527632, 6.182623, null],
+        [0.591309, 0.566131, 0.820688, null],
+        [0.681407, 0.567233, 0.970666, null]
+      ],
+      "retainedBytes": [450960, 454152, 762696, 450960, 139392, 139392, 139392, 139392, 139392]
+    },
+    {
+      "id": "r4-reuse",
+      "head": "20c55a297e935eea3ee806383564426c3a88ab31",
+      "patch": "92997ab0681143fb3b6f784b45076116b062955657c97fbe6a7718b3994c0a8c",
+      "library": "38b503308cd80bfb2e0a6a8db246d0e94e83d1537eb51f71632925a8f0fc91f8",
+      "harness": "ebb5843072c3fef6ac12bd0d81be6bb7aa33fe29fd60a823dc19f65bba4d43fa",
+      "env": {},
+      "onMs": [
+        [0.031412, 0.028266, 0.043311, null],
+        [0.157348, 0.109784, 0.202779, null],
+        [0.072865, 0.069557, 0.097065, null],
+        [0.26018, 0.248835, 0.344011, null],
+        [1.602, 1.542904, 1.685613, null],
+        [0.09765, 0.096837, 0.099626, null],
+        [0.09799, 0.096838, 0.100071, null],
+        [0.104289, 0.099908, 0.157506, null],
+        [0.143928, 0.139623, 0.195901, null]
+      ],
+      "offMs": [
+        [0.096706, 0.095252, 0.202282, null],
+        [0.172446, 0.156255, 0.301992, null],
+        [0.2757, 0.216753, 0.388411, null],
+        [0.250914, 0.246577, 0.288224, null],
+        [1.654269, 1.499273, 1.913864, null],
+        [0.102141, 0.09576, 0.166713, null],
+        [0.10064, 0.09501, 0.187864, null],
+        [0.098135, 0.096537, 0.117176, null],
+        [0.129708, 0.123368, 0.14833, null]
+      ],
+      "coldMs": [
+        [1.182538, 1.082677, 1.495805, null],
+        [1.370594, 1.10512, 1.44639, null],
+        [3.863545, 3.263714, 7.405051, null],
+        [1.233926, 1.151631, 1.778284, null],
+        [1.134054, 1.07813, 1.373328, null],
+        [1.116067, 1.090548, 2.112944, null],
+        [1.423945, 1.15061, 1.641977, null],
+        [1.250271, 1.052019, 1.937316, null],
+        [0.857134, 0.809751, 1.149448, null]
+      ],
+      "retainedBytes": [450960, 454128, 762696, 450960, 450960, 450960, 150352, 150352, 300864]
+    }
+  ]
+}

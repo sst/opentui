@@ -67,6 +67,51 @@ export class OptimizedBuffer {
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
+  /** @internal Disabled-by-default layered painting experiment. */
+  public experimentalPaintGrid = false
+  /** @internal Unattributed/live requests must not freeze custom painters. */
+  public experimentalPaintForce = false
+
+  /** @internal */
+  public beginPaint(background: RGBA, fallback: boolean): void {
+    this.guard()
+    // This flag tracks a recording obligation, not native cache validity. Raw
+    // access can invalidate native state independently, so transitions stay native.
+    if (fallback && !this.experimentalPaintGrid) return
+    const status = this.lib.bufferPaintBegin(this.bufferPtr, background, fallback)
+    if (!status) throw new Error("Paint grid allocation failed")
+    this.experimentalPaintGrid = status === 1
+  }
+
+  /** @internal */
+  public fallbackPaint(): void {
+    this.guard()
+    this.experimentalPaintGrid = this.lib.bufferPaintFallback(this.bufferPtr)
+  }
+
+  /** @internal */
+  public endPaint(abort = false): void {
+    this.guard()
+    if (!this.experimentalPaintGrid) return
+    const status = this.lib.bufferPaintEnd(this.bufferPtr, abort)
+    this.experimentalPaintGrid = status === 1
+    if (!status) throw new Error("Paint grid composition failed")
+  }
+
+  /** Experimental counters, without exposing writable target memory. */
+  public getPaintStats() {
+    this.guard()
+    const values = new Uint32Array(6)
+    this.lib.bufferPaintStats(this.bufferPtr, values)
+    return {
+      recorded: values[0],
+      skipped: values[1],
+      recomposed: values[2],
+      fallback: values[3],
+      fallbacks: values[4],
+      retainedBytes: values[5],
+    }
+  }
 
   get ptr(): OptimizedBufferHandle {
     return this.bufferPtr

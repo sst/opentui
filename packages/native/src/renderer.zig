@@ -2784,7 +2784,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        if (!self.nextRenderBuffer.preservePaint()) self.nextRenderBuffer.clear(self.backgroundColor, null);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {

@@ -511,7 +511,7 @@ export abstract class Renderable extends BaseRenderable {
 
   public requestRender() {
     this.markDirty()
-    this._ctx.requestRender()
+    this._ctx.requestRender(this)
   }
 
   public get translateX(): number {
@@ -1777,6 +1777,11 @@ export class RootRenderable extends Renderable {
     return renderable
   }
 
+  /** @internal Geometry already invalidated before the next layout pass. */
+  public get isPaintGeometryDirty(): boolean {
+    return this.renderList.length !== 0 && this.appliedRenderListRevision !== getRenderListRevision(this._ctx)
+  }
+
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     this._currentRenderable = undefined
     if (!this.visible) return
@@ -1805,6 +1810,8 @@ export class RootRenderable extends Renderable {
     // 2. Update layout throughout the tree and collect render list
     const layoutGeneration = getLayoutGeneration(this._ctx)
     const renderListRevision = getRenderListRevision(this._ctx)
+    const hadRenderList = this.renderList.length !== 0
+    const paintGeometryChanged = this.isPaintGeometryDirty
     const canReuseRenderList =
       this.renderListReusable &&
       this.appliedLayoutGeneration === layoutGeneration &&
@@ -1818,6 +1825,22 @@ export class RootRenderable extends Renderable {
       this.renderListReusable = this.canReuseCurrentRenderList()
     }
 
+    // Full invalidation should not pay to record and then replay the entire frame.
+    if (buffer.experimentalPaintGrid && hadRenderList && !canReuseRenderList) {
+      if (paintGeometryChanged) {
+        buffer.fallbackPaint()
+      } else {
+        let changed = 0
+        let painters = 0
+        for (const command of this.renderList) {
+          if (command.action !== "render" || command.renderable === this) continue
+          painters++
+          if (command.renderable.isDirty) changed++
+        }
+        if (changed > painters / 2) buffer.fallbackPaint()
+      }
+    }
+
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
@@ -1827,7 +1850,35 @@ export class RootRenderable extends Renderable {
           // Skip if renderable was destroyed during a previous render callback
           if (!command.renderable.isDestroyed) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            if (buffer.experimentalPaintGrid) {
+              const renderable = command.renderable
+              const paint = buffer.lib.bufferPaintPush(
+                buffer.ptr,
+                renderable.num,
+                renderable.screenX,
+                renderable.screenY,
+                renderable.width,
+                renderable.height,
+                buffer.experimentalPaintForce ||
+                  renderable.isDirty ||
+                  Boolean(renderable.renderBefore || renderable.renderAfter),
+              )
+              try {
+                if (paint) renderable.render(buffer, deltaTime)
+                else
+                  this._ctx.addToHitGrid(
+                    renderable.screenX,
+                    renderable.screenY,
+                    renderable.width,
+                    renderable.height,
+                    renderable.num,
+                  )
+              } finally {
+                buffer.lib.bufferPaintPop(buffer.ptr)
+              }
+            } else {
+              command.renderable.render(buffer, deltaTime)
+            }
             this._currentRenderable = undefined
           }
           break

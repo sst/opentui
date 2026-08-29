@@ -68,6 +68,7 @@ const emittedAllowlist = [
   ".node-test/src/lib/RGBA.test.js",
   ".node-test/src/lib/tree-sitter/resolve-ft.test.js",
   ".node-test/src/tests/renderer.kitty-flags.test.js",
+  ".node-test/src/tests/renderer.layered-paint-grid.test.js",
   ".node-test/src/buffer.test.js",
   ".node-test/src/tests/renderer.idle.test.js",
   ".node-test/src/tests/renderer.notifications.test.js",

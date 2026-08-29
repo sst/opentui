@@ -884,6 +884,12 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    bufferPaintBegin: { args: ["u32", "buffer", "u8"], returns: "u8" },
+    bufferPaintFallback: { args: ["u32"], returns: "u8" },
+    bufferPaintPush: { args: ["u32", "u32", "i32", "i32", "u32", "u32", "u8"], returns: "u8" },
+    bufferPaintPop: { args: ["u32"], returns: "void" },
+    bufferPaintEnd: { args: ["u32", "u8"], returns: "u8" },
+    bufferPaintStats: { args: ["u32", "buffer"], returns: "void" },
 
     addToHitGrid: {
       args: ["u32", "i32", "i32", "u32", "u32", "u32"],
@@ -3054,6 +3060,20 @@ export interface RenderLib extends AudioEngineLib {
   bufferPopOpacity: (buffer: OptimizedBufferHandle) => void
   bufferGetCurrentOpacity: (buffer: OptimizedBufferHandle) => number
   bufferClearOpacity: (buffer: OptimizedBufferHandle) => void
+  bufferPaintBegin: (buffer: OptimizedBufferHandle, background: RGBA, fallback: boolean) => number
+  bufferPaintFallback: (buffer: OptimizedBufferHandle) => boolean
+  bufferPaintPush: (
+    buffer: OptimizedBufferHandle,
+    owner: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    dirty: boolean,
+  ) => boolean
+  bufferPaintPop: (buffer: OptimizedBufferHandle) => void
+  bufferPaintEnd: (buffer: OptimizedBufferHandle, abort: boolean) => number
+  bufferPaintStats: (buffer: OptimizedBufferHandle, output: Uint32Array) => void
   textBufferAddHighlightByCharRange: (buffer: TextBufferHandle, highlight: Highlight) => void
   textBufferAddHighlight: (buffer: TextBufferHandle, lineIdx: number, highlight: Highlight) => void
   textBufferRemoveHighlightsByRef: (buffer: TextBufferHandle, hlRef: number) => void
@@ -6008,6 +6028,40 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClearOpacity(buffer: Pointer): void {
     this.opentui.symbols.bufferClearOpacity(buffer)
+  }
+
+  public bufferPaintBegin(buffer: OptimizedBufferHandle, background: RGBA, fallback: boolean): number {
+    return this.opentui.symbols.bufferPaintBegin(buffer, background.buffer, fallback ? 1 : 0)
+  }
+
+  public bufferPaintFallback(buffer: OptimizedBufferHandle): boolean {
+    return this.opentui.symbols.bufferPaintFallback(buffer) !== 0
+  }
+
+  public bufferPaintPush(
+    buffer: OptimizedBufferHandle,
+    owner: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    dirty: boolean,
+  ): boolean {
+    const result = this.opentui.symbols.bufferPaintPush(buffer, owner, x, y, width, height, dirty ? 1 : 0)
+    if (result === 2) throw new Error("Paint context allocation failed")
+    return result !== 0
+  }
+
+  public bufferPaintPop(buffer: OptimizedBufferHandle): void {
+    this.opentui.symbols.bufferPaintPop(buffer)
+  }
+
+  public bufferPaintEnd(buffer: OptimizedBufferHandle, abort: boolean): number {
+    return this.opentui.symbols.bufferPaintEnd(buffer, abort ? 1 : 0)
+  }
+
+  public bufferPaintStats(buffer: OptimizedBufferHandle, output: Uint32Array): void {
+    this.opentui.symbols.bufferPaintStats(buffer, output)
   }
 
   public getTerminalCapabilities(renderer: Pointer): TerminalCapabilities {
