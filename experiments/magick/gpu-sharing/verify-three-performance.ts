@@ -62,6 +62,12 @@ for (const test of [
     .split("\n")
     .map((line) => JSON.parse(line))
   assert.equal(producer.status, "pass")
+  const handles = producer.gpu_handles
+  for (const kind of ["encoders", "passes", "commandBuffers"]) {
+    assert(handles[`${kind}Created`] > 0)
+    assert.equal(handles[`${kind}Released`], handles[`${kind}Created`], `${kind} API references`)
+  }
+  assert.equal(handles.pendingEncoders + handles.pendingPasses + handles.pendingCommandBuffers, 0)
   assert.equal(consumer.status, "pass")
   assert.equal(consumer.frames, test.frames + test.warmup)
   assert.equal(consumer.performance.frame_service_ns.length, test.frames)
@@ -69,12 +75,14 @@ for (const test of [
   assert.equal(consumer.performance.pace_us, test.pace)
   assert.equal(consumer.producer_reference_readbacks, 0)
   assert.equal(consumer.consumer_readbacks, 0)
-  assert(producer.canvas_views <= 2)
+  assert.equal(producer.canvas_views, Math.min(test.frames + test.warmup, 2))
+  assert.equal(producer.canvas_view_requests, test.frames + test.warmup)
   assert(elapsedMs >= ((test.frames + test.warmup - 1) * test.pace) / 1000, "Paced grant interval")
   results.push({
     name: test.name,
     status: "pass",
     elapsed_ms: elapsedMs,
+    gpu_handles: handles,
     frame_service_ns: consumer.performance.frame_service_ns,
   })
 }

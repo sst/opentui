@@ -62,6 +62,13 @@ for (const [width, height] of [
     assert.equal(consumer.bridge_pixel_copy_commands, 0)
     assert.equal(consumer.frames, 8)
     assert.equal(producer.shared_render_calls, 8)
+    assert.equal(producer.canvas_view_requests, producer.shared_render_calls + producer.reference_render_calls)
+    const handles = producer.gpu_handles
+    for (const kind of ["encoders", "passes", "commandBuffers"]) {
+      assert(handles[`${kind}Created`] > 0)
+      assert.equal(handles[`${kind}Released`], handles[`${kind}Created`], `${kind} API references`)
+    }
+    assert.equal(handles.pendingEncoders + handles.pendingPasses + handles.pendingCommandBuffers, 0)
     assert.equal(consumer.producer_reference_readbacks, mode === "no-readback" ? 0 : 8)
     assert.equal(consumer.consumer_readbacks, mode === "no-readback" ? 0 : 8)
     assert.deepEqual(producer.reference_hashes, consumer.hashes)
@@ -118,6 +125,7 @@ for (const file of [
   "three-sharing.c",
   "three-producer.c",
   "three-producer.ts",
+  "../../../packages/examples/src/magick/gpu-lifetime.ts",
   "three-protocol.h",
   "no-readback-guard.c",
   "verify-three.ts",

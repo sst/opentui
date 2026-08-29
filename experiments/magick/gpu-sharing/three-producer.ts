@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { CString, dlopen } from "bun:ffi"
+import { managePixelGpu } from "../../../packages/examples/src/magick/gpu-lifetime.js"
 
 const directory = process.env.WEBGPU_NODE_MODULES
 const modulePath = process.env.MAGICK_ARENA_MODULE
@@ -60,6 +61,7 @@ if (performanceRun) {
     "three-sharing.c",
     "three-producer.c",
     "three-producer.ts",
+    "../../../packages/examples/src/magick/gpu-lifetime.ts",
     "three-protocol.h",
     "native-sharing.c",
     "dawn-consumer.c",
@@ -168,65 +170,92 @@ const context = {
     configured = false
   },
 }
+const lifetime = managePixelGpu(device, context as GPUCanvasContext, { release: "combined", cacheCanvasView: false })
 const renderer = new WebGPURenderer({ canvas, context, device, alpha: false, antialias: false })
-renderer.info.autoReset = false
-// r177 hard-codes BGRA for outputType; this instance-local hook keeps pipeline and shared-image formats identical.
-assert.equal(typeof renderer.backend.utils.getPreferredCanvasFormat, "function")
-renderer.backend.utils.getPreferredCanvasFormat = () => "rgba8unorm"
-renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.toneMapping = THREE.NoToneMapping
-renderer.setSize(width!, height!, false)
-await renderer.init()
 const arena = createArena(width! / height!, 512)
 const calibrationScene = calibration ? new THREE.Scene() : undefined
 const frameHashes: string[] = []
 const draws: { draw_calls: number; triangles: number }[] = []
 const drawRange = { draw_calls_min: Infinity, draw_calls_max: 0, triangles_min: Infinity, triangles_max: 0 }
-for (let sequence = 0; sequence < frameCount; sequence++) {
-  bridge.symbols.three_begin(sequence)
-  const seconds = sequence * 0.625
-  arena.update(seconds)
-  if (calibrationScene)
-    calibrationScene.background = new THREE.Color([0xff0000, 0x00ff00, 0x0000ff, 0xffffff][sequence % 4])
-  const scene = calibrationScene ?? arena.scene
-  let hash = 0n
-  if (reference) {
-    current = reference
+let stopped = false
+try {
+  renderer.info.autoReset = false
+  // r177 hard-codes BGRA for outputType; this instance-local hook keeps pipeline and shared-image formats identical.
+  assert.equal(typeof renderer.backend.utils.getPreferredCanvasFormat, "function")
+  renderer.backend.utils.getPreferredCanvasFormat = () => "rgba8unorm"
+  renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.toneMapping = THREE.NoToneMapping
+  renderer.setSize(width!, height!, false)
+  await renderer.init()
+  for (let sequence = 0; sequence < frameCount; sequence++) {
+    bridge.symbols.three_begin(sequence)
+    const seconds = sequence * 0.625
+    arena.update(seconds)
+    if (calibrationScene)
+      calibrationScene.background = new THREE.Color([0xff0000, 0x00ff00, 0x0000ff, 0xffffff][sequence % 4])
+    const scene = calibrationScene ?? arena.scene
+    let hash = 0n
+    if (reference) {
+      current = reference
+      renderer.render(scene, arena.camera)
+      hash = BigInt(bridge.symbols.three_reference_hash((reference as any).ptr))
+    }
+    if (process.env.GPU_SHARING_THREE_STALE && sequence === 3) arena.update(seconds - 0.625)
+    current = textures[sequence % 2]
+    renderer.info.reset()
     renderer.render(scene, arena.camera)
-    hash = BigInt(bridge.symbols.three_reference_hash((reference as any).ptr))
+    const draw = { draw_calls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles }
+    if (!calibration) {
+      assert(draw.draw_calls >= arena.counts.meshes, "The arena geometry must actually be drawn")
+      assert(draw.triangles >= arena.counts.triangles, "The complete arena workload must reach the renderer")
+    }
+    if (performanceRun) {
+      drawRange.draw_calls_min = Math.min(drawRange.draw_calls_min, draw.draw_calls)
+      drawRange.draw_calls_max = Math.max(drawRange.draw_calls_max, draw.draw_calls)
+      drawRange.triangles_min = Math.min(drawRange.triangles_min, draw.triangles)
+      drawRange.triangles_max = Math.max(drawRange.triangles_max, draw.triangles)
+    } else {
+      draws.push(draw)
+    }
+    current = undefined
+    bridge.symbols.three_end(sequence, hash)
+    if (validate) frameHashes.push(hash.toString(16).padStart(16, "0"))
   }
-  if (process.env.GPU_SHARING_THREE_STALE && sequence === 3) arena.update(seconds - 0.625)
-  current = textures[sequence % 2]
-  renderer.info.reset()
-  renderer.render(scene, arena.camera)
-  const draw = { draw_calls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles }
-  if (!calibration) {
-    assert(draw.draw_calls >= arena.counts.meshes, "The arena geometry must actually be drawn")
-    assert(draw.triangles >= arena.counts.triangles, "The complete arena workload must reach the renderer")
-  }
-  if (performanceRun) {
-    drawRange.draw_calls_min = Math.min(drawRange.draw_calls_min, draw.draw_calls)
-    drawRange.draw_calls_max = Math.max(drawRange.draw_calls_max, draw.draw_calls)
-    drawRange.triangles_min = Math.min(drawRange.triangles_min, draw.triangles)
-    drawRange.triangles_max = Math.max(drawRange.triangles_max, draw.triangles)
-  } else {
-    draws.push(draw)
-  }
+  bridge.symbols.three_wait_stop()
+  stopped = true
+  const pending = lifetime.snapshot()
+  assert.equal(
+    pending.pendingEncoders + pending.pendingPasses + pending.pendingCommandBuffers,
+    0,
+    "Frame handles must retire before disposal",
+  )
+} finally {
   current = undefined
-  bridge.symbols.three_end(sequence, hash)
-  if (validate) frameHashes.push(hash.toString(16).padStart(16, "0"))
+  try {
+    lifetime.dispose()
+  } finally {
+    renderer.onDeviceLost = () => {}
+    try {
+      arena.dispose()
+      renderer.dispose()
+      for (const view of views) view.destroy()
+      if (reference) {
+        reference.destroy()
+        nativeDevice.lib.wgpuTextureRelease((reference as any).ptr)
+      }
+      if (stopped) bridge.symbols.three_close()
+    } finally {
+      device.destroy()
+    }
+  }
 }
-bridge.symbols.three_wait_stop()
-arena.dispose()
-renderer.dispose()
-for (const view of views) view.destroy()
-if (reference) {
-  reference.destroy()
-  nativeDevice.lib.wgpuTextureRelease((reference as any).ptr)
-}
-bridge.symbols.three_close()
-renderer.onDeviceLost = () => {}
-device.destroy()
+const {
+  canvasViewsCreated: canvasViewRequests,
+  canvasViewsReleased,
+  cachedCanvasViews,
+  ...gpuHandles
+} = lifetime.snapshot()
+assert.equal(canvasViewsReleased + cachedCanvasViews, 0, "The sharing producer owns its canvas view pool")
 assert.equal(await sha256(arenaPath), arenaHash, "Arena source changed during the run")
 for (const [source, hash] of Object.entries(sourceHashes)) {
   assert.equal(await sha256(resolve(import.meta.dir, source)), hash, "Experiment source changed during the run")
@@ -250,6 +279,8 @@ console.log(
     reference_render_calls: validate ? frameCount : 0,
     mode,
     calibration,
+    gpu_handles: gpuHandles,
+    canvas_view_requests: canvasViewRequests,
     reference_hashes: frameHashes,
     draws,
     ...(performanceRun

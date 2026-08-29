@@ -1,6 +1,13 @@
 import assert from "node:assert/strict"
 import { resolve } from "node:path"
 
+const instrumentation = {
+  TRACE_WEBGPU: process.env.TRACE_WEBGPU === "true",
+  WGPU_DEBUG_FFI: process.env.WGPU_DEBUG_FFI === "true",
+}
+for (const [key, enabled] of Object.entries(instrumentation)) {
+  assert(!enabled, `Refusing ${key}=true for performance measurements`)
+}
 assert(process.env.WEBGPU_NODE_MODULES && process.env.MAGICK_ARENA_MODULE, "Explicit arena and dependencies required")
 const cwd = import.meta.dir
 const sizes = [
@@ -88,6 +95,13 @@ for (const [width, height] of sizes) {
     assert.equal(consumer.height, height)
     assert.equal(consumer.slots, 2)
     assert.equal(producer.canvas_views, 2)
+    assert.equal(producer.canvas_view_requests, 360)
+    const handles = producer.gpu_handles
+    for (const kind of ["encoders", "passes", "commandBuffers"]) {
+      assert(handles[`${kind}Created`] > 0)
+      assert.equal(handles[`${kind}Released`], handles[`${kind}Created`], `${kind} API references`)
+    }
+    assert.equal(handles.pendingEncoders + handles.pendingPasses + handles.pendingCommandBuffers, 0)
     assert.equal(producer.reference_render_calls, 0)
     assert.equal(consumer.producer_reference_readbacks, 0)
     assert.equal(consumer.consumer_readbacks, 0)
@@ -146,6 +160,7 @@ const result = {
   recorded_at: new Date().toISOString(),
   serial: true,
   tracing: false,
+  webgpu_instrumentation: instrumentation,
   measured_frames_per_run: 300,
   warmup_frames_per_run: 60,
   runs_per_size: 3,

@@ -89,4 +89,24 @@ for (const test of cases) {
     assert.equal(JSON.parse(run.stderr.toString()).status, "fail")
   }
 }
-console.log(JSON.stringify({ status: "pass", cases: cases.length, gpu_initialization: false }))
+for (const key of ["WGPU_DEBUG_FFI", "TRACE_WEBGPU"]) {
+  const run = Bun.spawnSync([process.execPath, "measure-three.ts"], {
+    cwd: import.meta.dir,
+    env: {
+      ...environment,
+      WEBGPU_NODE_MODULES: "",
+      MAGICK_ARENA_MODULE: "",
+      TRACE_WEBGPU: "false",
+      WGPU_DEBUG_FFI: "false",
+      [key]: "true",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 2000,
+    killSignal: "SIGKILL",
+  })
+  assert.equal(run.exitCode, 1)
+  assert.equal(run.stdout.toString(), "")
+  assert(run.stderr.toString().includes(`Refusing ${key}=true for performance measurements`), run.stderr.toString())
+}
+console.log(JSON.stringify({ status: "pass", cases: cases.length + 2, gpu_initialization: false }))
