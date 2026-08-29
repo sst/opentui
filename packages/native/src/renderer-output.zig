@@ -98,6 +98,15 @@ fn utf8ToUtf16Chunk(output: []u16, input: []const u8) error{InvalidUtf8}!Utf16Ch
     return .{ .input_len = input_index, .output_len = output_index };
 }
 
+test "stdout write failures remain observable for resource cleanup" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const full = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/full", .{ .mode = .write_only });
+    defer full.close(std.testing.io);
+    var stdout_output = StdoutOutput.initForFile(full);
+    stdout_output.bufferedOutput().write("cannot write");
+    try std.testing.expect(stdout_output.failed.load(.acquire));
+}
+
 test "UTF-8 output converts to UTF-16" {
     const input = "Aé東😀";
     const expected = [_]u16{ 'A', 0x00E9, 0x6771, 0xD83D, 0xDE00 };
@@ -160,6 +169,7 @@ pub const StdoutOutput = struct {
     stdoutBuffer: [4096]u8 = undefined,
     utf16Buffer: [UTF16_BUFFER_SIZE]u16 = undefined,
     windowsConsole: bool,
+    failed: std.atomic.Value(bool) = .init(false),
 
     pub fn init() StdoutOutput {
         return initForFile(std.Io.File.stdout());
@@ -197,8 +207,13 @@ pub const StdoutOutput = struct {
     fn writeBytes(self: *StdoutOutput, data: []const u8) void {
         var stdoutWriter = self.stdout.writerStreaming(io, &self.stdoutBuffer);
         const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        w.writeAll(data) catch {
+            self.failed.store(true, .release);
+            return;
+        };
+        w.flush() catch {
+            self.failed.store(true, .release);
+        };
     }
 
     fn writeWindowsConsole(self: *StdoutOutput, data: []const u8) void {
