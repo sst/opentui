@@ -21,6 +21,46 @@ function snapshot(buffer: OptimizedBuffer) {
   return Object.values(buffer.buffers).map((view) => Array.from(view))
 }
 
+test("Box bounds use portable offset output views and reject nested or raw observations", () => {
+  const buffer = OptimizedBuffer.create(8, 8, "unicode")
+  const backing = new Uint32Array([17, 0, 0, 0, 19])
+  const output = backing.subarray(1, 4)
+  const draw = (y: number) =>
+    buffer.drawBox({
+      x: 1,
+      y,
+      width: 5,
+      height: 2,
+      border: ["top"],
+      borderColor: white,
+      backgroundColor: RGBA.fromInts(0, 0, 0, 0),
+      shouldFill: false,
+    })
+  try {
+    buffer.beginPaintBounds(output)
+    draw(2)
+    draw(6)
+    buffer.endPaintBounds()
+    expect(Array.from(backing)).toEqual([17, 1, 2, 7, 19])
+    const nested = new Uint32Array(3)
+    buffer.beginPaintBounds(output)
+    draw(1)
+    buffer.beginPaintBounds(nested)
+    draw(4)
+    buffer.endPaintBounds()
+    buffer.endPaintBounds()
+    expect(output[0]).toBe(0)
+    expect(nested[0]).toBe(0)
+    void buffer.buffers
+    buffer.beginPaintBounds(output)
+    draw(3)
+    buffer.endPaintBounds()
+    expect(output[0]).toBe(0)
+  } finally {
+    buffer.destroy()
+  }
+})
+
 test("draw bounds skip a sparse unchanged Box without changing any buffer channel", async () => {
   const { renderer, renderOnce } = await createTestRenderer({ width: 20, height: 12, useThread: false })
   renderer.requestRender = (source) => renderer.root.invalidate(source)

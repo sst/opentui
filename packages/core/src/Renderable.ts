@@ -1804,7 +1804,7 @@ export class RootRenderable extends Renderable {
   private spareDirtyRenderables = new Set<Renderable>()
   private fullCompositionRequired = true
   private dirtyPaintSources = new Set<Renderable>()
-  private paintRowsOutput = new Uint32Array(2)
+  private paintRowsOutput = new Uint32Array(3)
 
   constructor(ctx: RenderContext) {
     super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
@@ -2030,14 +2030,17 @@ export class RootRenderable extends Renderable {
             this._currentRenderable = command.renderable
             const observe = !dirtyRows && command.renderable.canUseObservedPaintBounds()
             if (!dirtyRows) command.paintRows = undefined
-            if (observe) buffer.lib.bufferBeginPaintBounds(buffer.ptr)
+            if (observe) buffer.beginPaintBounds(this.paintRowsOutput)
             let completed = false
             try {
               command.renderable.render(buffer, deltaTime)
               completed = true
             } finally {
-              if (observe && buffer.lib.bufferEndPaintBounds(buffer.ptr, this.paintRowsOutput) && completed) {
-                command.paintRows = { start: this.paintRowsOutput[0], end: this.paintRowsOutput[1] }
+              if (observe) {
+                buffer.endPaintBounds()
+                if (completed && this.paintRowsOutput[0]) {
+                  command.paintRows = { start: this.paintRowsOutput[1], end: this.paintRowsOutput[2] }
+                }
               }
             }
             this._currentRenderable = undefined

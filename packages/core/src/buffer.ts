@@ -67,6 +67,27 @@ export class OptimizedBuffer {
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
+  private paintBoundsOutput: Uint32Array | null = null
+  private paintBoundsDepth = 0
+
+  // Internal to audited Box commands; other native draw entries do not return bounds.
+  public beginPaintBounds(output: Uint32Array): void {
+    if (output.length < 3) throw new RangeError("Paint bounds output needs three u32 values")
+    output[0] = 1
+    output[1] = 0xffffffff
+    output[2] = 0
+    if (this.paintBoundsDepth++ > 0) {
+      if (this.paintBoundsOutput) this.paintBoundsOutput[0] = 0
+      output[0] = 0
+      this.paintBoundsOutput = null
+    } else {
+      this.paintBoundsOutput = output
+    }
+  }
+
+  public endPaintBounds(): void {
+    if (this.paintBoundsDepth > 0 && --this.paintBoundsDepth === 0) this.paintBoundsOutput = null
+  }
 
   get ptr(): OptimizedBufferHandle {
     return this.bufferPtr
@@ -528,6 +549,7 @@ export class OptimizedBuffer {
       options.titleColor ?? options.borderColor,
       options.title ?? null,
       options.bottomTitle ?? null,
+      this.paintBoundsOutput,
     )
   }
 

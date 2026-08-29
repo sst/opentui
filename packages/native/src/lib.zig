@@ -1723,16 +1723,6 @@ export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]cons
 }
 
 // Buffer functions
-export fn bufferBeginPaintBounds(buffer_handle: NativeHandle) void {
-    const object_ptr = acquireBuffer(buffer_handle) orelse return;
-    object_ptr.beginPaintBounds();
-}
-
-export fn bufferEndPaintBounds(buffer_handle: NativeHandle, output: *[2]u32) u8 {
-    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
-    return @intFromBool(object_ptr.endPaintBounds(output));
-}
-
 export fn bufferClear(buffer_handle: NativeHandle, bg: [*]const u16) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.clear(ptrToRGBA(bg), null);
@@ -2028,8 +2018,21 @@ export fn bufferDrawBox(
     titleLen: u32,
     bottomTitle: ?[*]const u8,
     bottomTitleLen: u32,
+    paint_bounds_output: ?*[3]u32,
 ) void {
-    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    const object_ptr = acquireBuffer(buffer_handle) orelse {
+        if (paint_bounds_output) |output| output[0] = 0;
+        return;
+    };
+    const observe = paint_bounds_output != null and paint_bounds_output.?[0] != 0;
+    if (observe) object_ptr.beginPaintBounds();
+    defer if (observe) {
+        var rows: [2]u32 = undefined;
+        const output = paint_bounds_output.?;
+        output[0] &= @intFromBool(object_ptr.endPaintBounds(&rows));
+        output[1] = @min(output[1], rows[0]);
+        output[2] = @max(output[2], rows[1]);
+    };
     const borderSides: buffer.BorderSides = .{
         .top = (packedOptions & 0b1000) != 0,
         .right = (packedOptions & 0b0100) != 0,
@@ -2059,7 +2062,9 @@ export fn bufferDrawBox(
         titleAlignment,
         bottomTitleSlice,
         bottomTitleAlignment,
-    ) catch {};
+    ) catch {
+        object_ptr.paint_bounds_valid = false;
+    };
 }
 
 export fn bufferResize(buffer_handle: NativeHandle, width: u32, height: u32) void {
