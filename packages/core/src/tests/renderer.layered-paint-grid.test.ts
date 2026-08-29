@@ -245,6 +245,8 @@ test("paint grid falls back for late retained raw views without invoking painter
     buffer.drawText("D", 3, 0, white, blue)
     if (expose) {
       raw ??= buffer.buffers.char
+      // A later full-paint decision must not reclassify unsupported access.
+      buffer.fallbackPaint()
       expect([...raw.slice(0, 4)]).toEqual([65, 66, 67, 68])
       raw[4] = 69
     }
@@ -253,11 +255,13 @@ test("paint grid falls back for late retained raw views without invoking painter
     renderer.root.add(lower)
     renderer.root.add(upper)
     await renderOnce()
+    const retained = renderer.nextRenderBuffer.getPaintStats().retainedBytes
     expose = true
     upper.requestRender()
     await renderOnce()
     expect([lower.calls, upper.calls]).toEqual([1, 2])
     expect(renderer.nextRenderBuffer.getPaintStats().fallback).toBe(1)
+    expect(renderer.nextRenderBuffer.getPaintStats().retainedBytes).toBeLessThan(retained)
     await renderOnce()
     expect([lower.calls, upper.calls]).toEqual([2, 3])
     expect([...renderer.currentRenderBuffer.buffers.char.slice(0, 5)]).toEqual([65, 66, 67, 68, 69])

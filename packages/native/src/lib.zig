@@ -1910,6 +1910,7 @@ export fn bufferPaintPush(buffer_handle: NativeHandle, owner: u32, x: i32, y: i3
 export fn bufferPaintFallback(buffer_handle: NativeHandle) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     if (object_ptr.paint_grid) |grid| {
+        if (!grid.active or grid.fallback) return;
         grid.retain_on_fallback = true;
         grid.materialize();
     }
