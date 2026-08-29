@@ -1,0 +1,13 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rgba8, set = 0, binding = 0) uniform writeonly image2D target;
+layout(push_constant) uniform Frame { uint sequence; } frame;
+
+void main() {
+    uvec2 p = gl_GlobalInvocationID.xy;
+    if (any(greaterThanEqual(p, uvec2(imageSize(target))))) return;
+    uvec3 color = uvec3(p.x * 17u + frame.sequence * 43u,
+                       p.y * 29u + frame.sequence * 71u,
+                       (p.x ^ p.y) * 13u + frame.sequence * 19u) & 255u;
+    imageStore(target, ivec2(p), vec4(vec3(color) / 255.0, 1.0));
+}
