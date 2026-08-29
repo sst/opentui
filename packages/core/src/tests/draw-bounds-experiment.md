@@ -1,7 +1,8 @@
 # Draw-Derived Bounds Experiment
 
 This branch layers native row-extent observations onto PR1398's existing row
-damage compositor. It retains no cells, glyphs, draw commands, or input payloads.
+damage compositor. The addition retains no per-painter cells, glyphs, or draw/input
+payloads. PR1398's composed framebuffer and existing render-command list remain.
 
 The current optimization scope is deliberately narrow: ordinary unbuffered Boxes
 with `shouldFill: false`, unchanged paint methods, and stable render-list inputs.
