@@ -1,5 +1,8 @@
 # Paint Grid: Final Branch Versus Actual Main
 
+Historical second-pass results. The later [residual-overhead investigation](layered-paint-grid-residual-overhead.md)
+keeps two additional native optimizations and reports the current remaining regressions.
+
 Second, regression-focused pass. Draft PR: https://github.com/anomalyco/opentui/pull/1466
 
 ## Answer
