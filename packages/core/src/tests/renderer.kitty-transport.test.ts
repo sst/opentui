@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
-import { existsSync, readFileSync, statSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
 import { inflateSync } from "node:zlib"
 import { CliRenderEvents, createCliRenderer, type CliRenderer, type KittyImageTransport } from "../renderer.js"
 import { NativeImage } from "../image.js"
@@ -14,7 +16,7 @@ class SyntheticTerminal extends TestWriteStream {
   probeReplies: "both" | "query-only" | "reject" = "both"
   rejectUploads = false
   private pending = ""
-  private probePath = ""
+  probePath = ""
 
   override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     this.pending += chunk.toString("latin1")
@@ -173,6 +175,26 @@ test("Kitty file integration keeps bytes alive across frames and consumes only m
   terminal.reply(upload.fields.i)
   expect(existsSync(path)).toBe(false)
   expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
+})
+
+test("Kitty file probes use runtime TMPDIR set before renderer creation and clean up there", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "opentui-kitty-env-"))
+  let renderer: CliRenderer | undefined
+  try {
+    process.env.TMPDIR = directory
+    const fixture = await setup("file", { probe: "query-only" })
+    renderer = fixture.renderer
+    const path = fixture.terminal.probePath
+    expect(dirname(path)).toBe(directory)
+    expect(readFileSync(path)).toEqual(Buffer.from([0, 0, 0]))
+    expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(1)
+    renderer.destroy()
+    expect(existsSync(path)).toBe(false)
+    expect(readdirSync(directory)).toEqual([])
+  } finally {
+    renderer?.destroy()
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test("Kitty file preserves PNG and never overwrites a pending same-ID file", async () => {

@@ -176,9 +176,9 @@ pub const Transport = struct {
     }
 
     pub fn transmit(self: *Transport, allocator: std.mem.Allocator, writer: anytype, image: *native_image.Image, id: u32, tmux: bool, directory: []const u8) !void {
-        self.expire(nowMs());
         self.fallback = .none;
         if (self.mode == .file) file: {
+            self.expire(nowMs());
             if (self.file_state != .ready or tmux) {
                 self.fallback = if (self.file_state == .probing) .not_ready else .unavailable;
                 break :file;

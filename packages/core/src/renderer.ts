@@ -542,6 +542,7 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMPDIR",
   "SSH_CONNECTION",
   "SSH_CLIENT",
   "SSH_TTY",

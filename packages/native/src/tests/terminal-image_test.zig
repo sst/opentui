@@ -172,10 +172,23 @@ test "kitty zlib roundtrips RGB and RGBA with a real inflater" {
     }
 }
 
-test "kitty zlib expansion and allocation failures fall back to unchanged raw output" {
+test "kitty zlib expansion falls back to unchanged raw output" {
     var pixels: [64 * 64 * 4]u8 = undefined;
     var prng = std.Random.DefaultPrng.init(18271);
     prng.random().bytes(&pixels);
+    const value = try image.createFromRgba(std.testing.allocator, &pixels, 64, 64, 256);
+    defer value.deinit();
+    var raw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer raw.deinit();
+    try terminal_image.writeKittyTransmit(&raw.writer, value, 20, false);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expectEqual(.raw, try terminal_image.writeKittyTransmitEncoded(std.testing.allocator, &output.writer, value, 20, false, true));
+    try std.testing.expectEqualSlices(u8, raw.written(), output.written());
+}
+
+test "kitty zlib allocation failures fall back even when the input compresses" {
+    const pixels = [_]u8{42} ** (64 * 64 * 4);
     const value = try image.createFromRgba(std.testing.allocator, &pixels, 64, 64, 256);
     defer value.deinit();
     var raw: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -185,8 +198,12 @@ test "kitty zlib expansion and allocation failures fall back to unchanged raw ou
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = failure });
         var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
         defer output.deinit();
-        try std.testing.expectEqual(.raw, try terminal_image.writeKittyTransmitEncoded(failing.allocator(), &output.writer, value, 20, false, true));
-        try std.testing.expectEqualSlices(u8, raw.written(), output.written());
+        const encoding = try terminal_image.writeKittyTransmitEncoded(failing.allocator(), &output.writer, value, 20, false, true);
+        try std.testing.expectEqual(failure < 3, failing.has_induced_failure);
+        if (failure < 3) {
+            try std.testing.expectEqual(.raw, encoding);
+            try std.testing.expectEqualSlices(u8, raw.written(), output.written());
+        } else try std.testing.expectEqual(.zlib, encoding);
     }
 }
 
