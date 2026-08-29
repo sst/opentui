@@ -131,7 +131,7 @@ const status = renderer.kittyImageTransportStatus
 
 File mode tests both a real `t=f` query and an explicit-ID upload acknowledgement before sending application images by file. Old WezTerm versions that answer queries but omit upload acknowledgements remain on raw. The query is asynchronous, so initial frames can use raw while `fileState` is `"probing"`.
 
-Each file has a unique name, mode `0600`, and immutable contents. Files live in `TMPDIR`, or `/tmp` when it is unset. At most eight files and 64 MiB are outstanding per renderer. A busy image ID or exhausted budget uses raw without replacing a pending file. A matching Kitty reply releases a file. Frame events, stdout drain, and cursor reports do not acknowledge image consumption or presentation.
+Each file has a unique name, mode `0600`, and immutable contents. Files use the `TMPDIR` forwarded at renderer creation, or `/tmp` if it is absent. Include `TMPDIR` if you override `forwardEnvKeys`. At most eight files and 64 MiB are outstanding per renderer. A busy image ID or exhausted budget uses raw without replacing a pending file. A matching Kitty reply releases a file. Frame events, stdout drain, and cursor reports do not acknowledge image consumption or presentation.
 
 Leases have a five-second deadline, checked during rendering and once per second while idle. Expiry cancels the transport; it does not count as successful consumption. Timeout, terminal errors, output errors, `cancelKittyImageTransport()`, suspend, and destroy remove pending files and disable further file uploads. Active images retry through the raw/PNG path after a failed file upload. Late replies cannot re-enable file mode. Process termination that bypasses cleanup, such as `SIGKILL`, can leave files behind.
 

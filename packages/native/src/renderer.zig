@@ -514,7 +514,7 @@ pub const CliRenderer = struct {
             if (self.kittyTransport.file_state == .disabled) {
                 if (self.reserveKittyHistoryImageIds(2)) |base| {
                     writer = .fixed(&queryBuf);
-                    self.kittyTransport.startProbe(&writer, base + 1, kittyTempDirectory()) catch {};
+                    self.kittyTransport.startProbe(&writer, base + 1, self.kittyTempDirectory()) catch {};
                     self.backend.writeOut(writer.buffered());
                 } else self.kittyTransport.cancel(.unsupported);
             }
@@ -2129,7 +2129,8 @@ pub const CliRenderer = struct {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement, .escape);
                 defer if (transmit.owned) transmit.image.deinit();
-                try self.kittyTransport.transmit(self.allocator, writer, transmit.image, image_id, tmux, kittyTempDirectory());
+                const directory = if (self.kittyTransport.mode == .file) self.kittyTempDirectory() else "";
+                try self.kittyTransport.transmit(self.allocator, writer, transmit.image, image_id, tmux, directory);
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
                 previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
                 previous.?.source_height != placement.source_height)
@@ -3193,9 +3194,10 @@ pub const CliRenderer = struct {
         self.writeOut(writer.buffered());
     }
 
-    fn kittyTempDirectory() []const u8 {
+    fn kittyTempDirectory(self: *const CliRenderer) []const u8 {
         if (builtin.os.tag == .windows) return "";
-        return if (std.c.getenv("TMPDIR")) |value| std.mem.span(value) else "/tmp";
+        const env_map = self.terminal.opts.env_map orelse return "/tmp";
+        return env_map.get("TMPDIR") orelse "/tmp";
     }
 
     pub fn pollKittyImageTransport(self: *CliRenderer) bool {
