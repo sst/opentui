@@ -1,9 +1,139 @@
 import { describe, expect, test } from "bun:test"
 import { OptimizedBuffer } from "../buffer.js"
-import { ImageError, NativeImagePool } from "../image.js"
+import { ImageError, NativeImage, NativeImagePool, type PixelImportOptions } from "../image.js"
 import { resolveRenderLib } from "../zig.js"
 
 describe("NativeImagePool", () => {
+  test("publishes shared pixel views through busy and reused slots", () => {
+    const pixels = new Uint8Array(new SharedArrayBuffer(5), 1)
+    pixels.set([3, 2, 1, 128])
+    const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
+    let frame = pool.publishPixels(pixels, { format: "bgra8" })!
+    try {
+      pixels.set([6, 5, 4, 255])
+      expect(pool.publishPixels(pixels, { format: "bgra8" })).toBeNull()
+      expect(frame.raw().data).toEqual(Uint8Array.of(1, 2, 3, 128))
+      frame.dispose()
+      frame = pool.publishPixels(pixels, { format: "bgra8" })!
+      expect(frame.raw().data).toEqual(Uint8Array.of(4, 5, 6, 255))
+    } finally {
+      frame.dispose()
+      pool.dispose()
+    }
+  })
+
+  test.each(["straight", "opaque"] as const)(
+    "publishes strided 65x3 BGRA with %s alpha and immutable readers",
+    (alpha) => {
+      const width = 65
+      const height = 3
+      const stride = 267
+      const pixels = new Uint8Array(stride * (height - 1) + width * 4 + 1).subarray(1)
+      const expected = new Uint8Array(width * height * 4)
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          pixels.set([x, y, 99, 255], y * stride + x * 4)
+          expected.set([99, y, x, 255], (y * width + x) * 4)
+        }
+      }
+      pixels[pixels.length - 1] = 128
+      expected[expected.length - 1] = alpha === "opaque" ? 255 : 128
+      const options: PixelImportOptions = { stride, format: "bgra8", alpha, colorSpace: "srgb" }
+      const pool = new NativeImagePool({ width, height, capacity: 2 })
+      const first = pool.publishPixels(pixels, options)!
+      const retained = first.retain()
+      first.dispose()
+      const lib = resolveRenderLib()
+      try {
+        expect(retained.raw().data).toEqual(expected)
+        expect(retained.info().hasAlpha).toBe(alpha === "straight")
+        const second = pool.publishPixels(pixels, options)!
+        const allocated = lib.getAllocatorStats().activeAllocations
+        const previousHandle = second.ptr
+        try {
+          expect(pool.publishPixels(pixels, options)).toBeNull()
+        } finally {
+          second.dispose()
+        }
+        for (let index = 0; index < 20; index++) {
+          pixels[pixels.length - 1] = index % 2 === 0 ? 255 : 0
+          const frame = pool.publishPixels(pixels, options)!
+          try {
+            expect(frame.ptr).not.toBe(previousHandle)
+            expect(frame.info().hasAlpha).toBe(alpha === "straight" && index % 2 !== 0)
+            expect(frame.raw().data.at(-1)).toBe(alpha === "opaque" ? 255 : pixels[pixels.length - 1])
+            expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
+            expect(retained.raw().data).toEqual(expected)
+          } finally {
+            frame.dispose()
+          }
+        }
+        pixels.fill(0)
+        expect(retained.raw().data).toEqual(expected)
+      } finally {
+        retained.dispose()
+        pool.dispose()
+      }
+    },
+  )
+
+  test("publishPixels validates before busy and preserves the fromPixels option contract", () => {
+    const pixels = Uint8Array.of(1, 2, 3, 255)
+    const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
+    const frame = pool.publishPixels(pixels)!
+    try {
+      expect(frame.raw().data).toEqual(pixels)
+      for (const [options, error] of [
+        [{ stride: 3 }, ImageError],
+        [{ stride: NaN }, RangeError],
+        [{ format: "argb8" }, TypeError],
+        [{ format: "toString" }, TypeError],
+        [{ alpha: "premultiplied" }, TypeError],
+        [{ colorSpace: "display-p3" }, TypeError],
+      ] as const) {
+        expect(() => NativeImage.fromPixels(pixels, 1, 1, options as PixelImportOptions)).toThrow(error)
+        expect(() => pool.publishPixels(pixels, options as PixelImportOptions)).toThrow(error)
+      }
+      expect(() => pool.publishPixels(new Uint8Array(3))).toThrow(ImageError)
+      expect(() => pool.publishPixels([] as unknown as Uint8Array)).toThrow(TypeError)
+      expect(pool.publishPixels(pixels)).toBeNull()
+      expect(frame.raw().data).toEqual(pixels)
+    } finally {
+      frame.dispose()
+      pool.dispose()
+    }
+    expect(() => pool.publishPixels(pixels)).toThrow("disposed")
+  })
+
+  test("publishPixels releases failed native wrappers and can retry creation or publication", () => {
+    const lib = resolveRenderLib()
+    const pixels = Uint8Array.of(3, 2, 1, 0)
+    NativeImage.fromPixels(pixels, 1, 1).dispose()
+    const allocated = lib.getAllocatorStats().activeAllocations
+    const getInfo = lib.imageGetInfo
+    for (const failAt of [1, 2]) {
+      const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
+      let calls = 0
+      lib.imageGetInfo = (handle) => {
+        const result = getInfo.call(lib, handle)
+        return ++calls === failAt ? { ...result, status: 8 } : result
+      }
+      try {
+        expect(() => pool.publishPixels(pixels, { format: "bgra8" })).toThrow(ImageError)
+        const frame = pool.publishPixels(pixels, { format: "bgra8", alpha: "opaque" })!
+        try {
+          expect(frame.raw().data).toEqual(Uint8Array.of(1, 2, 3, 255))
+        } finally {
+          frame.dispose()
+        }
+      } finally {
+        lib.imageGetInfo = getInfo
+        pool.dispose()
+      }
+      expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
+    }
+  })
+
   test("publishes new immutable handles and reuses a bounded number of pixel allocations", () => {
     const pool = new NativeImagePool({ width: 64, height: 64, capacity: 2 })
     const pixels = new Uint8Array(64 * 64 * 4).fill(255)

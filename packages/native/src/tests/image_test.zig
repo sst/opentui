@@ -14,39 +14,77 @@ test "reusable RGBA updates keep the allocation and reject pinned or invalid wri
     const pointer = value.pixels.ptr;
 
     value.retain();
-    try std.testing.expectError(error.Busy, image.updateRgba(value, &second, 8));
+    try std.testing.expectError(error.Busy, image.updatePixels(value, &second, .{ .stride = 8 }));
     try std.testing.expectEqualSlices(u8, &first, value.pixels);
     value.deinit();
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, &second, 3));
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(value, second[0..11], 8));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(value, &second, .{ .stride = 3 }));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(value, second[0..11], .{ .stride = 8 }));
     try std.testing.expectEqualSlices(u8, &first, value.pixels);
 
     for (0..1000) |_| {
-        try image.updateRgba(value, &second, 8);
+        try image.updatePixels(value, &second, .{ .stride = 8 });
         try std.testing.expectEqual(pointer, value.pixels.ptr);
         try std.testing.expectEqualSlices(u8, &[_]u8{ 7, 8, 9, 128, 10, 11, 12, 255 }, value.pixels);
         try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
-        try image.updateRgba(value, &first, 4);
+        try image.updatePixels(value, &first, .{ .stride = 4 });
         try std.testing.expectEqual(@as(u32, 0), value.metadata.has_alpha);
     }
     try std.testing.expect(!failing.has_induced_failure);
 }
 
-test "reusable RGBA updates invalidate PNG encoding without changing cloned snapshots" {
+test "reusable pixel updates invalidate PNG encoding without changing cloned snapshots" {
     const value = try makeImage(&.{ 255, 0, 0, 255 }, 1, 1);
     defer value.deinit();
     _ = try value.ensureEncodedPng();
     const snapshot = try value.clone();
     defer snapshot.deinit();
 
-    try image.updateRgba(value, &.{ 0, 0, 255, 128 }, 4);
+    try image.updatePixels(value, &.{ 255, 0, 0, 128 }, .{ .stride = 4, .format = .bgra8 });
     try std.testing.expect(value.encoded_png == null);
     const decoded = try image.decode(std.testing.allocator, try value.ensureEncodedPng(), .{});
     defer decoded.deinit();
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 255, 128 }, try decoded.ensurePixels());
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, snapshot.pixels);
     try std.testing.expect(snapshot.encoded_png != null);
-    try std.testing.expectError(error.InvalidArgument, image.updateRgba(decoded, &.{ 1, 2, 3, 4 }, 4));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(decoded, &.{ 1, 2, 3, 4 }, .{ .stride = 4 }));
+}
+
+test "reusable pixel updates convert strided 65x3 BGRA without allocating" {
+    const width = 65;
+    const height = 3;
+    const stride = width * 4 + 7;
+    var source = [_]u8{0} ** (1 + stride * (height - 1) + width * 4);
+    var expected: [width * height * 4]u8 = undefined;
+    for (0..height) |y| {
+        for (0..width) |x| {
+            source[1 + y * stride + x * 4 ..][0..4].* = .{ @intCast(x), @intCast(y), 99, 255 };
+            expected[(y * width + x) * 4 ..][0..4].* = .{ 99, @intCast(y), @intCast(x), 255 };
+        }
+    }
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 2 });
+    const value = try image.createFromPixels(failing.allocator(), source[1..], width, height, .{
+        .stride = stride,
+        .format = .bgra8,
+    });
+    defer value.deinit();
+    const pointer = value.pixels.ptr;
+    const metadata = value.info();
+    source[source.len - 1] = 128;
+    value.retain();
+    try std.testing.expectError(error.Busy, image.updatePixels(value, source[1..], .{ .stride = stride }));
+    try std.testing.expectError(error.InvalidArgument, image.updatePixels(value, source[1 .. source.len - 1], .{ .stride = stride }));
+    try std.testing.expectEqualSlices(u8, &expected, value.pixels);
+    try std.testing.expectEqual(metadata, value.info());
+    value.deinit();
+
+    for ([_]image.PixelAlpha{ .straight, .@"opaque" }) |alpha| {
+        expected[expected.len - 1] = if (alpha == .straight) 128 else 255;
+        try image.updatePixels(value, source[1..], .{ .stride = stride, .format = .bgra8, .alpha = alpha });
+        try std.testing.expectEqual(pointer, value.pixels.ptr);
+        try std.testing.expectEqualSlices(u8, &expected, value.pixels);
+        try std.testing.expectEqual(@intFromBool(alpha == .straight), value.info().has_alpha);
+    }
+    try std.testing.expect(!failing.has_induced_failure);
 }
 
 fn decodeBase64(encoded: []const u8) ![]u8 {

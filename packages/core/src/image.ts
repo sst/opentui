@@ -228,6 +228,16 @@ function requireU32(value: number, name: string, allowZero = false): number {
   return value
 }
 
+function pixelImportOptions(width: number, options: PixelImportOptions) {
+  const stride = requireU32(options.stride ?? width * 4, "stride")
+  const bgra = requireMappedOption(PIXEL_FORMAT_BGRA, options.format ?? "rgba8", "pixel format")
+  const alpha = requireMappedOption(PIXEL_ALPHA_IDS, options.alpha ?? "straight", "pixel alpha")
+  if (options.colorSpace !== undefined && options.colorSpace !== "srgb") {
+    throw new TypeError(`Unsupported pixel color space: ${String(options.colorSpace)}`)
+  }
+  return { stride, format: Number(bgra), alpha }
+}
+
 function requireI32(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value < -0x8000_0000 || value > 0x7fff_ffff) {
     throw new RangeError(`${name} must be an i32 integer`)
@@ -460,14 +470,9 @@ export class NativeImage {
     if (!(pixels instanceof Uint8Array)) throw new TypeError("pixels must be a Uint8Array")
     requireU32(width, "width")
     requireU32(height, "height")
-    const stride = requireU32(options.stride ?? width * 4, "stride")
-    const bgra = requireMappedOption(PIXEL_FORMAT_BGRA, options.format ?? "rgba8", "pixel format")
-    const alpha = requireMappedOption(PIXEL_ALPHA_IDS, options.alpha ?? "straight", "pixel alpha")
-    if (options.colorSpace !== undefined && options.colorSpace !== "srgb") {
-      throw new TypeError(`Unsupported pixel color space: ${String(options.colorSpace)}`)
-    }
+    const { stride, format, alpha } = pixelImportOptions(width, options)
     const lib = resolveRenderLib()
-    const result = lib.imageCreateFromPixels(pixels, width, height, stride, Number(bgra), alpha)
+    const result = lib.imageCreateFromPixels(pixels, width, height, stride, format, alpha)
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
     return NativeImage.fromHandle(lib, result.handle)
@@ -668,12 +673,16 @@ export class NativeImagePool {
   }
 
   public publishRgba(pixels: Uint8Array, stride = this.width * 4): NativeImage | null {
+    return this.publishPixels(pixels, { stride: requireU32(stride, "stride") })
+  }
+
+  public publishPixels(pixels: Uint8Array, options: PixelImportOptions = {}): NativeImage | null {
     if (this.disposed) throw new Error("NativeImagePool is disposed")
     if (!(pixels instanceof Uint8Array)) throw new TypeError("pixels must be a Uint8Array")
-    requireU32(stride, "stride")
+    const { stride, format, alpha } = pixelImportOptions(this.width, options)
 
     for (const image of this.images) {
-      const status = this.lib.imageUpdateRgba(image.ptr, pixels, stride)
+      const status = this.lib.imageUpdatePixels(image.ptr, pixels, stride, format, alpha)
       if (status === BUSY_STATUS) continue
       checkStatus(status)
       // The private owner is never rendered. A fresh handle prevents stale native
@@ -682,7 +691,7 @@ export class NativeImagePool {
     }
     if (this.images.length === this.capacity) return null
 
-    const image = NativeImage.fromRgba(pixels, this.width, this.height, stride)
+    const image = NativeImage.fromPixels(pixels, this.width, this.height, options)
     this.images.push(image)
     return image.retain()
   }

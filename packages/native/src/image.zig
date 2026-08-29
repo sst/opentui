@@ -105,6 +105,11 @@ pub const ColorStatus = enum(u32) {
 
 pub const PixelFormat = enum(u32) { rgba8 = 0, bgra8 = 1 };
 pub const PixelAlpha = enum(u32) { straight = 0, @"opaque" = 1 };
+pub const PixelImportOptions = struct {
+    stride: u32,
+    format: PixelFormat = .rgba8,
+    alpha: PixelAlpha = .straight,
+};
 
 pub const Info = extern struct {
     width: u32 = 0,
@@ -780,9 +785,19 @@ fn validateRgba(pixels: []const u8, width: u32, height: u32, stride: u32) !u32 {
     return row_bytes;
 }
 
-fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
-    _ = try validateRgba(pixels, width, height, stride);
-    return allocateImage(allocator, .{
+pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
+    return createFromPixels(allocator, pixels, width, height, .{ .stride = stride });
+}
+
+pub fn createFromPixels(
+    allocator: Allocator,
+    pixels: []const u8,
+    width: u32,
+    height: u32,
+    options: PixelImportOptions,
+) !*Image {
+    _ = try validateRgba(pixels, width, height, options.stride);
+    const image = try allocateImage(allocator, .{
         .width = width,
         .height = height,
         .source_width = width,
@@ -792,47 +807,25 @@ fn allocatePixelImport(allocator: Allocator, pixels: []const u8, width: u32, hei
         .orientation = 1,
         .has_alpha = 0,
     });
-}
-
-pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
-    const image = try allocatePixelImport(allocator, pixels, width, height, stride);
     errdefer image.deinit();
-    try updateRgba(image, pixels, stride);
+    try updatePixels(image, pixels, options);
     return image;
 }
 
 // Pool owners must stay private: every publication needs a fresh retained handle
 // because renderer caches key content by handle, not by the pixel allocation.
-pub fn updateRgba(image: *Image, pixels: []const u8, stride: u32) !void {
+pub fn updatePixels(image: *Image, pixels: []const u8, options: PixelImportOptions) !void {
     if (image.metadata.format != @intFromEnum(Format.raw_rgba)) return error.InvalidArgument;
-    const row_bytes = try validateRgba(pixels, image.width(), image.height(), stride);
+    const row_bytes = try validateRgba(pixels, image.width(), image.height(), options.stride);
     if (image.ref_count != 1) return error.Busy;
     std.debug.assert(image.pixels.len == @as(usize, row_bytes) * image.height());
 
     image.discardEncoded();
-    image.metadata.has_alpha = 0;
-    for (0..image.height()) |y| {
-        const src_offset = y * stride;
-        const dst_offset = y * row_bytes;
-        @memcpy(image.pixels[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
-        if (image.metadata.has_alpha == 0 and pixelsHaveTransparency(pixels[src_offset .. src_offset + row_bytes])) image.metadata.has_alpha = 1;
-    }
-}
-
-pub fn createFromPixels(
-    allocator: Allocator,
-    pixels: []const u8,
-    width: u32,
-    height: u32,
-    options: struct { stride: u32, format: PixelFormat = .rgba8, alpha: PixelAlpha = .straight },
-) !*Image {
-    const image = try allocatePixelImport(allocator, pixels, width, height, options.stride);
-    const row_bytes = width * 4;
     const destination = image.pixels;
     const opaque_mask: @Vector(16, u8) = .{ 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255 };
     var alpha_lanes: @Vector(16, u8) = @splat(255);
     var alpha_mask: u32 = 0xff000000;
-    for (0..height) |y| {
+    for (0..image.height()) |y| {
         const src_offset = y * options.stride;
         const dst_offset = y * row_bytes;
         var x: usize = 0;
@@ -860,7 +853,6 @@ pub fn createFromPixels(
     }
     const vector_alpha = alpha_lanes[3] & alpha_lanes[7] & alpha_lanes[11] & alpha_lanes[15];
     image.metadata.has_alpha = @intFromBool(alpha_mask != 0xff000000 or vector_alpha != 255);
-    return image;
 }
 
 fn decodeInternal(allocator: Allocator, data: []const u8, limits: Limits, retain_encoded_png: bool) !*Image {
