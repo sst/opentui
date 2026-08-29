@@ -137,6 +137,7 @@
     "src/tests/scrollbox-culling-bug.test.ts",
     "src/tests/scrollbox-hitgrid-resize.test.ts",
     "src/tests/scrollbox-hitgrid.test.ts",
+    "src/tests/text-buffer-drawing.test.ts",
     "src/tests/yoga-callback-stress.test.ts",
     "src/tests/yoga-setters.test.ts",
     "src/tests/wrap-resize-perf.test.ts",

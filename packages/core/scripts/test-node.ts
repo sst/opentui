@@ -174,6 +174,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/scrollbox-culling-bug.test.js",
   ".node-test/src/tests/scrollbox-hitgrid-resize.test.js",
   ".node-test/src/tests/scrollbox-hitgrid.test.js",
+  ".node-test/src/tests/text-buffer-drawing.test.js",
   ".node-test/src/tests/yoga-callback-stress.test.js",
   ".node-test/src/tests/yoga-setters.test.js",
   ".node-test/src/tests/wrap-resize-perf.test.js",
