@@ -1,6 +1,13 @@
 #define GPU_SHARING_NO_MAIN
 #include "native-sharing.c"
 #include "three-protocol.h"
+#include <time.h>
+
+static uint64_t monotonic_ns(void) {
+    struct timespec now;
+    REQUIRE(clock_gettime(CLOCK_MONOTONIC, &now) == 0, "performance monotonic clock");
+    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+}
 
 /* This bridge transfers ownership between Dawn's EXTERNAL and EGL's FOREIGN queues.
    It records barriers only: no draw, dispatch, copy, or mapping of shared images. */
@@ -118,6 +125,15 @@ static int sample_three_frame(struct consumer *c, uint32_t sequence, int acquire
 }
 
 int main(int argc, char **argv) {
+    const struct three_run run = three_run_options();
+    if (argc == 2 && strcmp(argv[1], "--perf-options") == 0) {
+        printf("{\"performance\":%s,\"measured_frames\":%u,\"warmup_frames\":%u,\"pace_us\":%u,"
+               "\"total_frames\":%u,\"timeout_seconds\":%u}\n",
+               run.performance ? "true" : "false", run.measured_frames, run.warmup_frames, run.pace_us,
+               run.total_frames, run.timeout_seconds);
+        REQUIRE(fflush(stdout) == 0, "flush performance options");
+        return EXIT_SUCCESS;
+    }
     REQUIRE(argc == 5 || argc == 6, "usage: three-sharing render-node width height producer.ts [--no-readback]");
     width = dimension(argv[2]);
     height = dimension(argv[3]);
@@ -125,10 +141,15 @@ int main(int argc, char **argv) {
     if (!validate)
         REQUIRE(strcmp(argv[5], "--no-readback") == 0, "Three mode");
     bool calibration = getenv("GPU_SHARING_CALIBRATION") != NULL;
+    if (run.performance) {
+        REQUIRE(!validate && !calibration && !getenv("GPU_SHARING_THREE_STALE"),
+                "performance mode requires the no-readback arena without fault injection");
+        three_require_readback_guard();
+    }
     struct rlimit core = {0};
     REQUIRE(setrlimit(RLIMIT_CORE, &core) == 0, "disable core dumps");
     REQUIRE(atexit(cleanup_process) == 0, "atexit");
-    alarm(55);
+    alarm(run.timeout_seconds);
     int sockets[2];
     REQUIRE(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets) == 0, "socketpair");
     pid_t parent = getpid();
@@ -136,13 +157,17 @@ int main(int argc, char **argv) {
     REQUIRE(child_pid >= 0, "fork Three producer");
     if (child_pid == 0) {
         REQUIRE(prctl(PR_SET_PDEATHSIG, SIGKILL) == 0 && getppid() == parent, "Three producer parent-death guard");
-        alarm(50);
+        alarm(run.timeout_seconds - 5);
         REQUIRE(close(sockets[0]) == 0, "close consumer socket");
         connection = sockets[1];
         char fd_argument[16];
         snprintf(fd_argument, sizeof(fd_argument), "%d", connection);
         REQUIRE(fcntl(connection, F_SETFD, 0) == 0, "inherit Three producer socket");
-        execlp("bun", "bun", argv[4], fd_argument, argv[2], argv[3], validate ? "validate" : "no-readback", NULL);
+        execlp("bun", "bun", argv[4], fd_argument, argv[2], argv[3],
+               run.performance ? "performance"
+               : validate      ? "validate"
+                               : "no-readback",
+               NULL);
         fail("exec Three producer", errno);
     }
     is_producer = false;
@@ -182,8 +207,21 @@ int main(int argc, char **argv) {
                                           VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL);
     }
     uint64_t hashes[FRAME_COUNT] = {0};
-    for (uint32_t sequence = 0; sequence < FRAME_COUNT; sequence++) {
+    uint64_t *durations = run.performance ? calloc(run.measured_frames, sizeof(*durations)) : NULL;
+    REQUIRE(!run.performance || durations, "bounded performance duration allocation");
+    uint64_t previous_grant_ns = 0;
+    for (uint32_t sequence = 0; sequence < run.total_frames; sequence++) {
         uint32_t index = sequence % SLOT_COUNT;
+        if (run.performance && run.pace_us && sequence > 0) {
+            uint64_t deadline_ns = previous_grant_ns + (uint64_t)run.pace_us * 1000;
+            struct timespec deadline = {.tv_sec = (time_t)(deadline_ns / 1000000000),
+                                        .tv_nsec = (long)(deadline_ns % 1000000000)};
+            int error = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
+            if (error)
+                fail("performance pacing", error);
+        }
+        uint64_t grant_ns = run.performance ? monotonic_ns() : 0;
+        previous_grant_ns = grant_ns;
         send_packet((struct packet){.kind = RELEASE,
                                     .slot = index,
                                     .sequence = sequence,
@@ -198,13 +236,21 @@ int main(int argc, char **argv) {
                 "Three RenderAttachment release layout");
         int ready_fd = transfer_ownership(&p, &p.slots[index], produced_fd, VK_QUEUE_FAMILY_EXTERNAL, frame.old_layout,
                                           frame.new_layout, VK_QUEUE_FAMILY_FOREIGN_EXT);
-        int sampled_fd =
-            sample_three_frame(&c, sequence, ready_fd, validate, calibration, frame.modifier, &hashes[sequence]);
+        int sampled_fd = sample_three_frame(&c, sequence, ready_fd, validate, calibration, frame.modifier,
+                                            validate ? &hashes[sequence] : NULL);
         if (validate && sequence > 0)
             REQUIRE(hashes[sequence] != hashes[sequence - 1], "Three frames must change");
         available[index] =
             transfer_ownership(&p, &p.slots[index], sampled_fd, VK_QUEUE_FAMILY_FOREIGN_EXT, VK_IMAGE_LAYOUT_GENERAL,
                                VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL);
+        if (run.performance) {
+            /* This submission waits for EGL sampling, then completes the return to EXTERNAL ownership. */
+            VK(vkWaitForFences(p.device, 1, &p.slots[index].submitted, VK_TRUE, wait_ns));
+            uint64_t completed_ns = monotonic_ns();
+            REQUIRE(completed_ns >= grant_ns, "performance clock ordering");
+            if (sequence >= run.warmup_frames)
+                durations[sequence - run.warmup_frames] = completed_ns - grant_ns;
+        }
     }
     for (uint32_t i = 0; i < SLOT_COUNT; i++) {
         VK(vkWaitForFences(p.device, 1, &p.slots[i].submitted, VK_TRUE, wait_ns));
@@ -212,7 +258,7 @@ int main(int argc, char **argv) {
     }
     send_packet((struct packet){.kind = STOP}, -1);
     struct packet stop = receive_packet(STOP, false, NULL);
-    REQUIRE(stop.sequence == FRAME_COUNT && stop.width == (validate ? FRAME_COUNT : 0),
+    REQUIRE(stop.sequence == run.total_frames && stop.width == (validate ? FRAME_COUNT : 0),
             "Three reference readback count");
     int status;
     REQUIRE(waitpid(child_pid, &status, 0) == child_pid, "wait Three producer");
@@ -242,24 +288,59 @@ int main(int argc, char **argv) {
         vkFreeMemory(p.device, slot->memory, NULL);
     }
     vkDestroyCommandPool(p.device, p.command_pool, NULL);
+    VkPhysicalDeviceDriverProperties driver = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+    VkPhysicalDeviceIDProperties identity = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES,
+                                             .pNext = &driver};
+    if (run.performance) {
+        VkPhysicalDeviceProperties2 properties = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                                                  .pNext = &identity};
+        vkGetPhysicalDeviceProperties2(p.physical, &properties);
+    }
     vkDestroyDevice(p.device, NULL);
     vkDestroyInstance(p.instance, NULL);
     printf("{\"status\":\"pass\",\"producer\":\"Three.js WebGPURenderer\",\"consumer\":\"EGL GLES3 "
            "texelFetch\",\"device\":");
     json_string(p.name);
     printf(",\"mode\":\"%s\","
-           "\"width\":%u,\"height\":%u,\"slots\":2,\"frames\":8,\"three_render_attachment\":true,\"calibration\":%s,"
+           "\"width\":%u,\"height\":%u,\"slots\":2,\"frames\":%u,\"three_render_attachment\":true,\"calibration\":%s,"
            "\"cpu_pixel_transport_bytes\":0,\"shared_image_cpu_maps\":0,\"bridge_pixel_copy_commands\":0,"
            "\"producer_reference_readbacks\":%u,\"consumer_readbacks\":%u,\"stride\":%u,\"image_fd_registrations\":2,"
-           "\"cross_process_fence_transfers\":16,\"ownership_bridge_submissions\":18,\"format\":\"RGBA8 LINEAR\","
+           "\"cross_process_fence_transfers\":%u,\"ownership_bridge_submissions\":%u,\"format\":\"RGBA8 LINEAR\","
            "\"scheduling\":\"serial two-slot handshake\",\"hash_algorithm\":\"FNV1a64 RGBA\",\"hashes\":[",
-           validate ? "validation" : "no-readback", width, height, calibration ? "true" : "false", stop.width,
-           validate ? FRAME_COUNT : 0, p.slots[0].registration.stride);
+           run.performance ? "performance"
+           : validate      ? "validation"
+                           : "no-readback",
+           width, height, run.total_frames, calibration ? "true" : "false", stop.width, validate ? FRAME_COUNT : 0,
+           p.slots[0].registration.stride, run.total_frames * 2, SLOT_COUNT + run.total_frames * 2);
     if (validate) {
         for (uint32_t i = 0; i < FRAME_COUNT; i++)
             printf("%s\"%016" PRIx64 "\"", i ? "," : "", hashes[i]);
     }
-    printf("]}\n");
+    printf("]");
+    if (run.performance) {
+        uint64_t sum_ns = 0;
+        printf(",\"performance\":{\"warmup_frames\":%u,\"measured_frames\":%u,\"pace_us\":%u,"
+               "\"clock\":\"CLOCK_MONOTONIC\",\"completion\":\"return bridge fence after EGL sampling and EXTERNAL "
+               "release\","
+               "\"explicit_host_wait_timeout_ms\":%u,\"pacing_included\":false,\"frame_service_ns\":[",
+               run.warmup_frames, run.measured_frames, run.pace_us, WAIT_MS);
+        for (uint32_t i = 0; i < run.measured_frames; i++) {
+            printf("%s%" PRIu64, i ? "," : "", durations[i]);
+            sum_ns += durations[i];
+        }
+        printf("],\"mean_service_ns\":%.3f,\"vendor_id\":%u,\"device_id\":%u,\"device_uuid\":\"",
+               (double)sum_ns / run.measured_frames, p.vendor_id, p.device_id);
+        for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
+            printf("%02x", identity.deviceUUID[i]);
+        printf("\",\"driver_uuid\":\"");
+        for (uint32_t i = 0; i < VK_UUID_SIZE; i++)
+            printf("%02x", identity.driverUUID[i]);
+        printf("\",\"driver_info\":");
+        json_string(driver.driverInfo);
+        printf("}");
+    }
+    free(durations);
+    printf("}\n");
     REQUIRE(fflush(stdout) == 0, "flush Three result");
     return EXIT_SUCCESS;
 }

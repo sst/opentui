@@ -41,6 +41,66 @@ arena's content hash, checkout HEAD, scene counts, Three revision and renderer
 hash, and Bun JavaScript/native hashes. The content hash is authoritative if the
 selected source has uncommitted changes. The producer rejects a source change
 during a run. Clean the build when changing dependency directories.
+The metadata `git rev-parse` call has a two-second timeout and sends `SIGKILL`
+to that direct subprocess on expiry. This is not arbitrary descendant-tree control.
+
+## Performance mode
+
+The [recorded serial matrix](PERFORMANCE.md) covers three guarded runs per size
+at 640x360, 1280x720, and 1920x1080, retaining every measured frame duration.
+
+The opt-in performance mode is separate from the unchanged eight-frame correctness
+runs. It uses the actual arena, two shared slots, and the no-readback guard. After
+building and when a GPU run is authorized:
+
+```sh
+MAGICK_ARENA_MODULE=/home/simon/src/wt/ot-magick/packages/examples/src/magick/arena.ts \
+  make three-perf WEBGPU_NODE_MODULES=/home/simon/src/wt/ot-magick/packages/examples/node_modules
+```
+
+The target defaults to 60 warmup frames and 300 measured frames at `640x360`.
+For another size, invoke `three-sharing` directly with `--no-readback` and the same
+module/dependency/guard environment shown above, plus `GPU_SHARING_PERF_FRAMES`.
+
+| Environment variable       | Meaning                                                 | Bounds / default               |
+| -------------------------- | ------------------------------------------------------- | ------------------------------ |
+| `GPU_SHARING_PERF_FRAMES`  | Enables performance mode and selects measured frames    | 1..10000; target default 300   |
+| `GPU_SHARING_PERF_WARMUP`  | Discarded warmup frames                                 | 0..1000; default 60            |
+| `GPU_SHARING_PERF_PACE_US` | Minimum interval between parent grants, in microseconds | 0..100000; default 0 (unpaced) |
+
+Warmup or pacing without `GPU_SHARING_PERF_FRAMES` is rejected. Performance mode
+also rejects readback, calibration, stale-frame injection, or a missing preload
+guard. For example, `GPU_SHARING_PERF_PACE_US=16667` requests a roughly 60 Hz grant
+interval. A slow frame causes no catch-up burst; the next deadline starts from
+the previous actual grant. Pacing sleep occurs before the timer starts.
+
+For every frame, the parent samples `CLOCK_MONOTONIC` immediately before sending
+the grant, including the grant's poll/send cost. After Three submits its output,
+EGL samples it, and the return bridge submits its ownership release, the parent
+explicitly calls `vkWaitForFences` on that final bridge submission. The wait has
+the existing five-second bound. The parent stops the timer after the wait returns.
+Warmup uses the same wait, so no warmup GPU work remains at the measurement boundary.
+
+This completion means that EGL's GPU sampling finished and the return bridge
+finished releasing the image to `EXTERNAL` ownership for a future producer grant.
+It includes CPU scheduling, IPC, Three submission, GPU work, ownership bridges,
+and the host fence wait. It is not just a queue-submission duration. It does not
+wait for the producer to receive another grant, display presentation, or a terminal
+reply, and it must not be compared directly to DSR latency.
+
+The parent result contains every measured duration in `performance.frame_service_ns`
+in frame order, along with its mean, counts, pacing, completion description,
+device/driver UUIDs, and driver version description. The producer retains arena, Three, and library hashes and
+adds experiment source hashes. Warmup samples are discarded. The timing array is
+bounded to 80 KB, draw statistics are aggregated, and performance mode reuses two
+canvas views instead of retaining one view per frame. Timing samples are printed
+only after the run, and no CPU pixel readback or pixel transport is added.
+
+The parent watchdog allows 60 seconds for service/startup plus the full configured
+pacing budget; the producer's alarm is five seconds shorter. `three-perf` also has
+a 1200-second outer timeout. Counts remain bounded even when unpaced. The
+`three-options-test` target checks parser boundaries through `--perf-options`, an
+early-exit path that neither initializes a GPU nor forks the producer.
 
 ## Tested workload
 
@@ -74,7 +134,7 @@ row. At width 640 the pitch is 2560 bytes.
    `EXTERNAL`, and returns a new acquire fence before the child reuses that slot.
 
 The Vulkan bridge records only ownership/layout barriers. It never draws,
-dispatches, copies pixels, or maps shared memory. Two initial transitions plus two
+dispatches, copies pixels, or maps shared memory. In the eight-frame gate, two initial transitions plus two
 per frame make 18 bridge submissions. Syscall traces confirm two processes, two
 DMA-BUF registrations, and sixteen cross-process `sync_file` transfers. All
 transport messages are 64 bytes. No CPU pixel array crosses the socket.
@@ -118,7 +178,7 @@ overrides `getPreferredCanvasFormat` on this renderer instance to return RGBA.
 The canvas checks the device, format, usage, and alpha configuration. This is a
 pinned private-API bridge, not a proposed public core API or general Bun binding.
 
-Scheduling is a serial two-slot handshake, not a performance result. Host Vulkan
+The recorded correctness evidence uses a serial two-slot handshake, not a performance result. Host Vulkan
 fence waits protect command-buffer reuse; cross-process image acquisition uses
 GPU fences. IPC, callbacks, and fence waits are bounded. Parent and child alarms,
 an outer timeout, parent-death signaling, and failure-time kill/reap bound the
@@ -129,4 +189,4 @@ process so the kernel reclaims its resources.
 This does not test tiled modifiers, MSAA, resize, cross-GPU sharing, presentation,
 or an OpenTUI/terminal integration. No Vulkan validation layer was installed;
 Dawn validation scopes and access-operation statuses are checked. No real
-terminal window or performance run is part of this gate.
+terminal window or performance run is part of the recorded correctness gate.

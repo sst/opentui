@@ -7,6 +7,7 @@
 static struct dawn_consumer producer;
 static bool opened, active, validation, stopped;
 static uint32_t next_sequence, reference_readbacks;
+static struct three_run run;
 
 const char *three_library_path(void) {
     Dl_info library;
@@ -14,9 +15,14 @@ const char *three_library_path(void) {
     return library.dli_fname;
 }
 
-void three_open(WGPUDevice device, WGPUInstance instance, int32_t socket, uint32_t image_width, uint32_t image_height,
-                uint32_t validate) {
+uint32_t three_open(WGPUDevice device, WGPUInstance instance, int32_t socket, uint32_t image_width,
+                    uint32_t image_height, uint32_t validate) {
     REQUIRE(!opened && device && instance && socket >= 0, "Three bridge initialization");
+    run = three_run_options();
+    if (run.performance) {
+        REQUIRE(!validate, "performance mode cannot read back");
+        three_require_readback_guard();
+    }
     is_producer = true;
     width = image_width;
     height = image_height;
@@ -58,6 +64,7 @@ void three_open(WGPUDevice device, WGPUInstance instance, int32_t socket, uint32
         check_errors(&producer);
     }
     opened = true;
+    return run.total_frames;
 }
 
 WGPUTexture three_texture(uint32_t index) {
@@ -66,7 +73,7 @@ WGPUTexture three_texture(uint32_t index) {
 }
 
 void three_begin(uint32_t sequence) {
-    REQUIRE(opened && !active && sequence == next_sequence && sequence < FRAME_COUNT, "Three begin sequence");
+    REQUIRE(opened && !active && sequence == next_sequence && sequence < run.total_frames, "Three begin sequence");
     int fd = -1;
     struct packet acquire = receive_packet(RELEASE, true, &fd);
     REQUIRE(acquire.slot == sequence % SLOT_COUNT && acquire.sequence == sequence &&
@@ -160,7 +167,7 @@ void three_end(uint32_t sequence, uint64_t reference_hash) {
 }
 
 void three_wait_stop(void) {
-    REQUIRE(opened && !active && next_sequence == FRAME_COUNT && !stopped, "Three stop state");
+    REQUIRE(opened && !active && next_sequence == run.total_frames && !stopped, "Three stop state");
     receive_packet(STOP, false, NULL);
     stopped = true;
 }

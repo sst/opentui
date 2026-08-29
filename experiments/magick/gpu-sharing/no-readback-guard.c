@@ -2,6 +2,8 @@
 #include <GLES3/gl3.h>
 #include <unistd.h>
 
+uint32_t gpu_sharing_readback_guard(void) { return 1; }
+
 /* LD_PRELOAD is scoped to test children. A forbidden call terminates the owning process. */
 void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void *data) {
     (void)x;

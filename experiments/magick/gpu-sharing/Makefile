@@ -58,3 +58,10 @@ three-test: three-build
 .PHONY: three-verify
 three-verify: all three-build
 	WEBGPU_NODE_MODULES=$(abspath $(WEBGPU_NODE_MODULES)) bun verify-three.ts .build/three-evidence.json
+
+.PHONY: three-perf three-options-test
+three-perf: three-build
+	GPU_SHARING_PERF_FRAMES=$${GPU_SHARING_PERF_FRAMES-300} WEBGPU_NODE_MODULES=$(abspath $(WEBGPU_NODE_MODULES)) LD_PRELOAD=$(abspath $(BUILD)/no-readback-guard.so) timeout --kill-after=2s 1200s $(BUILD)/three-sharing /dev/dri/renderD128 640 360 $(abspath three-producer.ts) --no-readback
+
+three-options-test: $(BUILD)/three-sharing
+	bun verify-three-options.ts

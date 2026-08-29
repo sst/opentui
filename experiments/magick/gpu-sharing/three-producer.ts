@@ -17,7 +17,10 @@ assert.equal(nativeHash, "3190c3777f2c07fcf6a0640833cbf5d0cde859dc53aed6d9083946
 assert.equal(javascriptHash, "afc3b46db7b2e1b62602a146dca0749e0df5f456a3b742bca38505aa17537ee1")
 assert.equal((await Bun.file(resolve(packagePath, "package.json")).json()).version, "0.1.7")
 const arenaHash = await sha256(arenaPath)
-const arenaVersion = Bun.spawnSync(["git", "-C", dirname(arenaPath), "rev-parse", "HEAD"])
+const arenaVersion = Bun.spawnSync(["git", "-C", dirname(arenaPath), "rev-parse", "HEAD"], {
+  timeout: 2000,
+  killSignal: "SIGKILL",
+})
 assert.equal(arenaVersion.exitCode, 0, "The explicitly selected arena must belong to a git checkout")
 const threePath = Bun.resolveSync("three", dirname(arenaPath))
 const rendererPath = Bun.resolveSync("three/webgpu", dirname(arenaPath))
@@ -46,12 +49,30 @@ device.addEventListener("uncapturederror", (event: any) => {
 const [socketText, widthText, heightText, mode] = process.argv.slice(2)
 const [socket, width, height] = [socketText, widthText, heightText].map(Number)
 assert([socket, width, height].every(Number.isSafeInteger))
-assert(mode === "validate" || mode === "no-readback")
+assert(mode === "validate" || mode === "no-readback" || mode === "performance")
 const validate = mode === "validate"
+const performanceRun = mode === "performance"
+assert.equal(performanceRun, process.env.GPU_SHARING_PERF_FRAMES !== undefined, "Parent/producer performance mode")
 const calibration = process.env.GPU_SHARING_CALIBRATION !== undefined
+const sourceHashes: Record<string, string> = {}
+if (performanceRun) {
+  for (const source of [
+    "three-sharing.c",
+    "three-producer.c",
+    "three-producer.ts",
+    "three-protocol.h",
+    "native-sharing.c",
+    "dawn-consumer.c",
+    "protocol.h",
+    "no-readback-guard.c",
+    "Makefile",
+  ]) {
+    sourceHashes[source] = await sha256(resolve(import.meta.dir, source))
+  }
+}
 const bridge = dlopen(resolve(import.meta.dir, ".build/three-producer.so"), {
   three_library_path: { args: [], returns: "ptr" },
-  three_open: { args: ["ptr", "ptr", "i32", "u32", "u32", "u32"], returns: "void" },
+  three_open: { args: ["ptr", "ptr", "i32", "u32", "u32", "u32"], returns: "u32" },
   three_texture: { args: ["u32"], returns: "ptr" },
   three_begin: { args: ["u32"], returns: "void" },
   three_reference_hash: { args: ["ptr"], returns: "u64" },
@@ -65,7 +86,16 @@ assert.equal(
   "Helper and Bun must load the same library path; clean the build after changing dependencies",
 )
 const nativeDevice = device as any
-bridge.symbols.three_open(nativeDevice.ptr, (adapter as any).instancePtr, socket!, width!, height!, Number(validate))
+const frameCount = bridge.symbols.three_open(
+  nativeDevice.ptr,
+  (adapter as any).instancePtr,
+  socket!,
+  width!,
+  height!,
+  Number(validate),
+)
+assert(Number.isInteger(frameCount) && frameCount > 0)
+if (!performanceRun) assert.equal(frameCount, 8, "Correctness runs remain eight frames")
 const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
 const probe = device.createTexture({ size: [1, 1], format: "rgba8unorm", usage }) as any
 const Texture = probe.constructor
@@ -95,11 +125,17 @@ const reference = validate ? device.createTexture({ size: [width!, height!], for
 const views = new Set<any>()
 for (const texture of [...textures, ...(reference ? [reference] : [])]) {
   const createView = texture.createView.bind(texture)
+  let persistentView: any
   texture.createView = (descriptor: GPUTextureViewDescriptor) => {
+    if (performanceRun) {
+      assert.equal(descriptor, undefined, "Performance canvas views must use the unchanged default descriptor")
+      if (persistentView) return persistentView
+    }
     const view = createView(descriptor)
     assert(view.ptr && typeof view.destroy === "function", "Pinned GPUTextureView layout")
     views.add(view)
-    assert(views.size <= 32, "Eight frames must not exceed the bounded view pool")
+    assert(views.size <= (performanceRun ? 2 : 32), "Bounded canvas view pool")
+    if (performanceRun) persistentView = view
     return view
   }
 }
@@ -145,7 +181,8 @@ const arena = createArena(width! / height!, 512)
 const calibrationScene = calibration ? new THREE.Scene() : undefined
 const frameHashes: string[] = []
 const draws: { draw_calls: number; triangles: number }[] = []
-for (let sequence = 0; sequence < 8; sequence++) {
+const drawRange = { draw_calls_min: Infinity, draw_calls_max: 0, triangles_min: Infinity, triangles_max: 0 }
+for (let sequence = 0; sequence < frameCount; sequence++) {
   bridge.symbols.three_begin(sequence)
   const seconds = sequence * 0.625
   arena.update(seconds)
@@ -167,7 +204,14 @@ for (let sequence = 0; sequence < 8; sequence++) {
     assert(draw.draw_calls >= arena.counts.meshes, "The arena geometry must actually be drawn")
     assert(draw.triangles >= arena.counts.triangles, "The complete arena workload must reach the renderer")
   }
-  draws.push(draw)
+  if (performanceRun) {
+    drawRange.draw_calls_min = Math.min(drawRange.draw_calls_min, draw.draw_calls)
+    drawRange.draw_calls_max = Math.max(drawRange.draw_calls_max, draw.draw_calls)
+    drawRange.triangles_min = Math.min(drawRange.triangles_min, draw.triangles)
+    drawRange.triangles_max = Math.max(drawRange.triangles_max, draw.triangles)
+  } else {
+    draws.push(draw)
+  }
   current = undefined
   bridge.symbols.three_end(sequence, hash)
   if (validate) frameHashes.push(hash.toString(16).padStart(16, "0"))
@@ -184,6 +228,9 @@ bridge.symbols.three_close()
 renderer.onDeviceLost = () => {}
 device.destroy()
 assert.equal(await sha256(arenaPath), arenaHash, "Arena source changed during the run")
+for (const [source, hash] of Object.entries(sourceHashes)) {
+  assert.equal(await sha256(resolve(import.meta.dir, source)), hash, "Experiment source changed during the run")
+}
 console.log(
   JSON.stringify({
     type: "three-producer",
@@ -199,12 +246,21 @@ console.log(
     bun_webgpu_js_sha256: javascriptHash,
     native_library_sha256: nativeHash,
     native_library_path: libraryPath,
-    shared_render_calls: 8,
-    reference_render_calls: validate ? 8 : 0,
+    shared_render_calls: frameCount,
+    reference_render_calls: validate ? frameCount : 0,
     mode,
     calibration,
     reference_hashes: frameHashes,
     draws,
+    ...(performanceRun
+      ? {
+          source_sha256: sourceHashes,
+          draw_range: drawRange,
+          canvas_views: views.size,
+          bun_version: Bun.version,
+          bun_revision: Bun.revision,
+        }
+      : {}),
   }),
 )
 // Bun owns its adapter/instance and ticker callbacks until process exit; keep the FFI library loaded.
