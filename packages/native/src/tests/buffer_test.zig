@@ -534,6 +534,52 @@ test "paint grid closes transitive covered wide dependencies without a cell inde
     }
 }
 
+test "paint grid bulk inherited text samples each background cell independently" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 16, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 16, 2, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    for (0..4) |frame| {
+        control.clear(black, null);
+        try target.beginPaint(black, false);
+        const grid = target.paint_grid.?;
+        const lower = try grid.push(1, 0, 0, 1, 1, frame == 1);
+        for (0..8) |i| {
+            const bg = ansi.rgbColor(@intCast(if (i == 3 and frame != 0) 200 else i * 20), 30, 80, 255);
+            if (lower) target.fillRect(@intCast(i + 2), 0, 1, 1, bg);
+            control.fillRect(@intCast(i + 2), 0, 1, 1, bg);
+        }
+        grid.pop();
+        if (frame < 3) {
+            try target.pushOpacity(0.5);
+            const upper = try grid.push(2, 0, 0, 1, 1, false);
+            if (upper) {
+                var text = "a bc def".*;
+                try target.drawText(&text, 2, 0, white, null, 0);
+                @memset(&text, '!');
+            }
+            grid.pop();
+            target.popOpacity();
+            try control.pushOpacity(0.5);
+            try control.drawText("a bc def", 2, 0, white, null, 0);
+            control.popOpacity();
+        }
+        try grid.finish();
+        try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+        try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+        try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+        try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
+        if (frame == 1) try std.testing.expectEqual(@as(u32, 1), grid.recomposed);
+    }
+}
+
 test "paint grid independent inherited layers do not exhaust the rescan budget" {
     const a = std.testing.allocator;
     var pool = gp.GraphemePool.init(a);
@@ -549,7 +595,7 @@ test "paint grid independent inherited layers do not exhaust the rescan budget" 
         const grid = target.paint_grid.?;
         for (0..8) |i| {
             if (try grid.push(@intCast(i + 1), 0, 0, 1, 1, i == 7 and frame == 1)) {
-                try target.drawText(if (i == 7 and frame != 0) "abcXefghijklmnopqrstuvwxyz" else "abcdefghijklmnopqrstuvwxyz", 0, 0, white, null, 0);
+                try target.drawText(if (i == 7 and frame != 0) "abcXefghijklmnopqrstuvwxyz\t" else "abcdefghijklmnopqrstuvwxyz\t", 0, 0, white, null, 0);
             }
             grid.pop();
         }

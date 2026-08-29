@@ -7,7 +7,7 @@ const ansi = @import("ansi.zig");
 // pointers into a caller's text/view/framebuffer. Geometry only invalidates a
 // command; damage comes exclusively from its actual drawing.
 pub const PaintGrid = struct {
-    pub const Mode = enum { set, raw, direct, blend, blend_raw, text, inherit, fill };
+    pub const Mode = enum { set, raw, direct, blend, blend_raw, text, inherit, inherit_cell, fill };
     pub const Op = struct {
         index: u32,
         cell: b.Cell,
@@ -274,7 +274,7 @@ pub const PaintGrid = struct {
 
     // The caller has clipped a uniform printable-ASCII run. Own its inputs once;
     // on first capture the caller still performs the ordinary raster loop.
-    pub fn recordTextRun(self: *PaintGrid, index: u32, cell: b.Cell, text: []const u8) bool {
+    pub fn recordTextRun(self: *PaintGrid, index: u32, cell: b.Cell, text: []const u8, mode: Mode) bool {
         if (!self.isRecording()) return false;
         const pending = &self.commands.items[self.count - 1].pending;
         const a = self.payload.allocator();
@@ -289,7 +289,7 @@ pub const PaintGrid = struct {
         pending.ops.appendAssumeCapacity(.{
             .index = index,
             .cell = cell,
-            .mode = .blend,
+            .mode = mode,
             .opacity = self.target.getCurrentOpacity(),
             .background_index = 0,
             .background_group = 0,
@@ -360,7 +360,7 @@ pub const PaintGrid = struct {
             .blend, .blend_raw => {
                 if (op.mode == .blend) t.setCellWithAlphaBlending(x, y, cell.char, cell.fg, cell.bg, cell.attributes) else t.setCellWithAlphaBlendingRaw(x, y, cell.char, cell.fg, cell.bg, cell.attributes);
             },
-            .text, .inherit => {
+            .text, .inherit, .inherit_cell => {
                 if (op.mode == .inherit) {
                     if (self.replay_group != op.background_group) {
                         self.replay_group = op.background_group;
@@ -368,6 +368,7 @@ pub const PaintGrid = struct {
                     }
                     cell.bg = self.inherited_background;
                 }
+                if (op.mode == .inherit_cell) cell.bg = t.buffer.bg[op.index];
                 t.setTextCell(x, y, cell);
             },
         }

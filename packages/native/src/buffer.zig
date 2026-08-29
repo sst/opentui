@@ -1397,7 +1397,7 @@ pub const OptimizedBuffer = struct {
             false;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
-        if (explicit_colors_opaque and is_ascii_only) {
+        if (is_ascii_only) {
             var printable = true;
             for (text) |byte| {
                 if (byte < 32 or byte > 126) {
@@ -1406,11 +1406,16 @@ pub const OptimizedBuffer = struct {
                 }
             }
             if (printable) {
-                const background = bg.?;
-                for (text, 0..) |byte, offset| {
-                    const char_x = x + @as(u32, @intCast(offset));
-                    if (char_x >= self.width) break;
-                    self.setInternal(true, recording, char_x, y, makeCell(byte, fg, background, attributes));
+                const clipped = self.clipRectToScissor(@intCast(x), @intCast(y), @intCast(@min(text.len, self.width - x)), 1) orelse return;
+                const start: u32 = @intCast(clipped.x);
+                const run = text[start - x .. start - x + clipped.width];
+                const index = self.coordsToIndex(start, y);
+                const mode: PaintGrid.Mode = if (explicit_colors_opaque) .set else if (bg != null) .text else .inherit_cell;
+                if (recording and self.paint_grid.?.recordTextRun(index, makeCell(run[0], fg, bg orelse ansi.rgbColor(0, 0, 0, 0), attributes), run, mode)) return;
+                for (run, 0..) |byte, offset| {
+                    const char_x = start + @as(u32, @intCast(offset));
+                    const cell = makeCell(byte, fg, bg orelse self.buffer.bg[index + offset], attributes);
+                    if (explicit_colors_opaque) self.setInternal(true, false, char_x, y, cell) else self.setTextCellSpecialized(false, char_x, y, cell);
                 }
                 return;
             }
@@ -2132,7 +2137,7 @@ pub const OptimizedBuffer = struct {
                         const run = chunk_bytes[run_start..ascii_end];
                         if (run.len > 1) {
                             const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
-                            const captured = recording and self.paint_grid.?.recordTextRun(index, makeCell(run[0], drawFg, drawBg, drawAttributes), run);
+                            const captured = recording and self.paint_grid.?.recordTextRun(index, makeCell(run[0], drawFg, drawBg, drawAttributes), run, .blend);
                             if (!captured) for (run, 0..) |char, offset| {
                                 if (useTransparentTextFastPath and self.trySetTransparentTextCellFast(false, index + @as(u32, @intCast(offset)), char, drawFg, drawAttributes)) continue;
                                 self.setCellWithAlphaBlendingCellSpecialized(false, @intCast(currentX + @as(i32, @intCast(offset))), @intCast(currentY), makeCell(char, drawFg, drawBg, drawAttributes));
