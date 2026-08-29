@@ -184,11 +184,12 @@ pub const Transport = struct {
                 break :file;
             }
             const lease = self.createLease(id, image, directory) catch |err| {
-                self.fallback = switch (err) {
-                    error.Budget => .budget,
-                    error.Busy => .busy,
-                    else => .preparation,
-                };
+                self.fallback = if (err == error.Budget)
+                    .budget
+                else if (err == error.Busy)
+                    .busy
+                else
+                    .preparation;
                 if (self.fallback == .preparation) self.cancel(.io_error);
                 break :file;
             };

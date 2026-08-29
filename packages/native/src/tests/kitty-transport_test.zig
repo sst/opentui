@@ -135,18 +135,29 @@ test "kitty file budget timeout errors and cancel release bounded leases" {
     try std.testing.expectEqual(.cancelled, f.transport.file_state);
 }
 
-test "kitty file preparation and output failures do not leak resources" {
+test "kitty file output failures do not leak resources" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
     var failed: std.Io.Writer = .failing;
     try std.testing.expectError(error.WriteFailed, f.transport.startProbe(&failed, 7, f.directory[0..f.directory_len]));
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
-    f.transport = .{ .mode = .file, .file_state = .ready };
+}
+
+test "kitty file preparation failures fall back to raw without leases" {
+    var transport: kitty.Transport = .{ .mode = .file, .file_state = .ready };
+    defer transport.cancel(.cancelled);
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
     const value = try image.createFromRgba(std.testing.allocator, &.{ 1, 2, 3, 4 }, 1, 1, 4);
     defer value.deinit();
-    try f.transport.transmit(std.testing.allocator, &f.output.writer, value, 19, false, "relative/path");
-    try std.testing.expectEqual(.raw, f.transport.effective);
-    try std.testing.expectEqual(.io_error, f.transport.file_state);
-    try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try transport.transmit(std.testing.allocator, &output.writer, value, 19, false, "relative/path");
+    try std.testing.expectEqual(.raw, transport.effective);
+    try std.testing.expectEqual(.preparation, transport.fallback);
+    try std.testing.expectEqual(.io_error, transport.file_state);
+    try std.testing.expectEqual(@as(u32, 0), transport.pendingCount());
+    try std.testing.expectEqual(@as(usize, 0), transport.pendingBytes());
+    const payload = try @import("terminal-image_test.zig").decodeKittyChunks(output.written());
+    defer std.testing.allocator.free(payload);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4 }, payload);
 }
