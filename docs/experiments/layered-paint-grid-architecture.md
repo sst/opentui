@@ -6,6 +6,9 @@ describe their pinned implementations, not this replacement candidate.
 
 ## Continuing Candidate
 
+Current source, whole-branch simplification and measurements are documented in
+[startup lifecycle](layered-paint-grid-startup.md). This report is historical.
+
 The current source continues beyond84133b76 with owned glyph spans, bulk fill
 capture/replay, fused initial capture, and wide/inherited dependency closure
 instead of a per-cell reverse index. It also skips redundant geometry scans and

@@ -1,5 +1,7 @@
 # Bulk Continuation Measurements
 
+Historical c795c7b3 results. See [current startup measurements](layered-paint-grid-startup-results.md).
+
 INCOMPLETE: cold/first-capture/mixed regressions remain despite warm improvements
 
 Source c795c7b3, actual main202e1e6a, prior60a191fd. [Architecture](layered-paint-grid-bulk.md)

@@ -1,5 +1,9 @@
 # Bulk Text Inputs And Bounded Closure
 
+Historical c795c7b3/fd88296a checkpoint. Current lifecycle, complexity review and
+measurements are in [startup](layered-paint-grid-startup.md). The results below
+describe this older pinned source, not current acceptance limits.
+
 Continuation from `c5493f5d`. The owner no-regression goal is still incomplete;
 this is a verified implementation checkpoint, not an acceptance claim. Full
 [measurements](layered-paint-grid-bulk-results.md) include all workloads, OFF,
