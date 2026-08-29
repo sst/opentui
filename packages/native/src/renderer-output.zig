@@ -390,6 +390,18 @@ pub const OutputBackend = union(enum) {
         }
     }
 
+    /// Transition batches must publish captured output before terminal state changes.
+    /// Feed high water limits ordinary frames, not these ordered control writes.
+    pub fn prepareControlFrame(self: *OutputBackend) WriteStatus {
+        switch (self.*) {
+            .feed => |*b| {
+                b.feed.commit() catch return .skipped;
+                return .ok;
+            },
+            .buffered => |*b| return b.prepareFrame(),
+        }
+    }
+
     /// Non-mutating high-water check. Rendering uses `prepareFrame()` so pending
     /// bytes from earlier writes can be committed before deciding to skip.
     pub fn shouldSkipFrame(self: *OutputBackend) bool {

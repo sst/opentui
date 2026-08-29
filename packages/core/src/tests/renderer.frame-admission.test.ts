@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import type { NativeSpanFeed } from "../NativeSpanFeed.js"
 import { RGBA } from "../lib/RGBA.js"
-import { CliRenderer, CliRenderEvents } from "../renderer.js"
+import { CliRenderer, CliRenderEvents, type CliRendererConfig } from "../renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
 import { resolveRenderLib } from "../zig.js"
@@ -37,12 +37,13 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
-function createAdmissionRenderer(width = 80, height = 24) {
+function createAdmissionRenderer(width = 80, height = 24, config: CliRendererConfig = {}) {
   const clock = new ManualClock()
   const stdout = new HeldWriteStream(width, height)
   const renderer = new CliRenderer(createTestStdin(), stdout as unknown as NodeJS.WriteStream, width, height, {
     clock,
     consoleMode: "disabled",
+    ...config,
   })
   const internals = renderer as unknown as { _feed: NativeSpanFeed; loop: () => Promise<void> }
   const feed = internals._feed
@@ -132,6 +133,13 @@ for (const control of ["pause", "stop", "suspend", "destroy"] as const) {
     renderer.setTerminalTitle("held-control")
     await internals.loop()
     renderer[control]()
+    let idleResolved = false
+    void renderer.idle().then(() => {
+      idleResolved = true
+    })
+    await settle()
+    expect(idleResolved).toBe(true)
+    expect(feed.isBackpressured()).toBe(true)
     stdout.releaseAll()
     await feed.idle()
     clock.advance(100)
@@ -187,7 +195,8 @@ test("animation requests wait for output credit and remain cancellable", async (
   const observed: string[] = []
   renderer.setTerminalTitle("held-animation")
   const cancelled = requestAnimationFrame(() => observed.push("cancelled"))
-  requestAnimationFrame(() => observed.push("resumed"))
+  const resumed = requestAnimationFrame(() => observed.push("resumed"))
+  cancelAnimationFrame(cancelled)
   cancelAnimationFrame(cancelled)
   clock.advance(100)
   await settle()
@@ -197,9 +206,114 @@ test("animation requests wait for output credit and remain cancellable", async (
   await feed.idle()
   clock.advance(0)
   await settle()
-  renderer.pause()
+  expect(renderer.liveRequestCount).toBe(0)
+  expect(renderer.isRunning).toBe(false)
   await renderer.idle()
   expect(observed).toEqual(["resumed"])
+
+  renderer.requestLive()
+  cancelAnimationFrame(resumed)
+  expect(renderer.liveRequestCount).toBe(1)
+  renderer.dropLive()
+})
+
+for (const [setup, transition] of [
+  [false, "destroy"],
+  [true, "destroy"],
+  [true, "suspend"],
+  [true, "passthrough"],
+] as const) {
+  test(`${transition} preserves captured stdout at feed high water with setup=${setup}`, async () => {
+    const { renderer, stdout, clock, feed, internals } = createAdmissionRenderer(80, 24, {
+      screenMode: "split-footer",
+    })
+    if (setup) {
+      stdout.held = false
+      await renderer.setupTerminal()
+      renderer.stdin.emit("data", Buffer.from("\x1b[12;1R"))
+      clock.advance(200)
+      await settle()
+      await feed.idle()
+      stdout.writes.length = 0
+      stdout.held = true
+    }
+
+    for (let i = 0; i < 4096; i++) renderer.setTerminalTitle(`pinned-${i}`)
+    expect(resolveRenderLib().streamGetStats(feed.streamPtr)!.pendingSpans).toBe(0)
+    expect(feed.isBackpressured()).toBe(true)
+    stdout.write("captured-before-transition\n")
+    let callbacks = 0
+    renderer.setFrameCallback(async () => {
+      callbacks++
+    })
+    await internals.loop()
+    expect(callbacks).toBe(0)
+
+    if (transition === "passthrough") {
+      renderer.externalOutputMode = "passthrough"
+      stdout.write("after-transition\n")
+    } else {
+      renderer[transition]()
+    }
+    stdout.releaseAll()
+    await feed.idle()
+    const output = Buffer.concat(stdout.writes).toString()
+    expect(output.includes("captured-before-transition")).toBe(true)
+    expect(output.includes("[snapshot ")).toBe(false)
+    expect(output.indexOf("pinned-4095")).toBeLessThan(output.indexOf("captured-before-transition"))
+    if (transition === "passthrough") {
+      expect(output.indexOf("captured-before-transition")).toBeLessThan(output.indexOf("after-transition"))
+    } else {
+      expect(output.indexOf("captured-before-transition")).toBeLessThan(output.lastIndexOf("\x1b[?25h"))
+    }
+  })
+}
+
+test("a cancelled admission continuation cannot clear a newer wait", async () => {
+  const { renderer, stdout, clock, feed } = createAdmissionRenderer()
+  const originalIdle = feed.idle.bind(feed)
+  let releaseOldContinuation = () => {}
+  const oldContinuation = new Promise<void>((resolve) => {
+    releaseOldContinuation = resolve
+  })
+  let waits = 0
+  // Delay only the scheduler continuation, never the feed's real byte ownership.
+  feed.idle = () => (waits++ === 0 ? originalIdle().then(() => oldContinuation) : originalIdle())
+  let callbacks = 0
+  renderer.setFrameCallback(async () => {
+    callbacks++
+  })
+  renderer.setTerminalTitle("old-write")
+  renderer.start()
+  renderer.pause()
+  stdout.releaseAll()
+  await originalIdle()
+
+  stdout.held = true
+  renderer.setTerminalTitle("new-write")
+  renderer.requestRender()
+  clock.advance(100)
+  await settle()
+  expect(waits).toBe(2)
+  releaseOldContinuation()
+  await settle()
+  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
+  let idleResolved = false
+  void renderer.idle().then(() => {
+    idleResolved = true
+  })
+  await settle()
+  expect(idleResolved).toBe(false)
+  expect(callbacks).toBe(0)
+  expect(feed.isBackpressured()).toBe(true)
+
+  stdout.releaseAll()
+  await originalIdle()
+  clock.advance(100)
+  await settle()
+  expect(callbacks).toBe(1)
+  expect(idleResolved).toBe(true)
+  feed.idle = originalIdle
 })
 
 for (const control of ["pause", "stop"] as const) {
@@ -213,6 +327,10 @@ for (const control of ["pause", "stop"] as const) {
     renderer.start()
     renderer[control]()
     renderer.requestRender()
+    clock.advance(100)
+    await settle()
+    expect(callbacks).toBe(0)
+    expect(feed.isBackpressured()).toBe(true)
     stdout.releaseAll()
     await feed.idle()
     clock.advance(100)
