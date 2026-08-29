@@ -272,6 +272,37 @@ pub const PaintGrid = struct {
         } else self.applyCell(op);
     }
 
+    // The caller has clipped a uniform printable-ASCII run. Own its inputs once;
+    // on first capture the caller still performs the ordinary raster loop.
+    pub fn recordTextRun(self: *PaintGrid, index: u32, cell: b.Cell, text: []const u8) bool {
+        if (!self.isRecording()) return false;
+        const pending = &self.commands.items[self.count - 1].pending;
+        const a = self.payload.allocator();
+        pending.ops.ensureUnusedCapacity(a, 1) catch {
+            self.materialize();
+            return false;
+        };
+        pending.chars.ensureUnusedCapacity(a, text.len) catch {
+            self.materialize();
+            return false;
+        };
+        pending.ops.appendAssumeCapacity(.{
+            .index = index,
+            .cell = cell,
+            .mode = .blend,
+            .opacity = self.target.getCurrentOpacity(),
+            .background_index = 0,
+            .background_group = 0,
+            .owner = self.stack.items[self.stack.items.len - 1].owner,
+            .count = @intCast(text.len),
+            .text_offset = @intCast(pending.chars.items.len),
+        });
+        for (text) |char| pending.chars.appendAssumeCapacity(char);
+        const id = ansi.TextAttributes.getLinkId(cell.attributes);
+        if (id != 0) self.target.link_pool.incref(id) catch {};
+        return !self.painting;
+    }
+
     fn spanEnd(self: *const PaintGrid, op: Op) u32 {
         const width = self.target.width;
         return @min(op.index + op.count + (if (gp.isGraphemeChar(op.cell.char) and op.mode != .raw and op.mode != .direct) gp.charRightExtent(op.cell.char) else 0), (op.index / width + 1) * width);
@@ -494,15 +525,12 @@ pub const PaintGrid = struct {
         }
         // Wide writes/repairs and inherited tab backgrounds couple cells. Close
         // damage over those actual spans, not over renderable layout rectangles.
-        const full_replay = self.dirty_count > self.dirty.len / 4;
-        if (full_replay) {
-            @memset(self.dirty, true);
-            for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
-            self.dirty_count = self.dirty.len;
-        }
+        var full_replay = self.dirty_count > self.dirty.len / 4;
         var expanded = !full_replay;
         var cursor: usize = 0;
-        while (expanded) {
+        var closure_work: usize = 0;
+        var closure_limit: usize = std.math.maxInt(usize);
+        closure: while (expanded) {
             expanded = false;
             while (cursor < self.dirty_count) : (cursor += 1) {
                 const index = self.dirty_cells[cursor];
@@ -519,6 +547,13 @@ pub const PaintGrid = struct {
                 if (!command.dependencies) continue;
                 for (command.ops.ops.items) |op| {
                     const span_end = self.spanEnd(op);
+                    // Always allow the initial dependency scan. Bound rescanning
+                    // reverse/transitive overlaps by one screen's worth of work.
+                    closure_work += span_end - op.index;
+                    if (closure_work > closure_limit) {
+                        full_replay = true;
+                        break :closure;
+                    }
                     if (span_end > op.index + op.count) {
                         const span = self.dirty[op.index..span_end];
                         if (std.mem.indexOfScalar(bool, span, true) != null) {
@@ -538,6 +573,12 @@ pub const PaintGrid = struct {
                     }
                 }
             }
+            if (closure_limit == std.math.maxInt(usize)) closure_limit = closure_work + self.dirty.len;
+        }
+        if (full_replay) {
+            @memset(self.dirty, true);
+            for (self.dirty_cells, 0..) |*index, i| index.* = @intCast(i);
+            self.dirty_count = self.dirty.len;
         }
         self.replaying = true;
         defer self.replaying = false;

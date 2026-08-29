@@ -534,6 +534,145 @@ test "paint grid closes transitive covered wide dependencies without a cell inde
     }
 }
 
+test "paint grid independent inherited layers do not exhaust the rescan budget" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const target = try OptimizedBuffer.init(a, 40, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    for (0..3) |frame| {
+        try target.beginPaint(black, false);
+        const grid = target.paint_grid.?;
+        for (0..8) |i| {
+            if (try grid.push(@intCast(i + 1), 0, 0, 1, 1, i == 7 and frame == 1)) {
+                try target.drawText(if (i == 7 and frame != 0) "abcXefghijklmnopqrstuvwxyz" else "abcdefghijklmnopqrstuvwxyz", 0, 0, white, null, 0);
+            }
+            grid.pop();
+        }
+        try grid.finish();
+        if (frame == 1) try std.testing.expectEqual(@as(u32, 1), grid.recomposed);
+        if (frame == 2) try std.testing.expectEqual(@as(u32, 0), grid.recomposed);
+    }
+}
+
+test "paint grid TextBuffer style runs own inputs and match scalar clipping and opacity" {
+    const a = std.testing.allocator;
+    var pool = gp.GraphemePool.init(a);
+    defer pool.deinit();
+    var links = link.LinkPool.init(a);
+    defer links.deinit();
+    const id = try links.alloc("https://example.com/text-run");
+    try links.incref(id);
+    defer links.decref(id) catch {};
+    const target = try OptimizedBuffer.init(a, 40, 2, .{ .pool = &pool, .link_pool = &links });
+    defer target.deinit();
+    const control = try OptimizedBuffer.init(a, 40, 2, .{ .pool = &pool, .link_pool = &links });
+    defer control.deinit();
+    const black = ansi.rgbColor(0, 0, 0, 255);
+    const white = ansi.rgbColor(255, 255, 255, 255);
+    for ([_]f32{ 1.0, 0.5 }) |opacity| for ([_]u8{ 0, 120, 255 }) |alpha| {
+        if (target.paint_grid) |grid| grid.abort();
+        for (0..4) |frame| {
+            control.clear(black, null);
+            try target.beginPaint(black, false);
+            const grid = target.paint_grid.?;
+            try target.pushScissorRect(2, 0, 28, 2);
+            try control.pushScissorRect(2, 0, 28, 2);
+            try target.pushOpacity(opacity);
+            try control.pushOpacity(opacity);
+            const paint = try grid.push(1, 0, 0, 1, 1, frame == 1);
+            {
+                var text = try TextBuffer.init(a, &pool, &links, .unicode);
+                defer text.deinit();
+                var view = try TextBufferView.init(a, text);
+                defer view.deinit();
+                text.setDefaultFg(white);
+                text.setDefaultBg(ansi.rgbColor(20, 40, 90, alpha));
+                text.setDefaultAttributes(ansi.TextAttributes.setLinkId(0, id));
+                try text.setText(if (frame == 0) "abcdefghijklmnopqrstuvwxyz0123456789" else "abcdefghXjklmnopqrstuvwxyz0123456789");
+                if (paint) target.drawTextBuffer(view, -3, 0);
+                // An out-of-range selection leaves pixels unchanged but exercises
+                // the scalar style/selection path as an independent control.
+                view.setSelection(1000, 1001, null, null);
+                control.drawTextBuffer(view, -3, 0);
+            }
+            grid.pop();
+            target.popOpacity();
+            control.popOpacity();
+            target.popScissorRect();
+            control.popScissorRect();
+            try grid.finish();
+            try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+            try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
+            if (frame == 1 and !grid.fallback) try std.testing.expectEqual(@as(u32, 1), grid.recomposed);
+        }
+    };
+}
+
+test "paint grid bounded reverse wide-chain stress matches full painting" {
+    const a = std.testing.allocator;
+    const Timer = @import("../bench-utils.zig").BenchTimer;
+    for ([_]u32{ 120, 240, 960 }) |width| {
+        var pool = gp.GraphemePool.init(a);
+        defer pool.deinit();
+        var links = link.LinkPool.init(a);
+        defer links.deinit();
+        const target = try OptimizedBuffer.init(a, width, 2, .{ .pool = &pool, .link_pool = &links });
+        defer target.deinit();
+        const control = try OptimizedBuffer.init(a, width, 2, .{ .pool = &pool, .link_pool = &links });
+        defer control.deinit();
+        const text = try a.alloc(u8, width);
+        defer a.free(text);
+        @memset(text, 'a');
+        const black = ansi.rgbColor(0, 0, 0, 255);
+        const white = ansi.rgbColor(255, 255, 255, 255);
+        var finish_ns: u64 = 0;
+        const gid = try pool.alloc("界");
+        try pool.incref(gid);
+        defer pool.decref(gid) catch {};
+        const wide = gp.packGraphemeStart(gid, 2);
+        var retained_ns: u64 = 0;
+        var full_ns: u64 = 0;
+        for (0..31) |frame| {
+            text[width - 1] = if (frame % 2 == 0) 'X' else 'Y';
+            const retained_timer = Timer.start(std.testing.io);
+            try target.beginPaint(black, false);
+            const grid = target.paint_grid.?;
+            if (try grid.push(1, 0, 0, 1, 1, false)) {
+                for (0..width - 1) |x| target.drawChar(wide, @intCast(x), 0, white, black, 0);
+            }
+            grid.pop();
+            if (try grid.push(2, 0, 0, 1, 1, true)) try target.drawText(text, 0, 0, white, black, 0);
+            grid.pop();
+            const finish_timer = Timer.start(std.testing.io);
+            try grid.finish();
+            const finish_elapsed = finish_timer.read();
+            const retained_elapsed = retained_timer.read();
+            const full_timer = Timer.start(std.testing.io);
+            control.clear(black, null);
+            for (0..width - 1) |x| control.drawChar(wide, @intCast(x), 0, white, black, 0);
+            try control.drawText(text, 0, 0, white, black, 0);
+            const full_elapsed = full_timer.read();
+            try std.testing.expectEqualSlices(u32, control.buffer.char, target.buffer.char);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.fg, target.buffer.fg);
+            try std.testing.expectEqualSlices(RGBA, control.buffer.bg, target.buffer.bg);
+            try std.testing.expectEqualSlices(u32, control.buffer.attributes, target.buffer.attributes);
+            if (frame != 0) {
+                finish_ns += finish_elapsed;
+                retained_ns += retained_elapsed;
+                full_ns += full_elapsed;
+            }
+        }
+        if (@import("builtin").mode == .ReleaseFast) std.debug.print("wide-chain width={} finish_ns={} retained_ns={} full_ns={}\n", .{ width, finish_ns / 30, retained_ns / 30, full_ns / 30 });
+    }
+}
+
 test "paint grid payload arena releases references before repeated reset" {
     const a = std.testing.allocator;
     var tracking = std.testing.FailingAllocator.init(a, .{});

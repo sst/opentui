@@ -2114,6 +2114,39 @@ pub const OptimizedBuffer = struct {
                     // path instead of paying for generic per-cell blending.
                     const useTransparentTextFastPath = self.getCurrentOpacity() == 1.0 and ansi.alpha(drawBg) == 0;
 
+                    // Style/chunk boundaries already describe uniform input runs.
+                    // Keep complex clusters and selected/truncated text scalar.
+                    if (!at_special and grapheme_bytes.len == 1 and grapheme_bytes[0] >= 32 and grapheme_bytes[0] < 127 and
+                        !vline.is_truncated and view.getSelection() == null and next_change_col > source_col_pos)
+                    {
+                        const run_start = byte_offset - 1;
+                        var run_end = @min(byte_end, run_start + @min(col_end - col, horizontal_offset + viewport_width - rendered_col_in_vline));
+                        run_end = @min(run_end, run_start + self.width - @as(u32, @intCast(currentX)));
+                        run_end = run_start + @min(run_end - run_start, next_change_col - source_col_pos);
+                        if (special_idx < render_clusters.len) run_end = @min(run_end, render_clusters[special_idx].byte_start);
+                        if (self.getCurrentScissorRect()) |scissor| {
+                            run_end = @min(run_end, run_start + @as(u32, @intCast(scissor.x + @as(i32, @intCast(scissor.width)) - currentX)));
+                        }
+                        var ascii_end = byte_offset;
+                        while (ascii_end < run_end and chunk_bytes[ascii_end] >= 32 and chunk_bytes[ascii_end] < 127) : (ascii_end += 1) {}
+                        const run = chunk_bytes[run_start..ascii_end];
+                        if (run.len > 1) {
+                            const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
+                            const captured = recording and self.paint_grid.?.recordTextRun(index, makeCell(run[0], drawFg, drawBg, drawAttributes), run);
+                            if (!captured) for (run, 0..) |char, offset| {
+                                if (useTransparentTextFastPath and self.trySetTransparentTextCellFast(false, index + @as(u32, @intCast(offset)), char, drawFg, drawAttributes)) continue;
+                                self.setCellWithAlphaBlendingCellSpecialized(false, @intCast(currentX + @as(i32, @intCast(offset))), @intCast(currentY), makeCell(char, drawFg, drawBg, drawAttributes));
+                            };
+                            const count: u32 = @intCast(run.len);
+                            byte_offset = ascii_end;
+                            document_cell_offset += count;
+                            currentX += @intCast(count);
+                            rendered_col_in_vline += count;
+                            col += count;
+                            continue;
+                        }
+                    }
+
                     if (is_tab) {
                         const tab_indicator = view.getTabIndicator();
                         const tab_indicator_color = view.getTabIndicatorColor();
