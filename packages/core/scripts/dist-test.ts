@@ -307,6 +307,13 @@ try {
       frame.dispose()
     }
   }
+  const frame = pool.publishPixels(Uint8Array.of(3, 2, 1, 0), { format: "bgra8", alpha: "opaque", stride: 256 })
+  try {
+    assert.deepEqual([...frame.raw().data], [1, 2, 3, 255])
+    assert.equal(frame.info().hasAlpha, false)
+  } finally {
+    frame.dispose()
+  }
 } finally {
   pool.dispose()
 }

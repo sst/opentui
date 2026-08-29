@@ -3493,6 +3493,14 @@ export fn imageCreateFromRgba(
     return @intFromEnum(insertImage(image, output));
 }
 
+fn pixelImportOptions(stride: u32, format: u32, alpha: u32) !native_image.PixelImportOptions {
+    return .{
+        .stride = stride,
+        .format = std.enums.fromInt(native_image.PixelFormat, format) orelse return error.InvalidArgument,
+        .alpha = std.enums.fromInt(native_image.PixelAlpha, alpha) orelse return error.InvalidArgument,
+    };
+}
+
 export fn imageCreateFromPixels(
     pixels_ptr: ?[*]const u8,
     pixels_len: u64,
@@ -3509,17 +3517,10 @@ export fn imageCreateFromPixels(
         return @intFromEnum(native_image.Status.invalid_argument);
     }
     const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
-    const pixel_format = std.enums.fromInt(native_image.PixelFormat, format) orelse {
-        return @intFromEnum(native_image.Status.invalid_argument);
+    const options = pixelImportOptions(stride, format, alpha) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
     };
-    const pixel_alpha = std.enums.fromInt(native_image.PixelAlpha, alpha) orelse {
-        return @intFromEnum(native_image.Status.invalid_argument);
-    };
-    const image = native_image.createFromPixels(globalAllocator, pixels, width, height, .{
-        .stride = stride,
-        .format = pixel_format,
-        .alpha = pixel_alpha,
-    }) catch |err| {
+    const image = native_image.createFromPixels(globalAllocator, pixels, width, height, options) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
     return @intFromEnum(insertImage(image, output));
@@ -3552,12 +3553,26 @@ export fn imageUpdateRgba(
     pixels_len: u64,
     stride: u32,
 ) u32 {
+    return imageUpdatePixels(image_handle, pixels_ptr, pixels_len, stride, 0, 0);
+}
+
+export fn imageUpdatePixels(
+    image_handle: NativeHandle,
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    stride: u32,
+    format: u32,
+    alpha: u32,
+) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
         return @intFromEnum(native_image.Status.invalid_argument);
     }
     const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
-    native_image.updateRgba(image, pixels, stride) catch |err| {
+    const options = pixelImportOptions(stride, format, alpha) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    native_image.updatePixels(image, pixels, options) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
     return @intFromEnum(native_image.Status.ok);
@@ -3567,6 +3582,34 @@ export fn imageDestroy(image_handle: NativeHandle) void {
     const token = handles.beginDestroy(image_handle, .image, native_image.Image) orelse return;
     token.ptr.deinit();
     handles.finishDestroy(token.handle);
+}
+
+test "pixel update FFI rejects invalid input before mutation or busy" {
+    const pixels = [_]u8{ 3, 2, 1, 0 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(@as(u32, 0), imageCreateFromRgba(&pixels, 4, 1, 1, 4, &handle));
+    defer imageDestroy(handle);
+    const value = acquireImage(handle) orelse return error.TestUnexpectedResult;
+    _ = try value.ensureEncodedPng();
+    const encoded = value.encoded_png.?;
+    const metadata = value.info();
+    const invalid = @intFromEnum(native_image.Status.invalid_argument);
+    value.retain();
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, &pixels, 4, 4, 2, 0));
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, &pixels, 4, 4, 0, 2));
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, null, 4, 4, 0, 0));
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, null, 0, 4, 0, 0));
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, &pixels, 3, 4, 0, 0));
+    try std.testing.expectEqual(invalid, imageUpdatePixels(handle, &pixels, 4, 3, 0, 0));
+    try std.testing.expectEqual(@intFromEnum(native_image.Status.busy), imageUpdatePixels(handle, &pixels, 4, 4, 1, 1));
+    try std.testing.expectEqualSlices(u8, &pixels, value.pixels);
+    try std.testing.expectEqual(metadata, value.info());
+    try std.testing.expectEqual(encoded.ptr, value.encoded_png.?.ptr);
+    value.deinit();
+    try std.testing.expectEqual(@as(u32, 0), imageUpdatePixels(handle, &pixels, 4, 4, 1, 1));
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 255 }, value.pixels);
+    try std.testing.expect(value.encoded_png == null);
+    try std.testing.expectEqual(@intFromEnum(native_image.Status.invalid_handle), imageUpdatePixels(INVALID_HANDLE, &pixels, 4, 4, 1, 1));
 }
 
 export fn imageRetain(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {

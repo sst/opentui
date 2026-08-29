@@ -182,8 +182,8 @@ invalidate another retained handle.
 
 ## Reuse pixel storage for continuous input
 
-`NativeImagePool` copies successive RGBA8 frames into a bounded set of fixed-size native allocations. Each successful
-`publishRgba()` returns an immutable `NativeImage`. Use it when a producer supplies repeated frames of the same size.
+`NativeImagePool` copies successive pixel frames into a bounded set of fixed-size native allocations. Each successful
+publication returns an immutable `NativeImage`. Use it when a producer supplies repeated frames of the same size.
 
 ```typescript
 import { ImageRenderable, NativeImagePool } from "@opentui/core"
@@ -216,22 +216,28 @@ fresh wrapper and native handle, so source equality and terminal-protocol caches
   and must be an integer from `1` through `8`. Native image dimension and memory limits apply on the first publication.
 - `publishRgba(pixels, stride = width * 4)` copies top-left, straight-alpha, sRGB RGBA8 bytes. Row padding is allowed;
   the input must include the last row's pixels but need not include its trailing padding. Caller memory is not retained.
+- `publishPixels(pixels, options?)` accepts the same `PixelImportOptions` as `NativeImage.fromPixels()`. It converts
+  RGBA8 or BGRA8 with straight or opaque alpha directly into a reusable slot, without a JavaScript staging buffer.
 - Slots allocate lazily. Pixel storage is bounded by `capacity * width * height * 4` bytes. Reuse does not allocate
   another pixel buffer, but each publication still creates a JavaScript wrapper and native handle. Encoding and
   rendering can allocate separately.
 - A slot is reusable only after all published handles and native buffer placements release it. Retained images,
   renderable sources, and buffer snapshots keep their original pixels. Dispose frames when you no longer need them.
-- When every slot is pinned, `publishRgba()` returns `null`. It does not allocate pixel storage, queue, block, or replace
-  any frame. Drop the incoming frame or retry after consumers release a slot. Invalid input throws instead of reporting busy.
+- When every slot is pinned, both publication methods return `null`. They do not allocate pixel storage, queue, block,
+  or replace any frame. Drop the incoming frame or retry after consumers release a slot. Invalid input throws instead
+  of reporting busy.
 - Publication is synchronous, with no acquisition token or pending operation to cancel. To cancel input, stop calling
-  `publishRgba()`. `dispose()` is idempotent, rejects future publications, and releases the pool's references without
-  invalidating published frames. Those frames still require disposal.
+  either publication method. `dispose()` is idempotent, rejects future publications, and releases the pool's references
+  without invalidating published frames. Those frames still require disposal.
 - Pools cannot resize. Create a new pool for new dimensions, then dispose the old pool. A published frame cannot use
   `takeRaw()` while its pool still owns that slot; use `raw()`, `copyTo()`, or dispose the pool first.
 
 Use `bun run bench:image-pool` from `packages/core` to compare fresh imports with pooled publications. The benchmark
 does not create a renderer or perform terminal/GPU work. It measures copying, alpha inspection, handle publication,
 and disposal, not end-to-end display throughput.
+
+`bun run bench:image-import` also compares `publishPixels()` with fresh `fromPixels()` imports and JavaScript
+conversion followed by `publishRgba()`. These comparisons separate storage reuse from conversion costs.
 
 ## Transform images
 
@@ -300,7 +306,7 @@ runs.
 - `invalid-handle`, `unsupported-format`, `unsupported-color-space`, or `malformed-data`
 - `dimension-limit`, `memory-limit`, `invalid-argument`, or `out-of-memory`
 - `output-too-small`, `internal-error`, or `unsupported-feature`
-- `busy` for retained native pool slots; `publishRgba()` returns `null` rather than throwing this status
+- `busy` for retained native pool slots; pool publication methods return `null` rather than throwing this status
 
 JavaScript option and geometry validation uses `TypeError` and `RangeError`. All image methods except `dispose()` throw
 after disposal or transfer.

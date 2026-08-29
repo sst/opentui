@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict"
 import { performance } from "node:perf_hooks"
-import { NativeImage, type PixelImportOptions } from "../image.js"
+import { NativeImage, NativeImagePool, type PixelImportOptions } from "../image.js"
 
 const quick = process.argv.includes("--quick")
 const iterations = quick ? 10 : 100
@@ -29,7 +29,7 @@ for (const [width, height] of [
       const options: PixelImportOptions = { stride, format, alpha }
       const rgba = new Uint8Array(width * height * 4)
       // Reuse staging storage, as a readback loop would. Neither path measures GPU work.
-      const baseline = () => {
+      const stage = () => {
         for (let y = 0; y < height; y++) {
           if (format === "rgba8" && alpha === "straight") {
             rgba.set(pixels.subarray(y * stride, y * stride + width * 4), y * width * 4)
@@ -44,34 +44,67 @@ for (const [width, height] of [
             rgba[dst + 3] = alpha === "opaque" ? 255 : pixels[src + 3]
           }
         }
-        return NativeImage.fromRgba(rgba, width, height)
+        return rgba
       }
+      const baseline = () => NativeImage.fromRgba(stage(), width, height)
       const native = () => NativeImage.fromPixels(pixels, width, height, options)
-      const expected = baseline()
-      const actual = native()
+      const stagingPool = new NativeImagePool({ width, height, capacity: 1 })
+      const nativePool = new NativeImagePool({ width, height, capacity: 1 })
+      const operations = [
+        baseline,
+        native,
+        () => stagingPool.publishRgba(stage())!,
+        () => nativePool.publishPixels(pixels, options)!,
+      ]
       try {
-        assert.deepEqual(actual.raw(), expected.raw())
-        assert.deepEqual(actual.info(), expected.info())
-      } finally {
-        actual.dispose()
-        expected.dispose()
-      }
-
-      for (let i = 0; i < warmup; i++) {
-        baseline().dispose()
-        native().dispose()
-      }
-      const timings = [[], []] as number[][]
-      const operations = [baseline, native]
-      for (let sample = 0; sample < samples; sample++) {
-        for (const index of sample % 2 === 0 ? [0, 1] : [1, 0]) {
-          const start = performance.now()
-          for (let i = 0; i < iterations; i++) operations[index]().dispose()
-          timings[index].push((performance.now() - start) / iterations)
+        const expected = baseline()
+        try {
+          for (const operation of operations) {
+            const actual = operation()
+            try {
+              assert.deepEqual(actual.raw(), expected.raw())
+              assert.deepEqual(actual.info(), expected.info())
+            } finally {
+              actual.dispose()
+            }
+          }
+        } finally {
+          expected.dispose()
         }
+
+        for (let i = 0; i < warmup; i++) {
+          for (const operation of operations) operation().dispose()
+        }
+        const timings = operations.map(() => [] as number[])
+        for (let sample = 0; sample < samples; sample++) {
+          for (let index = 0; index < operations.length; index++) {
+            const mode = (index + sample) % operations.length
+            const start = performance.now()
+            for (let i = 0; i < iterations; i++) operations[mode]().dispose()
+            timings[mode].push((performance.now() - start) / iterations)
+          }
+        }
+        const [baselineMs, nativeMs, stagedPoolMs, nativePoolMs] = timings.map(
+          (values) => values.sort((a, b) => a - b)[Math.floor(samples / 2)],
+        )
+        results.push({
+          width,
+          height,
+          stride,
+          format,
+          alpha,
+          baselineMs,
+          nativeMs,
+          stagedPoolMs,
+          nativePoolMs,
+          speedup: baselineMs / nativeMs,
+          reuseSpeedup: nativeMs / nativePoolMs,
+          fusedPoolSpeedup: stagedPoolMs / nativePoolMs,
+        })
+      } finally {
+        stagingPool.dispose()
+        nativePool.dispose()
       }
-      const [baselineMs, nativeMs] = timings.map((values) => values.sort((a, b) => a - b)[Math.floor(samples / 2)])
-      results.push({ width, height, stride, format, alpha, baselineMs, nativeMs, speedup: baselineMs / nativeMs })
     }
   }
 }
