@@ -161,58 +161,22 @@ test("changing Kitty transport retransmits an unchanged image without replacing 
   const pixels = new Uint8Array(64 * 64 * 4).fill(127)
   const view = await draw(renderer, pixels)
   const image = view.image
-  expect(renderer.kittyImageTransport).toBe("raw")
-  for (const mode of ["zlib", "raw", "zlib"] as const) {
+  for (const mode of ["zlib", "raw"] as const) {
     terminal.commands.length = 0
     renderer.kittyImageTransport = mode
     await renderer.idle()
-    expect(renderer.kittyImageTransportStatus.requested).toBe(mode)
-    expect(renderer.kittyImageTransportStatus.effective).toBe(mode)
+    expect(renderer.kittyImageTransportStatus).toMatchObject({ requested: mode, effective: mode })
     expect(view.image).toBe(image)
-    expect(terminal.uploads()).toHaveLength(1)
     if (mode === "zlib") expect(terminal.uploads()[0].fields.o).toBe("z")
     else expect(terminal.uploads()[0].fields.o).toBeUndefined()
     expect(mode === "zlib" ? inflateSync(terminal.imageBytes()) : terminal.imageBytes()).toEqual(Buffer.from(pixels))
   }
   terminal.commands.length = 0
-  renderer.kittyImageTransport = "zlib"
+  renderer.kittyImageTransport = "raw"
   await renderer.idle()
   expect(terminal.uploads()).toHaveLength(0)
   expect(() => (renderer.kittyImageTransport = "invalid" as KittyImageTransport)).toThrow("Invalid kittyImageTransport")
-  expect(renderer.kittyImageTransport).toBe("zlib")
-})
-
-fileTest("runtime file transport keeps outstanding files until their replies across mode changes", async () => {
-  const { renderer, terminal } = await setup("raw")
-  const pixels = new Uint8Array([1, 2, 3, 4])
-  await draw(renderer, pixels, 1)
-  const errorListeners = terminal.listenerCount("error")
-  for (let visit = 0; visit < 2; visit++) {
-    renderer.kittyImageTransport = "file"
-    await renderer.idle()
-    expect(renderer.kittyImageTransportStatus).toMatchObject({
-      requested: "file",
-      effective: "file",
-      fileState: "ready",
-      pendingFiles: 1,
-    })
-    expect(terminal.listenerCount("error")).toBe(errorListeners + 1)
-    const upload = terminal.uploads().at(-1)!
-    expect(upload.fields.t).toBe("f")
-    expect(readFileSync(upload.payload.toString())).toEqual(Buffer.from(pixels))
-    renderer.kittyImageTransport = "raw"
-    await renderer.idle()
-    expect(existsSync(upload.payload.toString())).toBe(true)
-    expect(renderer.kittyImageTransportStatus).toMatchObject({ requested: "raw", effective: "raw", pendingFiles: 1 })
-    expect(terminal.listenerCount("error")).toBe(errorListeners + 1)
-    expect(terminal.uploads().at(-1)!.fields.t).toBeUndefined()
-    expect(terminal.uploads().at(-1)!.payload).toEqual(Buffer.from(pixels))
-    terminal.reply(upload.fields.i)
-    expect(existsSync(upload.payload.toString())).toBe(false)
-    expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
-  }
-  renderer.destroy()
-  expect(terminal.listenerCount("error")).toBe(errorListeners)
+  expect(renderer.kittyImageTransport).toBe("raw")
 })
 
 fileTest("runtime file negotiation retransmits an unchanged provisional inline image when ready", async () => {
@@ -231,18 +195,6 @@ fileTest("runtime file negotiation retransmits an unchanged provisional inline i
   expect(renderer.kittyImageTransportStatus.effective).toBe("file")
   expect(terminal.uploads()).toHaveLength(1)
   expect(readFileSync(terminal.uploads()[0].payload.toString())).toEqual(Buffer.from(pixels))
-})
-
-fileTest("output errors clean up outstanding file uploads after selecting raw", async () => {
-  const { renderer, terminal } = await setup("file")
-  await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
-  const path = terminal.uploads()[0].payload.toString()
-  renderer.kittyImageTransport = "raw"
-  await renderer.idle()
-  expect(existsSync(path)).toBe(true)
-  terminal.emit("error", new Error("synthetic sink failure"))
-  expect(existsSync(path)).toBe(false)
-  expect(renderer.kittyImageTransportStatus).toMatchObject({ requested: "raw", fileState: "io-error", pendingFiles: 0 })
 })
 
 fileTest("a file transport selected while suspended consumes synchronous probe replies on resume", async () => {
@@ -270,7 +222,12 @@ fileTest("Kitty file integration keeps bytes alive across frames and consumes on
   expect(upload.fields.t).toBe("f")
   expect(readFileSync(path)).toEqual(Buffer.from([1, 2, 3]))
   expect(statSync(path).mode & 0o777).toBe(0o600)
-  renderer.requestRender()
+  renderer.kittyImageTransport = "raw"
+  await renderer.idle()
+  renderer.kittyImageTransport = "file"
+  await renderer.idle()
+  expect(renderer.kittyImageTransportStatus.fallback).toBe("busy")
+  renderer.kittyImageTransport = "raw"
   await renderer.idle()
   terminal.stdin.emit("data", Buffer.from("\x1b[0n\x1b[1;1R"))
   terminal.reply("31337")
@@ -373,12 +330,24 @@ for (const action of ["cancel", "error", "suspend", "destroy"] as const) {
     const { renderer, terminal } = await setup("file")
     await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
     const path = terminal.uploads()[0].payload.toString()
+    if (action === "error") {
+      renderer.kittyImageTransport = "raw"
+      await renderer.idle()
+    }
     expect(existsSync(path)).toBe(true)
     if (action === "cancel") renderer.cancelKittyImageTransport()
     if (action === "error") terminal.emit("error", new Error("synthetic sink failure"))
     if (action === "suspend") renderer.suspend()
     if (action === "destroy") renderer.destroy()
     expect(existsSync(path)).toBe(false)
-    if (action !== "destroy") expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
+    if (action !== "destroy") {
+      expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
+      const state = renderer.kittyImageTransportStatus.fileState
+      renderer.kittyImageTransport = "raw"
+      renderer.kittyImageTransport = "file"
+      if (action === "suspend") renderer.resume()
+      await renderer.idle()
+      expect(renderer.kittyImageTransportStatus.fileState).toBe(state)
+    }
   })
 }

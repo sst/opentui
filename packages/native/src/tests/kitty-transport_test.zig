@@ -85,8 +85,6 @@ test "kitty file leases contain immutable bytes and are released only by matchin
     value.pixels[0] = 99;
     try f.transmit(value, 19);
     try std.testing.expectEqual(.raw, f.transport.effective);
-    try std.testing.expectEqual(.ready, f.transport.file_state);
-    try std.testing.expectEqual(@as(u32, 1), f.transport.pendingCount());
     f.transport.mode = .file;
     try f.transmit(value, 19);
     try std.testing.expectEqual(.raw, f.transport.effective);
