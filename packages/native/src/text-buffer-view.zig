@@ -198,6 +198,18 @@ pub const LocalSelection = struct {
 
 pub const TextBufferView = UnifiedTextBufferView;
 
+// Width-independent metadata for the current view layout, in rope traversal
+// order. Nothing is attached to chunks or retained by their undo roots.
+const WordLayoutStorage = struct {
+    arena: std.heap.ArenaAllocator,
+    layouts: std.ArrayListUnmanaged(utf8.ChunkLayoutInfo) = .empty,
+
+    fn reset(self: *WordLayoutStorage) void {
+        _ = self.arena.reset(.free_all);
+        self.layouts = .empty;
+    }
+};
+
 pub const UnifiedTextBufferView = struct {
     const Self = UnifiedTextBufferView;
 
@@ -224,6 +236,7 @@ pub const UnifiedTextBufferView = struct {
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
+    word_layout: WordLayoutStorage,
 
     /// Persistent arena for measureForDimensions. Each call resets it with
     /// retain_capacity to avoid mmap/munmap churn during streaming.
@@ -281,6 +294,7 @@ pub const UnifiedTextBufferView = struct {
             .cached_line_vline_counts = .empty,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
+            .word_layout = .{ .arena = std.heap.ArenaAllocator.init(global_allocator) },
             .measure_arena = std.heap.ArenaAllocator.init(global_allocator),
             .tab_indicator = null,
             .tab_indicator_color = null,
@@ -309,6 +323,7 @@ pub const UnifiedTextBufferView = struct {
         self.virtual_lines_arena.deinit();
         global_allocator.destroy(self.virtual_lines_arena);
         self.measure_arena.deinit();
+        self.word_layout.arena.deinit();
         self.* = undefined;
     }
 
@@ -374,8 +389,8 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    fn resetVirtualLineStorage(self: *Self) void {
-        _ = self.virtual_lines_arena.reset(.free_all);
+    fn resetVirtualLineStorage(self: *Self, mode: std.heap.ArenaAllocator.ResetMode) void {
+        _ = self.virtual_lines_arena.reset(mode);
         self.virtual_lines = .empty;
         self.cached_line_starts = .empty;
         self.cached_line_widths = .empty;
@@ -390,7 +405,8 @@ pub const UnifiedTextBufferView = struct {
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
-        self.resetVirtualLineStorage();
+        if (buffer_dirty or self.wrap_mode != .word or self.wrap_width == null) self.word_layout.reset();
+        self.resetVirtualLineStorage(if (!buffer_dirty and self.wrap_mode == .word) .retain_capacity else .free_all);
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
@@ -408,13 +424,14 @@ pub const UnifiedTextBufferView = struct {
             calculateUnwrappedVirtualLines(virtual_allocator, self.text_buffer, output)
         else switch (self.wrap_mode) {
             .none => unreachable,
-            .char => calculateVirtualLinesGeneric(.render, .char, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output),
-            .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output),
+            .char => calculateVirtualLinesGeneric(.render, .char, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output, null),
+            .word => calculateVirtualLinesGeneric(.render, .word, virtual_allocator, self.text_buffer, self.wrap_width.?, self.first_line_offset, output, &self.word_layout),
         };
         if (!calculated) {
             // Builders append to parallel arrays; discard partial output as a unit
             // and remain dirty so the next access can retry cleanly.
-            self.resetVirtualLineStorage();
+            self.resetVirtualLineStorage(.free_all);
+            self.word_layout.reset();
             self.virtual_lines_dirty = true;
             return;
         }
@@ -658,12 +675,14 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn switchToBuffer(self: *Self, buffer: *UnifiedTextBuffer) void {
+        self.word_layout.reset();
         self.text_buffer = buffer;
         self.virtual_lines_dirty = true;
     }
 
     pub fn switchToOriginalBuffer(self: *Self) void {
         if (self.text_buffer != self.original_text_buffer) {
+            self.word_layout.reset();
             self.text_buffer = self.original_text_buffer;
             self.virtual_lines_dirty = true;
         }
@@ -1427,8 +1446,8 @@ pub const UnifiedTextBufferView = struct {
         var result: MeasureResult = .{ .line_count = 0, .width_cols_max = 0 };
         const calculated = switch (self.wrap_mode) {
             .none => unreachable,
-            .char => calculateVirtualLinesGeneric(.measure, .char, measure_allocator, self.text_buffer, width, self.first_line_offset, &result),
-            .word => calculateVirtualLinesGeneric(.measure, .word, measure_allocator, self.text_buffer, width, self.first_line_offset, &result),
+            .char => calculateVirtualLinesGeneric(.measure, .char, measure_allocator, self.text_buffer, width, self.first_line_offset, &result, null),
+            .word => calculateVirtualLinesGeneric(.measure, .word, measure_allocator, self.text_buffer, width, self.first_line_offset, &result, null),
         };
         if (!calculated) return TextBufferViewError.OutOfMemory;
 
@@ -1540,6 +1559,7 @@ pub const UnifiedTextBufferView = struct {
         wrap_w: u32,
         first_line_offset: u32,
         result: if (calculation == .render) VirtualLineOutput else *MeasureResult,
+        word_layout: ?*WordLayoutStorage,
     ) bool {
         comptime std.debug.assert(wrap_mode != .none);
 
@@ -1547,6 +1567,8 @@ pub const UnifiedTextBufferView = struct {
             text_buffer: *UnifiedTextBuffer,
             allocator: Allocator,
             result: @TypeOf(result),
+            word_layout: ?*WordLayoutStorage,
+            word_layout_index: usize = 0,
             wrap_w: u32,
             current_wrap_width: u32,
             document_cell_offset: u32 = 0,
@@ -1613,7 +1635,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) Allocator.Error!void {
+            inline fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) Allocator.Error!void {
                 if (byte_len == 0) return;
 
                 if (comptime calculation == .render and wrap_mode == .word) {
@@ -1645,7 +1667,7 @@ pub const UnifiedTextBufferView = struct {
                 wctx.current_vline_width_cols += width_cols;
             }
 
-            fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
+            inline fn addVirtualChunkSticky(wctx: *@This(), chunk: *const TextChunk, byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) bool {
                 addVirtualChunk(wctx, chunk, byte_start, byte_len, col_start, width_cols) catch {
                     wctx.failed = true;
                     return false;
@@ -1815,7 +1837,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
+            inline fn placeCompleteWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
                 if (width_cols == 0 or wctx.failed) return;
 
                 var piece: PendingWordPiece = .{
@@ -1855,6 +1877,14 @@ pub const UnifiedTextBufferView = struct {
             }
 
             fn processWhitespaceBreak(wctx: *@This(), chunk: *const TextChunk, col_start: u32, byte_start: u32, wrap_break: utf8.LayoutWrapBreak) void {
+                // A fitting word and separator already coalesce into one chunk.
+                if (wctx.pending_word_width_cols == 0 and wrap_break.width_cols > 0 and wrap_break.col_start > col_start and
+                    wctx.current_vline_width_cols + (wrap_break.colEnd() - col_start) <= wctx.wordWrapWidth())
+                {
+                    _ = addVirtualChunkSticky(wctx, chunk, byte_start, wrap_break.byteEnd() - byte_start, col_start, wrap_break.colEnd() - col_start);
+                    wctx.source_line_has_non_whitespace = true;
+                    return;
+                }
                 if (wrap_break.col_start > col_start) {
                     flushCompleteWordPiece(
                         wctx,
@@ -1895,7 +1925,7 @@ pub const UnifiedTextBufferView = struct {
                 );
             }
 
-            fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
+            inline fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
                 const chunk = wctx.word_chunk orelse return;
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
                 const col_end = @min(wrap_break.colEnd(), chunk.width_cols);
@@ -1937,7 +1967,7 @@ pub const UnifiedTextBufferView = struct {
                 // Reuse existing caches, but retain cold layout only for medium
                 // non-ASCII chunks; vectorized ASCII and small/large chunks stream.
                 const cached_layout = chunk.getCachedLayoutInfo(wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod());
-                const layout: ?utf8.ChunkLayoutInfo = if (cached_layout) |cached|
+                var layout: ?utf8.ChunkLayoutInfo = if (cached_layout) |cached|
                     cached
                 else blk: {
                     if (comptime calculation == .render) {
@@ -1953,6 +1983,30 @@ pub const UnifiedTextBufferView = struct {
                     }
                     break :blk null;
                 };
+                if (wctx.word_layout) |storage| {
+                    const index = wctx.word_layout_index;
+                    wctx.word_layout_index += 1;
+                    if (index < storage.layouts.items.len) {
+                        layout = storage.layouts.items[index];
+                    } else {
+                        const saved = save: {
+                            const layout_allocator = storage.arena.allocator();
+                            if (layout == null) {
+                                var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+                                const classes = utf8.findChunkLayoutInfo(layout_allocator, chunk_bytes, wctx.text_buffer.tabWidth(), chunk.isAsciiOnly(), wctx.text_buffer.widthMethod(), &breaks) catch break :save false;
+                                layout = .{ .wrap_breaks = breaks.toOwnedSlice(layout_allocator) catch break :save false, .word_classes = classes };
+                            }
+                            storage.layouts.append(layout_allocator, layout.?) catch break :save false;
+                            break :save true;
+                        };
+                        if (!saved) {
+                            // Optional reuse must not prevent a streaming layout on OOM.
+                            storage.reset();
+                            wctx.word_layout = null;
+                            layout = null;
+                        }
+                    }
+                }
                 const word_classes = if (layout) |info|
                     info.word_classes
                 else
@@ -2212,6 +2266,7 @@ pub const UnifiedTextBufferView = struct {
             .text_buffer = text_buffer,
             .allocator = allocator,
             .result = result,
+            .word_layout = word_layout,
             .wrap_w = wrap_w,
             .current_wrap_width = if (first_line_offset > 0 and first_line_offset < wrap_w)
                 wrap_w - first_line_offset

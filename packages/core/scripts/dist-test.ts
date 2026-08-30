@@ -249,6 +249,7 @@ assert.equal(typeof core.AudioRecorder, "function")
 assert.equal(typeof core.AudioRecorderError, "function")
 assert.equal(typeof core.AudioStreamError, "function")
 assert.equal(typeof core.NativeImage, "function")
+assert.equal(typeof core.NativeImagePool, "function")
 assert.equal(typeof core.ImageRenderable, "function")
 assert.equal(typeof core.Audio.prototype.openCapture, "function")
 assert.equal(typeof core.Audio.prototype.recordToFile, "function")
@@ -284,6 +285,37 @@ try {
   assert.throws(() => image.info(), /disposed/)
 } finally {
   raw.dispose()
+}
+
+const imported = core.NativeImage.fromPixels(Uint8Array.of(99, 3, 2, 1, 0).subarray(1), 1, 1, {
+  format: "bgra8", alpha: "opaque", stride: 256,
+})
+try {
+  assert.deepEqual([...imported.raw().data], [1, 2, 3, 255])
+  assert.equal(imported.info().hasAlpha, false)
+} finally {
+  imported.dispose()
+}
+
+const pool = new core.NativeImagePool({ width: 1, height: 1, capacity: 1 })
+try {
+  for (const red of [255, 128]) {
+    const frame = pool.publishRgba(Uint8Array.of(red, 0, 0, 255))
+    try {
+      assert.deepEqual([...frame.raw().data], [red, 0, 0, 255])
+    } finally {
+      frame.dispose()
+    }
+  }
+  const frame = pool.publishPixels(Uint8Array.of(3, 2, 1, 0), { format: "bgra8", alpha: "opaque", stride: 256 })
+  try {
+    assert.deepEqual([...frame.raw().data], [1, 2, 3, 255])
+    assert.equal(frame.info().hasAlpha, false)
+  } finally {
+    frame.dispose()
+  }
+} finally {
+  pool.dispose()
 }
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
@@ -365,6 +397,7 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof core.AudioRecorderError).toBe("function")
     expect(typeof core.AudioStreamError).toBe("function")
     expect(typeof core.NativeImage).toBe("function")
+    expect(typeof core.NativeImagePool).toBe("function")
     expect(typeof core.ImageRenderable).toBe("function")
     expect(typeof core.Audio.prototype.openCapture).toBe("function")
     expect(typeof core.Audio.prototype.recordToFile).toBe("function")
@@ -383,6 +416,15 @@ describe("${packageJson.name} dist smoke test", () => {
       expect(() => image.info()).toThrow(/disposed/)
     } finally {
       raw.dispose()
+    }
+    const imported = core.NativeImage.fromPixels(Uint8Array.of(99, 3, 2, 1, 0).subarray(1), 1, 1, {
+      format: "bgra8", alpha: "opaque", stride: 256,
+    })
+    try {
+      expect([...imported.raw().data]).toEqual([1, 2, 3, 255])
+      expect(imported.info().hasAlpha).toBe(false)
+    } finally {
+      imported.dispose()
     }
   })
 })
