@@ -104,11 +104,8 @@ export const hostConfig: HostConfig<
     return null
   },
 
-  // Reset after commit
-  resetAfterCommit(containerInfo: Container) {
-    // Trigger a render update if needed
-    containerInfo.requestRender()
-  },
+  // Property setters and commitUpdate request their own localized render.
+  resetAfterCommit(_containerInfo: Container) {},
 
   // Get root container
   getRootHostContext(rootContainerInstance: Container) {
@@ -166,10 +163,9 @@ export const hostConfig: HostConfig<
     // We could focus the instance here, but we're handling focus in setInitialProperties
   },
 
-  // No explicit requestRender() needed in commit methods — core's property setters
-  // already call requestRender() internally, and resetAfterCommit handles the frame trigger.
   commitUpdate(instance: Instance, type: Type, oldProps: Props, newProps: Props, internalInstanceHandle: any) {
     updateProperties(instance, type, oldProps, newProps)
+    instance.requestRender()
   },
 
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {

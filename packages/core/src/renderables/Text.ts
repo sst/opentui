@@ -1,4 +1,5 @@
 import { BaseRenderable } from "../Renderable.js"
+import { registerStableRenderCallback } from "../lib/render-internals.js"
 import { stringToStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
 import { RGBA } from "../lib/RGBA.js"
@@ -43,6 +44,7 @@ export class TextRenderable extends TextBufferRenderable {
     )
 
     this.updateTextBuffer(styledText)
+    registerStableRenderCallback(this.onLifecyclePass)
   }
 
   private updateTextBuffer(styledText: StyledText): void {
@@ -92,7 +94,7 @@ export class TextRenderable extends TextBufferRenderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.refreshLocalSelection()
-      this.yogaNode.markDirty()
+      this.invalidateTextLayout()
     }
   }
 

@@ -61,19 +61,6 @@ class DraggableTransparentBox extends BoxRenderable {
     const centerY = this.y + Math.floor(this.height / 2)
 
     buffer.drawText(alphaText, centerX, centerY, RGBA.fromInts(255, 255, 255, 220))
-
-    const id = RGBA.fromInts(68, 69, 69)
-
-    const nm = this.normalizeCoordinates(this.x, this.y)
-    const nms = this.normalizeCoordinates(this.x + this.width, this.y + this.height)
-
-    const topLeft = RGBA.fromValues(nm.x, nm.y, 0)
-    const bottomRight = RGBA.fromValues(nms.x, nms.y, 0)
-    buffer.drawText("x", 1, 0, id, id)
-    buffer.drawText("x", 1, 0, topLeft, topLeft)
-    buffer.drawText("x", 2, 0, bottomRight, bottomRight)
-    // buffer.drawText(`${nm.x}-${nm.y}`, 1, 1, RGBA.fromHex("#ffffff"), RGBA.fromHex("#000000"));
-    // buffer.drawText(`${nms.x}-${nms.y}`, 1, 2, RGBA.fromHex("#ffffff"), RGBA.fromHex("#000000"));
   }
 
   protected override onMouseEvent(event: MouseEvent): void {

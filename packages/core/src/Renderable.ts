@@ -1,6 +1,8 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
+import type { RGBA } from "./lib/RGBA.js"
+import { isStableRenderCallback, registerStableRenderCallback, requestScopedRender } from "./lib/render-internals.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
 import type { Selection } from "./lib/selection.js"
@@ -35,6 +37,7 @@ import {
 } from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
+const dirtyRenderables = new WeakMap<RenderContext, Set<Renderable>>()
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -280,8 +283,28 @@ export abstract class Renderable extends BaseRenderable {
 
   public onLifecyclePass: (() => void) | null = null
 
-  public renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
-  public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
+  private _renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
+  private _renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
+
+  public get renderBefore(): ((this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void) | undefined {
+    return this._renderBefore
+  }
+
+  public set renderBefore(value: ((this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void) | undefined) {
+    if (this._renderBefore === value) return
+    this._renderBefore = value
+    this.requestRender()
+  }
+
+  public get renderAfter(): ((this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void) | undefined {
+    return this._renderAfter
+  }
+
+  public set renderAfter(value: ((this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void) | undefined) {
+    if (this._renderAfter === value) return
+    this._renderAfter = value
+    this.requestRender()
+  }
 
   constructor(ctx: RenderContext, options: RenderableOptions<any>) {
     super(options)
@@ -511,7 +534,10 @@ export abstract class Renderable extends BaseRenderable {
 
   public requestRender() {
     this.markDirty()
-    this._ctx.requestRender()
+    let dirty = dirtyRenderables.get(this._ctx)
+    if (!dirty) dirtyRenderables.set(this._ctx, (dirty = new Set()))
+    dirty.add(this)
+    requestScopedRender(this._ctx)
   }
 
   public get translateX(): number {
@@ -1416,13 +1442,33 @@ export abstract class Renderable extends BaseRenderable {
       renderList.push({ action: "pushOpacity", opacity: this._opacity })
     }
 
-    renderList.push({ action: "render", renderable: this })
+    const renderCommand: RenderCommandRender = { action: "render", renderable: this }
+    if (this.onUpdate !== Renderable.prototype.onUpdate) {
+      renderCommand.update = (elapsed) => this.onUpdate(elapsed)
+      if (isStableRenderCallback(this.onUpdate)) registerStableRenderCallback(renderCommand.update)
+      renderCommand.lastUpdateFrame = this._ctx.frameId
+    }
+    if (this._hasVisibleChildFilter() && this._hasVisibleChildFilter === Renderable.prototype._hasVisibleChildFilter) {
+      renderCommand.dynamicChildFilter = true
+    }
+    renderList.push(renderCommand)
 
     this.ensureZIndexSorted()
 
     const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
     if (shouldPushScissor) {
       const scissorRect = this.getScissorRect()
+      if (this.getScissorRect !== Renderable.prototype.getScissorRect) {
+        renderCommand.validateScissor = () => {
+          const current = this.getScissorRect()
+          return (
+            current.x === scissorRect.x &&
+            current.y === scissorRect.y &&
+            current.width === scissorRect.width &&
+            current.height === scissorRect.height
+          )
+        }
+      }
       renderList.push({
         action: "pushScissorRect",
         x: scissorRect.x,
@@ -1470,16 +1516,29 @@ export abstract class Renderable extends BaseRenderable {
       renderBuffer = this.frameBuffer
     }
 
-    // Layout and culling are already finalized for this frame. These hooks are
-    // only safe for drawing into the buffer; avoid renderable/reactive mutations.
-    if (this.renderBefore) {
-      this.renderBefore.call(this, renderBuffer, deltaTime)
-    }
+    // Private framebuffers use local coordinates; children have separate commands.
+    const clipLocal = renderBuffer !== buffer && !this.renderBefore && !this.renderAfter
+    if (clipLocal) renderBuffer.pushScissorRect(0, 0, this.width, this.height)
+    try {
+      // Layout and culling are already finalized for this frame. These hooks are
+      // only safe for drawing into the buffer; avoid renderable/reactive mutations.
+      if (this.renderBefore) {
+        this.renderBefore.call(this, renderBuffer, deltaTime)
+      }
 
-    this.renderSelf(renderBuffer, deltaTime)
+      this.renderSelf(renderBuffer, deltaTime)
 
-    if (this.renderAfter) {
-      this.renderAfter.call(this, renderBuffer, deltaTime)
+      if (this.renderAfter) {
+        this.renderAfter.call(this, renderBuffer, deltaTime)
+      }
+    } catch (error) {
+      if (renderBuffer !== buffer) {
+        renderBuffer.clearScissorRects()
+        renderBuffer.clearOpacity()
+      }
+      throw error
+    } finally {
+      if (clipLocal) renderBuffer.popScissorRect()
     }
 
     // Hooks may move the renderable mid-frame, so sample the cached absolute
@@ -1535,6 +1594,11 @@ export abstract class Renderable extends BaseRenderable {
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
+  }
+
+  static {
+    registerStableRenderCallback(this.prototype.render)
+    registerStableRenderCallback(this.prototype.renderSelf)
   }
 
   public get isDestroyed(): boolean {
@@ -1720,6 +1784,10 @@ interface RenderCommandPopScissorRect extends RenderCommandBase {
 interface RenderCommandRender extends RenderCommandBase {
   action: "render"
   renderable: Renderable
+  update?: (deltaTime: number) => void
+  lastUpdateFrame?: number
+  validateScissor?: () => boolean
+  dynamicChildFilter?: boolean
 }
 
 interface RenderCommandPushOpacity extends RenderCommandBase {
@@ -1744,6 +1812,9 @@ export class RootRenderable extends Renderable {
   private appliedLayoutGeneration: number = -1
   private appliedRenderListRevision: number = -1
   private renderListReusable: boolean = false
+  private readonly dynamicCommands: RenderCommandRender[] = []
+  private fullCompositionRequired = true
+  private compositionVersion = 0
 
   constructor(ctx: RenderContext) {
     super(ctx, {
@@ -1778,66 +1849,194 @@ export class RootRenderable extends Renderable {
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    const context = this._ctx as unknown as {
+      backgroundColor?: RGBA
+      rendering?: boolean
+      fullCompositionRequired?: boolean
+      frameCallbackLayerWasCleared?: boolean
+      hitGridWritesEnabled?: boolean
+    }
+    const backgroundColor = context.backgroundColor
+    const clearBeforePaint = Boolean(context.rendering && !context.frameCallbackLayerWasCleared)
     this._currentRenderable = undefined
     if (!this.visible) return
 
-    // 0. Run lifecycle pass
+    let unstableLifecycle = false
     for (const renderable of this._ctx.getLifecyclePasses()) {
-      if (!renderable.isDestroyed) {
-        renderable.onLifecyclePass?.call(renderable)
+      if (renderable.isDestroyed || !renderable.onLifecyclePass) continue
+      if (!isStableRenderCallback(renderable.onLifecyclePass)) unstableLifecycle = true
+      renderable.onLifecyclePass.call(renderable)
+    }
+
+    let layoutWasDirty = Boolean(this.yogaNode.isDirty())
+    let revisionChanged = this.appliedRenderListRevision !== getRenderListRevision(this._ctx)
+    let dynamicInputsChanged = false
+    if (this.renderListReusable && !layoutWasDirty && !revisionChanged) {
+      for (const command of this.dynamicCommands) {
+        if (command.renderable.isDestroyed) continue
+        if (command.update && command.lastUpdateFrame !== this._ctx.frameId) {
+          command.lastUpdateFrame = this._ctx.frameId
+          command.update(deltaTime)
+          if (!isStableRenderCallback(command.update)) unstableLifecycle = true
+        }
+        if (command.dynamicChildFilter || (command.validateScissor && !command.validateScissor())) {
+          dynamicInputsChanged = true
+        }
       }
+      layoutWasDirty = Boolean(this.yogaNode.isDirty())
+      revisionChanged = this.appliedRenderListRevision !== getRenderListRevision(this._ctx)
     }
 
-    // NOTE: Strictly speaking, this is a 3-pass rendering process:
-    // 1. Calculate layout from root
-    // 2. Update layout throughout the tree and collect render list
-    // 3. Render all collected renderables
-    // Should be 2-pass by hooking into the calculateLayout phase,
-    // but that's only possible if we move the layout tree to native.
+    if (layoutWasDirty) this.calculateLayout()
+    else this.syncExternalLayoutGeneration()
 
-    // 1. Calculate layout from root
-    if (this.yogaNode.isDirty()) {
-      this.calculateLayout()
-    } else {
-      this.syncExternalLayoutGeneration()
-    }
-
-    // 2. Update layout throughout the tree and collect render list
     const layoutGeneration = getLayoutGeneration(this._ctx)
-    const renderListRevision = getRenderListRevision(this._ctx)
-    const canReuseRenderList =
-      this.renderListReusable &&
-      this.appliedLayoutGeneration === layoutGeneration &&
-      this.appliedRenderListRevision === renderListRevision
-
-    if (!canReuseRenderList) {
+    const renderListChanged =
+      !this.renderListReusable ||
+      dynamicInputsChanged ||
+      revisionChanged ||
+      this.appliedLayoutGeneration !== layoutGeneration
+    if (renderListChanged) {
       this.renderList.length = 0
       super.updateLayout(deltaTime, this.renderList)
       this.appliedLayoutGeneration = layoutGeneration
       this.appliedRenderListRevision = getRenderListRevision(this._ctx)
-      this.renderListReusable = this.canReuseCurrentRenderList()
+      this.dynamicCommands.length = 0
+      for (const command of this.renderList) {
+        if (command.action === "render" && (command.update || command.validateScissor || command.dynamicChildFilter)) {
+          this.dynamicCommands.push(command)
+        }
+      }
+      this.renderListReusable = this._liveCount === 0
     }
 
-    // 3. Render all collected renderables
-    this._ctx.clearHitGridScissorRects()
+    const dirty = dirtyRenderables.get(this._ctx)
+    const compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
+    let full =
+      context.fullCompositionRequired ||
+      this.fullCompositionRequired ||
+      unstableLifecycle ||
+      renderListChanged ||
+      layoutWasDirty ||
+      this._liveCount > 0 ||
+      !backgroundColor ||
+      backgroundColor.a !== 1 ||
+      compositionVersion === 0 ||
+      compositionVersion !== this.compositionVersion ||
+      this.renderList.some((command) => {
+        if (command.action !== "render") return false
+        const node = command.renderable
+        if (node === this) return false
+        // Unknown paint can borrow raw storage or perform whole-buffer operations
+        // on its first invocation. Decide before paint, never replay callbacks.
+        return (
+          node["buffered"] ||
+          node.renderBefore ||
+          node.renderAfter ||
+          !isStableRenderCallback(node.render) ||
+          !isStableRenderCallback(node["renderSelf"])
+        )
+      })
+    if (!full && dirty) {
+      for (const source of dirty) {
+        if (
+          source === this ||
+          source.isDestroyed ||
+          !source.visible ||
+          (source as unknown as { frameBuffer?: OptimizedBuffer | null }).frameBuffer ||
+          source.hasSelection()
+        ) {
+          full = true
+          break
+        }
+      }
+    }
+
+    if (full) {
+      if (clearBeforePaint) backgroundColor ? buffer.clear(backgroundColor) : buffer.clear()
+      this._ctx.clearHitGridScissorRects()
+      this.fullCompositionRequired = false
+      dirty?.clear()
+      try {
+        this.executeRenderList(buffer, deltaTime, true)
+        this.compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
+      } catch (error) {
+        this.fullCompositionRequired = true
+        buffer.clearScissorRects()
+        buffer.clearOpacity()
+        this._ctx.clearHitGridScissorRects()
+        throw error
+      }
+      return
+    }
+
+    if (!dirty || dirty.size === 0) return
+    let start = this._ctx.height
+    let end = 0
+    for (const source of dirty) {
+      for (let current: Renderable | null = source; current && current !== this; current = current.parent) {
+        if (current !== source && !current.isDirty) continue
+        start = Math.min(start, Math.max(0, current.screenY))
+        end = Math.max(end, Math.min(this._ctx.height, current.screenY + current.height))
+      }
+    }
+    dirty.clear()
+    if (start >= end) return
+
+    context.hitGridWritesEnabled = false
+    try {
+      buffer.fillRect(0, start, buffer.width, end - start, backgroundColor!)
+      buffer.pushScissorRect(0, start, buffer.width, end - start)
+      this.executeRenderList(buffer, deltaTime, false, start, end)
+      this.compositionVersion = buffer.lib.bufferGetCompositionVersion(buffer.ptr)
+    } catch (error) {
+      this.fullCompositionRequired = true
+      throw error
+    } finally {
+      context.hitGridWritesEnabled = true
+      buffer.clearScissorRects()
+      buffer.clearOpacity()
+    }
+  }
+
+  private executeRenderList(
+    buffer: OptimizedBuffer,
+    deltaTime: number,
+    updateHitGrid: boolean,
+    start?: number,
+    end?: number,
+  ): void {
     for (let i = 1; i < this.renderList.length; i++) {
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
-          // Skip if renderable was destroyed during a previous render callback
-          if (!command.renderable.isDestroyed) {
+          if (
+            !command.renderable.isDestroyed &&
+            (start === undefined ||
+              (command.renderable.screenY < end! && command.renderable.screenY + command.renderable.height > start))
+          ) {
             this._currentRenderable = command.renderable
-            command.renderable.render(buffer, deltaTime)
+            const node = command.renderable
+            // Hooks retain their existing translation/overflow behavior on the
+            // full path. Ordinary commands cannot clip separately drawn children.
+            const clipped = !node.renderBefore && !node.renderAfter
+            if (clipped) buffer.pushScissorRect(node.screenX, node.screenY, node.width, node.height)
+            try {
+              node.render(buffer, deltaTime)
+            } finally {
+              if (clipped) buffer.popScissorRect()
+            }
             this._currentRenderable = undefined
           }
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
-          this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
+          if (updateHitGrid)
+            this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
           break
         case "popScissorRect":
           buffer.popScissorRect()
-          this._ctx.popHitGridScissorRect()
+          if (updateHitGrid) this._ctx.popHitGridScissorRect()
           break
         case "pushOpacity":
           buffer.pushOpacity(command.opacity)
@@ -1871,17 +2070,6 @@ export class RootRenderable extends Renderable {
     if (!this.yogaNode.hasNewLayout()) return
     bumpLayoutGeneration(this._ctx)
     this.yogaNode.markLayoutSeen()
-  }
-
-  private canReuseCurrentRenderList(): boolean {
-    if (this._liveCount > 0) return false
-
-    for (const command of this.renderList) {
-      if (command.action !== "render") continue
-      if (!command.renderable.canReuseRenderCommandList()) return false
-    }
-
-    return true
   }
 
   public resize(width: number, height: number): void {

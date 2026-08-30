@@ -130,7 +130,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const explosionManager = new ExplosionManager(scene)
 
   renderer.on("resize", (newWidth, newHeight) => {
-    framebuffer.resize(newWidth, newHeight)
+    framebufferRenderable.width = newWidth
+    framebufferRenderable.height = newHeight
 
     pCamera.aspect = engine.aspectRatio
     pCamera.updateProjectionMatrix()

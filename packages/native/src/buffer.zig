@@ -197,6 +197,9 @@ pub const OptimizedBuffer = struct {
     scissor_stack: std.ArrayListUnmanaged(ClipRect),
     opacity_stack: std.ArrayListUnmanaged(f32),
     image_placements: std.ArrayListUnmanaged(ImagePlacement),
+    // Borrowed storage may be mutated again without another API call.
+    raw_storage_exposed: bool = false,
+    composition_version: u32 = 1,
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -279,19 +282,34 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn getCharPtr(self: *OptimizedBuffer) [*]u32 {
+        self.raw_storage_exposed = true;
         return self.buffer.char.ptr;
     }
 
     pub fn getFgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.raw_storage_exposed = true;
         return self.buffer.fg.ptr;
     }
 
     pub fn getBgPtr(self: *OptimizedBuffer) [*]RGBA {
+        self.raw_storage_exposed = true;
         return self.buffer.bg.ptr;
     }
 
     pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
+        self.raw_storage_exposed = true;
         return self.buffer.attributes.ptr;
+    }
+
+    pub fn getCompositionVersion(self: *const OptimizedBuffer) u32 {
+        // Zero means the desired frame must always be recomposed, even if clean.
+        if (self.raw_storage_exposed or self.image_placements.items.len != 0) return 0;
+        return self.composition_version;
+    }
+
+    pub fn invalidateComposition(self: *OptimizedBuffer) void {
+        self.composition_version +%= 1;
+        if (self.composition_version == 0) self.composition_version = 1;
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
@@ -453,6 +471,7 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) void {
+        self.invalidateComposition();
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
         self.link_tracker.clear();
         self.grapheme_tracker.clear();
@@ -1593,7 +1612,13 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (gp.isGraphemeChar(srcChar)) {
-                        lastDrawnGraphemeId = srcChar & gp.GRAPHEME_ID_MASK;
+                        // setCell expands the entire span. A clipped source or
+                        // destination must not recreate continuation cells outside it.
+                        if (@as(u32, @intCast(dX)) + gp.charRightExtent(srcChar) > @as(u32, @intCast(clippedEndX))) {
+                            srcChar = DEFAULT_SPACE_CHAR;
+                        } else {
+                            lastDrawnGraphemeId = srcChar & gp.GRAPHEME_ID_MASK;
+                        }
                     }
 
                     self.setCellWithAlphaBlendingCell(

@@ -871,7 +871,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   }
 
   const resizeHandler = (width: number, height: number) => {
-    framebuffer.resize(width, height)
+    framebufferRenderable.width = width
+    framebufferRenderable.height = height
 
     if (cameraNode) {
       cameraNode.aspect = engine.aspectRatio

@@ -191,7 +191,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   parentContainer.add(controlsText)
 
   const resizeHandler = (width: number, height: number) => {
-    framebuffer.resize(width, height)
+    framebufferRenderable.width = width
+    framebufferRenderable.height = height
     engine.setSize(width, height)
     camera.aspect = engine.aspectRatio
     camera.updateProjectionMatrix()

@@ -3478,7 +3478,7 @@ test "FeedBackend - renderer writes through feed" {
     try std.testing.expect(found_hello);
 }
 
-test "FeedBackend - shouldSkipFrame when span queue saturated" {
+test "FeedBackend - retained composition skips when span queue saturated" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     _ = link.initGlobalLinkPool(std.testing.allocator);
@@ -3501,9 +3501,13 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const next_buffer = cli_renderer.getNextBuffer();
+    cli_renderer.hitGridClearScissorRects();
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 11);
     try next_buffer.drawText("A", 0, 0, fg, bg, 0);
     _ = cli_renderer.render(false);
 
+    cli_renderer.hitGridClearScissorRects();
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 22);
     try next_buffer.drawText("B", 0, 0, fg, bg, 0);
     _ = cli_renderer.render(false);
 
@@ -3512,6 +3516,8 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     // Catch-up semantics: a skipped render must NOT advance lastRenderTime,
     // so the next non-skipped frame sees the full accumulated delta.
     const before = cli_renderer.lastRenderTime;
+    cli_renderer.hitGridClearScissorRects();
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 33);
     try next_buffer.drawText("C", 0, 0, fg, bg, 0);
     const status = cli_renderer.render(false);
     try std.testing.expectEqual(before, cli_renderer.lastRenderTime);
@@ -3520,7 +3526,18 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     const current_cell = cli_renderer.getCurrentBuffer().get(0, 0).?;
     const next_cell = cli_renderer.getNextBuffer().get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 'B'), current_cell.char);
-    try std.testing.expect(next_cell.char != @as(u32, 'C'));
+    try std.testing.expectEqual(@as(u32, 22), cli_renderer.checkHit(0, 0));
+    try std.testing.expectEqual(@as(u32, 'C'), next_cell.char);
+    var spans: [8]native_span_feed.SpanInfo = undefined;
+    const count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+    next_buffer.clear(bg, null);
+    cli_renderer.hitGridClearScissorRects();
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 33);
+    try next_buffer.drawText("C", 0, 0, fg, bg, 0);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(false));
+    try std.testing.expectEqual(@as(u32, 'C'), cli_renderer.getCurrentBuffer().get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 33), cli_renderer.checkHit(0, 0));
 }
 
 test "FeedBackend - prepareFrame commits existing pending bytes before new frames" {
@@ -3703,7 +3720,7 @@ test "FeedBackend - failed ordinary render retries split transition" {
     try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b[1T") != null);
 }
 
-test "FeedBackend - failed frame keeps the published hit grid" {
+test "FeedBackend - retained composition failure keeps the published hit grid" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     _ = link.initGlobalLinkPool(std.testing.allocator);
@@ -3724,6 +3741,7 @@ test "FeedBackend - failed frame keeps the published hit grid" {
     defer feed.destroy();
     defer cli_renderer.destroy();
 
+    cli_renderer.hitGridClearScissorRects();
     cli_renderer.addToHitGrid(0, 0, 1, 1, 11);
     try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(true));
     var spans: [8]native_span_feed.SpanInfo = undefined;
@@ -3731,6 +3749,7 @@ test "FeedBackend - failed frame keeps the published hit grid" {
     for (spans[0..count]) |span| feed.markSpanConsumed(span);
     try std.testing.expectEqual(@as(u32, 11), cli_renderer.checkHit(0, 0));
 
+    cli_renderer.hitGridClearScissorRects();
     cli_renderer.addToHitGrid(0, 0, 1, 1, 22);
     const blocker = [_]u8{'x'} ** 193;
     try feed.writeAtomic(&blocker);
@@ -4462,7 +4481,7 @@ test "renderer reuses the kitty transmit across source rectangle changes" {
     try std.testing.expect(std.mem.find(u8, changed_output, "x=16,y=12,w=8,h=8,C=1") != null);
 }
 
-test "renderer does not publish a frame when image dirty preparation fails" {
+test "retained composition does not publish when image dirty preparation fails" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -4478,6 +4497,7 @@ test "renderer does not publish a frame when image dirty preparation fails" {
         handles.finishDestroy(token.handle);
     }
     try test_renderer.renderer.pendingImages.ensureTotalCapacity(std.testing.allocator, 1);
+    test_renderer.renderer.hitGridClearScissorRects();
     const next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
 
@@ -4492,13 +4512,14 @@ test "renderer does not publish a frame when image dirty preparation fails" {
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
 
     const retry = test_renderer.renderer.getNextBuffer();
+    retry.clear(ansi.rgbColor(0, 0, 0, 255), null);
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
-test "renderer does not publish a frame when Sixel preparation fails" {
+test "retained composition does not publish when Sixel preparation fails" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -4515,6 +4536,7 @@ test "renderer does not publish a frame when Sixel preparation fails" {
     }
     try test_renderer.renderer.imageDirty.ensureTotalCapacity(std.testing.allocator, 1);
     try test_renderer.renderer.pendingImages.ensureTotalCapacity(std.testing.allocator, 1);
+    test_renderer.renderer.hitGridClearScissorRects();
     const next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
 
@@ -4529,13 +4551,14 @@ test "renderer does not publish a frame when Sixel preparation fails" {
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
 
     const retry = test_renderer.renderer.getNextBuffer();
+    retry.clear(ansi.rgbColor(0, 0, 0, 255), null);
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
     try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
-test "renderer does not publish Kitty output when image state staging fails" {
+test "retained composition does not publish Kitty output when image state staging fails" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -4551,6 +4574,7 @@ test "renderer does not publish Kitty output when image state staging fails" {
         handles.finishDestroy(token.handle);
     }
     try test_renderer.renderer.imageDirty.ensureTotalCapacity(std.testing.allocator, 1);
+    test_renderer.renderer.hitGridClearScissorRects();
     const next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .kitty));
 
@@ -4565,6 +4589,7 @@ test "renderer does not publish Kitty output when image state staging fails" {
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
 
     const retry = test_renderer.renderer.getNextBuffer();
+    retry.clear(ansi.rgbColor(0, 0, 0, 255), null);
     try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .kitty));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expect(std.mem.find(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);

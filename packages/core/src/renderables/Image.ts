@@ -78,6 +78,7 @@ export class ImageRenderable extends Renderable {
       this._image = null
       this.loadPromise = null
       this.requestRender()
+      this._ctx.requestRender()
       return
     }
 

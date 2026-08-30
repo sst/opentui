@@ -1713,6 +1713,11 @@ export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]cons
 }
 
 // Buffer functions
+export fn bufferGetCompositionVersion(buffer_handle: NativeHandle) u32 {
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return object_ptr.getCompositionVersion();
+}
+
 export fn bufferClear(buffer_handle: NativeHandle, bg: [*]const u16) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.clear(ptrToRGBA(bg), null);

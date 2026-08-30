@@ -85,6 +85,7 @@ pub fn colorMatrix(self: anytype, matrix: []const f32, cellMask: []const f32, st
     if (matrix.len < 16 or cellMask.len < 3) return;
     if (@intFromEnum(target) == 0) return;
     if (!math.isFinite(strength)) return;
+    self.invalidateComposition();
 
     const width = self.width;
     const height = self.height;
@@ -147,6 +148,7 @@ pub fn colorMatrixUniform(self: anytype, matrix: []const f32, strength: f32, tar
     if (matrix.len < 16 or strength == 0.0) return;
     if (@intFromEnum(target) == 0) return;
     if (!math.isFinite(strength)) return;
+    self.invalidateComposition();
 
     const width = self.width;
     const height = self.height;

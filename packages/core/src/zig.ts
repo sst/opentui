@@ -604,6 +604,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "buffer"],
       returns: "void",
     },
+    bufferGetCompositionVersion: {
+      args: ["u32"],
+      returns: "u32",
+    },
     bufferGetCharPtr: {
       args: ["u32"],
       returns: "ptr",
@@ -2495,6 +2499,7 @@ export interface RenderLib extends AudioEngineLib {
   getBufferHeight: (buffer: OptimizedBufferHandle) => number
   bufferClear: (buffer: OptimizedBufferHandle, color: RGBA) => void
   bufferGetCharPtr: (buffer: OptimizedBufferHandle) => Pointer
+  bufferGetCompositionVersion: (buffer: OptimizedBufferHandle) => number
   bufferGetFgPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetBgPtr: (buffer: OptimizedBufferHandle) => Pointer
   bufferGetAttributesPtr: (buffer: OptimizedBufferHandle) => Pointer
@@ -3837,6 +3842,10 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get char pointer")
     }
     return ptr
+  }
+
+  public bufferGetCompositionVersion(buffer: Pointer): number {
+    return this.opentui.symbols.bufferGetCompositionVersion(buffer)
   }
 
   public bufferGetFgPtr(buffer: Pointer): Pointer {
