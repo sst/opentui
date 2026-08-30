@@ -3472,16 +3472,16 @@ export fn imageCreateFromRgba(
     stride: u32,
     out_handle: ?*NativeHandle,
 ) u32 {
-    const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
-    output.* = INVALID_HANDLE;
-    if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
-        return @intFromEnum(native_image.Status.invalid_argument);
-    }
-    const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
-    const image = native_image.createFromRgba(globalAllocator, pixels, width, height, stride) catch |err| {
-        return @intFromEnum(native_image.statusFromError(err));
-    };
-    return @intFromEnum(insertImage(image, output));
+    return imageCreateFromPixels(
+        pixels_ptr,
+        pixels_len,
+        width,
+        height,
+        stride,
+        @intFromEnum(native_image.PixelFormat.rgba8),
+        @intFromEnum(native_image.PixelAlpha.straight),
+        out_handle,
+    );
 }
 
 fn pixelImportOptions(stride: u32, format: u32, alpha: u32) !native_image.PixelImportOptions {

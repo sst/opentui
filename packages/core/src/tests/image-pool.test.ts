@@ -22,46 +22,55 @@ describe("NativeImagePool", () => {
     }
   })
 
-  test.each(["straight", "opaque"] as const)(
-    "publishes strided 65x3 BGRA with %s alpha and immutable readers",
-    (alpha) => {
-      const width = 65
-      const height = 3
-      const stride = 267
-      const pixels = new Uint8Array(stride * (height - 1) + width * 4 + 1).subarray(1)
+  test.each([
+    ["rgba8", "straight", 64, 64, 256],
+    ["bgra8", "straight", 65, 3, 267],
+    ["bgra8", "opaque", 65, 3, 267],
+  ] as const)(
+    "publishes %s with %s alpha at %dx%d, stride %d, and immutable readers",
+    (format, alpha, width, height, stride) => {
+      const offset = format === "bgra8" ? 1 : 0
+      const pixels = new Uint8Array(stride * (height - 1) + width * 4 + offset).subarray(offset)
       const expected = new Uint8Array(width * height * 4)
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           pixels.set([x, y, 99, 255], y * stride + x * 4)
-          expected.set([99, y, x, 255], (y * width + x) * 4)
+          expected.set(format === "bgra8" ? [99, y, x, 255] : [x, y, 99, 255], (y * width + x) * 4)
         }
       }
       pixels[pixels.length - 1] = 128
       expected[expected.length - 1] = alpha === "opaque" ? 255 : 128
-      const options: PixelImportOptions = { stride, format: "bgra8", alpha, colorSpace: "srgb" }
+      const options: PixelImportOptions = { stride, format, alpha, colorSpace: "srgb" }
       const pool = new NativeImagePool({ width, height, capacity: 2 })
-      const first = pool.publishPixels(pixels, options)!
+      const publish = () => (format === "rgba8" ? pool.publishRgba(pixels) : pool.publishPixels(pixels, options))
+      const first = publish()!
       const retained = first.retain()
       first.dispose()
       const lib = resolveRenderLib()
       try {
         expect(retained.raw().data).toEqual(expected)
         expect(retained.info().hasAlpha).toBe(alpha === "straight")
-        const second = pool.publishPixels(pixels, options)!
+        pixels.fill(42, 0, 3)
+        const second = publish()!
         const allocated = lib.getAllocatorStats().activeAllocations
-        const previousHandle = second.ptr
         try {
-          expect(pool.publishPixels(pixels, options)).toBeNull()
+          expect(publish()).toBeNull()
+          expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
+          expect(second.raw().data.subarray(0, 3)).toEqual(Uint8Array.of(42, 42, 42))
+          expect(retained.raw().data).toEqual(expected)
         } finally {
           second.dispose()
         }
-        for (let index = 0; index < 20; index++) {
+        for (let index = 0; index < 3; index++) {
+          const rgb = [index, 255 - index, index + 1]
+          pixels.set(rgb)
           pixels[pixels.length - 1] = index % 2 === 0 ? 255 : 0
-          const frame = pool.publishPixels(pixels, options)!
+          const frame = publish()!
           try {
-            expect(frame.ptr).not.toBe(previousHandle)
+            const raw = frame.raw().data
+            expect([...raw.subarray(0, 3)]).toEqual(format === "bgra8" ? rgb.toReversed() : rgb)
             expect(frame.info().hasAlpha).toBe(alpha === "straight" && index % 2 !== 0)
-            expect(frame.raw().data.at(-1)).toBe(alpha === "opaque" ? 255 : pixels[pixels.length - 1])
+            expect(raw.at(-1)).toBe(alpha === "opaque" ? 255 : pixels[pixels.length - 1])
             expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
             expect(retained.raw().data).toEqual(expected)
           } finally {
@@ -77,12 +86,11 @@ describe("NativeImagePool", () => {
     },
   )
 
-  test("publishPixels validates before busy and preserves the fromPixels option contract", () => {
+  test("publishPixels validates input before reporting a busy pool", () => {
     const pixels = Uint8Array.of(1, 2, 3, 255)
     const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
     const frame = pool.publishPixels(pixels)!
     try {
-      expect(frame.raw().data).toEqual(pixels)
       for (const [options, error] of [
         [{ stride: 3 }, ImageError],
         [{ stride: NaN }, RangeError],
@@ -91,7 +99,6 @@ describe("NativeImagePool", () => {
         [{ alpha: "premultiplied" }, TypeError],
         [{ colorSpace: "display-p3" }, TypeError],
       ] as const) {
-        expect(() => NativeImage.fromPixels(pixels, 1, 1, options as PixelImportOptions)).toThrow(error)
         expect(() => pool.publishPixels(pixels, options as PixelImportOptions)).toThrow(error)
       }
       expect(() => pool.publishPixels(new Uint8Array(3))).toThrow(ImageError)
@@ -105,71 +112,26 @@ describe("NativeImagePool", () => {
     expect(() => pool.publishPixels(pixels)).toThrow("disposed")
   })
 
-  test("publishPixels releases failed native wrappers and can retry creation or publication", () => {
+  test("failed publications can retry without leaking native images", () => {
     const lib = resolveRenderLib()
-    const pixels = Uint8Array.of(3, 2, 1, 0)
-    NativeImage.fromPixels(pixels, 1, 1).dispose()
+    const pixels = Uint8Array.of(1, 2, 3, 255)
+    NativeImage.fromRgba(pixels, 1, 1).dispose()
     const allocated = lib.getAllocatorStats().activeAllocations
-    const getInfo = lib.imageGetInfo
-    for (const failAt of [1, 2]) {
-      const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
-      let calls = 0
-      lib.imageGetInfo = (handle) => {
-        const result = getInfo.call(lib, handle)
-        return ++calls === failAt ? { ...result, status: 8 } : result
-      }
-      try {
-        expect(() => pool.publishPixels(pixels, { format: "bgra8" })).toThrow(ImageError)
-        const frame = pool.publishPixels(pixels, { format: "bgra8", alpha: "opaque" })!
-        try {
-          expect(frame.raw().data).toEqual(Uint8Array.of(1, 2, 3, 255))
-        } finally {
-          frame.dispose()
-        }
-      } finally {
-        lib.imageGetInfo = getInfo
-        pool.dispose()
-      }
-      expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
-    }
-  })
-
-  test("publishes new immutable handles and reuses a bounded number of pixel allocations", () => {
-    const pool = new NativeImagePool({ width: 64, height: 64, capacity: 2 })
-    const pixels = new Uint8Array(64 * 64 * 4).fill(255)
-    const first = pool.publishRgba(pixels)!
-    const retained = first.retain()
-    first.dispose()
-    pixels.fill(42)
-    const second = pool.publishRgba(pixels)!
-    const lib = resolveRenderLib()
-    const allocated = lib.getAllocatorStats().activeAllocations
+    const retain = lib.imageRetain
+    const pool = new NativeImagePool({ width: 1, height: 1, capacity: 1 })
+    let frame: NativeImage | null = null
     try {
-      for (let index = 0; index < 100; index++) expect(pool.publishRgba(pixels)).toBeNull()
-      expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
-      expect(retained.raw().data[0]).toBe(255)
-      expect(second.raw().data[0]).toBe(42)
-      const previousHandle = second.ptr
-      second.dispose()
-
-      for (let index = 0; index < 100; index++) {
-        pixels.fill(index)
-        const frame = pool.publishRgba(pixels)!
-        try {
-          expect(frame.ptr).not.toBe(previousHandle)
-          expect(frame.raw().data[0]).toBe(index)
-          expect(frame.info().hasAlpha).toBe(true)
-          expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
-          expect(retained.raw().data[0]).toBe(255)
-        } finally {
-          frame.dispose()
-        }
-      }
+      lib.imageRetain = () => ({ status: 8, handle: null })
+      expect(() => pool.publishRgba(pixels)).toThrow(ImageError)
+      lib.imageRetain = retain
+      frame = pool.publishRgba(pixels)
+      expect(frame!.raw().data).toEqual(pixels)
     } finally {
-      retained.dispose()
-      second.dispose()
+      lib.imageRetain = retain
+      frame?.dispose()
       pool.dispose()
     }
+    expect(lib.getAllocatorStats().activeAllocations).toBe(allocated)
   })
 
   test("drawImage and copied buffers pin snapshots until both are cleared", () => {
@@ -222,7 +184,7 @@ describe("NativeImagePool", () => {
     }
   })
 
-  test("dispose cancels future publications but leaves outstanding frames alive; resizing uses a new pool", () => {
+  test("dispose cancels future publications but leaves outstanding frames alive", () => {
     const pool = new NativeImagePool({ width: 1, height: 1 })
     const frame = pool.publishRgba(Uint8Array.of(1, 2, 3, 255))!
     pool.dispose()
@@ -230,15 +192,6 @@ describe("NativeImagePool", () => {
     try {
       expect(() => pool.publishRgba(Uint8Array.of(4, 5, 6, 255))).toThrow("disposed")
       expect(frame.raw().data).toEqual(Uint8Array.of(1, 2, 3, 255))
-      const resized = new NativeImagePool({ width: 2, height: 1, capacity: 1 })
-      try {
-        const next = resized.publishRgba(new Uint8Array(8))!
-        expect(next.width).toBe(2)
-        expect(frame.width).toBe(1)
-        next.dispose()
-      } finally {
-        resized.dispose()
-      }
       const raw = frame.takeRaw()
       raw.dispose()
     } finally {

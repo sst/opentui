@@ -1,8 +1,7 @@
 import { globalConstructors, GPUCanvasContextMock, setupGlobals } from "bun-webgpu"
-import { toArrayBuffer } from "bun:ffi"
 import { NoToneMapping, SRGBColorSpace, type Camera, type Scene } from "three"
 import { WebGPURenderer } from "three/webgpu"
-import { managePixelGpu, type PixelGpuLifetimeOptions } from "./gpu-lifetime.js"
+import { managePixelGpu } from "./gpu-lifetime.js"
 
 export interface PixelFrame {
   data: Uint8Array
@@ -12,29 +11,7 @@ export interface PixelFrame {
   format: "rgba8" | "bgra8"
 }
 
-export function packRgba(frame: PixelFrame, destination: Uint8Array): void {
-  for (let y = 0; y < frame.height; y++) {
-    if (frame.format === "rgba8") {
-      destination.set(frame.data.subarray(y * frame.stride, y * frame.stride + frame.width * 4), y * frame.width * 4)
-      continue
-    }
-    for (let x = 0; x < frame.width; x++) {
-      const source = y * frame.stride + x * 4
-      const target = (y * frame.width + x) * 4
-      destination[target] = frame.data[source + 2]
-      destination[target + 1] = frame.data[source + 1]
-      destination[target + 2] = frame.data[source]
-      destination[target + 3] = frame.data[source + 3]
-    }
-  }
-}
-
-export async function createPixelRenderer(
-  width: number,
-  height: number,
-  mapping: "view" | "pointer" = "view",
-  lifetimeOptions: PixelGpuLifetimeOptions = {},
-) {
+export async function createPixelRenderer(width: number, height: number) {
   if (
     !Number.isSafeInteger(width) ||
     !Number.isSafeInteger(height) ||
@@ -81,7 +58,7 @@ export async function createPixelRenderer(
 
   try {
     if (!(device instanceof globalConstructors.GPUDevice)) throw new Error("Pixel adapter requires bun-webgpu 0.1.7")
-    lifetime = managePixelGpu(device, context, lifetimeOptions)
+    lifetime = managePixelGpu(device, context)
     renderer = new WebGPURenderer({
       canvas: canvas as unknown as HTMLCanvasElement,
       device,
@@ -103,16 +80,24 @@ export async function createPixelRenderer(
   }
   let busy = false
   let destroyed = false
+  let animationActive = true
+  const animation = (renderer as unknown as { _animation: { start(): void; stop(): void } })._animation
   return {
     adapter: adapter.info,
     ownership: () => lifetime!.snapshot(),
-    async draw<T>(scene: Scene, camera: Camera, consume: (frame: PixelFrame) => T) {
+    setAnimationActive(active: boolean) {
+      if (destroyed) throw new Error("Pixel renderer is disposed")
+      if (active === animationActive) return
+      // Three 0.177.0 runs an internal RAF even without a user animation loop.
+      if (active) animation.start()
+      else animation.stop()
+      animationActive = active
+    },
+    async draw<T>(scene: Scene, camera: Camera, consume: (frame: PixelFrame) => T): Promise<T> {
       if (busy || destroyed) throw new Error("Pixel renderer is busy or disposed")
       busy = true
-      const start = performance.now()
       try {
         renderer!.render(scene, camera)
-        const submitted = performance.now()
         const texture = context.getCurrentTexture()
         const encoder = device.createCommandEncoder()
         encoder.copyTextureToBuffer(
@@ -122,16 +107,10 @@ export async function createPixelRenderer(
         )
         device.queue.submit([encoder.finish()])
         await readback!.mapAsync(GPUMapMode.READ)
-        const mapped = performance.now()
-        let value: T
         try {
           // The consumer is synchronous: it cannot retain this view past unmap.
-          const mappedBytes =
-            mapping === "pointer"
-              ? toArrayBuffer(readback!.getMappedRangePtr(), 0, readback!.size)
-              : readback!.getMappedRange()
-          value = consume({
-            data: new Uint8Array(mappedBytes),
+          return consume({
+            data: new Uint8Array(readback!.getMappedRange()),
             width,
             height,
             stride,
@@ -139,12 +118,6 @@ export async function createPixelRenderer(
           })
         } finally {
           readback!.unmap()
-        }
-        return {
-          submitMs: submitted - start,
-          readbackMs: mapped - submitted,
-          consumeMs: performance.now() - mapped,
-          value,
         }
       } finally {
         try {

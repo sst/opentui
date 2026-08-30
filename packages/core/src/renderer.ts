@@ -4330,8 +4330,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private internalStop(): void {
-    this.cancelRenderAfterFeedIdle()
-    this._isRunning = false
     this.updateScheduled = false
     this.updateGeneration++
     this.immediateRerenderRequested = false
@@ -4341,14 +4339,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.memorySnapshotTimer = null
     }
 
-    if (this.renderTimeout) {
-      this.clock.clearTimeout(this.renderTimeout)
-      this.renderTimeout = null
-    }
-    // An active frame resolves idle when it completes.
-    if (!this.rendering) {
-      this.resolveIdleIfNeeded()
-    }
+    this.internalPause()
   }
 
   public destroy(): void {

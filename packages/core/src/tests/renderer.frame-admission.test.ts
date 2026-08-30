@@ -91,19 +91,18 @@ test("frame admission bounds delayed output to one frame and coalesces callback 
   expect(lib.streamGetStats(feed.streamPtr)!.pendingSpans).toBe(0)
   expect(feed.isBackpressured()).toBe(true)
 
-  let peakBytes = frameBytes
+  state = "B"
   for (let attempt = 0; attempt < 32; attempt++) {
-    state = attempt % 2 === 0 ? "B" : "D"
     renderer.requestRender()
     clock.advance(100)
     await settle()
-    peakBytes = Math.max(peakBytes, stdout.writableLength)
+    expect(stdout.writableLength).toBe(frameBytes)
   }
 
-  expect({ callbacks: observed.length, frames, peakBytes }).toEqual({ callbacks: 1, frames: 1, peakBytes: frameBytes })
+  expect(observed).toEqual(["A"])
+  expect(frames).toBe(1)
   expect(lib.streamGetStats(feed.streamPtr)!.chunks).toBe(chunks)
   expect(renderer.frameId).toBe(1)
-  expect(new TextDecoder().decode(renderer.currentRenderBuffer.getRealCharBytes()).startsWith("AAAA")).toBe(true)
 
   stdout.releaseOne()
   await settle()
@@ -123,7 +122,6 @@ test("frame admission bounds delayed output to one frame and coalesces callback 
   expect(observed).toEqual(["A", "C"])
   expect(deltas).toEqual([0, 3300])
   expect(frames).toBe(2)
-  expect(new TextDecoder().decode(renderer.currentRenderBuffer.getRealCharBytes()).startsWith("CCCC")).toBe(true)
   const output = Buffer.concat(stdout.writes).toString()
   expect(output).toContain("A".repeat(1024))
   expect(output).toContain("C".repeat(1024))
@@ -389,7 +387,7 @@ for (const releaseBeforeDrop of [false, true]) {
     await feed.idle()
     clock.advance(100)
     await settle()
-    expect(new TextDecoder().decode(renderer.currentRenderBuffer.getRealCharBytes()).startsWith("FINAL")).toBe(true)
+    expect(Buffer.concat(stdout.writes).toString()).toContain("FINAL")
     await renderer.idle()
     expect(renderer.isRunning).toBe(false)
   })

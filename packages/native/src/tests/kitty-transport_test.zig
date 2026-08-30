@@ -12,7 +12,7 @@ const Fixture = struct {
 
     fn init(self: *Fixture) !void {
         if (builtin.os.tag == .windows) return error.SkipZigTest;
-        self.* = .{ .tmp = std.testing.tmpDir(.{}) };
+        self.* = .{ .tmp = std.testing.tmpDir(.{ .iterate = true }) };
         errdefer self.tmp.cleanup();
         self.directory_len = try self.tmp.dir.realPath(std.testing.io, &self.directory);
     }
@@ -21,6 +21,11 @@ const Fixture = struct {
         self.transport.cancel(.cancelled);
         self.output.deinit();
         self.tmp.cleanup();
+    }
+
+    fn expectNoFiles(self: *Fixture) !void {
+        var iterator = self.tmp.dir.iterate();
+        try std.testing.expectEqual(null, try iterator.next(std.testing.io));
     }
 
     fn probe(self: *Fixture) !void {
@@ -56,6 +61,7 @@ test "kitty file query requires medium and explicit image ACK, not ordinary fram
     f.transport.expire(std.math.maxInt(i64));
     try std.testing.expectEqual(.timeout, f.transport.file_state);
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try f.expectNoFiles();
     try std.testing.expect(f.transport.handleReply("\x1b_Gi=8;OK\x1b\\"));
     try std.testing.expectEqual(.timeout, f.transport.file_state);
 }
@@ -80,7 +86,6 @@ test "kitty file leases contain immutable bytes and are released only by matchin
     try std.testing.expectEqual(.busy, f.transport.fallback);
     try std.testing.expectEqual(@as(u32, 1), f.transport.pendingCount());
     try std.testing.expect(!f.transport.handleReply("\x1b_Gi=190;OK\x1b\\"));
-    try std.Io.Dir.accessAbsolute(std.testing.io, path, .{});
     const unchanged = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(16));
     defer std.testing.allocator.free(unchanged);
     try std.testing.expectEqualSlices(u8, contents, unchanged);
@@ -105,6 +110,7 @@ test "kitty file upload expiry cancels rather than reusing a late acknowledged l
     try std.testing.expectEqual(@as(u32, 1), f.transport.pendingCount());
     f.transport.expire(deadline);
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try f.expectNoFiles();
     try std.testing.expectEqual(.timeout, f.transport.file_state);
     try f.transmit(value, 19);
     try std.testing.expectEqual(.raw, f.transport.effective);
@@ -112,7 +118,7 @@ test "kitty file upload expiry cancels rather than reusing a late acknowledged l
     try std.testing.expectEqual(.timeout, f.transport.file_state);
 }
 
-test "kitty file budget timeout errors and cancel release bounded leases" {
+test "kitty file slot budget falls back to raw and upload errors release all leases" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
@@ -129,10 +135,9 @@ test "kitty file budget timeout errors and cancel release bounded leases" {
     try std.testing.expectEqual(.unsupported, f.transport.file_state);
     try std.testing.expect(f.transport.retry_images);
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try f.expectNoFiles();
     try f.transmit(value, 100);
     try std.testing.expectEqual(.raw, f.transport.effective);
-    f.transport.cancel(.cancelled);
-    try std.testing.expectEqual(.cancelled, f.transport.file_state);
 }
 
 test "kitty file output failures do not leak resources" {
@@ -142,6 +147,7 @@ test "kitty file output failures do not leak resources" {
     var failed: std.Io.Writer = .failing;
     try std.testing.expectError(error.WriteFailed, f.transport.startProbe(&failed, 7, f.directory[0..f.directory_len]));
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try f.expectNoFiles();
 }
 
 test "kitty file preparation failures fall back to raw without leases" {

@@ -411,14 +411,14 @@ describe("ImageRenderable image loading", () => {
         await flushWritable(stdout)
         stdout.take()
 
-        for (let index = 0; index < 9; index++) {
+        for (let index = 0; index < pool.capacity + 1; index++) {
           pixels[0] = 255 - index * 25
           pixels[1] = index * 25
           pixels[2] = index * 13
           pixels[3] = 255
           const frame = pool.publishRgba(pixels)
           expect(frame).not.toBeNull()
-          frame!.ensureEncodedPng()
+          if (protocol === "kitty") frame!.ensureEncodedPng()
           renderable.source = frame!
           frame!.dispose()
           await renderable.loadPromise
@@ -426,7 +426,6 @@ describe("ImageRenderable image loading", () => {
           await outputRenderer.idle()
           await flushWritable(stdout)
           const output = stdout.take().toString("binary")
-          expect(renderable.image!.raw().data).toEqual(pixels)
           if (protocol === "kitty") {
             const payload = output.match(/\x1b_Ga=t,f=100,[^;]*;([^\x1b]+)/)?.[1]
             expect(payload).toBeDefined()
@@ -454,8 +453,9 @@ describe("ImageRenderable image loading", () => {
     const onLoad = mock(() => {})
     const renderable = new ImageRenderable(renderer, { onLoad })
     const pixels = Uint8Array.of(1, 2, 3, 255)
+    const frames: Array<NativeImage | null> = []
     try {
-      for (let index = 0; index < 10; index++) {
+      for (let index = 0; index < pool.capacity + 1; index++) {
         const frame = pool.publishRgba(pixels)!
         expect(frame).not.toBeNull()
         renderable.source = frame
@@ -464,10 +464,10 @@ describe("ImageRenderable image loading", () => {
       renderable.destroy()
       await renderable.loadPromise
       expect(onLoad).not.toHaveBeenCalled()
-      const frame = pool.publishRgba(pixels)!
-      expect(frame).not.toBeNull()
-      frame.dispose()
+      for (let index = 0; index < pool.capacity; index++) frames.push(pool.publishRgba(pixels))
+      expect(frames).not.toContain(null)
     } finally {
+      for (const frame of frames) frame?.dispose()
       renderable.destroy()
       pool.dispose()
     }

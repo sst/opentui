@@ -1,25 +1,14 @@
 import * as THREE from "three"
 
-// The deterministic workload from magick-proof, not an authoritative game simulation.
-export function createArena(aspect: number, particleCount = 512) {
-  if (!Number.isInteger(particleCount) || particleCount < 0 || particleCount > 100_000) {
-    throw new RangeError("particleCount must be an integer between 0 and 100000")
-  }
+export function createArena(aspect: number) {
+  if (!Number.isFinite(aspect) || aspect <= 0) throw new RangeError("aspect must be positive and finite")
+  const particleCount = 512
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x111925)
-  const camera = new THREE.OrthographicCamera(-14, 14, 10, -10, 0.1, 100)
+  const height = Math.max(10, 14 / aspect)
+  const camera = new THREE.OrthographicCamera(-height * aspect, height * aspect, height, -height, 0.1, 100)
   camera.position.set(24, 24, 24)
   camera.lookAt(0, 0, 0)
-  const setAspect = (value: number) => {
-    if (!Number.isFinite(value) || value <= 0) throw new RangeError("aspect must be positive and finite")
-    const height = Math.max(10, 14 / value)
-    camera.left = -height * value
-    camera.right = height * value
-    camera.top = height
-    camera.bottom = -height
-    camera.updateProjectionMatrix()
-  }
-  setAspect(aspect)
   scene.add(new THREE.AmbientLight(0xc4d3ef, 0.9))
   const sun = new THREE.DirectionalLight(0xffefd9, 2)
   sun.position.set(8, 16, 5)
@@ -153,20 +142,8 @@ export function createArena(aspect: number, particleCount = 512) {
   update(0)
   const geometries = new Set<THREE.BufferGeometry>()
   const materials = new Set<THREE.Material>()
-  const counts = {
-    wizards: 4,
-    tiles: floor.count,
-    obstacles: pillars.count,
-    enemies: enemies.count,
-    particles: particleCount,
-    meshes: 0,
-    triangles: 0,
-  }
   scene.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return
-    counts.meshes++
-    const vertices = object.geometry.index?.count ?? object.geometry.getAttribute("position").count
-    counts.triangles += (vertices / 3) * (object instanceof THREE.InstancedMesh ? object.count : 1)
     geometries.add(object.geometry)
     materials.add(object.material as THREE.Material)
   })
@@ -174,8 +151,6 @@ export function createArena(aspect: number, particleCount = 512) {
     scene,
     camera,
     update,
-    setAspect,
-    counts,
     dispose() {
       for (const mesh of [floor, pillars, enemies, particles]) mesh.dispose()
       for (const geometry of geometries) geometry.dispose()

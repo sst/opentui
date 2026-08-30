@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } 
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { inflateSync } from "node:zlib"
-import { CliRenderEvents, createCliRenderer, type CliRenderer, type KittyImageTransport } from "../renderer.js"
+import { createCliRenderer, type CliRenderer, type KittyImageTransport } from "../renderer.js"
 import { NativeImage } from "../image.js"
 import { ImageRenderable } from "../renderables/Image.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
@@ -78,7 +78,7 @@ afterEach(() => {
 })
 
 async function setup(
-  mode: KittyImageTransport = "raw",
+  mode?: KittyImageTransport,
   options: { remote?: boolean; probe?: SyntheticTerminal["probeReplies"] } = {},
 ) {
   const terminal = new SyntheticTerminal(10, 4)
@@ -110,9 +110,9 @@ async function draw(renderer: CliRenderer, pixels: Uint8Array, width = 64, png =
   return renderable
 }
 
-test("Kitty transport defaults to raw and opt-in zlib roundtrips exact RGB and RGBA", async () => {
-  for (const mode of ["raw", "zlib"] as const) {
-    for (const alpha of [false, true]) {
+for (const mode of [undefined, "zlib"] as const) {
+  for (const alpha of [false, true]) {
+    test(`Kitty ${mode ?? "default"} transport roundtrips exact ${alpha ? "RGBA" : "RGB"}`, async () => {
       const { renderer, terminal } = await setup(mode)
       const pixels = new Uint8Array(64 * 64 * 4)
       const expected: number[] = []
@@ -128,11 +128,10 @@ test("Kitty transport defaults to raw and opt-in zlib roundtrips exact RGB and R
       else expect(upload.fields.o).toBeUndefined()
       const bytes = terminal.imageBytes()
       expect(mode === "zlib" ? inflateSync(bytes) : bytes).toEqual(Buffer.from(expected))
-      expect(renderer.kittyImageTransportStatus.effective).toBe(mode)
-      renderer.destroy()
-    }
+      expect(renderer.kittyImageTransportStatus.effective).toBe(mode ?? "raw")
+    })
   }
-})
+}
 
 test("Kitty zlib uses raw on entropy expansion and leaves retained PNG unchanged", async () => {
   const { renderer, terminal } = await setup("zlib")
@@ -167,7 +166,8 @@ fileTest("Kitty file integration keeps bytes alive across frames and consumes on
   expect(upload.fields.t).toBe("f")
   expect(readFileSync(path)).toEqual(Buffer.from([1, 2, 3]))
   expect(statSync(path).mode & 0o777).toBe(0o600)
-  renderer.emit(CliRenderEvents.FRAME)
+  renderer.requestRender()
+  await renderer.idle()
   terminal.stdin.emit("data", Buffer.from("\x1b[0n\x1b[1;1R"))
   terminal.reply("31337")
   expect(existsSync(path)).toBe(true)
@@ -190,7 +190,6 @@ fileTest("Kitty file probes use runtime TMPDIR set before renderer creation and 
     expect(readFileSync(path)).toEqual(Buffer.from([0, 0, 0]))
     expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(1)
     renderer.destroy()
-    expect(existsSync(path)).toBe(false)
     expect(readdirSync(directory)).toEqual([])
   } finally {
     renderer?.destroy()
@@ -216,31 +215,26 @@ fileTest("Kitty file preserves PNG and never overwrites a pending same-ID file",
   expect(existsSync(first.payload.toString())).toBe(false)
 })
 
-fileTest("Kitty file errors trigger raw retransmission and remove the lease", async () => {
-  const { renderer, terminal } = await setup("file")
-  await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
-  const upload = terminal.uploads()[0]
-  terminal.commands.length = 0
-  terminal.reply(upload.fields.i, "ENOENT:disappeared")
-  await renderer.idle()
-  expect(existsSync(upload.payload.toString())).toBe(false)
-  expect(renderer.kittyImageTransportStatus.fileState).toBe("unsupported")
-  expect(terminal.uploads()[0].fields.t).toBeUndefined()
-  expect(terminal.imageBytes()).toEqual(Buffer.from([1, 2, 3, 4]))
-})
-
-fileTest("Kitty file errors during synchronous output publication also retry raw", async () => {
-  const { renderer, terminal } = await setup("file")
-  terminal.rejectUploads = true
-  await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
-  expect(renderer.kittyImageTransportStatus.fileState).toBe("unsupported")
-  expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
-  const uploads = terminal.uploads()
-  expect(uploads).toHaveLength(2)
-  expect(uploads[0].fields.t).toBe("f")
-  expect(uploads[1].payload).toEqual(Buffer.from([1, 2, 3, 4]))
-  expect(existsSync(uploads[0].payload.toString())).toBe(false)
-})
+for (const synchronous of [false, true]) {
+  fileTest(`Kitty file errors retry raw and remove the lease with synchronous reply=${synchronous}`, async () => {
+    const { renderer, terminal } = await setup("file")
+    terminal.rejectUploads = synchronous
+    await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
+    const upload = terminal.uploads()[0]
+    if (!synchronous) {
+      terminal.reply(upload.fields.i, "ENOENT:disappeared")
+      await renderer.idle()
+    }
+    expect(renderer.kittyImageTransportStatus.fileState).toBe("unsupported")
+    expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
+    const uploads = terminal.uploads()
+    expect(uploads).toHaveLength(2)
+    expect(upload.fields.t).toBe("f")
+    expect(uploads[1].fields.t).toBeUndefined()
+    expect(uploads[1].payload).toEqual(Buffer.from([1, 2, 3, 4]))
+    expect(existsSync(upload.payload.toString())).toBe(false)
+  })
+}
 
 ;(process.platform === "win32" ? test : test.skip)(
   "Kitty file falls back on Windows without probing or creating leases",
@@ -258,21 +252,20 @@ fileTest("Kitty file errors during synchronous output publication also retry raw
   },
 )
 
-test("Kitty file falls back for remote, rejected medium, and query-only old WezTerm", async () => {
-  for (const options of [{ remote: true }, { probe: "reject" as const }, { probe: "query-only" as const }]) {
-    const { renderer, terminal } = await setup("file", options)
+for (const reason of ["remote", "reject", "query-only"] as const) {
+  test(`Kitty file falls back for ${reason}`, async () => {
+    const { renderer, terminal } = await setup("file", reason === "remote" ? { remote: true } : { probe: reason })
     expect(renderer.kittyImageTransportStatus.fileState).toBe(
-      options.probe === "query-only" && process.platform !== "win32" ? "probing" : "unsupported",
+      reason === "query-only" && process.platform !== "win32" ? "probing" : "unsupported",
     )
     await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
     expect(terminal.uploads()[0].fields.t).toBeUndefined()
     expect(renderer.kittyImageTransportStatus.effective).toBe("raw")
-    renderer.destroy()
-  }
-})
+  })
+}
 
-fileTest("Kitty file cancel, output error, suspend and destroy unlink pending uploads", async () => {
-  for (const action of ["cancel", "error", "suspend", "destroy"] as const) {
+for (const action of ["cancel", "error", "suspend", "destroy"] as const) {
+  fileTest(`Kitty file ${action} unlinks pending uploads`, async () => {
     const { renderer, terminal } = await setup("file")
     await draw(renderer, new Uint8Array([1, 2, 3, 4]), 1)
     const path = terminal.uploads()[0].payload.toString()
@@ -283,6 +276,5 @@ fileTest("Kitty file cancel, output error, suspend and destroy unlink pending up
     if (action === "destroy") renderer.destroy()
     expect(existsSync(path)).toBe(false)
     if (action !== "destroy") expect(renderer.kittyImageTransportStatus.pendingFiles).toBe(0)
-    renderer.destroy()
-  }
-})
+  })
+}

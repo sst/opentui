@@ -1,19 +1,7 @@
 import type {} from "bun-webgpu"
 
-export type PixelGpuRelease = "baseline" | "command-buffers" | "passes" | "combined"
-
-export interface PixelGpuLifetimeOptions {
-  release?: PixelGpuRelease
-  cacheCanvasView?: boolean
-}
-
 // Only for the private pixel adapter's device and bun-webgpu 0.1.7, not browser WebGPU.
-export function managePixelGpu(device: GPUDevice, context: GPUCanvasContext, options: PixelGpuLifetimeOptions) {
-  const mode = options.release ?? "combined"
-  if (!["baseline", "command-buffers", "passes", "combined"].includes(mode)) throw new Error("Invalid GPU release mode")
-  const releasePasses = mode === "passes" || mode === "combined"
-  const releaseBuffers = mode === "command-buffers" || mode === "combined"
-  const cacheCanvasView = options.cacheCanvasView ?? true
+export function managePixelGpu(device: GPUDevice, context: GPUCanvasContext) {
   const encoders = new Set<GPUCommandEncoder & { _destroyed: boolean }>()
   const passes = new Set<GPURenderPassEncoder>()
   const buffers = new Set<GPUCommandBuffer>()
@@ -62,16 +50,12 @@ export function managePixelGpu(device: GPUDevice, context: GPUCanvasContext, opt
       const end = pass.end
       pass.end = () => {
         if (!passes.delete(pass)) throw new Error("Render pass is not pending")
-        let ended = false
         try {
           end.call(pass)
           counts.passesEnded++
-          ended = true
         } finally {
-          if (releasePasses || !ended) {
-            pass.destroy()
-            counts.passesReleased++
-          }
+          pass.destroy()
+          counts.passesReleased++
         }
       }
       return pass
@@ -96,18 +80,14 @@ export function managePixelGpu(device: GPUDevice, context: GPUCanvasContext, opt
     for (const buffer of list) {
       if (!buffers.has(buffer)) throw new Error("Command buffer is not owned or was already submitted")
     }
-    let submitted = false
     try {
       submit.call(queue, list)
-      submitted = true
+      counts.commandBuffersSubmitted += list.length
     } finally {
       for (const buffer of list) {
         if (!buffers.delete(buffer)) continue
-        if (submitted) counts.commandBuffersSubmitted++
-        if (releaseBuffers || !submitted) {
-          buffer._destroy()
-          counts.commandBuffersReleased++
-        }
+        buffer._destroy()
+        counts.commandBuffersReleased++
       }
     }
   }
@@ -132,20 +112,18 @@ export function managePixelGpu(device: GPUDevice, context: GPUCanvasContext, opt
     createView = original
     texture.createView = (descriptor) => {
       // Three 0.177.0 requests only the default canvas view. Other textures are untouched.
-      if (cacheCanvasView && descriptor !== undefined)
-        throw new Error("Cached canvas views require the default descriptor")
+      if (descriptor !== undefined) throw new Error("Cached canvas views require the default descriptor")
       if (canvasView) return canvasView
       const view = original.call(texture, descriptor)
       if (typeof view.destroy !== "function") throw new Error("Expected bun-webgpu texture view destroy()")
       counts.canvasViewsCreated++
-      if (cacheCanvasView) canvasView = view
+      canvasView = view
       return view
     }
     return texture
   }
 
   function discardPending() {
-    // Aborted work is released in every ablation. Successful submissions follow the selected mode.
     for (const pass of passes) {
       passes.delete(pass)
       pass.destroy()

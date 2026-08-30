@@ -14,6 +14,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "bun src/index.ts",
+    "dev:magick": "bun src/magick/demo.ts",
+    "test": "bun test",
     "build": "bun scripts/build.ts",
     "build:host": "bun scripts/build.ts --host",
     "dev:node": "node scripts/run-node26.mjs"
