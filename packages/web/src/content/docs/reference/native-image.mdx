@@ -237,14 +237,6 @@ terminal-protocol caches from hiding a new frame.
 - Pools cannot resize. Create a new pool for new dimensions. Then dispose the old pool.
 - `takeRaw()` cannot transfer a frame while the pool owns its slot. Use `raw()` or `copyTo()`, or dispose the pool first.
 
-Run `bun run bench:image-pool` from
-[packages/core](https://github.com/anomalyco/opentui/tree/main/packages/core) to compare fresh imports with pooled frames.
-It measures pixel copies, alpha checks, handle publication, and disposal. It does not create a renderer or use the
-terminal or GPU. These measurements do not show end-to-end display throughput.
-
-`bun run bench:image-import` compares `publishPixels()`, fresh `fromPixels()` imports, and JavaScript conversion
-followed by `publishRgba()`. This separates storage reuse from conversion costs.
-
 ## Transform images
 
 Operations do not mutate the source. Each successful operation returns a new `NativeImage`.
