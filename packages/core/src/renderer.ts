@@ -107,6 +107,7 @@ registerEnvVar({
 })
 
 export type KittyImageTransport = "raw" | "zlib" | "file"
+const KITTY_IMAGE_TRANSPORTS: KittyImageTransport[] = ["raw", "zlib", "file"]
 
 export interface KittyImageTransportStatus {
   requested: KittyImageTransport
@@ -866,7 +867,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
   private kittyTransportTimer: TimerHandle | null = null
-  private readonly kittyTransportMode: KittyImageTransport
+  private kittyTransportMode: KittyImageTransport
   private terminalKeepAliveTimer: ReturnType<typeof setInterval> | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
@@ -1072,7 +1073,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
     const remoteMode = config.remote ?? (useFeedOutput ? true : undefined)
     this.kittyTransportMode = config.kittyImageTransport ?? "raw"
-    const transportCode = ["raw", "zlib", "file"].indexOf(this.kittyTransportMode)
+    const transportCode = KITTY_IMAGE_TRANSPORTS.indexOf(this.kittyTransportMode)
     if (transportCode < 0) throw new TypeError("Invalid kittyImageTransport")
 
     if (rendererTracker.streamOwners.get(stdin)) {
@@ -1147,7 +1148,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         })
       })
       this._detachFeedError = feed.onError((code) => {
-        if (this.kittyTransportMode === "file") this.kittyOutputErrorHandler()
+        if (this.kittyTransportTimer !== null) this.kittyOutputErrorHandler()
         console.error(`[CliRenderer] NativeSpanFeed error: code=${code}`)
       })
     }
@@ -1166,7 +1167,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._footerHeight = footerHeight
 
     this.rendererPtr = rendererPtr
-    if (this.kittyTransportMode === "file") this.stdout.on("error", this.kittyOutputErrorHandler)
     this.clearOnShutdown = config.clearOnShutdown ?? true
     this.lib.setClearOnShutdown(this.rendererPtr, this.clearOnShutdown)
 
@@ -1897,12 +1897,35 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public get kittyImageTransport(): KittyImageTransport {
+    return this.kittyTransportMode
+  }
+
+  public set kittyImageTransport(mode: KittyImageTransport) {
+    const code = KITTY_IMAGE_TRANSPORTS.indexOf(mode)
+    if (code < 0) throw new TypeError("Invalid kittyImageTransport")
+    if (this._isDestroyed || mode === this.kittyTransportMode) return
+    this.kittyTransportMode = mode
+    this.startKittyTransportPolling()
+    this.lib.setKittyImageTransport(this.rendererPtr, code)
+    this.requestRender()
+  }
+
+  private startKittyTransportPolling(): void {
+    if (!this._terminalIsSetup || this.kittyTransportMode !== "file" || this.kittyTransportTimer !== null) return
+    // Old file transfers still need ACKs, expiry, and error cleanup after selecting an inline mode.
+    this.stdout.on("error", this.kittyOutputErrorHandler)
+    this.kittyTransportTimer = this.clock.setInterval(() => {
+      if (!this._isDestroyed && this.lib.pollKittyImageTransport(this.rendererPtr)) this.requestRender()
+    }, 1000)
+  }
+
   public get kittyImageTransportStatus(): KittyImageTransportStatus {
     const [mode, effective, fileState, fallback, pendingFiles, pendingBytes] = this.lib.getKittyImageTransport(
       this.rendererPtr,
     )
     return {
-      requested: (["raw", "zlib", "file"] as const)[mode]!,
+      requested: KITTY_IMAGE_TRANSPORTS[mode]!,
       effective: (["raw", "zlib", "png", "file"] as const)[effective]!,
       fileState: (["disabled", "probing", "ready", "unsupported", "timeout", "io-error", "cancelled"] as const)[
         fileState
@@ -3247,13 +3270,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       explicitWidthCprActive: true,
       startupCursorCprActive,
     })
+    this.startKittyTransportPolling()
     this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-    if (this.kittyTransportMode === "file") {
-      this.kittyTransportTimer = this.clock.setInterval(() => {
-        if (this.lib.pollKittyImageTransport(this.rendererPtr)) this.requestRender()
-      }, 1000)
-    }
 
     if (this.debugOverlay.enabled) {
       this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
@@ -3468,6 +3487,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinEvent(event: StdinEvent): void {
+    // Native resume can publish probes before the JS control state is restored.
+    if (event.type === "response" && event.sequence.startsWith("\x1b_G")) {
+      const result = this.lib.processKittyImageReply(this.rendererPtr, event.sequence)
+      if (result !== 0) {
+        if (result === 2) this.requestRender()
+        return
+      }
+    }
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       if (event.type === "response" && isPixelResolutionResponse(event.sequence)) {
         this.dispatchSequenceHandlers(event.sequence)
@@ -3493,13 +3520,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._keyHandler.processPaste(event.bytes, event.metadata)
         return
       case "response":
-        if (this.kittyTransportMode === "file" && event.sequence.startsWith("\x1b_G")) {
-          const result = this.lib.processKittyImageReply(this.rendererPtr, event.sequence)
-          if (result !== 0) {
-            if (result === 2) this.requestRender()
-            return
-          }
-        }
         if (event.protocol === "osc") {
           for (const subscriber of this.oscSubscribers) {
             subscriber(event.sequence)
@@ -4364,8 +4384,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.kittyTransportTimer !== null) {
       this.clock.clearInterval(this.kittyTransportTimer)
       this.kittyTransportTimer = null
-    }
-    if (this.kittyTransportMode === "file") {
       this.stdout.off("error", this.kittyOutputErrorHandler)
       this.lib.cancelKittyImageTransport(this.rendererPtr, false)
     }

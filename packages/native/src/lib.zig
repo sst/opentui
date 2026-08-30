@@ -1570,9 +1570,7 @@ export fn processCapabilityResponse(renderer_handle: NativeHandle, responsePtr: 
 
 export fn setKittyImageTransport(renderer_handle: NativeHandle, mode: u32) u32 {
     const object = acquireRenderer(renderer_handle) orelse return 0;
-    if (object.terminalSetup or mode > 2) return 0;
-    object.kittyTransport.mode = @enumFromInt(mode);
-    return 1;
+    return @intFromBool(object.setKittyImageTransport(mode));
 }
 
 export fn getKittyImageTransport(renderer_handle: NativeHandle, out: [*]u32) void {

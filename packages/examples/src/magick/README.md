@@ -10,6 +10,7 @@ The demo requires Bun and WebGPU.
 | WASD                        | Move the red wizard                                 |
 | Space                       | Pause or resume the scene                           |
 | R                           | Reset time and player position                      |
+| T                           | Cycle Kitty transport: raw, zlib, file              |
 | C                           | Show GPU, image transport, and renderer diagnostics |
 | Backtick or `"`             | Toggle the captured console                         |
 | `.`                         | Toggle renderer statistics                          |
@@ -26,9 +27,11 @@ loses focus. Legacy keyboard input uses approximate movement pulses instead of k
 
 ## Rendering
 
-The framebuffer defaults to 640x360 and stays fixed when the terminal resizes. The
-status line shows the actual image protocol and Kitty transport. File and zlib modes
-can fall back to raw output. `C` shows the requested transport and fallback reason.
+The framebuffer defaults to 640x360 and stays fixed when the terminal resizes. Press `T`
+to cycle transport without restarting the scene, including while paused. The status line
+shows the requested and effective Kitty transport, or marks it inactive for other image
+protocols. File and zlib modes can fall back to raw output. `C` shows the full transport
+status. Returning to the selector restores its previous transport setting.
 
 The demo reads GPU pixels into CPU memory. File transport sends a temporary file path,
 not a shared GPU image.

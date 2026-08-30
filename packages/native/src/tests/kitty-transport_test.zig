@@ -37,6 +37,7 @@ const Fixture = struct {
         try std.testing.expect(self.transport.handleReply("\x1b_Gi=7;OK\x1b\\"));
         try std.testing.expect(self.transport.handleReply("\x1b_Gi=8;OK\x1b\\"));
         try std.testing.expectEqual(.ready, self.transport.file_state);
+        self.transport.retry_images = false;
         self.output.clearRetainingCapacity();
     }
 
@@ -80,7 +81,13 @@ test "kitty file leases contain immutable bytes and are released only by matchin
     const contents = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(16));
     defer std.testing.allocator.free(contents);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, contents);
+    f.transport.mode = .raw;
     value.pixels[0] = 99;
+    try f.transmit(value, 19);
+    try std.testing.expectEqual(.raw, f.transport.effective);
+    try std.testing.expectEqual(.ready, f.transport.file_state);
+    try std.testing.expectEqual(@as(u32, 1), f.transport.pendingCount());
+    f.transport.mode = .file;
     try f.transmit(value, 19);
     try std.testing.expectEqual(.raw, f.transport.effective);
     try std.testing.expectEqual(.busy, f.transport.fallback);
@@ -89,9 +96,35 @@ test "kitty file leases contain immutable bytes and are released only by matchin
     const unchanged = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(16));
     defer std.testing.allocator.free(unchanged);
     try std.testing.expectEqualSlices(u8, contents, unchanged);
+    f.transport.mode = .zlib;
     try std.testing.expect(f.transport.handleReply("\x1b_Gi=19;OK\x1b\\"));
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.accessAbsolute(std.testing.io, path, .{}));
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
+    try std.testing.expectEqual(.ready, f.transport.file_state);
+    try std.testing.expect(!f.transport.retry_images);
+}
+
+test "kitty file probe readiness retries only images using the selected file mode" {
+    for ([_]kitty.Mode{ .file, .raw, .zlib }) |mode| {
+        var f: Fixture = undefined;
+        try f.init();
+        defer f.deinit();
+        try f.probe();
+        try std.testing.expect(f.transport.handleReply("\x1b_Gi=7;OK\x1b\\"));
+        try std.testing.expect(!f.transport.retry_images);
+        f.transport.mode = mode;
+        try std.testing.expect(f.transport.handleReply("\x1b_Gi=8;OK\x1b\\"));
+        try std.testing.expectEqual(.ready, f.transport.file_state);
+        try std.testing.expectEqual(mode == .file, f.transport.retry_images);
+        try f.expectNoFiles();
+        f.transport.retry_images = false;
+        try std.testing.expect(f.transport.handleReply("\x1b_Gi=8;OK\x1b\\"));
+        try std.testing.expect(!f.transport.retry_images);
+        f.transport.mode = .file;
+        f.output.clearRetainingCapacity();
+        try f.probe();
+        try std.testing.expectEqual(@as(usize, 0), f.output.written().len);
+    }
 }
 
 test "kitty file upload expiry cancels rather than reusing a late acknowledged lease" {
@@ -106,12 +139,18 @@ test "kitty file upload expiry cancels rather than reusing a late acknowledged l
     for (f.transport.leases) |lease| if (lease.path_len != 0) {
         deadline = lease.deadline_ms;
     };
+    f.transport.mode = .raw;
     f.transport.expire(deadline - 1);
     try std.testing.expectEqual(@as(u32, 1), f.transport.pendingCount());
     f.transport.expire(deadline);
     try std.testing.expectEqual(@as(u32, 0), f.transport.pendingCount());
     try f.expectNoFiles();
     try std.testing.expectEqual(.timeout, f.transport.file_state);
+    try std.testing.expect(f.transport.retry_images);
+    f.transport.mode = .file;
+    f.output.clearRetainingCapacity();
+    try f.probe();
+    try std.testing.expectEqual(@as(usize, 0), f.output.written().len);
     try f.transmit(value, 19);
     try std.testing.expectEqual(.raw, f.transport.effective);
     try std.testing.expect(!f.transport.handleReply("\x1b_Gi=19;OK\x1b\\"));

@@ -203,6 +203,7 @@ pub const CliRenderer = struct {
     terminal: Terminal,
     useAlternateScreen: bool = true,
     terminalSetup: bool = false,
+    terminalSuspended: bool = false,
     clearOnShutdown: bool = true,
 
     splitScrollback: split_scrollback.SplitScrollback = .{},
@@ -499,6 +500,7 @@ pub const CliRenderer = struct {
     pub fn setupTerminal(self: *CliRenderer, useAlternateScreen: bool) void {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
+        self.terminalSuspended = false;
 
         // Build capability query into a stack buffer, then emit via backend.
         // Buffer sized to accommodate all capability-query sequences with margin.
@@ -509,16 +511,7 @@ pub const CliRenderer = struct {
         };
         self.backend.writeOut(writer.buffered());
 
-        if (self.kittyTransport.mode == .file) {
-            _ = self.pollKittyImageTransport();
-            if (self.kittyTransport.file_state == .disabled) {
-                if (self.reserveKittyHistoryImageIds(2)) |base| {
-                    writer = .fixed(&queryBuf);
-                    self.kittyTransport.startProbe(&writer, base + 1, self.kittyTempDirectory()) catch {};
-                    self.backend.writeOut(writer.buffered());
-                } else self.kittyTransport.cancel(.unsupported);
-            }
-        }
+        self.startKittyFileProbe();
 
         self.setupTerminalWithoutDetection(useAlternateScreen, true);
     }
@@ -550,7 +543,9 @@ pub const CliRenderer = struct {
 
     pub fn resumeRenderer(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
+        self.terminalSuspended = false;
         self.setupTerminalWithoutDetection(self.useAlternateScreen, self.renderOffset == 0);
+        self.startKittyFileProbe();
     }
 
     fn clearSplitFooterSurface(self: *CliRenderer, writer: anytype) void {
@@ -564,6 +559,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
+        self.terminalSuspended = true;
         self.kittyTransport.cancel(.cancelled);
         if (!self.terminalSetup) return;
 
@@ -3228,8 +3224,28 @@ pub const CliRenderer = struct {
         return env_map.get("TMPDIR") orelse "/tmp";
     }
 
+    pub fn setKittyImageTransport(self: *CliRenderer, mode: u32) bool {
+        const requested = std.enums.fromInt(kitty_transport.Mode, mode) orelse return false;
+        if (self.kittyTransport.mode == requested) return true;
+        self.kittyTransport.mode = requested;
+        self.invalidateKittyImages();
+        self.startKittyFileProbe();
+        return true;
+    }
+
+    fn startKittyFileProbe(self: *CliRenderer) void {
+        if (!self.terminalSetup or self.terminalSuspended or self.kittyTransport.mode != .file) return;
+        _ = self.pollKittyImageTransport();
+        if (self.kittyTransport.file_state != .disabled) return;
+        if (self.reserveKittyHistoryImageIds(2)) |base| {
+            var buffer: [4096]u8 = undefined;
+            var writer: std.Io.Writer = .fixed(&buffer);
+            self.kittyTransport.startProbe(&writer, base + 1, self.kittyTempDirectory()) catch {};
+            self.backend.writeOut(writer.buffered());
+        } else self.kittyTransport.cancel(.unsupported);
+    }
+
     pub fn pollKittyImageTransport(self: *CliRenderer) bool {
-        if (self.kittyTransport.mode != .file) return false;
         if (self.backend == .buffered) {
             if (self.backend.buffered.ownedStdoutOutput) |stdout| {
                 if (stdout.failed.load(.acquire)) self.kittyTransport.cancel(.io_error);
@@ -3241,6 +3257,11 @@ pub const CliRenderer = struct {
         self.kittyTransport.expire(kitty_transport.Transport.nowMs());
         if (!self.kittyTransport.retry_images) return false;
         self.kittyTransport.retry_images = false;
+        self.invalidateKittyImages();
+        return true;
+    }
+
+    fn invalidateKittyImages(self: *CliRenderer) void {
         // A custom sink can reply synchronously while pending images are being published.
         for ([_][]CommittedImage{ self.currentImages.items, self.pendingImages.items }) |images| {
             for (images) |*image| {
@@ -3248,7 +3269,6 @@ pub const CliRenderer = struct {
             }
         }
         self.force_full_repaint = true;
-        return true;
     }
 
     pub fn processKittyImageReply(self: *CliRenderer, response: []const u8) u32 {

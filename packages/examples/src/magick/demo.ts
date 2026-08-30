@@ -77,6 +77,7 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
   let submitted = 0
   let dropped = 0
   const previousFps = { target: renderer.targetFps, max: renderer.maxFps }
+  const previousTransport = renderer.kittyImageTransport
   const held = new Map<string, number>()
   const player = { x: -3, z: -3 }
 
@@ -84,9 +85,16 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
     if (closing || renderer.isDestroyed) return
     const transport = renderer.kittyImageTransportStatus
     const protocol = view.effectiveProtocol
-    const output = protocol === "kitty" ? `kitty/${transport.effective}` : protocol
+    let output = `${protocol} | Kitty ${transport.requested} (inactive)`
+    if (protocol === "kitty") {
+      output = `kitty/${transport.requested}`
+      if (transport.effective !== transport.requested) output += ` -> ${transport.effective}`
+      if (transport.requested === "file" && transport.fileState !== "ready") output += ` (${transport.fileState})`
+      else if (transport.fallback !== "none") output += ` (${transport.fallback})`
+    }
     const state = failed ? "Render failed (C: details)" : !gpu ? "Loading WebGPU" : paused ? "Paused" : "Running"
-    hud.content = `MAGICK | ${width}x${height} | ${output} | ${state}`
+    const content = `MAGICK | ${width}x${height} | ${output} | ${state}`
+    if (hud.plainText !== content) hud.content = content
   }
 
   function clearHeld() {
@@ -121,6 +129,11 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
       paused = !paused
       clearHeld()
       updateHud()
+    } else if (key.name === "t" && !key.repeated) {
+      const transports: KittyImageTransport[] = ["raw", "zlib", "file"]
+      renderer.kittyImageTransport =
+        transports[(transports.indexOf(renderer.kittyImageTransport) + 1) % transports.length]
+      updateHud()
     } else if (key.name === "r" && !key.repeated) {
       time = 0
       player.x = -3
@@ -139,7 +152,6 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
 
   async function draw(deltaMs: number) {
     if (!gpu || closing || failed || renderer.isDestroyed) return
-    updateHud()
     if (renderer.console.visible) clearHeld()
     if (paused && !needsFrame) return
     try {
@@ -200,6 +212,7 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
     renderer.keyInput.off("keypress", onKey)
     renderer.keyInput.off("keyrelease", onRelease)
     renderer.off("blur", clearHeld)
+    renderer.off("frame", updateHud)
     renderer.off("destroy", onDestroy)
     if (!renderer.isDestroyed) renderer.pause()
     closePromise = (async () => {
@@ -221,6 +234,7 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
               if (!renderer.isDestroyed) {
                 renderer.targetFps = previousFps.target
                 renderer.maxFps = previousFps.max
+                renderer.kittyImageTransport = previousTransport
               }
             }
           }
@@ -258,7 +272,7 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
       width: "100%",
       flexShrink: 0,
       fg: "#c7d8e2",
-      content: `WASD move | Space pause | R reset | C diagnostics\n\` console | . stats | ${options.standalone ? "Esc/Q quit" : "Esc back"} | Ctrl+C quit`,
+      content: `WASD move | Space pause | R reset | T transport | C diagnostics\n\` console | . stats | ${options.standalone ? "Esc/Q quit" : "Esc back"} | Ctrl+C quit`,
     })
     root.add(hud)
     root.add(view)
@@ -268,6 +282,7 @@ export async function run(renderer: CliRenderer, options: DemoOptions = {}): Pro
     renderer.keyInput.on("keypress", onKey)
     renderer.keyInput.on("keyrelease", onRelease)
     renderer.on("blur", clearHeld)
+    renderer.on("frame", updateHud)
     arena = createArena(width / height)
     pool = new NativeImagePool({ width, height, capacity: 2 })
     gpu = await getSessionGpu(renderer, width, height)

@@ -9,6 +9,7 @@ const ss = @import("../syntax-style.zig");
 const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
 const image = @import("../image.zig");
+const kitty = @import("../kitty-transport.zig");
 const handles = @import("../handles.zig");
 const ghostty_vt = @import("../ghostty-vt.zig");
 const test_renderer_mod = @import("test-renderer.zig");
@@ -113,6 +114,180 @@ test "renderer emits Kitty image once and leaves unchanged frame empty" {
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+}
+
+test "renderer Kitty transport switches retransmit unchanged raw and zlib images" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const r = test_renderer.renderer;
+    const pixels = [_]u8{ 255, 0, 0, 255 } ** 256;
+    const value = try image.createFromRgba(std.testing.allocator, &pixels, 16, 16, 64);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    r.setupTerminal(true);
+    r.terminal.caps.kitty_graphics = true;
+
+    for ([_]kitty.Mode{ .raw, .zlib, .raw }) |mode| {
+        const changed = r.kittyTransport.mode != mode;
+        if (changed) try r.pendingImages.appendSlice(std.testing.allocator, r.currentImages.items);
+        try std.testing.expect(r.setKittyImageTransport(@intFromEnum(mode)));
+        if (changed) {
+            try std.testing.expect(r.force_full_repaint);
+            try std.testing.expectEqual(@as(u32, 0), r.currentImages.items[0].image_handle);
+            try std.testing.expectEqual(@as(u32, 0), r.pendingImages.items[0].image_handle);
+        }
+        try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 16, 16, .kitty));
+        try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+        try std.testing.expect(std.mem.find(u8, test_renderer.lastOutput(), "\x1b_Ga=t,f=24,s=16,v=16,i=") != null);
+        try std.testing.expectEqual(mode == .zlib, std.mem.find(u8, test_renderer.lastOutput(), "o=z") != null);
+
+        const output_len = test_renderer.memory.bytes.items.len;
+        try std.testing.expect(r.setKittyImageTransport(@intFromEnum(mode)));
+        try std.testing.expect(!r.setKittyImageTransport(3));
+        try std.testing.expectEqual(mode, r.kittyTransport.mode);
+        try std.testing.expectEqual(image_handle, r.currentImages.items[0].image_handle);
+        try std.testing.expect(!r.force_full_repaint);
+        try std.testing.expectEqual(output_len, test_renderer.memory.bytes.items.len);
+        try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 16, 16, .kitty));
+        try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+        try std.testing.expectEqual(@as(usize, 0), test_renderer.lastOutput().len);
+    }
+}
+
+test "renderer Kitty transport readiness retries inline images without replacing outstanding leases" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var directory: [512]u8 = undefined;
+    const directory_len = try tmp.dir.realPath(io, &directory);
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 4, 2, pool, &.{.{ .key = "TMPDIR", .value = directory[0..directory_len] }});
+    defer test_renderer.deinit();
+    const r = test_renderer.renderer;
+    const value = try image.createFromRgba(std.testing.allocator, &.{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    r.setupTerminal(true);
+    r.terminal.caps.kitty_graphics = true;
+    const first_id = r.kittyHistoryNextImageId.?;
+    try std.testing.expect(r.setKittyImageTransport(2));
+    try std.testing.expectEqual(.probing, r.kittyTransport.file_state);
+    try std.testing.expectEqual(first_id, r.kittyTransport.query_id);
+    try std.testing.expectEqual(first_id + 2, r.kittyHistoryNextImageId.?);
+    try std.testing.expect(std.mem.find(u8, test_renderer.lastOutput(), "a=q,t=f") != null);
+    const probe_output_len = test_renderer.memory.bytes.items.len;
+    try std.testing.expect(r.setKittyImageTransport(2));
+    try std.testing.expectEqual(probe_output_len, test_renderer.memory.bytes.items.len);
+    try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+    try std.testing.expectEqual(.raw, r.kittyTransport.effective);
+    try r.pendingImages.appendSlice(std.testing.allocator, r.currentImages.items);
+
+    var reply: [64]u8 = undefined;
+    try std.testing.expectEqual(@as(u32, 1), r.processKittyImageReply(try std.fmt.bufPrint(&reply, "\x1b_Gi={d};OK\x1b\\", .{first_id})));
+    try std.testing.expectEqual(@as(u32, 2), r.processKittyImageReply(try std.fmt.bufPrint(&reply, "\x1b_Gi={d};OK\x1b\\", .{first_id + 1})));
+    try std.testing.expectEqual(@as(u32, 0), r.currentImages.items[0].image_handle);
+    try std.testing.expectEqual(@as(u32, 0), r.pendingImages.items[0].image_handle);
+    try std.testing.expect(r.force_full_repaint);
+    try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+    try std.testing.expect(std.mem.find(u8, test_renderer.lastOutput(), "a=t,t=f") != null);
+    try std.testing.expectEqual(@as(u32, 1), r.kittyTransport.pendingCount());
+    var upload_id: u32 = 0;
+    for (r.kittyTransport.leases) |lease| {
+        if (lease.path_len != 0) upload_id = lease.id;
+    }
+
+    for ([_]u32{ 0, 2 }) |mode| {
+        const output_len = test_renderer.memory.bytes.items.len;
+        try std.testing.expect(r.setKittyImageTransport(mode));
+        try std.testing.expectEqual(output_len, test_renderer.memory.bytes.items.len);
+        try std.testing.expectEqual(.ready, r.kittyTransport.file_state);
+        try std.testing.expectEqual(@as(u32, 1), r.kittyTransport.pendingCount());
+        try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+        try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+        try std.testing.expectEqual(.raw, r.kittyTransport.effective);
+    }
+    try std.testing.expectEqual(.busy, r.kittyTransport.fallback);
+    try std.testing.expect(r.setKittyImageTransport(0));
+    try std.testing.expectEqual(@as(u32, 1), r.processKittyImageReply(try std.fmt.bufPrint(&reply, "\x1b_Gi={d};OK\x1b\\", .{upload_id})));
+    try std.testing.expectEqual(@as(u32, 0), r.kittyTransport.pendingCount());
+    try std.testing.expect(r.setKittyImageTransport(2));
+    try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+    try std.testing.expectEqual(.file, r.kittyTransport.effective);
+    try std.testing.expectEqual(@as(u32, 1), r.processKittyImageReply(try std.fmt.bufPrint(&reply, "\x1b_Gi={d};OK\x1b\\", .{upload_id})));
+    try std.testing.expect(!r.force_full_repaint);
+    try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.lastOutput().len);
+
+    try std.testing.expect(r.setKittyImageTransport(0));
+    try std.testing.expect(try r.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, r.render(false));
+    try r.pendingImages.appendSlice(std.testing.allocator, r.currentImages.items);
+    r.kittyTransport.cancel(.io_error);
+    try std.testing.expect(r.pollKittyImageTransport());
+    try std.testing.expectEqual(.io_error, r.kittyTransport.file_state);
+    try std.testing.expectEqual(@as(u32, 0), r.currentImages.items[0].image_handle);
+    try std.testing.expectEqual(@as(u32, 0), r.pendingImages.items[0].image_handle);
+    try std.testing.expect(r.force_full_repaint);
+    try std.testing.expect(!r.pollKittyImageTransport());
+}
+
+test "renderer Kitty transport defers first probes until setup or resume and never rearms cancellation" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var directory: [512]u8 = undefined;
+    const directory_len = try tmp.dir.realPath(io, &directory);
+    for ([_]bool{ false, true }) |suspended| {
+        var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 4, 2, pool, &.{.{ .key = "TMPDIR", .value = directory[0..directory_len] }});
+        defer test_renderer.deinit();
+        const r = test_renderer.renderer;
+        if (suspended) {
+            r.setupTerminal(true);
+            r.suspendRenderer();
+        }
+        const output_len = test_renderer.memory.bytes.items.len;
+        try std.testing.expect(r.setKittyImageTransport(2));
+        try std.testing.expectEqual(output_len, test_renderer.memory.bytes.items.len);
+        try std.testing.expectEqual(.disabled, r.kittyTransport.file_state);
+        r.resumeRenderer();
+        if (!suspended) {
+            try std.testing.expectEqual(output_len, test_renderer.memory.bytes.items.len);
+            r.setupTerminal(true);
+        }
+        try std.testing.expectEqual(.probing, r.kittyTransport.file_state);
+        try std.testing.expectEqual(@as(u32, 1), r.kittyTransport.pendingCount());
+        const query_id = r.kittyTransport.query_id;
+        try std.testing.expect(r.setKittyImageTransport(0));
+        r.suspendRenderer();
+        try std.testing.expectEqual(.cancelled, r.kittyTransport.file_state);
+        try std.testing.expectEqual(@as(u32, 0), r.kittyTransport.pendingCount());
+        try std.testing.expect(r.setKittyImageTransport(2));
+        const resume_start = test_renderer.memory.bytes.items.len;
+        r.resumeRenderer();
+        try std.testing.expectEqual(.cancelled, r.kittyTransport.file_state);
+        try std.testing.expectEqual(query_id, r.kittyTransport.query_id);
+        try std.testing.expect(std.mem.find(u8, test_renderer.memory.bytes.items[resume_start..], "a=q,t=f") == null);
+    }
 }
 
 test "renderer emits Sixel only with known pixel dimensions" {

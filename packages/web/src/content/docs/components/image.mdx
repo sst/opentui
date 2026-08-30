@@ -117,10 +117,11 @@ Split-footer scrollback snapshots use the same protocol resolution as live image
 
 ## Kitty transport
 
-Set `kittyImageTransport` when you create the renderer. It controls image transmission, not protocol selection or placement. Kitty commands still use the renderer's output backend.
+Set `kittyImageTransport` when you create the renderer, or assign `renderer.kittyImageTransport` to change it at runtime. It controls image transmission, not protocol selection or placement. Kitty commands still use the renderer's output backend.
 
 ```typescript
 const renderer = await createCliRenderer({ kittyImageTransport: "zlib" })
+renderer.kittyImageTransport = "file"
 // After a transmission, inspect the actual choice rather than assuming the request succeeded.
 const status = renderer.kittyImageTransportStatus
 ```
@@ -128,6 +129,11 @@ const status = renderer.kittyImageTransportStatus
 - `"raw"` is the default. It sends existing encoded PNG data unchanged. Otherwise, opaque pixels use RGB24, and other pixels use RGBA32.
 - `"zlib"` tries native level-1 compression. It uses raw if compression expands the stream, exceeds the 64 MiB preparation limit, or cannot allocate buffers. Encoded PNG data stays unchanged.
 - `"file"` writes a temporary file and sends its path for the local terminal to read. It still copies pixels, without shared memory or GPU sharing.
+
+Changing transport retransmits visible Kitty images without replacing their sources. File
+negotiation remains asynchronous. Selecting an inline mode keeps outstanding files alive
+until their acknowledgments or deadlines, so queued output can still use them. Switching
+back to file reuses the session's probe result; it does not reset a failed or cancelled session.
 
 Scrollback snapshots never use file transport because the renderer does not retain their sources for retries. They use self-contained raw or PNG output, or zlib when requested.
 

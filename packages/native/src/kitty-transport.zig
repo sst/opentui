@@ -61,7 +61,7 @@ pub const Transport = struct {
     pub fn cancel(self: *Transport, reason: FileState) void {
         self.retry_images = self.retry_images or self.file_state == .ready;
         for (&self.leases) |*lease| lease.release();
-        if (self.mode == .file) self.file_state = if (self.pendingCount() == 0) reason else .io_error;
+        if (self.mode == .file or self.file_state != .disabled) self.file_state = if (self.pendingCount() == 0) reason else .io_error;
     }
 
     pub fn expire(self: *Transport, now_ms: i64) void {
@@ -139,7 +139,7 @@ pub const Transport = struct {
     }
 
     pub fn handleReply(self: *Transport, response: []const u8) bool {
-        if (self.mode != .file or response.len > 4096 or !std.mem.startsWith(u8, response, "\x1b_G") or
+        if (self.file_state == .disabled or response.len > 4096 or !std.mem.startsWith(u8, response, "\x1b_G") or
             !std.mem.endsWith(u8, response, "\x1b\\")) return false;
         const separator = std.mem.findScalar(u8, response, ';') orelse return false;
         var fields = std.mem.splitScalar(u8, response[3..separator], ',');
@@ -160,6 +160,7 @@ pub const Transport = struct {
                 if (self.query_ok and self.upload_ok) {
                     for (&self.leases) |*lease| lease.release();
                     self.file_state = if (self.pendingCount() == 0) .ready else .io_error;
+                    if (self.file_state == .ready and self.mode == .file) self.retry_images = true;
                 }
             }
             return true;
