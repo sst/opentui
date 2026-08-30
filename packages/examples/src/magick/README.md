@@ -1,12 +1,14 @@
 # Magick Arena
 
-A Three.js arena rendered through a two-slot `NativeImagePool` and `ImageRenderable`.
+Magick Arena renders a Three.js scene through a two-slot `NativeImagePool` and `ImageRenderable`.
 The demo requires Bun and WebGPU. The Node.js example selector lists it as unavailable.
 
-From `packages/examples`, run `bun run dev` and select **Magick Arena** under
-**3D & Physics**, or type `magick` to filter the list. Escape returns to the selector.
+Run the commands below from `packages/examples`.
 
-For a standalone session:
+Run `bun run dev` to open the selector. Select **Magick Arena** under **3D & Physics**.
+To filter the list, type `magick`. Escape returns to the selector.
+
+To run the demo without the selector:
 
 ```sh
 bun run dev:magick
@@ -21,7 +23,7 @@ bun run dev:magick --transport=zlib --width=1280 --height=720
 | WASD                        | Move the red wizard                                 |
 | Space                       | Pause or resume the scene                           |
 | R                           | Reset time and player position                      |
-| C                           | Open GPU, image transport, and renderer diagnostics |
+| C                           | Show GPU, image transport, and renderer diagnostics |
 | Backtick or `"`             | Toggle the captured console                         |
 | `.`                         | Toggle renderer statistics                          |
 | Ctrl+A                      | Log native arena allocation                         |
@@ -31,21 +33,30 @@ bun run dev:magick --transport=zlib --width=1280 --height=720
 | Ctrl+C                      | Quit                                                |
 | Q                           | Quit in standalone mode only                        |
 
-Pause stops GPU readbacks but leaves diagnostics available. Movement stops while the
-console is open or the terminal loses focus. Legacy keyboards use approximate movement
-pulses instead of key-release events.
+Pause stops continuous GPU readbacks, but pending or reset frames can still render.
+Diagnostics remain available. Movement stops while the console is open or the terminal
+loses focus. Legacy keyboard input uses approximate movement pulses instead of key-release events.
+
+## Rendering
 
 The framebuffer defaults to 640x360 and stays fixed when the terminal resizes. The
 status line shows the actual image protocol and Kitty transport. File and zlib modes
 can fall back to raw output. `C` shows the requested transport and fallback reason.
 
-The private GPU adapter remains experimental and uses pinned bun-webgpu internals.
-The selector reuses one GPU renderer across visits and releases it when the terminal
-renderer closes. Scene resources, images, and input listeners are released on each return.
+The demo reads GPU pixels into CPU memory. File transport sends a temporary file path,
+not a shared GPU image.
+
+The private GPU adapter is experimental and uses pinned bun-webgpu internals. It releases
+per-frame GPU objects. Repeated GPU renderer creation still has a separate provider issue,
+so the selector reuses one renderer across visits. It releases that renderer when the
+terminal renderer closes. Each return to the selector releases scene resources, images,
+and input listeners.
+
 This scene has no combat, authoritative host, or netcode.
 
 ## Tests
 
-Run `bun test src/magick` for CPU-only tests. Set `GPU_TESTS=1` for GPU readback tests
-and `TERMINAL_TESTS=1` for Linux PTY cleanup tests. Build native artifacts from the
-repository root with `bun run build` first if they are missing or stale.
+If native artifacts are missing or stale, run `bun run build` from the repository root before the tests.
+
+Run `bun test src/magick` for CPU-only tests. Set `GPU_TESTS=1` to include GPU readback tests.
+Set `TERMINAL_TESTS=1` for Linux pseudoterminal (PTY) cleanup tests. These tests also require WebGPU.

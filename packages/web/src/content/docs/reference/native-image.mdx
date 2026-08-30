@@ -46,11 +46,12 @@ try {
 
 Format detection reads encoded bytes. It does not trust a filename, URL suffix, response header, or file extension.
 
-`decode()`, `fromRgba()`, and `fromPixels()` copy caller data into native ownership. `imageInfo()` returns metadata
+`decode()`, `fromRgba()`, and `fromPixels()` copy your data into native memory. `imageInfo()` returns metadata
 without retaining an image handle. It can decode pixels when validation needs pixel inspection.
 
-Both pixel import methods default `stride` to `width * 4`. The stride must fit one complete row. The input view must
-contain at least `(height - 1) * stride + width * 4` bytes. Padding after the final row is optional.
+For `fromRgba()` and `fromPixels()`, `stride` is the byte distance between row starts. It defaults to `width * 4` and
+must fit a complete row. The input view must contain at least `(height - 1) * stride + width * 4` bytes. Padding after
+the final row is optional.
 
 ### Pixel import options
 
@@ -63,13 +64,14 @@ interface PixelImportOptions {
 }
 ```
 
-`fromPixels()` defaults to `format: "rgba8"`, `alpha: "straight"`, and `colorSpace: "srgb"`. It copies top-left pixel
-rows into packed native RGBA8 storage, converts BGRA channel order, and detects transparency in one pass.
-`alpha: "opaque"` ignores source alpha and writes 255 into every destination alpha channel. It does not unpremultiply
-RGB values. Premultiplied alpha and color spaces other than sRGB are not supported.
+`fromPixels()` defaults to `format: "rgba8"`, `alpha: "straight"`, and `colorSpace: "srgb"`. It copies rows from a
+top-left origin into packed native RGBA8 storage. The same pass converts BGRA to RGBA and detects transparency.
 
-Pass a subarray directly to import a region of a mapped buffer. The native call does not retain or modify the view.
-Keep the source stable during the call; you can reuse, detach, or unmap the buffer after the call returns.
+`alpha: "opaque"` ignores source alpha and writes 255 to every destination alpha channel. It does not unpremultiply
+RGB values. The API does not support premultiplied alpha or color spaces other than sRGB.
+
+Pass a subarray directly to import part of a mapped buffer. The native call does not retain or change the view.
+Keep the source stable during the call. After the call returns, you can reuse, detach, or unmap the buffer.
 
 ```typescript
 const image = NativeImage.fromPixels(mappedPixels, width, height, {
@@ -79,7 +81,7 @@ const image = NativeImage.fromPixels(mappedPixels, width, height, {
 })
 ```
 
-The result reports `format: "raw-rgba"` and `colorStatus: "explicit-srgb"`, including for BGRA input.
+The image reports `format: "raw-rgba"` and `colorStatus: "explicit-srgb"`, even for BGRA input.
 
 ### Load options
 
@@ -180,10 +182,10 @@ the image alive. Dispose extra handles and clear or destroy those buffers first.
 Dispose every retained, cloned, decoded, and transformed handle separately. Disposing one retained handle does not
 invalidate another retained handle.
 
-## Reuse pixel storage for continuous input
+## Reuse pixel storage
 
-`NativeImagePool` copies successive pixel frames into a bounded set of fixed-size native allocations. Each successful
-publication returns an immutable `NativeImage`. Use it when a producer supplies repeated frames of the same size.
+`NativeImagePool` reuses a fixed number of native pixel buffers, called slots, for frames of the same size.
+Each successful publication copies the pixels into a free slot and returns an immutable `NativeImage`.
 
 ```typescript
 import { ImageRenderable, NativeImagePool } from "@opentui/core"
@@ -208,36 +210,40 @@ view.destroy()
 pool.dispose()
 ```
 
-The source setter retains the frame synchronously and requests a render when the load settles. Each publication has a
-fresh wrapper and native handle, so source equality and terminal-protocol caches cannot hide a new frame. No explicit
-`requestRender()` call is needed for `ImageRenderable`.
+The `ImageRenderable.source` setter retains the frame synchronously. It requests a render when the load settles, so
+you do not need to call `requestRender()`.
 
-- `new NativeImagePool({ width, height, capacity? })` fixes the dimensions and frame count. Capacity defaults to `3`
+Each publication creates a new JavaScript wrapper and native handle. This prevents source equality checks and
+terminal-protocol caches from hiding a new frame.
+
+- `new NativeImagePool({ width, height, capacity? })` fixes the dimensions and slot count. Capacity defaults to `3`
   and must be an integer from `1` through `8`. Native image dimension and memory limits apply on the first publication.
-- `publishRgba(pixels, stride = width * 4)` copies top-left, straight-alpha, sRGB RGBA8 bytes. Row padding is allowed;
-  the input must include the last row's pixels but need not include its trailing padding. Caller memory is not retained.
+- `publishRgba(pixels, stride = width * 4)` copies top-left, straight-alpha, sRGB RGBA8 bytes without retaining caller
+  memory. It accepts row padding. The input must include every row's pixels, but padding after the final row is optional.
 - `publishPixels(pixels, options?)` accepts the same `PixelImportOptions` as `NativeImage.fromPixels()`. It converts
   RGBA8 or BGRA8 with straight or opaque alpha directly into a reusable slot, without a JavaScript staging buffer.
-- Slots allocate lazily. Pixel storage is bounded by `capacity * width * height * 4` bytes. Reuse does not allocate
-  another pixel buffer, but each publication still creates a JavaScript wrapper and native handle. Encoding and
-  rendering can allocate separately.
-- A slot is reusable only after all published handles and native buffer placements release it. Retained images,
-  renderable sources, and buffer snapshots keep their original pixels. Dispose frames when you no longer need them.
-- When every slot is pinned, both publication methods return `null`. They do not allocate pixel storage, queue, block,
-  or replace any frame. Drop the incoming frame or retry after consumers release a slot. Invalid input throws instead
-  of reporting busy.
-- Publication is synchronous, with no acquisition token or pending operation to cancel. To cancel input, stop calling
-  either publication method. `dispose()` is idempotent, rejects future publications, and releases the pool's references
-  without invalidating published frames. Those frames still require disposal.
-- Pools cannot resize. Create a new pool for new dimensions, then dispose the old pool. A published frame cannot use
-  `takeRaw()` while its pool still owns that slot; use `raw()`, `copyTo()`, or dispose the pool first.
+- The pool allocates slots only as needed, up to `capacity * width * height * 4` bytes of pixel storage.
+  Reuse does not allocate another pixel buffer. Encoding and rendering can allocate separately.
+- The pool can reuse a slot only after all published handles and native buffer placements release it.
+  Retained images, renderable sources, and buffer snapshots keep their original pixels. Dispose frames when you no
+  longer need them.
+- Both publication methods return `null` if every slot is still in use. They do not allocate pixel storage, queue,
+  block, or replace a frame. Drop the incoming frame or retry after consumers release a slot. Invalid input throws
+  instead of returning `null`.
+- Both methods finish synchronously, with no acquisition token or pending operation to cancel. To cancel input, stop
+  calling them.
+- `dispose()` releases the pool's references and rejects future publications. Repeated calls are safe.
+  Published frames remain valid and still need disposal.
+- Pools cannot resize. Create a new pool for new dimensions. Then dispose the old pool.
+- `takeRaw()` cannot transfer a frame while the pool owns its slot. Use `raw()` or `copyTo()`, or dispose the pool first.
 
-Use `bun run bench:image-pool` from `packages/core` to compare fresh imports with pooled publications. The benchmark
-does not create a renderer or perform terminal/GPU work. It measures copying, alpha inspection, handle publication,
-and disposal, not end-to-end display throughput.
+Run `bun run bench:image-pool` from
+[packages/core](https://github.com/anomalyco/opentui/tree/main/packages/core) to compare fresh imports with pooled frames.
+It measures pixel copies, alpha checks, handle publication, and disposal. It does not create a renderer or use the
+terminal or GPU. These measurements do not show end-to-end display throughput.
 
-`bun run bench:image-import` also compares `publishPixels()` with fresh `fromPixels()` imports and JavaScript
-conversion followed by `publishRgba()`. These comparisons separate storage reuse from conversion costs.
+`bun run bench:image-import` compares `publishPixels()`, fresh `fromPixels()` imports, and JavaScript conversion
+followed by `publishRgba()`. This separates storage reuse from conversion costs.
 
 ## Transform images
 
@@ -306,7 +312,7 @@ runs.
 - `invalid-handle`, `unsupported-format`, `unsupported-color-space`, or `malformed-data`
 - `dimension-limit`, `memory-limit`, `invalid-argument`, or `out-of-memory`
 - `output-too-small`, `internal-error`, or `unsupported-feature`
-- `busy` for retained native pool slots; pool publication methods return `null` rather than throwing this status
+- `busy` for retained native pool slots. Pool publication methods return `null` instead of throwing this status.
 
 JavaScript option and geometry validation uses `TypeError` and `RangeError`. All image methods except `dispose()` throw
 after disposal or transfer.

@@ -117,7 +117,7 @@ Split-footer scrollback snapshots use the same protocol resolution as live image
 
 ## Kitty transport
 
-Set `kittyImageTransport` when you create the renderer. This changes Kitty image transmission, not protocol selection or image placement. All output still goes through the renderer's output backend.
+Set `kittyImageTransport` when you create the renderer. It controls image transmission, not protocol selection or placement. Kitty commands still use the renderer's output backend.
 
 ```typescript
 const renderer = await createCliRenderer({ kittyImageTransport: "zlib" })
@@ -125,17 +125,31 @@ const renderer = await createCliRenderer({ kittyImageTransport: "zlib" })
 const status = renderer.kittyImageTransportStatus
 ```
 
-- `"raw"` is the default. Opaque pixels use RGB24; other pixels use RGBA32.
-- `"zlib"` tries native level-1 zlib compression. If compression expands the stream, exceeds the 64 MiB preparation limit, or cannot allocate its buffers, transmission falls back to raw. Existing encoded PNG data stays PNG; it is not recompressed.
-- `"file"` opts into local POSIX file transport. Windows, remote sessions, disabled graphics, and multiplexers use raw instead. A custom stdout defaults to remote; set `remote: false` only when it really connects to a local terminal.
+- `"raw"` is the default. It sends existing encoded PNG data unchanged. Otherwise, opaque pixels use RGB24, and other pixels use RGBA32.
+- `"zlib"` tries native level-1 compression. It uses raw if compression expands the stream, exceeds the 64 MiB preparation limit, or cannot allocate buffers. Encoded PNG data stays unchanged.
+- `"file"` writes a temporary file and sends its path for the local terminal to read. It still copies pixels, without shared memory or GPU sharing.
 
-File mode tests both a real `t=f` query and an explicit-ID upload acknowledgement before sending application images by file. Old WezTerm versions that answer queries but omit upload acknowledgements remain on raw. The query is asynchronous, so initial frames can use raw while `fileState` is `"probing"`.
+Scrollback snapshots never use file transport because the renderer does not retain their sources for retries. They use self-contained raw or PNG output, or zlib when requested.
 
-Each file has a unique name, mode `0600`, and immutable contents. Files use the `TMPDIR` forwarded at renderer creation, or `/tmp` if it is absent. Include `TMPDIR` if you override `forwardEnvKeys`. At most eight files and 64 MiB are outstanding per renderer. A busy image ID or exhausted budget uses raw without replacing a pending file. A matching Kitty reply releases a file. Frame events, stdout drain, and cursor reports do not acknowledge image consumption or presentation.
+### File transport
 
-Leases have a five-second deadline, checked during rendering and once per second while idle. Expiry cancels the transport; it does not count as successful consumption. Timeout, terminal errors, output errors, `cancelKittyImageTransport()`, suspend, and destroy remove pending files and disable further file uploads. Active images retry through the raw/PNG path after a failed file upload. Late replies cannot re-enable file mode. Process termination that bypasses cleanup, such as `SIGKILL`, can leave files behind.
+File transport requires a compatible local POSIX terminal. Windows, remote sessions, disabled graphics, and multiplexers use raw/PNG instead. Custom stdout defaults to remote. Set `remote: false` only if it connects to a local terminal.
 
-`kittyImageTransportStatus` reports `requested`, the last transmission's `effective` encoding (`raw`, `zlib`, `png`, or `file`), `fileState`, `fallback`, `pendingFiles`, and `pendingBytes`. The `compression` fallback covers compression that was unprofitable or unavailable. File mode preserves PNG payloads, but its effective transport is `file`. Scrollback snapshots always use self-contained raw/PNG output, or zlib when requested, because their sources are not retained for retries. Shared memory is not implemented.
+File transport requires both a successful `t=f` query with a real file and an upload acknowledgment with an explicit image ID. Older WezTerm versions that answer queries but omit upload acknowledgments stay on raw/PNG. These checks are asynchronous, so initial frames can use raw/PNG while `fileState` is `"probing"`.
+
+Each file has a unique name, permissions `0600`, and contents that do not change. The renderer uses the `TMPDIR` value forwarded at creation, or `/tmp` when absent. If you override `forwardEnvKeys`, include `TMPDIR`.
+
+Each renderer allows at most eight pending files and 64 MiB of pending data. If an image ID is busy or either limit is reached, the renderer uses raw/PNG without replacing pending files.
+
+A matching Kitty reply lets the renderer remove the file. Frame events, stdout drain, and cursor reports do not confirm that the terminal read or displayed an image.
+
+The renderer checks each file's five-second deadline during rendering and once per second while idle. A timeout does not confirm that the terminal read the file.
+
+Timeouts, terminal or output errors, `cancelKittyImageTransport()`, suspend, and destroy disable file uploads and attempt to remove pending files. Active images retry with raw/PNG after a failed upload. Late replies cannot re-enable file transport. Cleanup failures or termination that bypasses cleanup, such as `SIGKILL`, can leave files behind.
+
+### Transport status
+
+`kittyImageTransportStatus` reports `requested`, `effective`, `fileState`, `fallback`, `pendingFiles`, and `pendingBytes`. The `effective` value describes the last transmission: `raw`, `zlib`, `png`, or `file`. The `compression` fallback means compression did not save space or was unavailable. File transport preserves PNG payloads, but still reports `effective: "file"`.
 
 ## Options and state
 
