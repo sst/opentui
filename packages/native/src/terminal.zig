@@ -1091,7 +1091,9 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
 }
 
 fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
-    if (!self.graphics_enabled) return;
+    // Inside tmux, an unwrapped DA response describes tmux's virtual terminal,
+    // not the outer terminal that receives passthrough Sixel output.
+    if (!self.graphics_enabled or self.isInTmux()) return;
     var offset: usize = 0;
     while (std.mem.findPos(u8, response, offset, "\x1b[?")) |start| {
         var end = start + 3;
@@ -1351,9 +1353,13 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     }
 
     if (self.isInTmux()) {
-        // Kitty replies passed through tmux are not tied to the requesting pane.
+        // Graphics replies inside tmux either have no pane ownership (Kitty
+        // passthrough) or describe tmux itself rather than the passthrough
+        // endpoint (DA/Sixel). Neither can select an outer image protocol.
         self.kitty_graphics_queried = false;
         self.caps.kitty_graphics = false;
+        self.sixel_queried = false;
+        self.caps.sixel = false;
     }
 }
 
@@ -1784,11 +1790,15 @@ pub fn getTerminalName(self: *Terminal) []const u8 {
     return self.term_info.name[0..self.term_info.name_len];
 }
 
-/// Forced Sixel bypasses detection. Refuse it when identity cannot be a
-/// Sixel host. After XTVERSION, a multiplexer is not the host; DA still
-/// wins if the host reported Sixel through it. Apple Terminal has no
-/// XTVERSION, so TERM_PROGRAM is the only identity.
+/// Forced Sixel bypasses detection. Refuse it when the direct endpoint cannot
+/// be a Sixel host. Under tmux the passthrough endpoint is unknown, so the
+/// explicit override is authoritative. Apple Terminal has no XTVERSION, so
+/// TERM_PROGRAM is the only identity.
 pub fn refusesForcedSixel(self: *Terminal) bool {
+    // tmux's outer terminal is intentionally not probed because replies are
+    // not pane-scoped. An explicit override is therefore the authority; tmux's
+    // own DA response must neither authorize nor reject passthrough output.
+    if (self.isInTmux()) return false;
     if (self.caps.sixel) return false;
     if (self.term_info.from_xtversion) {
         if (self.multiplexer != .none) return true;

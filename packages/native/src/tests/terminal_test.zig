@@ -256,15 +256,42 @@ test "refusesForcedSixel - XTVERSION replaces leftover Apple Terminal env" {
     try testing.expect(!iterm.refusesForcedSixel());
 }
 
-test "refusesForcedSixel - tmux XTVERSION is not a Sixel endpoint" {
+test "tmux DA does not describe the passthrough Sixel endpoint" {
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("TERM_PROGRAM", "Apple_Terminal");
     var term = Terminal.init(.{ .env_map = &env });
     term.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
-    try testing.expect(term.refusesForcedSixel());
+    try testing.expect(!term.caps.sixel);
+    try testing.expect(!term.refusesForcedSixel());
 
     term.processCapabilityResponse("\x1b[?62;4c");
+    try testing.expect(!term.caps.sixel);
+    try testing.expect(!term.refusesForcedSixel());
+}
+
+test "known tmux ignores its own Sixel DA response" {
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var supported_tmux = Terminal.init(.{ .env_map = &env });
+    supported_tmux.processCapabilityResponse("\x1b[?1;2;4c");
+    try testing.expect(!supported_tmux.caps.sixel);
+    try testing.expect(!supported_tmux.refusesForcedSixel());
+
+    var unsupported_tmux = Terminal.init(.{ .env_map = &env });
+    unsupported_tmux.processCapabilityResponse("\x1b[?1;2c");
+    try testing.expect(!unsupported_tmux.caps.sixel);
+    try testing.expect(!unsupported_tmux.refusesForcedSixel());
+}
+
+test "late tmux detection clears its Sixel DA response" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1b[?1;2;4c\x1bP>|tmux 3.7b\x1b\\");
+    try testing.expect(term.isInTmux());
+    try testing.expect(!term.caps.sixel);
+    try testing.expect(!term.sixel_queried);
     try testing.expect(!term.refusesForcedSixel());
 }
 
