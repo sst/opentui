@@ -54,6 +54,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Setup cross-platform symbol tools
+        run: |
+          brew list llvm >/dev/null 2>&1 || brew install llvm
+          echo "LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+
       - name: Build packages (cross-compile for all platforms)
         run: |
           cd packages/core
@@ -71,6 +76,17 @@ jobs:
           bun run build
           cd ../ssh
           bun run build
+
+      - name: Archive matching release symbols
+        run: bun packages/core/scripts/package-native-symbols.ts
+
+      - name: Upload separate release symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-symbols-${{ inputs.version }}
+          path: artifacts/native-symbols/*.zip
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Verify build outputs
         run: |

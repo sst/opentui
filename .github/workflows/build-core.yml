@@ -47,6 +47,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Setup cross-platform symbol tools
+        run: |
+          brew list llvm >/dev/null 2>&1 || brew install llvm
+          echo "LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+
       - name: Build native libraries (cross-compile all platforms)
         run: |
           cd packages/core
@@ -55,6 +60,17 @@ jobs:
       - name: Build custom target without Ghostty VT
         working-directory: packages/native
         run: zig build -Dlibrary-target=x86_64-freebsd -Doptimize=ReleaseFast
+
+      - name: Verify release symbol archives
+        run: bun packages/core/scripts/package-native-symbols.ts
+
+      - name: Upload symbol verification artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-symbols
+          path: artifacts/native-symbols/*.zip
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload native artifacts
         uses: actions/upload-artifact@v7
@@ -158,6 +174,10 @@ jobs:
         run: |
           if [ "$(uname -s)" = Linux ]; then ulimit -c unlimited; fi
           bun run test:dist --skip-build
+
+      - name: Test separate ELF symbols
+        if: runner.os == 'Linux'
+        run: bun test packages/core/scripts/native-symbols.test.ts
 
       - name: Test Node SEA executable
         if: runner.os == 'Linux'
