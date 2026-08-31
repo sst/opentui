@@ -605,11 +605,10 @@ export function run(renderer: CliRenderer): void {
         textRenderable.onLifecyclePass()
 
         // Load file directly into the text buffer
-        const textBuffer = (textRenderable as any).textBuffer
-        textBuffer.loadFile(filePath)
+        textRenderable.loadFile(filePath)
 
         // Get the text buffer size after loading (in bytes)
-        const textBufferBytes = textBuffer.byteSize
+        const textBufferBytes = textRenderable.byteSize
         const textBufferMB = (textBufferBytes / (1024 * 1024)).toFixed(2)
 
         // Update status

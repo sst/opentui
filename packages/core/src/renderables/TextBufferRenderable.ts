@@ -1,5 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import type { StyledText } from "../lib/styled-text.js"
 import { TextBuffer, type TextChunk } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
@@ -7,6 +8,15 @@ import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { NativeMeasureTargetKind, resolveRenderLib, type LineInfo, type NativeRenderableHandle } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
+
+function chunkCarriesStyle(chunk: TextChunk, defaultFg: RGBA, defaultBg: RGBA, defaultAttributes: number): boolean {
+  return (
+    (chunk.fg !== undefined && chunk.fg !== defaultFg) ||
+    (chunk.bg !== undefined && chunk.bg !== defaultBg) ||
+    chunk.link !== undefined ||
+    (chunk.attributes !== undefined && chunk.attributes !== defaultAttributes && chunk.attributes !== 0)
+  )
+}
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -38,9 +48,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _truncate: boolean = false
   protected _firstLineOffset: number = 0
 
-  protected textBuffer: TextBuffer
-  protected textBufferView: TextBufferView
-  protected _textBufferSyntaxStyle: SyntaxStyle
+  private _textBuffer: TextBuffer
+  private _textBufferView: TextBufferView
+  private _textBufferSyntaxStyle: SyntaxStyle | null = null
   private nativeRenderable: NativeRenderableHandle | null = null
 
   protected _defaultOptions = {
@@ -72,39 +82,80 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       : this._defaultOptions.tabIndicatorColor
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
-    this.textBufferView = TextBufferView.create(this.textBuffer)
+    this._textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    this._textBufferView = TextBufferView.create(this._textBuffer)
     this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
 
-    this._textBufferSyntaxStyle = SyntaxStyle.create()
-    this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
-
-    this.textBufferView.setWrapMode(this._wrapMode)
-    this.textBufferView.setFirstLineOffset(this._firstLineOffset)
+    this._textBufferView.setWrapMode(this._wrapMode)
+    this._textBufferView.setFirstLineOffset(this._firstLineOffset)
     this.setupNativeRenderable()
 
-    this.textBuffer.setDefaultFg(this._defaultFg)
-    this.textBuffer.setDefaultBg(this._defaultBg)
-    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+    this._textBuffer.setDefaultFg(this._defaultFg)
+    this._textBuffer.setDefaultBg(this._defaultBg)
+    this._textBuffer.setDefaultAttributes(this._defaultAttributes)
 
     if (this._tabIndicator !== undefined) {
-      this.textBufferView.setTabIndicator(this._tabIndicator)
+      this._textBufferView.setTabIndicator(this._tabIndicator)
     }
     if (this._tabIndicatorColor !== undefined) {
-      this.textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
+      this._textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
     }
 
     if (this._wrapMode !== "none" && this.width > 0) {
-      this.textBufferView.setWrapWidth(this.width)
+      this._textBufferView.setWrapWidth(this.width)
     }
 
     if (this.width > 0 && this.height > 0) {
-      this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      this._textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
 
-    this.textBufferView.setTruncate(this._truncate)
+    this._textBufferView.setTruncate(this._truncate)
 
     this.updateTextInfo()
+  }
+
+  protected ensureSyntaxStyle(): void {
+    if (this.isDestroyed) {
+      throw new Error("Cannot allocate SyntaxStyle: renderable is already destroyed")
+    }
+    if (!this._textBufferSyntaxStyle) {
+      this._textBufferSyntaxStyle = SyntaxStyle.create()
+      this._textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
+    }
+  }
+
+  /**
+   * Sets styled text on the backing buffer. The native buffer only applies chunk styles
+   * (fg, bg, attributes, links) when a SyntaxStyle is attached, so this attaches the lazily
+   * created style first — but only when a chunk actually carries style information, keeping
+   * plain-text renderables free of native SyntaxStyle handles.
+   */
+  protected setBufferStyledText(styledText: StyledText): void {
+    if (
+      !this._textBufferSyntaxStyle &&
+      styledText.chunks.some((chunk) =>
+        chunkCarriesStyle(chunk, this._defaultFg, this._defaultBg, this._defaultAttributes),
+      )
+    ) {
+      this.ensureSyntaxStyle()
+    }
+    this._textBuffer.setStyledText(styledText)
+  }
+
+  protected setBufferText(text: string): void {
+    this._textBuffer.setText(text)
+  }
+
+  protected loadBufferFile(path: string): void {
+    this._textBuffer.loadFile(path)
+  }
+
+  protected get bufferByteSize(): number {
+    return this._textBuffer.byteSize
+  }
+
+  protected getBufferLineHighlights(lineIdx: number) {
+    return this._textBuffer.getLineHighlights(lineIdx)
   }
 
   protected onMouseEvent(event: any): void {
@@ -134,15 +185,15 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get lineInfo(): LineInfo {
-    return this.textBufferView.logicalLineInfo
+    return this._textBufferView.logicalLineInfo
   }
 
   public get lineCount(): number {
-    return this.textBuffer.getLineCount()
+    return this._textBuffer.getLineCount()
   }
 
   public get virtualLineCount(): number {
-    return this.textBufferView.getVirtualLineCount()
+    return this._textBufferView.getVirtualLineCount()
   }
 
   public get scrollY(): number {
@@ -192,16 +243,16 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected updateViewportOffset(): void {
     // Update the viewport with the new scroll position
     if (this.width > 0 && this.height > 0) {
-      this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      this._textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
   }
 
   get plainText(): string {
-    return this.textBuffer.getPlainText()
+    return this._textBuffer.getPlainText()
   }
 
   get textLength(): number {
-    return this.textBuffer.length
+    return this._textBuffer.length
   }
 
   get fg(): RGBA {
@@ -212,7 +263,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     const newColor = parseColor(value ?? this._defaultOptions.fg)
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
-      this.textBuffer.setDefaultFg(this._defaultFg)
+      this._textBuffer.setDefaultFg(this._defaultFg)
       this.onFgChanged(newColor)
       this.requestRender()
     }
@@ -256,7 +307,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     const newColor = parseColor(value ?? this._defaultOptions.bg)
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
-      this.textBuffer.setDefaultBg(this._defaultBg)
+      this._textBuffer.setDefaultBg(this._defaultBg)
       this.onBgChanged(newColor)
       this.requestRender()
     }
@@ -269,7 +320,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set attributes(value: number) {
     if (this._defaultAttributes !== value) {
       this._defaultAttributes = value
-      this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+      this._textBuffer.setDefaultAttributes(this._defaultAttributes)
       this.onAttributesChanged(value)
       this.requestRender()
     }
@@ -282,9 +333,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set wrapMode(value: "none" | "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.textBufferView.setWrapMode(this._wrapMode)
+      this._textBufferView.setWrapMode(this._wrapMode)
       if (value !== "none" && this.width > 0) {
-        this.textBufferView.setWrapWidth(this.width)
+        this._textBufferView.setWrapWidth(this.width)
       }
       // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
       this.yogaNode.markDirty()
@@ -300,7 +351,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this._tabIndicator !== value) {
       this._tabIndicator = value
       if (value !== undefined) {
-        this.textBufferView.setTabIndicator(value)
+        this._textBufferView.setTabIndicator(value)
       }
       this.requestRender()
     }
@@ -315,7 +366,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this._tabIndicatorColor !== newColor) {
       this._tabIndicatorColor = newColor
       if (newColor !== undefined) {
-        this.textBufferView.setTabIndicatorColor(newColor)
+        this._textBufferView.setTabIndicatorColor(newColor)
       }
       this.requestRender()
     }
@@ -328,13 +379,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   set truncate(value: boolean) {
     if (this._truncate !== value) {
       this._truncate = value
-      this.textBufferView.setTruncate(value)
+      this._textBufferView.setTruncate(value)
       this.requestRender()
     }
   }
 
   protected onResize(width: number, height: number): void {
-    this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
+    this._textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
     this.yogaNode.markDirty()
     this.requestRender()
     this.emit("line-info-change")
@@ -349,11 +400,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
     if (!localSelection?.isActive) {
-      this.textBufferView.resetLocalSelection()
+      this._textBufferView.resetLocalSelection()
       return true
     }
 
-    return this.textBufferView.setLocalSelection(
+    return this._textBufferView.setLocalSelection(
       localSelection.anchorX,
       localSelection.anchorY,
       localSelection.focusX,
@@ -389,7 +440,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       !lib.nativeRenderableSetMeasureTarget(
         nativeRenderable,
         NativeMeasureTargetKind.TextBufferView,
-        this.textBufferView.ptr,
+        this._textBufferView.ptr,
       )
     ) {
       lib.destroyNativeRenderable(nativeRenderable)
@@ -413,10 +464,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     let changed: boolean
     if (!localSelection?.isActive) {
-      this.textBufferView.resetLocalSelection()
+      this._textBufferView.resetLocalSelection()
       changed = true
     } else if (selection?.isStart) {
-      changed = this.textBufferView.setLocalSelection(
+      changed = this._textBufferView.setLocalSelection(
         localSelection.anchorX,
         localSelection.anchorY,
         localSelection.focusX,
@@ -426,7 +477,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         localSelection.behavior,
       )
     } else {
-      changed = this.textBufferView.updateLocalSelection(
+      changed = this._textBufferView.updateLocalSelection(
         localSelection.anchorX,
         localSelection.anchorY,
         localSelection.focusX,
@@ -445,15 +496,15 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   getSelectedText(): string {
-    return this.textBufferView.getSelectedText()
+    return this._textBufferView.getSelectedText()
   }
 
   hasSelection(): boolean {
-    return this.textBufferView.hasSelection()
+    return this._textBufferView.hasSelection()
   }
 
   getSelection(): { start: number; end: number } | null {
-    return this.textBufferView.getSelection()
+    return this._textBufferView.getSelection()
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -474,8 +525,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    if (this.textBuffer.ptr) {
-      buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
+    if (this._textBuffer.ptr) {
+      buffer.drawTextBuffer(this._textBufferView, this._screenX, this._screenY)
     }
   }
 
@@ -486,10 +537,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
       this.nativeRenderable = null
     }
-    this.textBuffer.setSyntaxStyle(null)
-    this._textBufferSyntaxStyle.destroy()
-    this.textBufferView.destroy()
-    this.textBuffer.destroy()
+    if (this._textBufferSyntaxStyle) {
+      this._textBuffer.setSyntaxStyle(null)
+      this._textBufferSyntaxStyle.destroy()
+      this._textBufferSyntaxStyle = null
+    }
+    this._textBufferView.destroy()
+    this._textBuffer.destroy()
     super.destroy()
   }
 
