@@ -862,6 +862,24 @@ test("table with links", async () => {
   `)
 })
 
+test("table with links where label equals href is deduped", async () => {
+  const markdown = `| Service | URL |
+|---|---|
+| Example | [https://example.com](https://example.com) |
+| Docs | [https://docs.example.com](https://docs.example.com) |`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    ┌───────┬────────────────────────┐
+    │Service│URL                     │
+    ├───────┼────────────────────────┤
+    │Example│https://example.com     │
+    ├───────┼────────────────────────┤
+    │Docs   │https://docs.example.com│
+    └───────┴────────────────────────┘"
+  `)
+})
+
 test("single row table (header + delimiter only)", async () => {
   const markdown = `| Only | Header |
 |---|---|`
@@ -2585,6 +2603,24 @@ test("incomplete link (no closing paren)", async () => {
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Check out this link(https://example.com"
+  `)
+})
+
+test("link with label equal to href is deduped", async () => {
+  const markdown = `[https://example.com](https://example.com)`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    https://example.com"
+  `)
+})
+
+test("link with label different from href shows both", async () => {
+  const markdown = `[Example](https://example.com)`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Example (https://example.com)"
   `)
 })
 

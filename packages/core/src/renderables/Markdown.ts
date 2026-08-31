@@ -275,11 +275,45 @@ export class MarkdownRenderable extends Renderable {
   _blockStates: BlockState[] = []
   _stableBlockCount = 0
   private _styleDirty: boolean = false
-  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
-    detectLinks(chunks, {
-      content: context.content,
-      highlights: context.highlights,
-    })
+  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) => {
+    const linkified =
+      detectLinks(chunks, {
+        content: context.content,
+        highlights: context.highlights,
+      }) ?? chunks
+    // Deduplicate `[url](url)` pattern where label text equals href.
+    // Tree-sitter markdown conceal produces the sequence:
+    //   [label][" "]["("][url][")"]
+    // where label and url are identical text chunks. Collapse to a single chunk.
+    const out: typeof linkified = []
+    let i = 0
+    while (i < linkified.length) {
+      const c = linkified[i]
+      const n1 = linkified[i + 1]
+      const n2 = linkified[i + 2]
+      const n3 = linkified[i + 3]
+      const n4 = linkified[i + 4]
+      if (
+        c &&
+        n1 &&
+        n2 &&
+        n3 &&
+        n4 &&
+        n1.text === " " &&
+        n2.text === "(" &&
+        n4.text === ")" &&
+        c.text &&
+        n3.text === c.text
+      ) {
+        out.push(c)
+        i += 5
+        continue
+      }
+      out.push(c)
+      i += 1
+    }
+    return out
+  }
 
   protected _contentDefaultOptions = {
     content: "",
@@ -548,9 +582,15 @@ export class MarkdownRenderable extends Renderable {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
-          chunks.push(this.createChunk(")", "markup.link", linkHref))
+          // Skip redundant `(href)` suffix when the label already equals the URL
+          // (bare URLs and markdown autolinks like `[https://x.com](https://x.com)`),
+          // which would otherwise render as `https://x.com (https://x.com)`.
+          const labelText = token.tokens.map((t) => (t as MarkedToken).raw).join("")
+          if (labelText !== token.href) {
+            chunks.push(this.createChunk(" (", "markup.link", linkHref))
+            chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+            chunks.push(this.createChunk(")", "markup.link", linkHref))
+          }
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
