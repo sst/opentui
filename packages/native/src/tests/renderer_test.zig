@@ -2650,6 +2650,58 @@ test "renderer - split scrollback uses native Kitty when Kitty is selected" {
     try std.testing.expect(std.mem.find(u8, output, "48;2;1;2;3") == null);
 }
 
+test "renderer - split scrollback images remain addressable before and across pinning" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    for ([_]bool{ false, true }) |sixel| {
+        for ([_]u32{ 0, 2, 5, 6 }) |seed_rows| {
+            for ([_]u32{ 1, 4, 6, 7 }) |height| {
+                var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+                defer test_renderer.deinit();
+                test_renderer.renderer.terminal.caps.kitty_graphics = !sixel;
+                test_renderer.renderer.terminal.caps.sixel = sixel;
+                const snapshot = try OptimizedBuffer.init(std.testing.allocator, 4, height + 2, .{ .pool = pool, .link_pool = &local_link_pool });
+                defer snapshot.deinit();
+                try snapshot.drawText("top", 0, 0, .{ 255, 255, 255, 255 }, null, 0);
+                try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 1, 2, height, 4, height * 2, 0, 0, 1, 1, .auto));
+                try snapshot.drawText("end", 0, @intCast(height + 1), .{ 255, 255, 255, 255 }, null, 0);
+                _ = test_renderer.renderer.resetSplitScrollback(seed_rows, 6);
+
+                const result = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 4, true, true, 6, false, true, true);
+                try std.testing.expectEqual(renderer.RenderStatus.rendered, result.status);
+                const output = test_renderer.memory.lastWrite();
+                const placement = std.mem.find(u8, output, if (sixel) "\x1bP0;1;0q" else "\x1b_Ga=p");
+                try std.testing.expectEqual(height <= 6, placement != null);
+                try std.testing.expectEqual(height > 6, std.mem.find(u8, output, "\xe2\x96\x88") != null);
+                if (placement) |index| {
+                    try std.testing.expect(std.mem.find(u8, output, "top").? < index);
+                    try std.testing.expect(index < std.mem.find(u8, output, "end").?);
+                    var terminal: ghostty_vt.vt.Terminal = try .init(std.testing.io, std.testing.allocator, .{
+                        .cols = 4,
+                        .rows = 9,
+                    });
+                    defer terminal.deinit(std.testing.allocator);
+                    var stream = terminal.vtStream();
+                    defer stream.deinit();
+                    stream.nextSlice(output[0..index]);
+                    try std.testing.expectEqual(@as(u16, 0), terminal.screens.active.cursor.x);
+                    try std.testing.expectEqual(@min(@max(seed_rows, 1) + height, 6) - height, terminal.screens.active.cursor.y);
+                }
+            }
+        }
+    }
+}
+
 test "renderer - failed Kitty scrollback preparation does not publish the batch" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

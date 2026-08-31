@@ -1277,15 +1277,15 @@ pub const CliRenderer = struct {
         row_columns: u32,
         start_on_new_line: bool,
         previous_output_column: u32,
-        previous_output_offset: u32,
         pinned_render_offset: u32,
     ) bool {
-        if (pinned_render_offset == 0 or previous_output_offset != pinned_render_offset or
-            (!start_on_new_line and previous_output_column != 0)) return false;
+        if (pinned_render_offset == 0 or (!start_on_new_line and previous_output_column != 0)) return false;
+        // Images are placed after their last row is written. Even while the footer
+        // is settling, the rectangle remains addressable if it fits the upper pane.
         for (placements) |placement| {
             if (placement.x < 0 or placement.y < 0 or
                 @as(u64, @intCast(placement.x)) + placement.width > row_columns or
-                placement.height > previous_output_offset) return false;
+                placement.height > pinned_render_offset) return false;
         }
         return true;
     }
@@ -1311,7 +1311,6 @@ pub const CliRenderer = struct {
         row_columns: u32,
         start_on_new_line: bool,
         previous_output_column: u32,
-        previous_output_offset: u32,
         pinned_render_offset: u32,
     ) !SnapshotImageState {
         const placements = snapshot.image_placements.items;
@@ -1335,7 +1334,6 @@ pub const CliRenderer = struct {
                 row_columns,
                 start_on_new_line,
                 previous_output_column,
-                previous_output_offset,
                 pinned_render_offset,
             )) {
                 try snapshot.materializeImageFallbacks();
@@ -1358,7 +1356,6 @@ pub const CliRenderer = struct {
             row_columns,
             start_on_new_line,
             previous_output_column,
-            previous_output_offset,
             pinned_render_offset,
         )) {
             try snapshot.materializeImageFallbacks();
@@ -1651,7 +1648,6 @@ pub const CliRenderer = struct {
             normalized_row_columns,
             start_on_new_line,
             previousOutputColumn,
-            previousOutputOffset,
             pinned_render_offset,
         );
         const starts_mid_line = previousOutputColumn > 0 and start_on_new_line;
