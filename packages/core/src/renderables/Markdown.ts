@@ -1788,7 +1788,6 @@ export class MarkdownRenderable extends Renderable {
 
       if (
         existing &&
-        !forceTableRefresh &&
         existing.canUpdateInPlace &&
         existing.token.type === block.token.type &&
         this.canUpdateBlockRenderable(existing.renderable, block.token)
