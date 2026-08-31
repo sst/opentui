@@ -55,9 +55,7 @@ jobs:
         run: bun install
 
       - name: Setup cross-platform symbol tools
-        run: |
-          brew list llvm >/dev/null 2>&1 || brew install llvm
-          echo "LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+        uses: ./.github/actions/setup-native-symbol-tools
 
       - name: Build packages (cross-compile for all platforms)
         run: |

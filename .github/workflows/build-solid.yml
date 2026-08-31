@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Setup native symbol tools
+        uses: ./.github/actions/setup-native-symbol-tools
+
       - name: Build core
         working-directory: packages/core
         run: bun run build
