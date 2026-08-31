@@ -94,6 +94,30 @@ function ensureBuildArtifacts(): void {
   if (leakedGhosttyFiles.length > 0) {
     throw new Error(`Native package contains unbundled Ghostty artifacts: ${leakedGhosttyFiles.join(", ")}`)
   }
+  const leakedSymbols = readdirSync(nativePackageDir).filter((name) => /\.(debug|pdb|dSYM)$/.test(name))
+  if (leakedSymbols.length)
+    throw new Error(`Native package contains separate debug symbols: ${leakedSymbols.join(", ")}`)
+
+  if (process.platform === "linux") {
+    const nativeLibrary = join(nativePackageDir, "libopentui.so")
+    const elf = runCommand(
+      "readelf",
+      ["--wide", "--section-headers", "--dyn-syms", nativeLibrary],
+      rootDir,
+      "Failed to inspect packaged native ELF",
+      { stdio: "pipe" },
+    ).stdout.toString("utf8")
+
+    if (/\s\.(?:z)?debug(?:_|\s)|\s\.symtab\s/.test(elf)) {
+      throw new Error("Packaged production native library is not stripped")
+    }
+    if (!/\bgetBuildOptions\b/.test(elf)) {
+      throw new Error("Packaged production native library lost its dynamic FFI exports")
+    }
+    if (!elf.includes(".note.gnu.build-id") || !elf.includes(".gnu_debuglink")) {
+      throw new Error("Packaged native ELF cannot be matched to its separate release symbols")
+    }
+  }
 }
 
 function assertPortableDeclarations(): void {
