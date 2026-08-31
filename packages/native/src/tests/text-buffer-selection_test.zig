@@ -1343,9 +1343,9 @@ test "occupancy - replay clamps tiny truncated views" {
     try tb.setText("abcde");
 
     view.setSelectionOccupancy(.boundary);
-    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), view.packSelectionInfo());
-
-    view.setSelection(0, 5, null, null);
+    const range = occupancyPacked(view);
+    try std.testing.expectEqual(@as(u32, 0), range.start);
+    try std.testing.expectEqual(@as(u32, 5), range.end);
     var out: [100]u8 = undefined;
     try std.testing.expectEqualStrings("abcde", occupancySelected(view, &out));
 }

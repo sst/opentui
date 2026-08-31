@@ -59,6 +59,11 @@ keymap.registerLayer({
 Each registration returns a disposer. Destroying the renderer also ends the host lifecycle and releases keymap resources.
 See [Lifecycle and cleanup](/docs/core-concepts/lifecycle) for application shutdown.
 
+```text terminal=keymap-active-keys
+ctrl+s  file.save
+q       app.quit
+```
+
 ## Register, dispatch, and query
 
 Keymap uses one short model:

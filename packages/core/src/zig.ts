@@ -1238,7 +1238,7 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewGetViewport: {
       args: ["u32", "buffer", "buffer", "buffer", "buffer"],
-      returns: "void",
+      returns: "bool",
     },
     editorViewSetScrollMargin: {
       args: ["u32", "f32"],
@@ -1369,6 +1369,10 @@ function getOpenTUILib(libPath?: string) {
     editBufferGetTextBuffer: {
       args: ["u32"],
       returns: "u32",
+    },
+    editBufferSetTabWidth: {
+      args: ["u32", "u8"],
+      returns: "void",
     },
     editBufferDebugLogRope: {
       args: ["u32"],
@@ -1589,6 +1593,8 @@ function getOpenTUILib(libPath?: string) {
     imageTestFailIccProfileCopyAllocationOnce: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageCreateFromPixels: { args: ["buffer", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageUpdatePixels: { args: ["u32", "buffer", "u64", "u32", "u32", "u32"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
@@ -1612,6 +1618,11 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "ptr", "u32"],
       returns: "void",
     },
+    setKittyImageTransport: { args: ["u32", "u32"], returns: "u32" },
+    getKittyImageTransport: { args: ["u32", "buffer"], returns: "void" },
+    pollKittyImageTransport: { args: ["u32"], returns: "u32" },
+    cancelKittyImageTransport: { args: ["u32", "u32"], returns: "void" },
+    processKittyImageReply: { args: ["u32", "buffer", "u32"], returns: "u32" },
 
     // Unicode encoding API
     encodeUnicode: {
@@ -2459,6 +2470,7 @@ export interface RenderLib extends AudioEngineLib {
     // multiple stdout snapshots. Defaults preserve old one-call behavior.
     beginFrame?: boolean,
     finalizeFrame?: boolean,
+    controlOutput?: boolean,
   ) => NativeRenderOperationResult
   getNextBuffer: (renderer: RendererHandle) => OptimizedBuffer
   getCurrentBuffer: (renderer: RendererHandle) => OptimizedBuffer
@@ -2923,6 +2935,7 @@ export interface RenderLib extends AudioEngineLib {
   editBufferGetCursorPosition: (buffer: EditBufferHandle) => LogicalCursor
   editBufferGetId: (buffer: EditBufferHandle) => number
   editBufferGetTextBuffer: (buffer: EditBufferHandle) => TextBufferHandle
+  editBufferSetTabWidth: (buffer: EditBufferHandle, width: number) => void
   editBufferDebugLogRope: (buffer: EditBufferHandle) => void
   editBufferUndo: (buffer: EditBufferHandle, maxLength: number) => Uint8Array | null
   editBufferRedo: (buffer: EditBufferHandle, maxLength: number) => Uint8Array | null
@@ -3085,6 +3098,15 @@ export interface RenderLib extends AudioEngineLib {
     height: number,
     stride: number,
   ) => { status: number; handle: ImageHandle | null }
+  imageCreateFromPixels: (
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+    format: number,
+    alpha: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageUpdatePixels: (image: ImageHandle, pixels: Uint8Array, stride: number, format: number, alpha: number) => number
   imageDestroy: (image: ImageHandle) => void
   imageRetain: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
   imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
@@ -3126,6 +3148,11 @@ export interface RenderLib extends AudioEngineLib {
 
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
+  setKittyImageTransport: (renderer: RendererHandle, mode: number) => boolean
+  getKittyImageTransport: (renderer: RendererHandle) => Uint32Array
+  pollKittyImageTransport: (renderer: RendererHandle) => boolean
+  cancelKittyImageTransport: (renderer: RendererHandle, failed: boolean) => void
+  processKittyImageReply: (renderer: RendererHandle, response: string) => number
 
   encodeUnicode: (
     text: string,
@@ -4264,13 +4291,15 @@ class FFIRenderLib implements RenderLib {
     force: boolean,
     beginFrame: boolean = true,
     finalizeFrame: boolean = true,
+    controlOutput: boolean = false,
   ): NativeRenderOperationResult {
     const flags =
       ffiBool(startOnNewLine) |
       (ffiBool(trailingNewline) << 1) |
       (ffiBool(force) << 2) |
       (ffiBool(beginFrame) << 3) |
-      (ffiBool(finalizeFrame) << 4)
+      (ffiBool(finalizeFrame) << 4) |
+      (ffiBool(controlOutput) << 5)
 
     return this.unpackRenderOperationResult(
       this.opentui.symbols.commitSplitFooterSnapshot(renderer, snapshot.ptr, rowColumns, flags, pinnedRenderOffset),
@@ -5654,6 +5683,10 @@ class FFIRenderLib implements RenderLib {
     return result
   }
 
+  public editBufferSetTabWidth(buffer: Pointer, width: number): void {
+    this.opentui.symbols.editBufferSetTabWidth(buffer, width)
+  }
+
   public editBufferDebugLogRope(buffer: Pointer): void {
     this.opentui.symbols.editBufferDebugLogRope(buffer)
   }
@@ -6040,6 +6073,29 @@ class FFIRenderLib implements RenderLib {
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, viewOrNull(responseBytes), responseBytes.byteLength)
+  }
+
+  public setKittyImageTransport(renderer: RendererHandle, mode: number): boolean {
+    return this.opentui.symbols.setKittyImageTransport(renderer, mode) !== 0
+  }
+
+  public getKittyImageTransport(renderer: RendererHandle): Uint32Array {
+    const status = new Uint32Array(6)
+    this.opentui.symbols.getKittyImageTransport(renderer, status)
+    return status
+  }
+
+  public pollKittyImageTransport(renderer: RendererHandle): boolean {
+    return this.opentui.symbols.pollKittyImageTransport(renderer) !== 0
+  }
+
+  public cancelKittyImageTransport(renderer: RendererHandle, failed: boolean): void {
+    this.opentui.symbols.cancelKittyImageTransport(renderer, failed ? 1 : 0)
+  }
+
+  public processKittyImageReply(renderer: RendererHandle, response: string): number {
+    const bytes = this.encoder.encode(response)
+    return this.opentui.symbols.processKittyImageReply(renderer, bytes, bytes.byteLength)
   }
 
   public encodeUnicode(
@@ -6571,6 +6627,39 @@ class FFIRenderLib implements RenderLib {
       output,
     )
     return this.imageHandleResult(status, output)
+  }
+
+  public imageCreateFromPixels(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+    format: number,
+    alpha: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageCreateFromPixels(
+      pixels,
+      BigInt(pixels.byteLength),
+      width,
+      height,
+      stride,
+      format,
+      alpha,
+      output,
+    )
+    return this.imageHandleResult(status, output)
+  }
+
+  // Internal pool owners only, not a general image mutation API. Publish with a fresh retained handle.
+  public imageUpdatePixels(
+    image: ImageHandle,
+    pixels: Uint8Array,
+    stride: number,
+    format: number,
+    alpha: number,
+  ): number {
+    return this.opentui.symbols.imageUpdatePixels(image, pixels, BigInt(pixels.byteLength), stride, format, alpha)
   }
 
   public imageDestroy(image: ImageHandle): void {

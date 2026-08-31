@@ -16,13 +16,21 @@ String length and terminal width are different values. Keep that distinction whe
 Use `t` as a template tag. Style helpers return chunks that you can insert into the template.
 
 ```typescript
-import { TextRenderable, bold, fg, link, t, underline, createCliRenderer } from "@opentui/core"
+import { RGBA, TextRenderable, bold, italic, t, underline, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const content = t`${bold("Status")}: ${fg("#22c55e")("ready")} ${link("https://opentui.dev")(underline("docs"))}`
+const content = t`${bold("Status")}: ready\n${italic("Note")}: saved locally\n${bold(underline("Next"))}: review changes`
 
-renderer.root.add(new TextRenderable(renderer, { content }))
+renderer.root.add(new TextRenderable(renderer, { content, fg: RGBA.defaultForeground() }))
+```
+
+`Status` is bold, `Note` is italic, and `Next` combines bold and underline. The rest of each line keeps its default attributes:
+
+```text terminal=text-styled-chunks surface
+Status: ready
+Note: saved locally
+Next: review changes
 ```
 
 The color helpers include normal, bright, and background named colors. The text helpers include `bold`, `italic`, `underline`, `strikethrough`, `dim`, `blink`, and `reverse`.
@@ -68,11 +76,46 @@ The first occupied cell stores the grapheme reference and its extent. Remaining 
 
 Continuation cells prevent later drawing and diffing from treating the tail of a wide grapheme as independent text. They contain no separate printable character.
 
+Both `"ABC".length` and `"A界B".length` are `3`. On this zero-based cell ruler, `界` occupies columns 1 and 2. It pushes `B` to column 3 and the following `|` to column 4:
+
+```text terminal=text-cell-ruler
+column  01234
+ASCII   ABC|  3 cells
+wide    A界B|  4 cells
+```
+
+The stronger background shade marks the two cells occupied by `界`.
+
+The measured width is a column count, not a JavaScript string length. A string with length `2` can still occupy one or two terminal cells.
+
+## Wrap text
+
 Wrapping and truncation operate on display width. They do not split a grapheme to make it fit at a line boundary.
 
 Text renderables support `wrapMode: "word"`, `"char"`, or `"none"`. The default is `"word"`.
 
-The measured width is a column count. For example, a JavaScript string with length `2` can still occupy one or two terminal cells.
+```typescript
+const text = new TextRenderable(renderer, {
+  content: "A界B",
+  width: 2,
+  wrapMode: "char",
+  fg: RGBA.defaultForeground(),
+})
+
+renderer.root.add(text)
+```
+
+The same text at widths of two, three, and four columns:
+
+```text terminal=text-wide-wrap
+2 columns   3 columns   4 columns
+01          012         0123
+A           A界         A界B
+界          B
+B
+```
+
+At two columns, `界` cannot fit beside `A`, so it moves intact to the next row. The shaded area marks each view's cell bounds.
 
 ## Use buffer text operations
 
@@ -99,6 +142,18 @@ Read the [Buffer API](/docs/reference/buffer-api) for clipping, alpha, drawing, 
 Text-buffer selection uses a half-open range `{ start, end }`. Both values are global display-width offsets from the start of that buffer.
 
 Each logical line break adds one offset unit. Soft wrapping does not add a unit because it does not add text.
+
+These three-column views look the same, but they select `B` at different offsets. `"A界B"` uses `[3, 4)`; `"A界\nB"` uses `[4, 5)` because the newline adds one unit:
+
+```text terminal=text-line-offsets
+soft wrap          newline
+012                012
+A界                A界
+B                  B
+range [3, 4)       range [4, 5)
+```
+
+The highlighted cell marks the selection. Both views return `"B"` from `getSelectedText()`.
 
 Selection extraction snaps boundaries to complete grapheme clusters. A boundary inside a wide grapheme moves to include or exclude the complete cluster.
 

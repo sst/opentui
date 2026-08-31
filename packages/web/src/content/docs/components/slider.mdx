@@ -42,6 +42,12 @@ const slider = new SliderRenderable(renderer, {
 renderer.root.add(slider)
 ```
 
+```text terminal=slider-horizontal
+value: 25
+       ██▌
+0                          100
+```
+
 ## Vertical slider
 
 ```typescript
@@ -53,6 +59,19 @@ const slider = new SliderRenderable(renderer, {
   max: 1,
   value: 0.5,
 })
+```
+
+```text terminal=slider-vertical
+min 0
+
+           ▄▄
+           ██
+value 0.5  ██
+           ██
+           ██
+           ▀▀
+
+max 1
 ```
 
 ## Properties

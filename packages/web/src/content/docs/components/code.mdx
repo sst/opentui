@@ -27,12 +27,10 @@ import { CodeRenderable, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/c
 const renderer = await createCliRenderer()
 
 const syntaxStyle = SyntaxStyle.fromStyles({
-  keyword: { fg: RGBA.fromHex("#FF7B72"), bold: true },
-  string: { fg: RGBA.fromHex("#A5D6FF") },
-  comment: { fg: RGBA.fromHex("#8B949E"), italic: true },
-  number: { fg: RGBA.fromHex("#79C0FF") },
-  function: { fg: RGBA.fromHex("#D2A8FF") },
-  default: { fg: RGBA.fromHex("#E6EDF3") },
+  default: { fg: RGBA.defaultForeground() },
+  keyword: { fg: RGBA.defaultForeground(), bold: true },
+  string: { fg: RGBA.fromIndex(247) },
+  comment: { fg: RGBA.fromIndex(244), italic: true },
 })
 
 const code = new CodeRenderable(renderer, {
@@ -49,6 +47,14 @@ const code = new CodeRenderable(renderer, {
 })
 
 renderer.root.add(code)
+```
+
+```text terminal=code-highlighted
+function hello() {
+  // This is a comment
+  const message = "Hello, world!"
+  return message
+}
 ```
 
 ## Creating syntax styles

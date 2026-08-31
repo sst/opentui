@@ -3436,6 +3436,29 @@ test("streaming property can be toggled", async () => {
   expect(frame).toContain("Hello")
 })
 
+test("completing a stream keeps rendered Markdown visible", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-stream-completion",
+    content: "# Hello\n\nResponse remains visible",
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const recorder = new TestRecorder(renderer)
+  recorder.rec()
+
+  md.streaming = false
+  await renderMarkdownRenderable(md)
+  recorder.stop()
+
+  expect(recorder.recordedFrames.length).toBeGreaterThan(0)
+  expect(recorder.recordedFrames.every((frame) => frame.frame.includes("Response remains visible"))).toBe(true)
+})
+
 test("clearCache forces full rebuild", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",

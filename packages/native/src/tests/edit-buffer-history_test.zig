@@ -22,12 +22,12 @@ test "EditBuffer - basic undo/redo with insertText" {
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 
     const meta = try eb.undo();
-    try std.testing.expect(std.mem.startsWith(u8, meta, "cursor:"));
+    try std.testing.expectEqualStrings("cursor:0:5:5", meta);
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
 
     const meta2 = try eb.redo();
-    try std.testing.expect(std.mem.startsWith(u8, meta2, "cursor:"));
+    try std.testing.expectEqualStrings("cursor:0:11:11", meta2);
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 }
@@ -58,6 +58,95 @@ test "EditBuffer - undo and redo restore cursor for mid-line edits" {
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 9), cursor.col);
+}
+
+test "EditBuffer - unchanged normalized tab width preserves cursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    try eb.setText("a\tb");
+    try eb.setCursor(0, 2);
+    const cursor = eb.getPrimaryCursor();
+    eb.setTabWidth(0);
+    try std.testing.expectEqualDeep(cursor, eb.getPrimaryCursor());
+}
+
+test "EditBuffer - tab width remaps multi-chunk history under each checkpoint policy" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    try eb.setText("head\n\u{754c}\tb");
+    try eb.setCursor(1, 2);
+    eb.setTabWidth(8);
+    try std.testing.expectEqualDeep(edit_buffer.Cursor{ .row = 1, .col = 2, .desired_col = 2, .offset = 7 }, eb.getPrimaryCursor());
+    eb.setTabWidth(2);
+    try eb.setCursor(1, 4);
+    try eb.insertText("e\u{301}\t");
+    eb.setTabWidth(8);
+    try std.testing.expectEqualDeep(edit_buffer.Cursor{ .row = 1, .col = 19, .desired_col = 19, .offset = 24 }, eb.getPrimaryCursor());
+    try std.testing.expectEqualStrings("cursor:1:4:4", try eb.undo());
+    try std.testing.expectEqualDeep(edit_buffer.Cursor{ .row = 1, .col = 10, .desired_col = 10, .offset = 15 }, eb.getPrimaryCursor());
+    try std.testing.expectEqualStrings("cursor:1:19:19", try eb.redo());
+    try std.testing.expectEqual(@as(u32, 19), eb.getPrimaryCursor().col);
+    eb.setTabWidth(4);
+    try std.testing.expectEqualStrings("cursor:1:4:4", try eb.undo());
+    try std.testing.expectEqual(@as(u32, 6), eb.getPrimaryCursor().col);
+    try std.testing.expectEqualStrings("cursor:1:19:19", try eb.redo());
+    try std.testing.expectEqual(@as(u32, 11), eb.getPrimaryCursor().col);
+    try eb.insertText("y");
+    var out: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("head\n\u{754c}\te\u{301}\tyb", out[0..eb.getText(&out)]);
+
+    try eb.setText("abcdefghijklmnop\na\tb");
+    try eb.setCursor(0, 16);
+    eb.moveDown();
+    eb.setTabWidth(8);
+    try std.testing.expectEqual(@as(u32, 10), eb.getPrimaryCursor().col);
+    try std.testing.expectEqual(@as(u32, 16), eb.getPrimaryCursor().desired_col);
+    try eb.insertText("x");
+    eb.setTabWidth(2);
+    _ = try eb.undo();
+    try std.testing.expectEqual(@as(u32, 4), eb.getPrimaryCursor().col);
+    try std.testing.expectEqual(@as(u32, 16), eb.getPrimaryCursor().desired_col);
+
+    eb.clearHistory();
+    try eb.getTextBuffer().rope().store_undo("cursor:1:1:9");
+    try std.testing.expectEqualStrings("cursor:1:1:9", try eb.undo());
+    try std.testing.expectEqualDeep(edit_buffer.Cursor{ .row = 1, .col = 1, .desired_col = 9, .offset = 18 }, eb.getPrimaryCursor());
+}
+
+test "EditBuffer - tab width changes preserve live and undo cursor text boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+
+    try eb.setText("a\tb");
+    try eb.setCursor(0, 4);
+    try eb.insertText("x");
+
+    eb.setTabWidth(8);
+    try std.testing.expectEqual(@as(u32, 11), eb.getPrimaryCursor().col);
+
+    _ = try eb.undo();
+
+    try std.testing.expectEqual(@as(u32, 10), eb.getPrimaryCursor().col);
+    try eb.insertText("y");
+
+    var out_buffer: [16]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("a\tby", out_buffer[0..written]);
 }
 
 test "EditBuffer - canUndo/canRedo" {

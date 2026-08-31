@@ -93,7 +93,45 @@ test "walkChunkLayoutInfo keeps Prepend joined to an ASCII vector" {
     try testing.expectEqual(@as(u32, 3), breaks.items[0].byte_len);
     try testing.expectEqual(@as(u32, 0), breaks.items[0].col_start);
     try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
-    try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, breaks.items[0].kind);
+    try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+}
+
+test "walkChunkLayoutInfo ASCII prefixes keep their final grapheme intact" {
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+    for (0..32) |prefix_len| {
+        const text = try std.fmt.allocPrint(testing.allocator, "{s} \u{301} \u{754c}abc", .{("a" ** 32)[0..prefix_len]});
+        defer testing.allocator.free(text);
+        _ = try utf8.findChunkLayoutInfo(testing.allocator, text, 2, false, .unicode, &breaks);
+        try testing.expectEqual(@as(usize, 3), breaks.items.len);
+        try testing.expectEqual(@as(u32, @intCast(prefix_len)), breaks.items[0].byte_start);
+        try testing.expectEqual(@as(u32, 3), breaks.items[0].byte_len);
+        try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.whitespace, breaks.items[1].kind);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.script_transition, breaks.items[2].kind);
+    }
+}
+
+test "walkChunkLayoutInfo preserves mixed-content whitespace graphemes" {
+    const cases = [_][]const u8{
+        "\u{0D4E} ", // U+0D4E MALAYALAM LETTER DOT REPH
+        "\u{0600} ", // U+0600 ARABIC NUMBER SIGN
+        " \u{301}", // Non-whitespace after whitespace in the same grapheme
+        "\u{0600} \u{301}", // Mixed content on both sides of whitespace
+    };
+    var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;
+    defer breaks.deinit(testing.allocator);
+
+    for (cases) |text| {
+        _ = try utf8.findChunkLayoutInfo(testing.allocator, text, 2, false, .unicode, &breaks);
+        try testing.expectEqual(@as(usize, 1), breaks.items.len);
+        try testing.expectEqual(@as(u32, 0), breaks.items[0].byte_start);
+        try testing.expectEqual(@as(u32, @intCast(text.len)), breaks.items[0].byte_len);
+        try testing.expectEqual(@as(u32, 0), breaks.items[0].col_start);
+        try testing.expectEqual(@as(u32, 1), breaks.items[0].width_cols);
+        try testing.expectEqual(utf8.LayoutWrapBreakKind.preserved_whitespace, breaks.items[0].kind);
+    }
 }
 
 test "walkChunkLayoutInfo stops streaming after visitor allocation failure" {
@@ -194,6 +232,28 @@ test "Segment.measure - text chunk" {
     try testing.expectEqual(@as(u32, 10), metrics.total_width_cols);
     try testing.expectEqual(@as(u32, 10), metrics.max_line_width_cols);
     try testing.expect(metrics.ascii_only);
+}
+
+test "Segment.measure - propagates tab presence" {
+    const without_tab = Segment{ .text = .{
+        .mem_id = 0,
+        .byte_start = 0,
+        .byte_end = 1,
+        .width_cols = 1,
+        .flags = TextChunk.Flags.ASCII_ONLY,
+    } };
+    const with_tab = Segment{ .text = .{
+        .mem_id = 0,
+        .byte_start = 1,
+        .byte_end = 2,
+        .width_cols = 2,
+        .flags = TextChunk.Flags.HAS_TAB,
+    } };
+
+    var metrics = without_tab.measure();
+    try std.testing.expect(!metrics.has_tabs);
+    metrics.add(with_tab.measure());
+    try std.testing.expect(metrics.has_tabs);
 }
 
 test "Segment.measure - break" {

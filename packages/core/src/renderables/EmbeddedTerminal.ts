@@ -175,6 +175,15 @@ export class EmbeddedTerminalRenderable extends Renderable {
       return false
     }
 
+    // Only gate the start of a cell drag; returning to the anchor after dragging is a valid selection.
+    if (
+      !this.selection &&
+      local.behavior === "cell" &&
+      local.anchorX === local.focusX &&
+      local.anchorY === local.focusY
+    )
+      return false
+
     const point = (x: number, y: number) => {
       if (y < 0) return { x: 0, y: 0 }
       if (y >= this.height) return { x: this.width - 1, y: this.height - 1 }

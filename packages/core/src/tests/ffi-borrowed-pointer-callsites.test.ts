@@ -77,6 +77,16 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("preserves the native viewport lookup success result", () => {
+    const x = new Uint32Array([1])
+    const y = new Uint32Array([1])
+    const width = new Uint32Array([1])
+    const height = new Uint32Array([1])
+
+    expect([false, 0]).toContain(symbols.editorViewGetViewport(0, x, y, width, height))
+    expect([x[0], y[0], width[0], height[0]]).toEqual([0, 0, 0, 0])
+  })
+
   test("stabilizes retained text memory before resolving its pointer", () => {
     withStubbedSymbols(
       {
@@ -759,6 +769,8 @@ describe("borrowed pointer call sites", () => {
       "imageInfo",
       "imageDecode",
       "imageCreateFromRgba",
+      "imageCreateFromPixels",
+      "imageUpdatePixels",
       "imageGetInfo",
       "imageRetain",
       "imageClone",
@@ -792,6 +804,8 @@ describe("borrowed pointer call sites", () => {
       lib.imageInfo(data)
       lib.imageDecode(data)
       lib.imageCreateFromRgba(pixels, 1, 1, 4)
+      lib.imageCreateFromPixels(pixels, 1, 1, 4, 1, 1)
+      lib.imageUpdatePixels(handle, pixels, 4, 1, 1)
       lib.imageGetInfo(handle)
       lib.imageRetain(handle)
       lib.imageClone(handle)
@@ -820,6 +834,11 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageDecode")![2]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageCreateFromRgba")![0]).toBe(pixels)
       expect(calls.get("imageCreateFromRgba")![5]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageCreateFromPixels")![0]).toBe(pixels)
+      expect(calls.get("imageCreateFromPixels")!.slice(1, 7)).toEqual([4n, 1, 1, 4, 1, 1])
+      expect(calls.get("imageCreateFromPixels")![7]).toBeInstanceOf(Uint32Array)
+      expect(calls.get("imageUpdatePixels")![1]).toBe(pixels)
+      expect(calls.get("imageUpdatePixels")!.slice(2)).toEqual([4n, 4, 1, 1])
       expect(calls.get("imageGetInfo")![1]).toBeInstanceOf(ArrayBuffer)
       expect(calls.get("imageRetain")![1]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageClone")![1]).toBeInstanceOf(Uint32Array)
@@ -851,12 +870,13 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
-  test("empty image inputs preserve nullable pointer semantics", () => {
+  test("empty image inputs preserve buffer and nullable pointer semantics", () => {
     withStubbedSymbols(
       {
         imageInfo: () => 0,
         imageDecode: () => 0,
         imageCreateFromRgba: () => 0,
+        imageUpdatePixels: () => 0,
         imageCopyPixels: () => 0,
       },
       (calls) => {
@@ -864,11 +884,13 @@ describe("borrowed pointer call sites", () => {
         lib.imageInfo(empty)
         lib.imageDecode(empty)
         lib.imageCreateFromRgba(empty, 0, 0, 0)
+        lib.imageUpdatePixels(1 as any, empty, 0, 0, 0)
         lib.imageCopyPixels(1 as any, empty, 0, false)
 
         expect(calls.imageInfo[0]![0]).toBeNull()
         expect(calls.imageDecode[0]![0]).toBeNull()
         expect(calls.imageCreateFromRgba[0]![0]).toBeNull()
+        expect(calls.imageUpdatePixels[0]![1]).toBe(empty)
         expect(calls.imageCopyPixels[0]![1]).toBeNull()
       },
     )

@@ -124,6 +124,119 @@ test "embedded terminal selects rendered cells and extracts text" {
     try std.testing.expect(ansi.red(cleared.fg) > ansi.red(cleared.bg));
 }
 
+test "embedded terminal selection highlights text without unused cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var target = try buffer.OptimizedBuffer.init(std.testing.allocator, 8, 3, .{ .pool = pool });
+    defer target.deinit();
+
+    const cases = [_]struct {
+        output: []const u8,
+        start: ghostty.Coordinate = .{ .x = 0, .y = 0 },
+        end: ghostty.Coordinate = .{ .x = 7, .y = 2 },
+        text: []const u8,
+        highlight: [3][]const u8,
+    }{
+        .{
+            .output = "hello\r\nabc",
+            .start = .{ .x = 1, .y = 0 },
+            .text = "ello\nabc",
+            .highlight = .{ ".####...", "###.....", "........" },
+        },
+        .{
+            .output = "hello",
+            .start = .{ .x = 7, .y = 0 },
+            .end = .{ .x = 7, .y = 0 },
+            .text = "",
+            .highlight = .{ "........", "........", "........" },
+        },
+        .{
+            .output = "",
+            .text = "",
+            .highlight = .{ "........", "........", "........" },
+        },
+        .{
+            .output = "  a\x1b[3Cb",
+            .text = "  a   b",
+            .highlight = .{ "#######.", "........", "........" },
+        },
+        .{
+            // Written spaces remain text even though clipboard extraction trims them.
+            .output = "a  ",
+            .text = "a",
+            .highlight = .{ "###.....", "........", "........" },
+        },
+        .{
+            .output = "\x1b[44m\x1b[2J\x1b[0mhi",
+            .text = "hi",
+            .highlight = .{ "##......", "........", "........" },
+        },
+        .{
+            .output = "abcdefghi",
+            .text = "abcdefghi",
+            .highlight = .{ "########", "#.......", "........" },
+        },
+        .{
+            .output = "\xe7\x95\x8c",
+            .start = .{ .x = 1, .y = 0 },
+            .end = .{ .x = 1, .y = 0 },
+            .text = "\xe7\x95\x8c",
+            .highlight = .{ "##......", "........", "........" },
+        },
+        .{
+            .output = "e\xcc\x81 \xf0\x9f\x98\x80",
+            .text = "e\xcc\x81 \xf0\x9f\x98\x80",
+            .highlight = .{ "####....", "........", "........" },
+        },
+        .{
+            .output = "abcdefg\xe7\x95\x8c",
+            .text = "abcdefg\xe7\x95\x8c",
+            .highlight = .{ "#######.", "##......", "........" },
+        },
+    };
+
+    for (cases) |case| {
+        const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 8, .rows = 3 });
+        defer terminal.deinit();
+        try terminal.write(case.output);
+        try terminal.compose(target, 0, 0);
+        var original: [3][8]buffer.Cell = undefined;
+        for (&original, 0..) |*row, y| {
+            for (row, 0..) |*cell, x| cell.* = target.get(@intCast(x), @intCast(y)).?;
+        }
+
+        for ([_]bool{ false, true }) |reverse| {
+            try terminal.setSelection(if (reverse) case.end else case.start, if (reverse) case.start else case.end);
+            const selected = try terminal.selectedText();
+            defer terminal.freeSelectedText(selected);
+            try std.testing.expectEqualStrings(case.text, selected);
+            try terminal.compose(target, 0, 0);
+
+            for (case.highlight, 0..) |row, y| {
+                for (row, 0..) |highlight, x| {
+                    const cell = target.get(@intCast(x), @intCast(y)).?;
+                    const before = original[y][x];
+                    try std.testing.expectEqualDeep(if (highlight == '#') before.bg else before.fg, cell.fg);
+                    try std.testing.expectEqualDeep(if (highlight == '#') before.fg else before.bg, cell.bg);
+                }
+            }
+
+            // Moving into an unused row must repaint the previous highlight too.
+            try terminal.setSelection(.{ .x = 0, .y = 2 }, .{ .x = 7, .y = 2 });
+            try terminal.compose(target, 0, 0);
+            for (original, 0..) |row, y| {
+                for (row, 0..) |before, x| {
+                    const cell = target.get(@intCast(x), @intCast(y)).?;
+                    try std.testing.expectEqualDeep(before.fg, cell.fg);
+                    try std.testing.expectEqualDeep(before.bg, cell.bg);
+                }
+            }
+            terminal.clearSelection();
+            try terminal.compose(target, 0, 0);
+        }
+    }
+}
+
 test "embedded terminal preserves parser state and provides mode-aware input" {
     const terminal = try EmbeddedTerminal.init(std.testing.io, std.testing.allocator, .{ .cols = 20, .rows = 4 });
     defer terminal.deinit();
