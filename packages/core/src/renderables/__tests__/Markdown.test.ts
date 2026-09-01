@@ -23,6 +23,7 @@ import {
 import { ManualClock } from "../../testing/manual-clock.js"
 import { TextAttributes, type CapturedFrame } from "../../types.js"
 import type { SimpleHighlight } from "../../lib/tree-sitter/types.js"
+import { stringWidth } from "../../platform/runtime.js"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
@@ -178,7 +179,7 @@ function findRenderedText(text: string): { x: number; y: number } {
   const lines = captureFrame().split("\n")
   const y = lines.findIndex((line) => line.includes(text))
   expect(y).toBeGreaterThanOrEqual(0)
-  return { x: lines[y]!.indexOf(text), y }
+  return { x: stringWidth(lines[y]!.slice(0, lines[y]!.indexOf(text))), y }
 }
 
 function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge): unknown } }): number {
@@ -1988,6 +1989,34 @@ test("inline formatting with conceal=false", async () => {
 // Link tests
 
 for (const hyperlinks of [false, true]) {
+  for (const named of [true, false]) {
+    test(`${named ? "named" : "bare"} Unicode links after multibyte text preserve hyperlink metadata with hyperlinks=${hyperlinks}`, async () => {
+      setRendererCapabilities(renderer, { hyperlinks })
+      resizeRenderer(120, 10)
+      const prefix = "caf\u00e9 \u4e2d\u6587 \u{1f680} e\u0301 "
+      const url = "https://example.com/caf\u00e9"
+      const label = named ? "R\u00e9f\u{1f680}" : url
+      const md = createMarkdownRenderable({
+        id: "markdown-unicode-links",
+        content: `${prefix}${named ? `[${label}](${url})` : url} after`,
+        syntaxStyle,
+      })
+
+      renderer.root.add(md)
+      await renderMarkdownRenderable(md)
+
+      const visibleLink = named && !hyperlinks ? `${label} (${url})` : label
+      expect(captureFrame()).toContain(`${prefix}${visibleLink} after`)
+      const position = findRenderedText(label)
+      expect(position.x).toBe(stringWidth(prefix))
+      for (let offset = 0; offset < stringWidth(label); offset++) {
+        expect(renderer.getLinkAt(position.x + offset, position.y)).toBe(url)
+      }
+      expect(renderer.getLinkAt(position.x - 1, position.y)).toBeNull()
+      expect(renderer.getLinkAt(position.x + stringWidth(visibleLink), position.y)).toBeNull()
+    })
+  }
+
   test(`named and bare prose and table links preserve hyperlink metadata with hyperlinks=${hyperlinks}`, async () => {
     setRendererCapabilities(renderer, { hyperlinks })
     resizeRenderer(260, 40)
