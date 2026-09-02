@@ -215,12 +215,12 @@ jobs:
       - name: Setup runtime Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.0
+          bun-version: 1.3.14
 
       - name: Test portable FFI arguments
         working-directory: packages/core
         run: |
-          test "$(bun --version)" = "1.3.0"
+          test "$(bun --version)" = "1.3.14"
           bun test src/tests/ffi-borrowed-pointer-callsites.test.ts
 
   # Gate job for branch protection
