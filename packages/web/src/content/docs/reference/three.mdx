@@ -17,7 +17,7 @@ skill:
 The package pins Three.js 0.177.0. Its manifest lists `bun-webgpu` 0.1.7, `@dimforge/rapier2d-simd-compat`, and `planck`
 as optional dependencies. The package root imports all three through its renderer and physics exports. All three
 dependencies must resolve even when an application does not use physics. A normal install includes them. The root
-import fails when the installation omits optional dependencies.
+module does not load when the installation omits optional dependencies.
 
 ```bash
 bun add @opentui/three
