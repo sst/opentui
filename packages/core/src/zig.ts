@@ -102,6 +102,12 @@ import { isBunfsPath } from "./lib/bunfs.js"
 import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 import { allocStruct } from "bun-ffi-structs"
 
+// Bun 1.3 does not marshal DataView buffer arguments. Retain one typed-array alias per reusable struct.
+function allocFFIStruct(structDefinition: Parameters<typeof allocStruct>[0]) {
+  const storage = allocStruct(structDefinition)
+  return { ...storage, ffiView: new Uint8Array(storage.buffer) }
+}
+
 registerEnvVar({
   name: "OPENTUI_LIBC",
   description: "Select Linux native libc package. Supported values: glibc, musl.",
@@ -3225,11 +3231,11 @@ class FFIRenderLib implements RenderLib {
   private readonly yogaLayout = new Float32Array(6)
   private readonly ffiStructStorage = {
     logicalCursor: {
-      ...allocStruct(LogicalCursorStruct),
+      ...allocFFIStruct(LogicalCursorStruct),
       result: { row: 0, col: 0, offset: 0 } as LogicalCursor,
     },
     visualCursor: {
-      ...allocStruct(VisualCursorStruct),
+      ...allocFFIStruct(VisualCursorStruct),
       result: {
         visualRow: 0,
         visualCol: 0,
@@ -3239,13 +3245,13 @@ class FFIRenderLib implements RenderLib {
       } as VisualCursor,
     },
     measureResult: {
-      ...allocStruct(MeasureResultStruct),
+      ...allocFFIStruct(MeasureResultStruct),
       result: { lineCount: 0, widthColsMax: 0 } as MeasureResult,
     },
-    embeddedTerminalCursor: allocStruct(EmbeddedTerminalCursorStruct),
-    embeddedTerminalKeyOptions: allocStruct(EmbeddedTerminalKeyOptionsStruct),
+    embeddedTerminalCursor: allocFFIStruct(EmbeddedTerminalCursorStruct),
+    embeddedTerminalKeyOptions: allocFFIStruct(EmbeddedTerminalKeyOptionsStruct),
     audioStreamStats: {
-      ...allocStruct(AudioStreamStatsStruct),
+      ...allocFFIStruct(AudioStreamStatsStruct),
       result: {
         bytesReceived: 0n,
         framesDecoded: 0n,
@@ -3260,8 +3266,8 @@ class FFIRenderLib implements RenderLib {
         readyGeneration: 0,
       } as NativeAudioStreamStats,
     },
-    imageDrawOptions: allocStruct(ImageDrawOptionsStruct),
-    gridDrawOptions: allocStruct(GridDrawOptionsStruct),
+    imageDrawOptions: allocFFIStruct(ImageDrawOptionsStruct),
+    gridDrawOptions: allocFFIStruct(GridDrawOptionsStruct),
   }
   private disposed = false
   private clipboardServices = new Set<ClipboardServiceHandle>()
@@ -3400,7 +3406,7 @@ class FFIRenderLib implements RenderLib {
 
   public embeddedTerminalCursor(handle: EmbeddedTerminalHandle): EmbeddedTerminalCursor {
     const storage = this.ffiStructStorage.embeddedTerminalCursor
-    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalCursor(handle, storage.view), "cursor query")
+    embeddedTerminalResult(this.opentui.symbols.embeddedTerminalCursor(handle, storage.ffiView), "cursor query")
     const result = EmbeddedTerminalCursorStruct.unpack(storage.buffer)
     return {
       x: result.x,
@@ -3436,7 +3442,7 @@ class FFIRenderLib implements RenderLib {
     const encode = (output: Uint8Array) =>
       this.opentui.symbols.embeddedTerminalEncodeKey(
         handle,
-        options.view,
+        options.ffiView,
         keyCodeLength === 0 ? null : keyCode,
         keyCodeLength,
         textLength === 0 ? null : text,
@@ -4063,7 +4069,7 @@ class FFIRenderLib implements RenderLib {
       storage.view,
       0,
     )
-    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.view))
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.ffiView))
   }
 
   public bufferDrawPackedBuffer(
@@ -4156,7 +4162,7 @@ class FFIRenderLib implements RenderLib {
       columnCount,
       rowOffsets,
       rowCount,
-      this.ffiStructStorage.gridDrawOptions.view,
+      this.ffiStructStorage.gridDrawOptions.ffiView,
     )
   }
 
@@ -5373,7 +5379,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewMeasureForDimensions(view: Pointer, width: number, height: number): MeasureResult | null {
     const storage = this.ffiStructStorage.measureResult
-    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, storage.view)
+    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, storage.ffiView)
     if (!success) return null
     const result = MeasureResultStruct.unpackInto(storage.view, storage.result)
     return { lineCount: result.lineCount, widthColsMax: result.widthColsMax }
@@ -5686,7 +5692,7 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, storage.view)
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, storage.ffiView)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
@@ -5745,28 +5751,28 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetNextWordBoundary(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, storage.view)
+    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, storage.ffiView)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferGetPrevWordBoundary(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, storage.view)
+    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, storage.ffiView)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferGetEOL(buffer: Pointer): LogicalCursor {
     const storage = this.ffiStructStorage.logicalCursor
-    this.opentui.symbols.editBufferGetEOL(buffer, storage.view)
+    this.opentui.symbols.editBufferGetEOL(buffer, storage.ffiView)
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
   }
 
   public editBufferOffsetToPosition(buffer: Pointer, offset: number): LogicalCursor | null {
     const storage = this.ffiStructStorage.logicalCursor
-    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, storage.view)
+    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, storage.ffiView)
     if (!success) return null
     const cursor = LogicalCursorStruct.unpackInto(storage.view, storage.result)
     return { row: cursor.row, col: cursor.col, offset: cursor.offset }
@@ -5966,7 +5972,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetVisualCursor(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualCursor(view, storage.view)
+    this.opentui.symbols.editorViewGetVisualCursor(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
@@ -5989,35 +5995,35 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetNextWordBoundary(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetNextWordBoundary(view, storage.view)
+    this.opentui.symbols.editorViewGetNextWordBoundary(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetPrevWordBoundary(view, storage.view)
+    this.opentui.symbols.editorViewGetPrevWordBoundary(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetEOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetEOL(view, storage.view)
+    this.opentui.symbols.editorViewGetEOL(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetVisualSOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualSOL(view, storage.view)
+    this.opentui.symbols.editorViewGetVisualSOL(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
 
   public editorViewGetVisualEOL(view: Pointer): VisualCursor {
     const storage = this.ffiStructStorage.visualCursor
-    this.opentui.symbols.editorViewGetVisualEOL(view, storage.view)
+    this.opentui.symbols.editorViewGetVisualEOL(view, storage.ffiView)
     const cursor = VisualCursorStruct.unpackInto(storage.view, storage.result)
     return { ...cursor }
   }
@@ -6371,7 +6377,7 @@ class FFIRenderLib implements RenderLib {
 
   public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
     const storage = this.ffiStructStorage.audioStreamStats
-    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, storage.view)
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, storage.ffiView)
     if (status !== 0) return null
     const stats = AudioStreamStatsStruct.unpackInto(storage.view, storage.result) as NativeAudioStreamStats
     return { ...stats }
@@ -6383,7 +6389,7 @@ class FFIRenderLib implements RenderLib {
     reason: NativeAudioStreamCloseReason,
   ): { status: number; stats: NativeAudioStreamStats | null } {
     const storage = this.ffiStructStorage.audioStreamStats
-    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, storage.view)
+    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, storage.ffiView)
     if (status !== 0) return { status, stats: null }
     const stats = AudioStreamStatsStruct.unpackInto(storage.view, storage.result) as NativeAudioStreamStats
     return { status, stats: { ...stats } }

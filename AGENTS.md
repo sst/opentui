@@ -43,7 +43,9 @@ terminal or platform is unavailable locally.
 - Default to `buffer` for transient, non-null `TypedArray` parameters and pass the view directly. Do not call `ptr()`.
 - Use `ptr` only when a parameter can be null, accepts a numeric native address, is a callback, or receives a raw
   `ArrayBuffer`. Pass transient owner objects directly to `ptr` parameters; do not pre-resolve them.
-- A non-null `DataView` MUST use `buffer` and be passed directly.
+- Bun 1.3 does not accept `DataView` directly for `buffer` or `ptr` parameters. Pass an equivalent typed array such as
+  `new Uint8Array(view.buffer, view.byteOffset, view.byteLength)`.
+- On Bun 1.4+, a `DataView` passed directly to FFI MUST use `buffer`.
 - Use `ptr(view)` only when native code stores the address beyond the call. Before resolving it, access `view.buffer` to
   move any inline typed-array storage into a stable `ArrayBuffer`, then keep the view alive for the complete native
   lifetime. The order is required: `const owner = view.buffer; const address = ptr(view)`. Calling `ptr(view)` first and
