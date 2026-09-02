@@ -948,7 +948,8 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!void {
         const char_start = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return TextBufferError.InvalidIndex;
         const char_end = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return TextBufferError.InvalidIndex;
-        return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
+        // Rope offsets include line breaks; highlight offsets do not.
+        return self.addHighlightByCharRange(char_start - start_row, char_end - end_row, style_id, priority, hl_ref);
     }
 
     /// Add highlight by character range
@@ -1148,10 +1149,10 @@ pub const UnifiedTextBuffer = struct {
         self._rope = UnifiedRope.init(self.allocator) catch return TextBufferError.OutOfMemory;
 
         if (total_len > self.styled_capacity) {
+            const new_buf = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
             if (self.styled_buffer) |old_buf| {
                 self.global_allocator.free(old_buf);
             }
-            const new_buf = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
             self.styled_buffer = new_buf;
             self.styled_capacity = total_len;
         }
@@ -1183,13 +1184,15 @@ pub const UnifiedTextBuffer = struct {
             self.startHighlightsTransaction();
             defer self.endHighlightsTransaction();
 
-            var char_pos: u32 = 0;
+            var width_cursor = utf8.TextWidthCursor{ .text = full_text, .tab_width = self.tab_width, .width_method = self.width_method };
+            var byte_end: usize = 0;
             var line_hint: u32 = 0;
             for (chunks, 0..) |chunk, i| {
-                const chunk_text = chunk.text_ptr[0..chunk.text_len];
-                const chunk_len = self.measureText(chunk_text);
+                const char_pos = width_cursor.columns;
+                byte_end += chunk.text_len;
+                const char_end = width_cursor.advanceTo(byte_end);
 
-                if (chunk_len > 0) {
+                if (char_end > char_pos) {
                     const fg = if (chunk.fg_ptr) |fgPtr| utils.ptrToRGBA(fgPtr) else null;
                     const bg = if (chunk.bg_ptr) |bgPtr| utils.ptrToRGBA(bgPtr) else null;
 
@@ -1220,7 +1223,7 @@ pub const UnifiedTextBuffer = struct {
 
                     line_hint = self.addHighlightByCharRangeInternal(
                         char_pos,
-                        char_pos + chunk_len,
+                        char_end,
                         style_id,
                         1,
                         0,
@@ -1228,8 +1231,6 @@ pub const UnifiedTextBuffer = struct {
                         line_hint,
                     ) catch line_hint;
                 }
-
-                char_pos += chunk_len;
             }
         }
     }

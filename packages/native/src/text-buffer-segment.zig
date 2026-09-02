@@ -475,6 +475,12 @@ pub const Segment = union(enum) {
     pub fn rewriteBoundary(allocator: Allocator, left: ?*const Segment, right: ?*const Segment) !BoundaryAction {
         _ = allocator;
 
+        // Deleting the final line's contents can also remove its zero-weight marker.
+        if (right == null and left != null and left.?.isBreak()) {
+            const linestart_segment: Segment = .{ .linestart = {} };
+            return .{ .insert_between = &[_]Segment{linestart_segment} };
+        }
+
         if (left == null or right == null) return .{};
 
         const left_seg = left.?;

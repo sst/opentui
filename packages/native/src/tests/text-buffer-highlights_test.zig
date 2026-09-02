@@ -184,6 +184,26 @@ test "TextBuffer styled seek - arbitrary range order after replacing rope" {
     }
 }
 
+test "TextBuffer styled text - failed growth keeps storage safe to reuse" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const tb = try TextBuffer.init(failing.allocator(), pool, link_pool, .unicode);
+    defer tb.deinit();
+    const small = [_]text_buffer.StyledChunk{.{ .text_ptr = "a".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 }};
+    const large = [_]text_buffer.StyledChunk{.{ .text_ptr = "larger".ptr, .text_len = 6, .fg_ptr = null, .bg_ptr = null, .attributes = 0 }};
+    try tb.setStyledText(&small);
+
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, tb.setStyledText(&large));
+    failing.fail_index = std.math.maxInt(usize);
+    try tb.setStyledText(&small);
+    var output: [1]u8 = undefined;
+    try std.testing.expectEqualStrings("a", output[0..tb.getPlainTextIntoBuffer(&output)]);
+}
+
 test "TextBuffer coords - addHighlightByCoords" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -221,6 +241,26 @@ test "TextBuffer coords - addHighlightByCoords multi-line" {
 
     try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
     try std.testing.expectEqual(@as(usize, 1), line1_highlights.len);
+    try std.testing.expectEqual(@as(u32, 3), line0_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 5), line0_highlights[0].col_end);
+    try std.testing.expectEqual(@as(u32, 0), line1_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 3), line1_highlights[0].col_end);
+}
+
+test "TextBuffer coords - highlights after empty lines keep line-local columns" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("a\n\nword");
+    try tb.addHighlightByCoords(2, 1, 2, 3, 1, 1, 0);
+    const highlights = tb.getLineHighlights(2);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 3), highlights[0].col_end);
 }
 
 // ===== Highlight System Tests =====

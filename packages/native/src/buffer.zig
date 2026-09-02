@@ -1858,7 +1858,7 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
+                    while (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 

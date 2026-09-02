@@ -1347,6 +1347,57 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, wi
     }
 }
 
+/// Measure increasing byte boundaries in one pass over the complete text.
+/// A boundary inside a grapheme includes that whole grapheme, so later fragments
+/// cannot count it again or shift the styles that follow it. Newlines have width 0.
+pub const TextWidthCursor = struct {
+    text: []const u8,
+    tab_width: u8,
+    width_method: WidthMethod,
+    byte_offset: usize = 0,
+    columns: u32 = 0,
+    break_state: uucode.grapheme.BreakState = .default,
+
+    pub fn advanceTo(self: *TextWidthCursor, byte_end: usize) u32 {
+        const end = @min(byte_end, self.text.len);
+        if (end <= self.byte_offset) return self.columns;
+
+        // Ordinary syntax tokens stay on the existing printable-ASCII fast path.
+        if ((end == self.text.len or self.text[end] < 0x80) and isAsciiOnly(self.text[self.byte_offset..end])) {
+            self.columns += @intCast(end - self.byte_offset);
+            self.byte_offset = end;
+            self.break_state = .default;
+            return self.columns;
+        }
+
+        while (self.byte_offset < end) {
+            const b0 = self.text[self.byte_offset];
+            if (b0 < 0x80 and (self.byte_offset + 1 == self.text.len or self.text[self.byte_offset + 1] < 0x80)) {
+                self.columns += asciiCharWidth(b0, self.tab_width);
+                self.byte_offset += 1;
+                self.break_state = .default;
+                continue;
+            }
+
+            const first = decodeUtf8Unchecked(self.text, self.byte_offset);
+            var previous: u21 = if (self.byte_offset + first.len <= self.text.len) first.cp else 0xFFFD;
+            var state = GraphemeWidthState.init(previous, charWidth(b0, previous, self.tab_width), self.width_method);
+            self.byte_offset += @min(first.len, self.text.len - self.byte_offset);
+            while (self.byte_offset < self.text.len) {
+                const byte = self.text[self.byte_offset];
+                const decoded = decodeUtf8Unchecked(self.text, self.byte_offset);
+                const cp: u21 = if (self.byte_offset + decoded.len <= self.text.len) decoded.cp else 0xFFFD;
+                if (isGraphemeBreak(previous, cp, &self.break_state, self.width_method)) break;
+                state.addCodepoint(cp, charWidth(byte, cp, self.tab_width));
+                self.byte_offset += @min(decoded.len, self.text.len - self.byte_offset);
+                previous = cp;
+            }
+            self.columns += state.width;
+        }
+        return self.columns;
+    }
+};
+
 /// Calculate text width using Unicode grapheme cluster segmentation
 fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
     if (text.len == 0) return 0;
