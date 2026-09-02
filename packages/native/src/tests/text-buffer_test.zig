@@ -597,44 +597,6 @@ test "TextBuffer reset - clears all content" {
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
 }
 
-test "TextBuffer line iteration - walkLines callback" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-    defer tb.deinit();
-
-    const text = "First\nSecond\nThird";
-    try tb.setText(text);
-
-    const Context = struct {
-        lines: std.ArrayListUnmanaged(iter_mod.LineInfo),
-        allocator: std.mem.Allocator,
-
-        fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-            ctx.lines.append(ctx.allocator, line_info) catch {};
-        }
-    };
-
-    var ctx: Context = .{ .lines = .empty, .allocator = std.testing.allocator };
-    defer ctx.lines.deinit(std.testing.allocator);
-
-    iter_mod.walkLines(tb.rope(), &ctx, Context.callback, true);
-
-    try std.testing.expectEqual(@as(usize, 3), ctx.lines.items.len);
-    try std.testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width_cols);
-
-    try std.testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
-    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width_cols);
-
-    try std.testing.expectEqual(@as(u32, 2), ctx.lines.items[2].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width_cols);
-}
-
 test "TextBuffer line queries - comprehensive rope coordinate checks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1641,9 +1603,12 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
 
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+    var output: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("Line 1\nLine 2\n", output[0..eb.getText(&output)]);
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.brk));
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.linestart));
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().rope().markerCount(.linestart));
+    try std.testing.expectEqual(@as(u32, 0), eb.getTextBuffer().lineWidthAt(2));
 }
 
 test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduction)" {

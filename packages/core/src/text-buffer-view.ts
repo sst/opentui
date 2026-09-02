@@ -156,6 +156,11 @@ export class TextBufferView {
     return this.lib.textBufferViewGetLogicalLineInfo(this.viewPtr)
   }
 
+  public getLineSources(startLine: number, lineCount: number): number[] {
+    this.guard()
+    return this.lib.textBufferViewGetLineSources(this.viewPtr, startLine, lineCount)
+  }
+
   public getSelectedText(): string {
     this.guard()
     const byteSize = this.textBuffer.byteSize

@@ -2886,6 +2886,7 @@ export interface RenderLib extends AudioEngineLib {
   textBufferViewSetViewport: (view: TextBufferViewHandle, x: number, y: number, width: number, height: number) => void
   textBufferViewGetLineInfo: (view: TextBufferViewHandle) => LineInfo
   textBufferViewGetLogicalLineInfo: (view: TextBufferViewHandle) => LineInfo
+  textBufferViewGetLineSources: (view: TextBufferViewHandle, startLine: number, lineCount: number) => number[]
   textBufferViewGetSelectedTextBytes: (view: TextBufferViewHandle, maxLength: number) => Uint8Array | null
   textBufferViewGetPlainTextBytes: (view: TextBufferViewHandle, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: TextBufferViewHandle, indicator: number) => void
@@ -5297,6 +5298,25 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewGetVirtualLineCount(view: Pointer): number {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
+  }
+
+  public textBufferViewGetLineSources(view: Pointer, startLine: number, lineCount: number): number[] {
+    toSafeFFIU32Length(startLine, "visual row start")
+    toSafeFFIU32Length(lineCount, "visual row count")
+    if (lineCount === 0) return []
+
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.textBufferViewGetLogicalLineInfoDirect(view, outBuffer)
+    const data = new DataView(outBuffer)
+    const sources = LineInfoStruct.arrayFields.get("sources")!
+    const count = Math.max(0, Math.min(lineCount, data.getUint32(sources.lengthOffset, true) - startLine))
+    if (count === 0) return []
+
+    // The existing ABI returns borrowed native arrays. Copy the requested range synchronously,
+    // before any mutation can invalidate those pointers; never move the live text viewport.
+    return Array.from(
+      new Uint32Array(toArrayBuffer(toPointer(data.getBigUint64(sources.arrayOffset, true)), startLine * 4, count * 4)),
+    )
   }
 
   private textBufferViewGetLineInfoDirect(view: Pointer, outBuffer: ArrayBuffer): void {

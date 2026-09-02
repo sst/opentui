@@ -14,6 +14,7 @@ const treeSitterStyledTextDataPath = resolve(tmpdir(), "tree-sitter-styled-text-
 const treeSitterCacheTestDataPath = resolve(tmpdir(), "tree-sitter-cache-test")
 const treeSitterDefaultDataPath = resolve(tmpdir(), "tree-sitter-default-node-test")
 const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-markdown-renderable-test-data")
+const treeSitterLineNumberTestDataPath = resolve(tmpdir(), "tree-sitter-line-number-test-data")
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
@@ -31,6 +32,7 @@ const treeSitterTestDataPaths = [
   treeSitterCacheTestDataPath,
   treeSitterDefaultDataPath,
   treeSitterMarkdownRenderableTestDataPath,
+  treeSitterLineNumberTestDataPath,
   textBufferTestDataPath,
   runtimeAssetTestDataPath,
   audioRecorderTestDataPath,
@@ -87,6 +89,7 @@ const emittedAllowlist = [
   ".node-test/src/renderables/TabSelect.test.js",
   ".node-test/src/renderables/TimeToFirstDraw.test.js",
   ".node-test/src/renderables/__tests__/Code.test.js",
+  ".node-test/src/renderables/__tests__/LineNumberRenderable.paint-window.test.js",
   ".node-test/src/renderables/__tests__/LineNumberRenderable.scrollbox-simple.test.js",
   ".node-test/src/renderables/__tests__/LineNumberRenderable.scrollbox.test.js",
   ".node-test/src/renderables/__tests__/LineNumberRenderable.test.js",

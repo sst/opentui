@@ -190,6 +190,8 @@ export interface LineInfo {
 
 export interface LineInfoProvider {
   get lineInfo(): LineInfo
+  // Optional bounded read in visual-row coordinates, preserving lineInfo source remapping.
+  getLineSources?(startLine: number, lineCount: number): number[]
   get lineCount(): number
   get virtualLineCount(): number
   get scrollY(): number
