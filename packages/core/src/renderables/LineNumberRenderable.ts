@@ -49,6 +49,8 @@ class GutterRenderable extends Renderable {
   private _maxBeforeWidth: number = 0
   private _maxAfterWidth: number = 0
   private _lastKnownLineCount: number = 0
+  private _paintedSources?: number[]
+  private _paintedSourceOffset: number = 0
 
   constructor(
     ctx: RenderContext,
@@ -256,6 +258,7 @@ class GutterRenderable extends Renderable {
       })
     } else if (this.frameBuffer.width !== this.width || this.frameBuffer.height !== end - start) {
       this.frameBuffer.resize(this.width, end - start)
+      this._paintedSources = undefined
     }
 
     // Repaint only requested rows. Outer scrolling changes y without changing target.scrollY,
@@ -267,13 +270,23 @@ class GutterRenderable extends Renderable {
   }
 
   private refreshFrameBuffer(buffer: OptimizedBuffer, startLine: number): void {
-    buffer.clear(this._bg)
-
     // Get the logical line index of the line *before* the first visible line
     // This helps determine if the first visible line is a wrapped continuation
     const sourceStart = Math.max(0, startLine - 1)
     const sourceOffset = startLine - sourceStart
     const sources = getLineSources(this.target, sourceStart, buffer.height + sourceOffset)
+    const paintedSources = this._paintedSources
+    // Row IDs also catch remapping changes without relying on the target's paint order or dirty flag.
+    if (
+      !this.isDirty &&
+      sourceOffset === this._paintedSourceOffset &&
+      paintedSources &&
+      sources.length === paintedSources.length &&
+      sources.every((source, i) => source === paintedSources[i])
+    ) {
+      return
+    }
+    buffer.clear(this._bg)
     let lastSource = sourceOffset > 0 ? sources[0] : -1
 
     for (let i = 0; i < buffer.height; i++) {
@@ -333,6 +346,8 @@ class GutterRenderable extends Renderable {
 
       lastSource = logicalLine
     }
+    this._paintedSources = sources.slice()
+    this._paintedSourceOffset = sourceOffset
   }
 }
 

@@ -68,6 +68,38 @@ async function document(content: string, width = 32, height = 6) {
 }
 
 describe("LineNumber paint window", () => {
+  test("unrelated text updates reuse the gutter raster while gutter changes repaint it", async () => {
+    setup = await createTestRenderer({ width: 24, height: 5 })
+    const ticker = new TextRenderable(setup.renderer, { content: "tick-0", height: 1, flexShrink: 0 })
+    const text = new TextRenderable(setup.renderer, { content: "one\ntwo\nthree", flexGrow: 1 })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, flexShrink: 0 })
+    setup.renderer.root.add(ticker)
+    setup.renderer.root.add(numbers)
+    await setup.flush()
+
+    const raster = numbers["gutter"]!["frameBuffer"]!
+    const clear = raster.clear.bind(raster)
+    let paints = 0
+    raster.clear = (...args) => {
+      paints++
+      clear(...args)
+    }
+    ticker.content = "tick-1"
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("tick-1")
+    expect(setup.captureCharFrame()).toContain("3 three")
+    expect(paints).toBe(0)
+
+    numbers.setLineNumbers(new Map([[0, 9]]))
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("9 one")
+    expect(paints).toBe(1)
+    ticker.content = "tick-2"
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("9 one")
+    expect(paints).toBe(1)
+  })
+
   test("fractional target scrolling and ancestor translation match native cell coordinates", async () => {
     setup = await createTestRenderer({ width: 24, height: 3 })
     const card = new BoxRenderable(setup.renderer, { flexShrink: 0 })
@@ -130,6 +162,46 @@ describe("LineNumber paint window", () => {
         expect(Array.from(bg.slice(contentOffset, contentOffset + 4))).toEqual([64, 48, 32 + source * 10, 255])
       }
     }
+  })
+
+  test("cached gutter distinguishes the first row from a wrapped continuation at the same raster size", async () => {
+    setup = await createTestRenderer({ width: 14, height: 3 })
+    const text = new TextRenderable(setup.renderer, {
+      content: "abcdefghijklmno",
+      wrapMode: "char",
+      height: 1,
+      flexGrow: 1,
+    })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, minHeight: 3, flexShrink: 0 })
+    setup.renderer.root.add(numbers)
+    await setup.flush()
+    const raster = numbers["gutter"]!["frameBuffer"]!
+    expect(raster.height).toBe(3)
+    expect(text.getLineSources(0, 4)).toEqual([0, 0])
+    expect(setup.captureCharFrame().split("\n")[0]).toContain("1 abcdefghijk")
+    setup.resize(14, 2)
+    await setup.flush()
+    expect(numbers["gutter"]!["frameBuffer"]!.height).toBe(2)
+    expect(setup.captureCharFrame().split("\n")[0]).toContain("1 abcdefghijk")
+    setup.resize(14, 3)
+    await setup.flush()
+    text.scrollY = 1
+    await setup.renderOnce()
+    expect(numbers["gutter"]!["frameBuffer"]!.height).toBe(3)
+    expect(setup.captureCharFrame().split("\n")[0]).toBe("   o          ")
+  })
+
+  test("remapped sources refresh when the target paints before its gutter", async () => {
+    setup = await createTestRenderer({ width: 24, height: 3 })
+    const text = new CustomText(setup.renderer, { content: "one\ntwo\nthree", flexGrow: 1, zIndex: -1 })
+    const numbers = new LineNumberRenderable(setup.renderer, { target: text, minWidth: 4, flexShrink: 0 })
+    setup.renderer.root.add(numbers)
+    await setup.flush()
+    expect(setup.captureCharFrame()).toContain("11 one")
+    text.sourceOffset = 20
+    text.requestRender()
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("21 one")
   })
 
   test("legacy Text lineInfo overrides retain remapped numbers, signs and wrap continuations", async () => {
