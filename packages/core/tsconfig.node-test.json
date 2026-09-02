@@ -36,6 +36,7 @@
     "src/renderables/Box.test.ts",
     "src/renderables/Code.test.ts",
     "src/renderables/Diff.regression.test.ts",
+    "src/renderables/Diff.resize-wrap.test.ts",
     "src/renderables/Diff.test.ts",
     "src/renderables/EditBufferRenderable.test.ts",
     "src/renderables/EmbeddedTerminal.test.ts",
