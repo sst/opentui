@@ -117,6 +117,35 @@ test("DiffRenderable - long line tails survive split/unified/split resize", asyn
   expect(scroll.scrollHeight).toBe(395)
 })
 
+test("DiffRenderable - pane resize performs one alignment rebuild", async () => {
+  setup = await createTestRenderer({ width: 116, height: 24 })
+  style = SyntaxStyle.create()
+  const diff = new DiffRenderable(setup.renderer, {
+    diff: `--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-${"old ".repeat(500)}\n+${"new ".repeat(300)}\n`,
+    view: "split",
+    width: "100%",
+    wrapMode: "word",
+    syntaxStyle: style,
+  })
+  setup.renderer.root.add(diff)
+  await setup.flush()
+
+  const sides = diff.getChildren().filter((child) => child instanceof LineNumberRenderable)
+  const updates = [0, 0]
+  sides.forEach((side, index) => {
+    const setLineNumbers = side.setLineNumbers.bind(side)
+    side.setLineNumbers = (lineNumbers) => {
+      updates[index]++
+      setLineNumbers(lineNumbers)
+    }
+  })
+
+  setup.resize(80, 24)
+  await setup.flush()
+
+  expect(updates).toEqual([1, 1])
+})
+
 test.each(["char", "word"] as const)(
   "DiffRenderable - %s wrapping aligns asymmetric pairs at the final pane widths",
   async (wrapMode) => {

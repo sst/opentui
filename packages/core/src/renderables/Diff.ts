@@ -719,6 +719,7 @@ export class DiffRenderable extends Renderable {
 
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
+    this._lastCodeWidths = [this.leftCodeRenderable?.width ?? 0, this.rightCodeRenderable?.width ?? 0]
 
     const needsConsistentConcealing =
       (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
@@ -750,7 +751,6 @@ export class DiffRenderable extends Renderable {
     }
 
     const shouldDoAlignment = canDoWrapAlignment && !highlightingInProgress
-    this._lastCodeWidths = [leftCodeRenderable.width, rightCodeRenderable.width]
 
     if (shouldDoAlignment) {
       const leftLineInfo = leftCodeRenderable.lineInfo
