@@ -102,7 +102,10 @@ import { isBunfsPath } from "./lib/bunfs.js"
 import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 import { allocStruct } from "bun-ffi-structs"
 
-// Bun 1.3 does not marshal DataView buffer arguments. Retain one typed-array alias per reusable struct.
+// Struct outputs use `buffer` instead of `ptr`. A `buffer` call is about 3x cheaper on Bun 1.3 and 2.5x cheaper on
+// Bun 1.4. `buffer` rejects an argument that is not a view with a TypeError. `ptr` accepts a number as a raw address.
+// `buffer` also skips the Node pointer normalizer. Bun 1.3 rejects ArrayBuffer and DataView for `buffer`, so keep one
+// Uint8Array view per reusable struct.
 function allocFFIStruct(structDefinition: Parameters<typeof allocStruct>[0]) {
   const storage = allocStruct(structDefinition)
   return { ...storage, ffiView: new Uint8Array(storage.buffer) }
