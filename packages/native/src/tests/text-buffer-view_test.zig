@@ -1541,6 +1541,48 @@ test "TextBufferView word wrapping - CJK break spans chunk boundary" {
     try std.testing.expectEqualSlices(u32, &.{ 4, 4 }, view.getCachedLineInfo().line_width_cols);
 }
 
+test "TextBufferView word wrapping - split graphemes retain byte boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const cases = [_]struct { parts: []const []const u8, width: u32, widths: []const u32, wrapped_bytes: ?[]const u8 = null }{
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 2, 4, 4, 2 } },
+        .{ .parts = &.{ "\u{1f1e6}", "\u{0301}", "\u{1f1e7}" }, .width = 1, .widths = &.{ 1, 1 } },
+        .{ .parts = &.{ "\u{672c}\u{1f1e6}", "\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}" }, .width = 3, .widths = &.{ 2, 2, 2, 2 } },
+        .{ .parts = &.{ "\u{0301}", " " }, .width = 4, .widths = &.{1} },
+        .{ .parts = &.{"A \u{2060}"}, .width = 1, .widths = &.{ 1, 0 }, .wrapped_bytes = "A\u{2060}" },
+        .{ .parts = &.{ "\u{304b}", "\u{3099}\u{304f}" }, .width = 8, .widths = &.{4} },
+        .{ .parts = &.{"AB \u{30ab}\u{30fb}\u{30ca}"}, .width = 6, .widths = &.{ 3, 6 } },
+        .{ .parts = &.{ "AB \u{30ab}", "\u{30fb}\u{30ca}" }, .width = 6, .widths = &.{ 3, 6 } },
+    };
+    for ([_]@import("../utf8.zig").WidthMethod{ .unicode, .unicode_wide, .wcwidth, .no_zwj }) |method| {
+        for (cases) |case| {
+            var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+            defer tb.deinit();
+            var view = try TextBufferView.init(std.testing.allocator, tb);
+            defer view.deinit();
+            for (case.parts) |part| try tb.append(part);
+            view.setWrapMode(.word);
+            view.setWrapWidth(case.width);
+            const measured = try view.measureForDimensions(case.width, 8);
+            try std.testing.expectEqual(case.widths.len, measured.line_count);
+            try std.testing.expectEqualSlices(u32, case.widths, view.getCachedLineInfo().line_width_cols);
+            const expected = try std.mem.concat(std.testing.allocator, u8, case.parts);
+            defer std.testing.allocator.free(expected);
+            var actual: std.ArrayListUnmanaged(u8) = .empty;
+            defer actual.deinit(std.testing.allocator);
+            for (view.getVirtualLines()) |line| {
+                for (line.chunks.items) |chunk| {
+                    const bytes = chunk.chunk.getBytes(tb.memRegistry());
+                    try actual.appendSlice(std.testing.allocator, bytes[chunk.byte_start_in_chunk..][0..chunk.byte_len]);
+                }
+            }
+            try std.testing.expectEqualStrings(case.wrapped_bytes orelse expected, actual.items);
+        }
+    }
+}
+
 test "TextBufferView wrapping - very narrow width (1 char)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1717,9 +1759,9 @@ test "TextBufferView word wrapping - layout cache OOM falls back to complete str
     try std.testing.expectEqual(@as(u32, 26), measured.line_count);
 
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const internal_allocator = tb.allocator;
-    tb.allocator = failing.allocator();
-    defer tb.allocator = internal_allocator;
+    const layout_allocator = tb.layout_cache.allocator;
+    tb.layout_cache.allocator = failing.allocator();
+    defer tb.layout_cache.allocator = layout_allocator;
     const vlines = view.getVirtualLines();
 
     try std.testing.expect(failing.has_induced_failure);

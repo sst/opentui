@@ -63,6 +63,7 @@ pub const UnifiedTextBuffer = struct {
     allocator: Allocator,
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
+    layout_cache: seg_mod.ChunkLayoutCache,
 
     _rope: UnifiedRope,
     syntax_style: ?*const SyntaxStyle,
@@ -209,11 +210,11 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getLayoutInfoFor(self: *const Self, chunk: *const TextChunk) TextBufferError!seg_mod.ChunkLayoutInfo {
-        return chunk.getLayoutInfo(self.allocator, &self.mem_registry, self.tab_width, self.width_method);
+        return chunk.getLayoutInfo(self.allocator, @constCast(&self.layout_cache), &self.mem_registry, self.tab_width, self.width_method);
     }
 
     pub fn getWordLayoutInfoFor(self: *const Self, chunk: *const TextChunk) TextBufferError!seg_mod.WordLayoutInfo {
-        return chunk.getWordLayoutInfo(self.allocator, &self.mem_registry, self.tab_width, self.width_method);
+        return chunk.getWordLayoutInfo(self.allocator, @constCast(&self.layout_cache), &self.mem_registry, self.tab_width, self.width_method);
     }
 
     /// Accessor: walk all lines and segments via callbacks.
@@ -263,6 +264,7 @@ pub const UnifiedTextBuffer = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
+            .layout_cache = .{ .allocator = global_allocator },
             ._rope = init_rope,
             .syntax_style = null,
             .pool = pool,
@@ -323,6 +325,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         self.mem_registry.deinit();
+        self.layout_cache.clear();
         self.arena.deinit();
         global_allocator.destroy(self.arena);
         self.* = undefined;
@@ -412,12 +415,14 @@ pub const UnifiedTextBuffer = struct {
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
         self.clearLinkRefs();
+        self.layout_cache.clear();
         self._rope.clear();
         self.markAllViewsDirty();
     }
 
     pub fn reset(self: *Self) void {
         self.clearLinkRefs();
+        self.layout_cache.clear();
 
         // Free highlight/span arrays (they use global_allocator, not arena)
         for (self.line_highlights.items) |*hl_list| {

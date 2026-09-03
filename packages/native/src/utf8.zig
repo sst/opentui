@@ -273,8 +273,9 @@ pub inline fn isWordCodepoint(cp: u21) bool {
 /// CJK text has no spaces between words, so any two adjacent CJK characters
 /// form a line-break opportunity. The run still moves as one word; see
 /// LayoutWrapBreakKind.isWordBoundary.
-pub inline fn isCjkIntercharacterBreak(prev_class: WordClass, curr_class: WordClass) bool {
-    return prev_class == .cjk_word and curr_class == .cjk_word;
+pub inline fn isCjkIntercharacterBreak(prev_class: WordClass, curr_class: WordClass, curr_cp: u21) bool {
+    // These Katakana punctuation marks belong to editor words, but cannot start a line.
+    return prev_class == .cjk_word and curr_class == .cjk_word and curr_cp != 0x30A0 and curr_cp != 0x30FB;
 }
 
 pub inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
@@ -1568,13 +1569,14 @@ inline fn commitLayoutCluster(
     cluster_break_kind: LayoutWrapBreakKind,
     cluster_class: WordClass,
     next_class: ?WordClass,
+    next_cp: u21,
     has_cjk_breaks: *bool,
 ) !bool {
     const kind: LayoutWrapBreakKind = blk: {
         if (cluster_break_kind != .none) break :blk cluster_break_kind;
         const next = next_class orelse break :blk .none;
         if (isCjkAsciiTransition(cluster_class, next)) break :blk .script_transition;
-        if (isCjkIntercharacterBreak(cluster_class, next)) {
+        if (cluster_width > 0 and isCjkIntercharacterBreak(cluster_class, next, next_cp)) {
             has_cjk_breaks.* = true;
             if (!@TypeOf(visitor).word_only) break :blk .cjk_intercharacter;
         }
@@ -1789,6 +1791,7 @@ fn walkChunkLayoutInfoGeneric(
                             cluster_break_kind,
                             cluster_class,
                             first_class,
+                            text[pos],
                             &has_cjk_breaks,
                         )) return chunkWordClassEdges(text);
                         col += cluster_width_state.width;
@@ -1845,6 +1848,7 @@ fn walkChunkLayoutInfoGeneric(
                     cluster_break_kind,
                     cluster_class,
                     curr_class,
+                    decoded.cp,
                     &has_cjk_breaks,
                 )) return chunkWordClassEdges(text);
                 col += cluster_width_state.width;
@@ -1882,6 +1886,7 @@ fn walkChunkLayoutInfoGeneric(
             cluster_break_kind,
             cluster_class,
             null,
+            0,
             &has_cjk_breaks,
         );
     }

@@ -52,8 +52,50 @@ pub const TextChunkColdState = struct {
     wrap_breaks_width_method: ?utf8.WidthMethod = null,
     word_classes: utf8.WordClassEdges = .{ .first = .other, .last = .other },
     cjk_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty,
+    next_layout_cache: ?*TextChunkColdState = null,
+    layout_used: bool = false,
     line_breaks_ready: bool = false,
     measure_word: ?CachedMeasure = null,
+};
+
+/// Layout arrays are disposable; the cold states and rope history remain arena-owned.
+/// Each chunk uses one cache, which must be cleared before its arena is reset.
+pub const ChunkLayoutCache = struct {
+    allocator: Allocator,
+    first: ?*TextChunkColdState = null,
+
+    pub fn clear(self: *ChunkLayoutCache) void {
+        self.release(false);
+    }
+
+    pub fn beginLayout(self: *ChunkLayoutCache) void {
+        var entry = self.first;
+        while (entry) |cold| : (entry = cold.next_layout_cache) cold.layout_used = false;
+    }
+
+    pub fn endLayout(self: *ChunkLayoutCache) void {
+        self.release(true);
+    }
+
+    fn release(self: *ChunkLayoutCache, comptime only_unused: bool) void {
+        var entry = &self.first;
+        while (entry.*) |cold| {
+            if (only_unused and cold.layout_used) {
+                entry = &cold.next_layout_cache;
+                continue;
+            }
+            entry.* = cold.next_layout_cache;
+            self.allocator.free(cold.wrap_breaks.?.ptr[0..cold.wrap_breaks_capacity]);
+            cold.cjk_breaks.deinit(self.allocator);
+            cold.wrap_breaks = null;
+            cold.wrap_breaks_capacity = 0;
+            cold.wrap_breaks_tab_width = null;
+            cold.wrap_breaks_width_method = null;
+            cold.cjk_breaks = .empty;
+            cold.next_layout_cache = null;
+            cold.line_breaks_ready = false;
+        }
+    }
 };
 
 pub const WordMeasureSummary = struct {
@@ -117,6 +159,7 @@ pub const TextChunk = struct {
         width_method: utf8.WidthMethod,
     ) ?ChunkLayoutInfo {
         const cold = self.cold orelse return null;
+        cold.layout_used = true;
         if (!cold.line_breaks_ready) return null;
         const cached = cold.wrap_breaks orelse return null;
         if (cold.wrap_breaks_tab_width != tabwidth or cold.wrap_breaks_width_method != width_method) return null;
@@ -209,60 +252,69 @@ pub const TextChunk = struct {
         return render_cluster_list.items;
     }
 
-    /// Lazily compute and cache direct byte/column wrap metadata for this chunk.
+    /// Borrowed layout slices remain valid until cache reclamation or a settings change.
     pub fn getLayoutInfo(
         self: *const TextChunk,
         allocator: Allocator,
+        cache: *ChunkLayoutCache,
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError!ChunkLayoutInfo {
-        return self.getLayoutInfoForMode(false, allocator, mem_registry, tabwidth, width_method);
+        return self.getLayoutInfoForMode(false, allocator, cache, mem_registry, tabwidth, width_method);
     }
 
     pub fn getWordLayoutInfo(
         self: *const TextChunk,
         allocator: Allocator,
+        cache: *ChunkLayoutCache,
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError!WordLayoutInfo {
-        return self.getLayoutInfoForMode(true, allocator, mem_registry, tabwidth, width_method);
+        return self.getLayoutInfoForMode(true, allocator, cache, mem_registry, tabwidth, width_method);
     }
 
     fn getLayoutInfoForMode(
         self: *const TextChunk,
         comptime word_only: bool,
         allocator: Allocator,
+        cache: *ChunkLayoutCache,
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError!(if (word_only) WordLayoutInfo else ChunkLayoutInfo) {
         const cold = try self.getOrCreateCold(allocator);
-        if (cold.wrap_breaks) |cached| {
-            if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method and
-                (word_only or cold.line_breaks_ready))
-            {
-                return if (word_only) .{
-                    .wrap_breaks = cached,
-                    .first_class = cold.word_classes.first,
-                    .last_class = cold.word_classes.last,
-                } else .{
-                    .wrap_breaks = cached,
-                    .cjk_breaks = cold.cjk_breaks.items,
-                    .word_classes = cold.word_classes,
-                };
-            }
+        if (cold.wrap_breaks == null) {
+            cold.next_layout_cache = cache.first;
+            cache.first = cold;
+            // A non-null slice also marks membership, including after a failed scan.
+            cold.wrap_breaks = &.{};
+        }
+        cold.layout_used = true;
+        const cached = cold.wrap_breaks.?;
+        if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method and
+            (word_only or cold.line_breaks_ready))
+        {
+            return if (word_only) .{
+                .wrap_breaks = cached,
+                .first_class = cold.word_classes.first,
+                .last_class = cold.word_classes.last,
+            } else .{
+                .wrap_breaks = cached,
+                .cjk_breaks = cold.cjk_breaks.items,
+                .word_classes = cold.word_classes,
+            };
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
-        var wrap_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = if (cold.wrap_breaks_width_method == width_method)
-            .{ .items = cold.wrap_breaks orelse &.{}, .capacity = cold.wrap_breaks_capacity }
-        else
-            .empty;
-        var cjk_breaks = if (cold.wrap_breaks_width_method == width_method) cold.cjk_breaks else std.ArrayListUnmanaged(utf8.LayoutWrapBreak).empty;
+        var wrap_breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .{
+            .items = cached,
+            .capacity = cold.wrap_breaks_capacity,
+        };
+        var cjk_breaks = cold.cjk_breaks;
         cjk_breaks.clearRetainingCapacity();
-        // Keep arena-owned storage retryable, but never cache a partial scan on OOM.
+        // Publish owned storage even on OOM so it can be retried or reclaimed.
         cold.wrap_breaks_tab_width = null;
         cold.wrap_breaks_width_method = width_method;
         cold.line_breaks_ready = false;
@@ -273,9 +325,9 @@ pub const TextChunk = struct {
         }
         // ASCII has no line-only opportunities; both consumers share its scan.
         const word_classes = if (word_only or self.isAsciiOnly())
-            try utf8.findWordChunkLayoutInfo(allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &wrap_breaks)
+            try utf8.findWordChunkLayoutInfo(cache.allocator, chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &wrap_breaks)
         else
-            try utf8.findLineAndWordChunkLayoutInfo(allocator, chunk_bytes, tabwidth, false, width_method, &cjk_breaks, &wrap_breaks);
+            try utf8.findLineAndWordChunkLayoutInfo(cache.allocator, chunk_bytes, tabwidth, false, width_method, &cjk_breaks, &wrap_breaks);
         cold.wrap_breaks_tab_width = tabwidth;
         cold.line_breaks_ready = !word_only or !word_classes.has_cjk_breaks;
         cold.word_classes = word_classes;

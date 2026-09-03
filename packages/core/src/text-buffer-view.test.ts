@@ -80,6 +80,85 @@ it("cached word and CJK breaks retain streaming source order", () => {
   expect(layouts.slice(0, 3)).toEqual(layouts.slice(3))
 })
 
+for (const method of ["unicode", "unicode-wide", "wcwidth"] as const) {
+  for (const [name, parts, width, expectedRows] of [
+    [
+      "split flags",
+      ["\u65e5\u672c\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u8a9e\u6587"],
+      4,
+      ["\u65e5", "\u672c\u{1f1fa}\u{1f1f8}", "\u{1f1fa}\u{1f1f8}\u8a9e", "\u6587"],
+    ],
+    ["zero-width chunk between indicators", ["\u{1f1e6}", "\u0301", "\u{1f1e7}"], 1, ["\u{1f1e6}", "\u{1f1e7}"]],
+    [
+      "RI state across three chunks",
+      ["\u672c\u{1f1e6}", "\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}"],
+      3,
+      ["\u672c", "\u{1f1e6}\u{1f1e7}", "\u{1f1e8}\u{1f1e9}", "\u{1f1ea}\u{1f1eb}"],
+    ],
+    ["leading whitespace after a zero-width chunk", ["\u0301", " x"], 4, [" x"]],
+    ["kana punctuation", ["AB \u30ab", "\u30fb\u30ca"], 6, ["AB", "\u30ab\u30fb\u30ca"]],
+  ] as const) {
+    it(`word wrapping preserves ${name} across appends (${method})`, () => {
+      const buffer = TextBuffer.create(method)
+      const view = TextBufferView.create(buffer)
+      const screen = OptimizedBuffer.create(width + 1, 8, method)
+      try {
+        for (const part of parts) buffer.append(part)
+        view.setWrapMode("word")
+        for (const wrapWidth of [width, width + 1, width]) {
+          view.setWrapWidth(wrapWidth)
+          const measure = view.measureForDimensions(wrapWidth, 8)
+          const lines = view.lineInfo
+          expect(Math.max(...lines.lineWidthCols)).toBeLessThanOrEqual(wrapWidth)
+          expect(measure).toEqual({
+            lineCount: lines.lineWidthCols.length,
+            widthColsMax: Math.max(...lines.lineWidthCols),
+          })
+        }
+        screen.clear()
+        screen.drawTextBuffer(view, 0, 0)
+        const rows = new TextDecoder()
+          .decode(screen.getRealCharBytes(true))
+          .split("\n")
+          .map((row) => row.trimEnd())
+          .filter(Boolean)
+        expect(rows).toEqual([...expectedRows])
+        expect(buffer.getPlainText()).toBe(parts.join(""))
+      } finally {
+        screen.destroy()
+        view.destroy()
+        buffer.destroy()
+      }
+    })
+  }
+}
+
+for (const method of ["unicode", "unicode-wide"] as const) {
+  for (const [base, mark, suffix] of [
+    ["\u304b", "\u3099", "\u304f"],
+    ["\u306f", "\u309a", "\u3072"],
+  ]) {
+    it(`word wrapping retains an appended kana mark (${method}, ${mark.codePointAt(0)})`, () => {
+      const buffer = TextBuffer.create(method)
+      const view = TextBufferView.create(buffer)
+      const screen = OptimizedBuffer.create(8, 2, method)
+      try {
+        buffer.setText(base)
+        buffer.append(mark + suffix)
+        view.setWrapMode("word")
+        view.setWrapWidth(8)
+        screen.clear()
+        screen.drawTextBuffer(view, 0, 0)
+        expect(new TextDecoder().decode(screen.getRealCharBytes(true)).trim()).toBe(base + mark + suffix)
+      } finally {
+        screen.destroy()
+        view.destroy()
+        buffer.destroy()
+      }
+    })
+  }
+}
+
 describe("TextBufferView", () => {
   let buffer: TextBuffer
   let view: TextBufferView

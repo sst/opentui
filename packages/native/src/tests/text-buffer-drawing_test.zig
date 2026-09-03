@@ -96,6 +96,35 @@ test "drawTextBuffer - exact CJK and issue 609 wrapped rows" {
     }
 }
 
+test "drawTextBuffer - global RI boundaries preserve cached suffix clusters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+    var screen = try OptimizedBuffer.init(std.testing.allocator, 4, 3, .{ .pool = pool, .width_method = .unicode });
+    defer screen.deinit();
+    for ([_]struct { suffix: []const u8, row: []const u8, x: u32, y: u32 }{
+        .{ .suffix = "\u{1f1e7}\u{1f1e8}\u{1f1e9}\u{1f469}\u{200d}\u{1f4bb}x", .row = "\u{1f1e8}\u{1f1e9}\u{1f469}\u{200d}\u{1f4bb}", .x = 0, .y = 2 },
+        .{ .suffix = "\u{1f1e7}\u{1f1e8}\u{0301}x", .row = "\u{1f1e8}\u{0301}x", .x = 1, .y = 1 },
+    }) |case| {
+        try tb.setText("\u{672c}\u{1f1e6}");
+        try tb.append(case.suffix);
+        screen.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+        screen.drawTextBuffer(view, 0, 0);
+        const row = try resolvedRow(std.testing.allocator, screen, pool, 1);
+        defer std.testing.allocator.free(row);
+        try std.testing.expectEqualStrings(case.row, std.mem.trimEnd(u8, row, " "));
+        if (case.y == 2) try std.testing.expect(gp.isContinuationChar(screen.get(3, 1).?.char));
+        try std.testing.expectEqual(@as(u32, 'x'), screen.get(case.x, case.y).?.char);
+    }
+}
+
 test "drawTextBuffer - streaming Prepend before ASCII vector is preserved" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
