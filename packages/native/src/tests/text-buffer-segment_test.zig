@@ -101,6 +101,9 @@ test "TextChunk keeps CJK line opportunities out of the word cache" {
     const text = "\u{65e5}\u{672c}\t\u{8a9e}\u{6587}";
     const mem_id = try registry.register(text, false);
     var chunk: TextChunk = .{ .mem_id = mem_id, .byte_start = 0, .byte_end = text.len, .width_cols = 10 };
+    const initial_words = try chunk.getWordLayoutInfo(arena.allocator(), &cache, &registry, 2, .unicode);
+    try testing.expectEqual(@as(usize, 1), initial_words.wrap_breaks.len);
+    try testing.expectEqual(@as(usize, 0), chunk.cold.?.cjk_breaks.capacity);
     _ = try chunk.getLayoutInfo(arena.allocator(), &cache, &registry, 2, .unicode);
     try testing.expect(chunk.cold.?.wrap_breaks != null);
     for ([_]utf8.WidthMethod{ .unicode, .wcwidth }) |method| {
@@ -149,6 +152,10 @@ test "findChunkLayoutInfo classifies direct byte and column break metadata" {
         } },
         // Break after ideographic punctuation only; 。 must never start a line.
         .{ .text = "字。", .expected = &.{.{ .byte_start = 3, .col_start = 2, .byte_len = 3, .width_cols = 2, .kind = .punctuation }} },
+        .{ .text = "\u{30ab}\u{30fb}\u{30ca}", .expected = &.{.{ .byte_start = 3, .col_start = 2, .byte_len = 3, .width_cols = 2, .kind = .cjk_intercharacter }} },
+        .{ .text = "\u{30ab}\u{30a0}\u{30ca}", .expected = &.{.{ .byte_start = 3, .col_start = 2, .byte_len = 3, .width_cols = 2, .kind = .cjk_intercharacter }} },
+        .{ .text = "\u{304b}\u{3099}\u{304f}", .expected = &.{.{ .byte_start = 0, .col_start = 0, .byte_len = 6, .width_cols = 2, .kind = .cjk_intercharacter }} },
+        .{ .text = "\u{3099}\u{304f}", .expected = &.{} },
     };
 
     var breaks: std.ArrayListUnmanaged(utf8.LayoutWrapBreak) = .empty;

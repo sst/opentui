@@ -274,8 +274,9 @@ pub inline fn isWordCodepoint(cp: u21) bool {
 /// form a line-break opportunity. The run still moves as one word; see
 /// LayoutWrapBreakKind.isWordBoundary.
 pub inline fn isCjkIntercharacterBreak(prev_class: WordClass, curr_class: WordClass, curr_cp: u21) bool {
-    // These Katakana punctuation marks belong to editor words, but cannot start a line.
-    return prev_class == .cjk_word and curr_class == .cjk_word and curr_cp != 0x30A0 and curr_cp != 0x30FB;
+    // Kana punctuation and combining marks belong to editor words, not new line starts.
+    return prev_class == .cjk_word and curr_class == .cjk_word and
+        curr_cp != 0x3099 and curr_cp != 0x309A and curr_cp != 0x30A0 and curr_cp != 0x30FB;
 }
 
 pub inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
@@ -529,7 +530,7 @@ inline fn asciiCharWidth(byte: u8, tab_width: u8) u32 {
 }
 
 /// Calculate the display width of a character (byte or codepoint) in columns
-pub inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
+inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     if (byte == '\t') {
         return tab_width;
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
@@ -593,7 +594,7 @@ pub inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.
 }
 
 /// State for accumulating grapheme cluster width
-pub const GraphemeWidthState = struct {
+const GraphemeWidthState = struct {
     width: u32 = 0,
     has_width: bool = false,
     is_regional_indicator_pair: bool = false,
@@ -602,7 +603,7 @@ pub const GraphemeWidthState = struct {
     width_method: WidthMethod,
 
     /// Initialize state with the first codepoint of a grapheme cluster
-    pub inline fn init(first_cp: u21, first_width: u32, width_method: WidthMethod) GraphemeWidthState {
+    inline fn init(first_cp: u21, first_width: u32, width_method: WidthMethod) GraphemeWidthState {
         return .{
             .width = first_width,
             .has_width = (first_width > 0),
@@ -614,7 +615,7 @@ pub const GraphemeWidthState = struct {
     }
 
     /// Add a codepoint to the current grapheme cluster
-    pub inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
+    inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
         // wcwidth mode: sum all codepoint widths (tmux-style)
         if (self.width_method == .wcwidth) {
             const eaw = uucode.get(.east_asian_width, cp);
@@ -1517,18 +1518,15 @@ pub const ChunkLayoutInfo = struct {
     word_classes: WordClassEdges,
 };
 
-// Preserve script and grapheme boundaries across rope chunks. A chunk edge
-// inside a grapheme is not a wrapping opportunity, regardless of its script.
+// Endpoint classes and codepoints support script transitions and chunk-edge checks.
 pub const WordClassEdges = struct {
     first: WordClass,
     last: WordClass,
     last_cp: ?u21 = null,
-    break_state: uucode.grapheme.BreakState = .default,
     has_cjk_breaks: bool = false,
 };
 
-// Cheap endpoint classes; trailing grapheme state and interior opportunities
-// are supplied by the full layout scan.
+// Cheap endpoint metadata without scanning the chunk contents.
 pub fn chunkWordClassEdges(text: []const u8) WordClassEdges {
     if (text.len == 0) return .{ .first = .other, .last = .other };
 
@@ -1891,7 +1889,7 @@ fn walkChunkLayoutInfoGeneric(
         );
     }
 
-    return .{ .first = first_word_class, .last = if (cluster_started) cluster_class else .other, .last_cp = prev_cp, .break_state = break_state, .has_cjk_breaks = has_cjk_breaks };
+    return .{ .first = first_word_class, .last = if (cluster_started) cluster_class else .other, .last_cp = prev_cp, .has_cjk_breaks = has_cjk_breaks };
 }
 
 /// Find sparse render-cluster metadata for multibyte clusters and tabs.

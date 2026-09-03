@@ -1751,21 +1751,17 @@ pub const OptimizedBuffer = struct {
                 }
 
                 text_buffer_loop: while (byte_offset < byte_end and col < col_end) {
-                    const at_special = special_idx < render_clusters.len and render_clusters[special_idx].byte_start <= byte_offset;
+                    const at_special = special_idx < render_clusters.len and render_clusters[special_idx].byte_start == byte_offset;
 
                     var grapheme_bytes: []const u8 = undefined;
                     var cluster_width_cols: u32 = undefined;
 
                     if (at_special) {
                         const g = render_clusters[special_idx];
-                        const end = @min(g.byte_start + g.byte_len, byte_end);
-                        grapheme_bytes = chunk_bytes[byte_offset..end];
-                        // Cross-chunk RI parity can place a global boundary inside a cached pair.
-                        cluster_width_cols = if (byte_offset == g.byte_start and end == g.byte_start + g.byte_len)
-                            g.width_cols
-                        else
-                            utf8.calculateTextWidth(grapheme_bytes, text_buffer.tabWidth(), false, text_buffer.widthMethod());
-                        byte_offset = end;
+                        if (g.byte_start + g.byte_len > byte_end) break;
+                        grapheme_bytes = chunk_bytes[g.byte_start .. g.byte_start + g.byte_len];
+                        cluster_width_cols = g.width_cols;
+                        byte_offset = g.byte_start + g.byte_len;
                         special_idx += 1;
                     } else {
                         if (byte_offset >= byte_end or byte_offset >= chunk_bytes.len) break;

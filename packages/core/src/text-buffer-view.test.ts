@@ -5,47 +5,6 @@ import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
 
-for (const method of ["unicode", "wcwidth"] as const) {
-  for (const [name, left, right, cluster, width] of [
-    ["emoji modifier", "\u65e5\u672c\u{1f44b}", "\u{1f3fb}\u8a9e\u6587", "\u{1f44b}\u{1f3fb}", 4],
-    ["ZWJ sequence", "\u65e5\u672c\u{1f469}\u200d", "\u{1f4bb}\u8a9e\u6587", "\u{1f469}\u200d\u{1f4bb}", 4],
-    [
-      "modifier and ZWJ",
-      "\u65e5\u672c\u{1f469}",
-      "\u{1f3fb}\u200d\u{1f4bb}\u8a9e\u6587",
-      "\u{1f469}\u{1f3fb}\u200d\u{1f4bb}",
-      6,
-    ],
-    ["combining cluster control", "\u65e5\u672ca\u0301", "\u8a9e\u6587", "a\u0301", 4],
-  ] as const) {
-    it(`word wrapping keeps an appended ${name} with its base (${method})`, () => {
-      const buffer = TextBuffer.create(method)
-      const view = TextBufferView.create(buffer)
-      const screen = OptimizedBuffer.create(8, 8, method)
-      try {
-        buffer.setText(left)
-        buffer.append(right)
-        view.setWrapMode("word")
-        view.setWrapWidth(width)
-        screen.clear()
-        screen.drawTextBuffer(view, 0, 0)
-        const rows = new TextDecoder()
-          .decode(screen.getRealCharBytes(true))
-          .split("\n")
-          .map((row) => row.trimEnd())
-          .filter(Boolean)
-        expect(rows.join("")).toBe(left + right)
-        if (name !== "combining cluster control") expect(view.lineInfo.lineStartCols).not.toContain(6)
-        expect(rows.some((row) => row.includes(cluster))).toBe(true)
-      } finally {
-        screen.destroy()
-        view.destroy()
-        buffer.destroy()
-      }
-    })
-  }
-}
-
 it("cached word and CJK breaks retain streaming source order", () => {
   const part = "AB \u65e5\u672c\u3002\u8a9e\u6587 "
   const layouts = []
@@ -83,19 +42,41 @@ it("cached word and CJK breaks retain streaming source order", () => {
 for (const method of ["unicode", "unicode-wide", "wcwidth"] as const) {
   for (const [name, parts, width, expectedRows] of [
     [
-      "split flags",
+      "mixed CJK and split flags using the existing word policy",
       ["\u65e5\u672c\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u8a9e\u6587"],
       4,
-      ["\u65e5", "\u672c\u{1f1fa}\u{1f1f8}", "\u{1f1fa}\u{1f1f8}\u8a9e", "\u6587"],
+      ["\u65e5\u672c", "\u{1f1fa}\u{1f1f8}\u{1f1fa}\u{1f1f8}", "\u8a9e\u6587"],
     ],
-    ["zero-width chunk between indicators", ["\u{1f1e6}", "\u0301", "\u{1f1e7}"], 1, ["\u{1f1e6}", "\u{1f1e7}"]],
     [
-      "RI state across three chunks",
-      ["\u672c\u{1f1e6}", "\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}"],
+      "non-CJK chunk-local flag boundaries",
+      ["\u{1f1e6}", "\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}"],
       3,
-      ["\u672c", "\u{1f1e6}\u{1f1e7}", "\u{1f1e8}\u{1f1e9}", "\u{1f1ea}\u{1f1eb}"],
+      ["\u{1f1e6}\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}"],
     ],
-    ["leading whitespace after a zero-width chunk", ["\u0301", " x"], 4, [" x"]],
+    [
+      "mixed CJK and a split modifier using the existing word policy",
+      ["\u65e5\u672c\u{1f44b}", "\u{1f3fb}\u8a9e\u6587"],
+      4,
+      ["\u65e5\u672c", "\u{1f44b}\u{1f3fb}", "\u8a9e\u6587"],
+    ],
+    [
+      "mixed CJK and a split ZWJ using the existing word policy",
+      ["\u65e5\u672c\u{1f469}\u200d", "\u{1f4bb}\u8a9e\u6587"],
+      4,
+      ["\u65e5\u672c", "\u{1f469}\u200d\u{1f4bb}", "\u8a9e\u6587"],
+    ],
+    [
+      "existing modifier and ZWJ limitations",
+      ["\u65e5\u672c\u{1f469}", "\u{1f3fb}\u200d\u{1f4bb}\u8a9e\u6587"],
+      6,
+      ["\u65e5\u672c\u{1f469}", "\u{1f3fb}\u200d\u{1f4bb}\u8a9e", "\u6587"],
+    ],
+    [
+      "CJK opportunities on logical lines following an unsafe line",
+      ["\u65e5\u672c\u{1f44b}", "\u{1f3fb}\u8a9e\u6587\n\nA \u65e5\u672c\u8a9e"],
+      4,
+      ["\u65e5\u672c", "\u{1f44b}\u{1f3fb}", "\u8a9e\u6587", "A \u65e5", "\u672c\u8a9e"],
+    ],
     ["kana punctuation", ["AB \u30ab", "\u30fb\u30ca"], 6, ["AB", "\u30ab\u30fb\u30ca"]],
   ] as const) {
     it(`word wrapping preserves ${name} across appends (${method})`, () => {

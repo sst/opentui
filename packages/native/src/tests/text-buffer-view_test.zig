@@ -33,6 +33,46 @@ test "TextBufferView first layout retains reusable word metadata" {
     try std.testing.expectEqual(capacity, view.word_layout.arena.queryCapacity());
 }
 
+test "TextBufferView CJK cache survives a failed sibling layout" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    try tb.setText("x\n" ++ ("\u{65e5}" ** 512));
+    const healthy = try TextBufferView.init(std.testing.allocator, tb);
+    defer healthy.deinit();
+    healthy.setWrapMode(.word);
+    healthy.setWrapWidth(80);
+    try std.testing.expectEqual(@as(u32, 14), healthy.getVirtualLineCount());
+    const chunk = tb.rope().get(4).?.asText().?;
+    const cached = chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?;
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, healthy.word_layout.layouts.items[1].cjk_breaks.ptr);
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const sibling = try TextBufferView.init(failing.allocator(), tb);
+    defer sibling.deinit();
+    sibling.setWrapMode(.word);
+    sibling.setWrapWidth(80);
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectEqual(@as(u32, 0), sibling.getVirtualLineCount());
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expect(!tb.isViewDirty(healthy.view_id));
+    try std.testing.expect(chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()) != null);
+
+    healthy.setWrapWidth(40);
+    try std.testing.expectEqual(@as(u32, 27), healthy.getVirtualLineCount());
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?.cjk_breaks.ptr);
+
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(@as(u32, 14), sibling.getVirtualLineCount());
+    try std.testing.expect(!sibling.virtual_lines_dirty);
+    healthy.setWrapWidth(80);
+    try std.testing.expectEqual(@as(u32, 14), healthy.getVirtualLineCount());
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?.cjk_breaks.ptr);
+}
+
 test "TextBufferView optional metadata failure preserves every streamed piece" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1541,18 +1581,39 @@ test "TextBufferView word wrapping - CJK break spans chunk boundary" {
     try std.testing.expectEqualSlices(u32, &.{ 4, 4 }, view.getCachedLineInfo().line_width_cols);
 }
 
-test "TextBufferView word wrapping - split graphemes retain byte boundaries" {
+test "TextBufferView word wrapping - non-CJK appends keep chunk-local boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
-    const cases = [_]struct { parts: []const []const u8, width: u32, widths: []const u32, wrapped_bytes: ?[]const u8 = null }{
-        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 2, 4, 4, 2 } },
-        .{ .parts = &.{ "\u{1f1e6}", "\u{0301}", "\u{1f1e7}" }, .width = 1, .widths = &.{ 1, 1 } },
-        .{ .parts = &.{ "\u{672c}\u{1f1e6}", "\u{1f1e7}\u{1f1e8}", "\u{1f1e9}\u{1f1ea}\u{1f1eb}" }, .width = 3, .widths = &.{ 2, 2, 2, 2 } },
-        .{ .parts = &.{ "\u{0301}", " " }, .width = 4, .widths = &.{1} },
-        .{ .parts = &.{"A \u{2060}"}, .width = 1, .widths = &.{ 1, 0 }, .wrapped_bytes = "A\u{2060}" },
+    for ([_]@import("../utf8.zig").WidthMethod{ .unicode, .unicode_wide, .wcwidth, .no_zwj }) |method| {
+        var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+        defer tb.deinit();
+        var view = try TextBufferView.init(std.testing.allocator, tb);
+        defer view.deinit();
+        try tb.append("\u{1f1e6}");
+        try tb.append("\u{1f1e7}\u{1f1e8}");
+        try tb.append("\u{1f1e9}\u{1f1ea}\u{1f1eb}");
+        view.setWrapMode(.word);
+        view.setWrapWidth(3);
+        const measured = try view.measureForDimensions(3, 8);
+        try std.testing.expectEqual(@as(u32, 2), measured.line_count);
+        try std.testing.expectEqualSlices(u32, &.{ 3, 3 }, view.getCachedLineInfo().line_width_cols);
+    }
+}
+
+test "TextBufferView word wrapping - CJK policy retains bytes and uses legacy fitting for split chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const cases = [_]struct { parts: []const []const u8, width: u32, widths: []const u32 }{
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f44b}", "\u{1f3fb}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
         .{ .parts = &.{ "\u{304b}", "\u{3099}\u{304f}" }, .width = 8, .widths = &.{4} },
+        .{ .parts = &.{ "\u{306f}", "\u{309a}\u{3072}" }, .width = 8, .widths = &.{4} },
+        .{ .parts = &.{"\u{304b}\u{200d}\u{3099}"}, .width = 8, .widths = &.{2} },
+        .{ .parts = &.{"\u{306f}\u{200d}\u{309a}"}, .width = 8, .widths = &.{2} },
         .{ .parts = &.{"AB \u{30ab}\u{30fb}\u{30ca}"}, .width = 6, .widths = &.{ 3, 6 } },
         .{ .parts = &.{ "AB \u{30ab}", "\u{30fb}\u{30ca}" }, .width = 6, .widths = &.{ 3, 6 } },
     };
@@ -1578,7 +1639,7 @@ test "TextBufferView word wrapping - split graphemes retain byte boundaries" {
                     try actual.appendSlice(std.testing.allocator, bytes[chunk.byte_start_in_chunk..][0..chunk.byte_len]);
                 }
             }
-            try std.testing.expectEqualStrings(case.wrapped_bytes orelse expected, actual.items);
+            try std.testing.expectEqualStrings(expected, actual.items);
         }
     }
 }

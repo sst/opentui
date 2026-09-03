@@ -828,7 +828,7 @@ pub const EditBuffer = struct {
                     continue;
                 };
 
-                if (utf8.isCjkAsciiTransition(previous_word_class, layout.first_class) and
+                if (utf8.isCjkAsciiTransition(previous_word_class, layout.word_classes.first) and
                     cols_before > cursor.col and cols_before <= line_width)
                 {
                     const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, cols_before) orelse cursor.offset;
@@ -876,7 +876,7 @@ pub const EditBuffer = struct {
                     // Mark that we've processed/passed the cursor position
                     passed_cursor = true;
                 }
-                previous_word_class = layout.last_class;
+                previous_word_class = layout.word_classes.last;
                 cols_before = next_cols;
             }
         }
@@ -914,7 +914,7 @@ pub const EditBuffer = struct {
                     continue;
                 };
 
-                if (utf8.isCjkAsciiTransition(previous_word_class, layout.first_class) and cols_before < cursor.col) {
+                if (utf8.isCjkAsciiTransition(previous_word_class, layout.word_classes.first) and cols_before < cursor.col) {
                     last_boundary = cols_before;
                 }
 
@@ -925,7 +925,7 @@ pub const EditBuffer = struct {
                     }
                 }
 
-                previous_word_class = layout.last_class;
+                previous_word_class = layout.word_classes.last;
                 cols_before = next_cols;
                 if (cursor.col <= cols_before) break;
             }
