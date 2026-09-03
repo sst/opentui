@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
+import { parseKeypress } from "../lib/parse.keypress.js"
 import { RGBA } from "../lib/RGBA.js"
 import { resolveRenderLib } from "../zig.js"
 import { EmbeddedTerminalRenderable } from "./EmbeddedTerminal.js"
@@ -274,6 +275,62 @@ describe("EmbeddedTerminalRenderable", () => {
         ),
       ),
     ).toBe("\x1b[27u")
+  })
+
+  test.each([
+    ["Dvorak Ctrl+U", "\x1b[117::102;5u", "\x1b[117;5u"],
+    ["Dvorak Ctrl+D", "\x1b[100::104;5u", "\x1b[100;5u"],
+    ["Dvorak Ctrl+Shift+U", "\x1b[117:85:102;6u", "\x1b[117;6u"],
+    ["Cyrillic Ctrl+ф", "\x1b[1092::97;5u", "\x1b[1092;5u"],
+    ["QWERTY Ctrl+U", "\x1b[117;5u", "\x1b[117;5u"],
+  ])("preserves the active layout for nested Kitty %s", (_label, raw, expected) => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>1u")
+
+    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
+    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(expected)
+  })
+
+  test.each([
+    ["Ctrl+U", "\x1b[117::102;5u", "\x15"],
+    ["Ctrl+D", "\x1b[100::104;5u", "\x04"],
+  ])("preserves Dvorak %s when the child uses legacy input", (_label, raw, expected) => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+
+    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
+    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(expected)
+  })
+
+  test.each([
+    ["Ctrl+U", "\x1b[117::102;5u"],
+    ["Ctrl+D", "\x1b[100::104;5u"],
+  ])("keeps the base-layout alternative separate for Dvorak %s", (_label, raw) => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>5u")
+
+    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
+    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(raw)
+  })
+
+  test("forwards Dvorak press, repeat, and release with the same active-layout key", () => {
+    const output: string[] = []
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onData: (data) => output.push(new TextDecoder().decode(data)),
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>3u")
+    terminal.focus()
+
+    for (const raw of ["\x1b[117::102;5u", "\x1b[117::102;5:2u", "\x1b[117::102;5:3u"]) {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(raw, { useKittyKeyboard: true })!)
+    }
+
+    expect(output).toEqual(["\x1b[117;5u", "\x1b[117;5:2u", "\x1b[117;5:3u"])
   })
 
   test("drains the preserved response prefix after overflow", () => {
