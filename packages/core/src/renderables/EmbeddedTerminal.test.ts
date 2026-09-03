@@ -278,41 +278,24 @@ describe("EmbeddedTerminalRenderable", () => {
   })
 
   test.each([
-    ["Dvorak Ctrl+U", "\x1b[117::102;5u", "\x1b[117;5u"],
-    ["Dvorak Ctrl+D", "\x1b[100::104;5u", "\x1b[100;5u"],
-    ["Dvorak Ctrl+Shift+U", "\x1b[117:85:102;6u", "\x1b[117;6u"],
-    ["Cyrillic Ctrl+ф", "\x1b[1092::97;5u", "\x1b[1092;5u"],
-    ["QWERTY Ctrl+U", "\x1b[117;5u", "\x1b[117;5u"],
-  ])("preserves the active layout for nested Kitty %s", (_label, raw, expected) => {
+    ["plain Dvorak u", 1, "\x1b[117::102;1u", "u"],
+    ["plain Dvorak d", 1, "\x1b[100::104;1u", "d"],
+    ["Dvorak Ctrl+U", 1, "\x1b[117::102;5u", "\x1b[117;5u"],
+    ["Dvorak Ctrl+D", 1, "\x1b[100::104;5u", "\x1b[100;5u"],
+    ["Dvorak Ctrl+Shift+U", 1, "\x1b[117:85:102;6u", "\x1b[117;6u"],
+    ["Cyrillic Ctrl+ф", 1, "\x1b[1092::97;5u", "\x1b[1092;5u"],
+    ["QWERTY Ctrl+U", 1, "\x1b[117;5u", "\x1b[117;5u"],
+    ["Dvorak Ctrl+U in legacy mode", 0, "\x1b[117::102;5u", "\x15"],
+    ["Dvorak Ctrl+D in legacy mode", 0, "\x1b[100::104;5u", "\x04"],
+    ["Dvorak Ctrl+U with its base-layout alternative", 5, "\x1b[117::102;5u", "\x1b[117::102;5u"],
+    ["Dvorak Ctrl+D with its base-layout alternative", 5, "\x1b[100::104;5u", "\x1b[100::104;5u"],
+  ])("preserves %s", (_label, flags, raw, expected) => {
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
     setup.renderer.root.add(terminal)
-    terminal.write("\x1b[>1u")
+    terminal.write(`\x1b[>${flags}u`)
 
     const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
     expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(expected)
-  })
-
-  test.each([
-    ["Ctrl+U", "\x1b[117::102;5u", "\x15"],
-    ["Ctrl+D", "\x1b[100::104;5u", "\x04"],
-  ])("preserves Dvorak %s when the child uses legacy input", (_label, raw, expected) => {
-    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
-    setup.renderer.root.add(terminal)
-
-    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
-    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(expected)
-  })
-
-  test.each([
-    ["Ctrl+U", "\x1b[117::102;5u"],
-    ["Ctrl+D", "\x1b[100::104;5u"],
-  ])("keeps the base-layout alternative separate for Dvorak %s", (_label, raw) => {
-    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
-    setup.renderer.root.add(terminal)
-    terminal.write("\x1b[>5u")
-
-    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
-    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(raw)
   })
 
   test("forwards Dvorak press, repeat, and release with the same active-layout key", () => {
