@@ -77,6 +77,20 @@ test("SIGWINCH reads dimensions from a TTY stdin when stdout is piped", () => {
   expect(renderer.height).toBe(44)
 })
 
+test("SIGWINCH ignores invalid dimensions after refreshing", () => {
+  const stdout = (renderer as unknown as { stdout: { columns: number; rows: number; _refreshSize?: () => void } })
+    .stdout
+  const before = [renderer.width, renderer.height]
+  stdout._refreshSize = () => {
+    stdout.columns = 0
+    stdout.rows = 0
+  }
+  // @ts-expect-error - invoke the private signal handler in a regression test
+  renderer.sigwinchHandler()
+  clock.advance(100)
+  expect([renderer.width, renderer.height]).toEqual(before)
+})
+
 test("requestRender() does not stall after a backward clock jump", async () => {
   clock.setTime(10_000)
   // @ts-expect-error - inspect private renderer timing state in regression test
