@@ -166,7 +166,8 @@ inline fn asciiLayoutWrapBreakKind(b: u8) LayoutWrapBreakKind {
 
 // Decode a UTF-8 codepoint starting at pos. Assumes valid UTF-8 input.
 // Returns (codepoint, length). If the remaining bytes are insufficient, returns length 1.
-pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21, len: u3 } {
+// A full-word result avoids partial-width stores when materialized in hot loops.
+pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) packed struct(u32) { cp: u21, len: u3, _padding: u8 = 0 } {
     const b0 = text[pos];
     if (b0 < 0x80) return .{ .cp = @intCast(b0), .len = 1 };
 
@@ -1823,14 +1824,8 @@ fn walkChunkLayoutInfoGeneric(
         }
 
         const b0 = text[pos];
-        const Decoded = struct { cp: u21, len: usize };
-        const decoded: Decoded = if (b0 < 0x80)
-            .{ .cp = @as(u21, b0), .len = @as(usize, 1) }
-        else blk: {
-            const value = decodeUtf8Unchecked(text, pos);
-            const len: usize = value.len;
-            break :blk .{ .cp = value.cp, .len = if (pos + len <= text.len) len else 1 };
-        };
+        const decoded = decodeUtf8Unchecked(text, pos);
+        std.debug.assert(decoded.len > 0 and decoded.len <= text.len - pos);
         const curr_class = classifyWordClass(decoded.cp);
         const is_break = isGraphemeBreak(prev_cp, decoded.cp, &break_state, width_method);
         const cp_width = charWidth(b0, decoded.cp, tab_width);

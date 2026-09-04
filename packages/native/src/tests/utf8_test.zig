@@ -2,6 +2,42 @@ const std = @import("std");
 const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
+test "decodeUtf8Unchecked keeps its result in one word" {
+    const decoded = utf8.decodeUtf8Unchecked("\u{65e5}", 0);
+    try testing.expectEqual(@sizeOf(u32), @sizeOf(@TypeOf(decoded)));
+    try testing.expectEqual(@bitSizeOf(u32), @bitSizeOf(@TypeOf(decoded)));
+    try testing.expectEqual(@as(u21, 0x65e5), decoded.cp);
+    try testing.expectEqual(@as(u3, 3), decoded.len);
+    try testing.expectEqual(@as(u8, 0), decoded._padding);
+}
+
+test "decodeUtf8Unchecked preserves scalar values and bounded progress" {
+    var bytes: [5]u8 = undefined;
+    bytes[0] = 'x';
+    for (0..0x110000) |value| {
+        if (value >= 0xD800 and value <= 0xDFFF) continue;
+        const cp: u21 = @intCast(value);
+        const len = try std.unicode.utf8Encode(cp, bytes[1..]);
+        const decoded = utf8.decodeUtf8Unchecked(bytes[0 .. 1 + @as(usize, len)], 1);
+        try testing.expectEqual(cp, decoded.cp);
+        try testing.expectEqual(len, decoded.len);
+    }
+    for ([_][]const u8{ "\u{A2}", "\u{65e5}", "\u{20000}", "\u{10FFFF}" }) |text| {
+        for (1..text.len) |end| {
+            const decoded = utf8.decodeUtf8Unchecked(text[0..end], 0);
+            try testing.expectEqual(@as(u21, 0xFFFD), decoded.cp);
+            try testing.expectEqual(@as(u3, 1), decoded.len);
+        }
+    }
+    for (0..256) |first| {
+        var malformed: [4]u8 = .{ @intCast(first), 0xBF, 0xBF, 0xBF };
+        for (1..5) |len| {
+            const decoded = utf8.decodeUtf8Unchecked(malformed[0..len], 0);
+            try testing.expect(decoded.len > 0 and decoded.len <= len);
+        }
+    }
+}
+
 // ============================================================================
 // ASCII-ONLY DETECTION TESTS
 // ============================================================================
