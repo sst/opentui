@@ -271,6 +271,11 @@
   color: var(--shiki-blue) !important;
 }
 
+:root[data-theme="cobalt"] .prose .astro-code,
+:root[data-theme="cobalt"] .prose .astro-code span {
+  color: var(--shiki-cobalt) !important;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .prose .astro-code,
   :root:not([data-theme]) .prose .astro-code span {
