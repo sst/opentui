@@ -56,7 +56,7 @@
   "devDependencies": {
     "@opentui/keymap": "workspace:*",
     "@types/babel__core": "7.20.5",
-    "@types/bun": "1.4.0",
+    "@types/bun": "1.4.1",
     "@types/node": "^24.0.0",
     "solid-js": "1.9.12",
     "typescript": "^5"

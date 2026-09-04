@@ -58,7 +58,7 @@
   "license": "MIT",
   "devDependencies": {
     "@opentui/keymap": "workspace:*",
-    "@types/bun": "1.4.0",
+    "@types/bun": "1.4.1",
     "@types/node": "^24.0.0",
     "commander": "^13.1.0",
     "typescript": "^5",

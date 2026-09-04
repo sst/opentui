@@ -90,7 +90,7 @@
   "devDependencies": {
     "@opentui/react": "workspace:*",
     "@opentui/solid": "workspace:*",
-    "@types/bun": "1.4.0",
+    "@types/bun": "1.4.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "react": ">=19.2.0",
