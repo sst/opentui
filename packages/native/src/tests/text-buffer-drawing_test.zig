@@ -364,7 +364,7 @@ test "drawTextBuffer - issue 799 CJK word wrap has no duplicated glyphs" {
         "在aber (“但”)引入的转折从句前表示让步：虽然，的确",
         .word,
         15,
-        &.{ "在aber (“但”)", "引入的转折从句", "前表示让步：", "虽然，的确" },
+        &.{ "在aber (“但”)引", "入的转折从句前", "表示让步：虽", "然，的确" },
         null,
     );
 }

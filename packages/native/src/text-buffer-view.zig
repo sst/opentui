@@ -57,8 +57,9 @@ pub const SelectionRange = struct {
 
 /// Ghostty-style boundaries for double-click selection. NUL is omitted because
 /// OpenTUI text buffers do not use it for unwritten terminal cells.
-/// Keep this policy separate from `utf8.findWrapBreaks`: wrap and editor motion
-/// split on `/`, `-`, and CJK/ASCII transitions, but selection does not.
+/// Keep this policy separate from `utf8.findChunkLayoutInfo`: wrap and editor
+/// motion split on `/`, `-`, and CJK/ASCII transitions, but selection does not.
+/// Wrapping also permits breaks between adjacent CJK characters.
 /// Selection groups consecutive graphemes by this class, so space and tab runs
 /// are selectable instead of mapping to an adjacent word.
 const default_word_boundaries = [_]u21{
@@ -1581,11 +1582,15 @@ pub const UnifiedTextBufferView = struct {
             pending_word_pieces: if (wrap_mode == .word) std.ArrayListUnmanaged(PendingWordPiece) else void = if (wrap_mode == .word) .empty else {},
             pending_word_width_cols: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
+            word_line_preflight: if (wrap_mode == .word) bool else void,
+            word_line_chunks: if (wrap_mode == .word) std.ArrayListUnmanaged(*const TextChunk) else void = if (wrap_mode == .word) .empty else {},
+            word_line_first_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
+            word_line_last_cp: if (wrap_mode == .word) ?u21 else void = if (wrap_mode == .word) null else {},
+            source_line_cjk_breaks: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) true else {},
             source_line_has_non_whitespace: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
             word_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
             word_chunk_col_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             word_chunk_byte_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
-            deferred_measure_chunk: if (wrap_mode == .word and calculation == .measure) ?*const TextChunk else void = if (wrap_mode == .word and calculation == .measure) null else {},
             logical_measure_line_count: if (wrap_mode == .word and calculation == .measure) u32 else void = if (wrap_mode == .word and calculation == .measure) 0 else {},
             logical_measure_width_max: if (wrap_mode == .word and calculation == .measure) u32 else void = if (wrap_mode == .word and calculation == .measure) 0 else {},
             failed: bool = false,
@@ -1926,6 +1931,7 @@ pub const UnifiedTextBufferView = struct {
             }
 
             inline fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
+                if (wrap_break.kind == .cjk_intercharacter and !wctx.source_line_cjk_breaks) return;
                 const chunk = wctx.word_chunk orelse return;
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
                 const col_end = @min(wrap_break.colEnd(), chunk.width_cols);
@@ -1972,7 +1978,13 @@ pub const UnifiedTextBufferView = struct {
                 else blk: {
                     if (comptime calculation == .render) {
                         if (!chunk.isAsciiOnly() and chunk_bytes.len >= 1024 and chunk_bytes.len <= 64 * 1024) {
-                            break :blk wctx.text_buffer.getLayoutInfoFor(chunk) catch |err| switch (err) {
+                            const info: seg_mod.TextBufferError!utf8.ChunkLayoutInfo = if (wctx.source_line_cjk_breaks)
+                                wctx.text_buffer.getLayoutInfoFor(chunk)
+                            else if (wctx.text_buffer.getWordLayoutInfoFor(chunk)) |word_info| .{
+                                .wrap_breaks = word_info.wrap_breaks,
+                                .word_classes = .{ .first = word_info.word_classes.first, .last = word_info.word_classes.last },
+                            } else |err| err;
+                            break :blk info catch |err| switch (err) {
                                 error.OutOfMemory => null,
                                 else => {
                                     wctx.failed = true;
@@ -2012,7 +2024,9 @@ pub const UnifiedTextBufferView = struct {
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
                 if (wctx.pending_word_width_cols > 0 and
-                    utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first))
+                    (utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first) or
+                        (wctx.source_line_cjk_breaks and chunk_bytes.len > 0 and
+                            utf8.isCjkIntercharacterBreak(wctx.pending_word_last_class, word_classes.first, utf8.decodeUtf8Unchecked(chunk_bytes, 0).cp))))
                 {
                     finalizePendingWord(wctx);
                     if (wctx.failed) return;
@@ -2021,9 +2035,22 @@ pub const UnifiedTextBufferView = struct {
                 wctx.word_chunk_col_start = 0;
                 wctx.word_chunk_byte_start = 0;
                 const last_word_class = if (layout) |info| blk: {
+                    var cjk_idx: usize = 0;
                     for (info.wrap_breaks) |wrap_break| {
+                        if (wctx.source_line_cjk_breaks) {
+                            while (cjk_idx < info.cjk_breaks.len and info.cjk_breaks[cjk_idx].byte_start < wrap_break.byte_start) : (cjk_idx += 1) {
+                                processWordWrapBreakValue(wctx, info.cjk_breaks[cjk_idx]);
+                                if (wctx.failed) return;
+                            }
+                        }
                         processWordWrapBreakValue(wctx, wrap_break);
                         if (wctx.failed) return;
+                    }
+                    if (wctx.source_line_cjk_breaks) {
+                        for (info.cjk_breaks[cjk_idx..]) |wrap_break| {
+                            processWordWrapBreakValue(wctx, wrap_break);
+                            if (wctx.failed) return;
+                        }
                     }
                     break :blk info.word_classes.last;
                 } else blk: {
@@ -2128,19 +2155,51 @@ pub const UnifiedTextBufferView = struct {
                 if (wctx.failed) return;
 
                 if (comptime wrap_mode == .word) {
-                    if (comptime calculation == .measure) {
-                        // Only an unfragmented logical line can reuse one chunk's
-                        // summary; boundaries between chunks may join words.
-                        if (wctx.deferred_measure_chunk) |deferred| {
-                            processWordChunk(wctx, deferred);
-                            wctx.deferred_measure_chunk = null;
-                            if (wctx.failed) return;
-                        } else if (chunk_idx_in_line == 0) {
-                            wctx.deferred_measure_chunk = chunk;
-                            return;
+                    // Printable ASCII cannot join graphemes across chunks. Stream it,
+                    // retaining the single-chunk measurement-summary shortcut.
+                    if (!wctx.word_line_preflight) {
+                        if (comptime calculation == .measure) {
+                            if (wctx.word_line_first_chunk) |first| {
+                                processWordChunk(wctx, first);
+                                wctx.word_line_first_chunk = null;
+                                if (wctx.failed) return;
+                            } else if (chunk_idx_in_line == 0) {
+                                wctx.word_line_first_chunk = chunk;
+                                return;
+                            }
                         }
+                        processWordChunk(wctx, chunk);
+                        return;
                     }
-                    processWordChunk(wctx, chunk);
+                    // Decide the policy before emitting any CJK opportunities. Retain
+                    // only this line's chunk pointers, without rescanning its bytes.
+                    if (wctx.word_line_first_chunk == null) {
+                        wctx.word_line_first_chunk = chunk;
+                        return;
+                    }
+                    wctx.word_line_chunks.append(wctx.allocator, chunk) catch {
+                        wctx.failed = true;
+                        return;
+                    };
+                    const bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
+                    if (wctx.source_line_cjk_breaks and bytes.len > 0) {
+                        if (wctx.word_line_last_cp == null) {
+                            const first_bytes = wctx.word_line_first_chunk.?.getBytes(wctx.text_buffer.memRegistry());
+                            wctx.word_line_last_cp = utf8.chunkWordClassEdges(first_bytes).last_cp;
+                        }
+                        const first_cp = utf8.decodeUtf8Unchecked(bytes, 0).cp;
+                        if (wctx.word_line_last_cp) |last_cp| {
+                            // Uncertain incoming state keeps the existing word policy.
+                            inline for (std.meta.tags(@import("uucode").grapheme.BreakState)) |initial_state| {
+                                var state = initial_state;
+                                if (!utf8.isGraphemeBreak(last_cp, first_cp, &state, wctx.text_buffer.widthMethod())) {
+                                    wctx.source_line_cjk_breaks = false;
+                                    break;
+                                }
+                            }
+                        }
+                        wctx.word_line_last_cp = utf8.chunkWordClassEdges(bytes).last_cp;
+                    }
                 } else {
                     const process_result = switch (wctx.text_buffer.widthMethod()) {
                         inline else => |width_method| processCharChunk(width_method, wctx, chunk),
@@ -2159,8 +2218,8 @@ pub const UnifiedTextBufferView = struct {
                 var measure_cache_chunk: ?*const TextChunk = null;
                 var measure_cache_first_width: u32 = 0;
                 if (comptime wrap_mode == .word and calculation == .measure) {
-                    if (wctx.deferred_measure_chunk) |chunk| {
-                        wctx.deferred_measure_chunk = null;
+                    if (wctx.word_line_first_chunk != null and wctx.word_line_chunks.items.len == 0) {
+                        const chunk = wctx.word_line_first_chunk.?;
                         measure_cache_chunk = chunk;
                         const first_width = wctx.lineWrapWidth();
                         measure_cache_first_width = first_width;
@@ -2174,16 +2233,25 @@ pub const UnifiedTextBufferView = struct {
                             wctx.result.width_cols_max = @max(wctx.result.width_cols_max, summary.width_max);
                             wctx.document_cell_offset += chunk.width_cols;
                             used_measure_cache = true;
-                        } else {
-                            processWordChunk(wctx, chunk);
-                            if (wctx.failed) return;
                         }
                     }
                 }
 
                 if (comptime wrap_mode == .word) {
-                    if (!used_measure_cache) finalizePendingWord(wctx);
+                    if (!used_measure_cache) {
+                        if (wctx.word_line_first_chunk) |chunk| {
+                            processWordChunk(wctx, chunk);
+                            if (wctx.failed) return;
+                        }
+                        for (wctx.word_line_chunks.items) |chunk| {
+                            processWordChunk(wctx, chunk);
+                            if (wctx.failed) return;
+                        }
+                        finalizePendingWord(wctx);
+                    }
                     clearPendingWord(wctx);
+                    wctx.word_line_first_chunk = null;
+                    wctx.word_line_chunks.clearRetainingCapacity();
                 }
 
                 const has_content = if (comptime calculation == .render)
@@ -2252,7 +2320,11 @@ pub const UnifiedTextBufferView = struct {
                     wctx.current_line_first_vline_idx = @intCast(wctx.result.virtual_lines.items.len);
                     wctx.current_line_vline_count = 0;
                 }
-                if (comptime wrap_mode == .word) wctx.source_line_has_non_whitespace = false;
+                if (comptime wrap_mode == .word) {
+                    wctx.source_line_has_non_whitespace = false;
+                    wctx.source_line_cjk_breaks = true;
+                    wctx.word_line_last_cp = null;
+                }
                 if (comptime wrap_mode == .word and calculation == .measure) {
                     wctx.logical_measure_line_count = 0;
                     wctx.logical_measure_width_max = 0;
@@ -2267,6 +2339,7 @@ pub const UnifiedTextBufferView = struct {
             .allocator = allocator,
             .result = result,
             .word_layout = word_layout,
+            .word_line_preflight = if (comptime wrap_mode == .word) !text_buffer.rope().root.metrics().custom.ascii_only else {},
             .wrap_w = wrap_w,
             .current_wrap_width = if (first_line_offset > 0 and first_line_offset < wrap_w)
                 wrap_w - first_line_offset
@@ -2274,7 +2347,13 @@ pub const UnifiedTextBufferView = struct {
                 wrap_w,
         };
 
+        defer if (comptime wrap_mode == .word) wrap_ctx.word_line_chunks.deinit(allocator);
+        // Retain unchanged chunks and reclaim layouts detached by incremental edits.
+        if (comptime calculation == .render and wrap_mode == .word) text_buffer.layout_cache.beginLayout();
         text_buffer.walkLinesAndSegments(&wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
-        return !wrap_ctx.failed;
+        // Failed traversal leaves live chunks unmarked; sibling views may still borrow them.
+        if (wrap_ctx.failed) return false;
+        if (comptime calculation == .render and wrap_mode == .word) text_buffer.layout_cache.endLayout();
+        return true;
     }
 };
