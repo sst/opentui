@@ -675,7 +675,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     if (self.caps.rgb) {
         self.caps.ansi256 = true;
-        self.caps.hyperlinks = true;
     }
 
     if (self.opts.remote_mode == .remote) {
@@ -831,6 +830,9 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("WT_SESSION") != null) {
         self.caps.rgb = true;
         self.caps.ansi256 = true;
+        if (builtin.os.tag == .windows and !self.term_info.from_xtversion and self.multiplexer == .none) {
+            self.caps.hyperlinks = true;
+        }
         self.setNotificationProtocol(.osc777, .heuristic);
     }
 
@@ -878,6 +880,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (self.is_foot and self.multiplexer != .none) {
+        self.caps.hyperlinks = false;
+    }
+
     if (!self.caps.hyperlinks and self.term_info.from_xtversion) {
         if (isHyperlinkTerm(self.getTerminalName())) {
             self.caps.hyperlinks = true;
@@ -886,7 +892,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
         if (env_map.get("TERM")) |term| {
-            if (isHyperlinkTerm(term)) {
+            if (isHyperlinkTerm(term) and (!self.is_foot or self.multiplexer == .none)) {
                 self.caps.hyperlinks = true;
             }
         }
@@ -1420,6 +1426,7 @@ fn isHyperlinkTerm(value: []const u8) bool {
         std.ascii.findIgnoreCase(value, "kitty") != null or
         std.ascii.findIgnoreCase(value, "wezterm") != null or
         std.ascii.findIgnoreCase(value, "alacritty") != null or
+        std.ascii.findIgnoreCase(value, "foot") != null or
         std.ascii.findIgnoreCase(value, "iterm") != null;
 }
 
