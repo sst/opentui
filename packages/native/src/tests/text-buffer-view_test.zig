@@ -33,6 +33,35 @@ test "TextBufferView first layout retains reusable word metadata" {
     try std.testing.expectEqual(capacity, view.word_layout.arena.queryCapacity());
 }
 
+test "TextBufferView fragmented ASCII measurement streams complete words without scratch allocation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.word);
+    try tb.append("word ");
+    const single = try view.measureForDimensions(10, 24);
+    try std.testing.expectEqual(@as(u32, 1), single.line_count);
+    try std.testing.expectEqual(@as(u32, 5), single.width_cols_max);
+    for (0..63) |_| try tb.append("word ");
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    view.measure_arena.child_allocator = failing.allocator();
+    for ([_]u32{ 10, 15, 10 }, [_]u32{ 32, 22, 32 }) |width, line_count| {
+        const measured = try view.measureForDimensions(width, 24);
+        try std.testing.expectEqual(line_count, measured.line_count);
+        try std.testing.expectEqual(width, measured.width_cols_max);
+        view.setWrapWidth(width);
+        try std.testing.expectEqual(line_count, view.getVirtualLineCount());
+    }
+    try std.testing.expect(!failing.has_induced_failure);
+    try std.testing.expectEqual(@as(usize, 0), view.measure_arena.queryCapacity());
+}
+
 test "TextBufferView CJK cache survives a failed sibling layout" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1610,6 +1639,7 @@ test "TextBufferView word wrapping - CJK policy retains bytes and uses legacy fi
     const cases = [_]struct { parts: []const []const u8, width: u32, widths: []const u32 }{
         .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
         .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f44b}", "\u{1f3fb}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f44b}", "\u{1f3fb}" ++ ("\u{8a9e}\u{6587}" ** 256) ++ "\u{65e5}", "abc" }, .width = 4, .widths = &(([_]u32{4} ** 258) ++ [_]u32{ 2, 3 }) },
         .{ .parts = &.{ "\u{304b}", "\u{3099}\u{304f}" }, .width = 8, .widths = &.{4} },
         .{ .parts = &.{ "\u{306f}", "\u{309a}\u{3072}" }, .width = 8, .widths = &.{4} },
         .{ .parts = &.{"\u{304b}\u{200d}\u{3099}"}, .width = 8, .widths = &.{2} },
@@ -1625,21 +1655,25 @@ test "TextBufferView word wrapping - CJK policy retains bytes and uses legacy fi
             defer view.deinit();
             for (case.parts) |part| try tb.append(part);
             view.setWrapMode(.word);
-            view.setWrapWidth(case.width);
-            const measured = try view.measureForDimensions(case.width, 8);
-            try std.testing.expectEqual(case.widths.len, measured.line_count);
-            try std.testing.expectEqualSlices(u32, case.widths, view.getCachedLineInfo().line_width_cols);
             const expected = try std.mem.concat(std.testing.allocator, u8, case.parts);
             defer std.testing.allocator.free(expected);
             var actual: std.ArrayListUnmanaged(u8) = .empty;
             defer actual.deinit(std.testing.allocator);
-            for (view.getVirtualLines()) |line| {
-                for (line.chunks.items) |chunk| {
-                    const bytes = chunk.chunk.getBytes(tb.memRegistry());
-                    try actual.appendSlice(std.testing.allocator, bytes[chunk.byte_start_in_chunk..][0..chunk.byte_len]);
+            for ([_]u32{ case.width, case.width + 2, case.width }) |width| {
+                view.setWrapWidth(width);
+                const measured = try view.measureForDimensions(width, 8);
+                const lines = view.getCachedLineInfo();
+                try std.testing.expectEqual(lines.line_width_cols.len, measured.line_count);
+                if (width == case.width) try std.testing.expectEqualSlices(u32, case.widths, lines.line_width_cols);
+                actual.clearRetainingCapacity();
+                for (view.getVirtualLines()) |line| {
+                    for (line.chunks.items) |chunk| {
+                        const bytes = chunk.chunk.getBytes(tb.memRegistry());
+                        try actual.appendSlice(std.testing.allocator, bytes[chunk.byte_start_in_chunk..][0..chunk.byte_len]);
+                    }
                 }
+                try std.testing.expectEqualStrings(expected, actual.items);
             }
-            try std.testing.expectEqualStrings(expected, actual.items);
         }
     }
 }

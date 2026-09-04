@@ -102,6 +102,9 @@ test "TextChunk keeps CJK line opportunities out of the word cache" {
     const mem_id = try registry.register(text, false);
     var chunk: TextChunk = .{ .mem_id = mem_id, .byte_start = 0, .byte_end = text.len, .width_cols = 10 };
     const initial_words = try chunk.getWordLayoutInfo(arena.allocator(), &cache, &registry, 2, .unicode);
+    try testing.expect(@sizeOf(@TypeOf(initial_words)) < @sizeOf(utf8.ChunkLayoutInfo));
+    try testing.expectEqual(utf8.WordClass.cjk_word, initial_words.word_classes.first);
+    try testing.expectEqual(utf8.WordClass.cjk_word, initial_words.word_classes.last);
     try testing.expectEqual(@as(usize, 1), initial_words.wrap_breaks.len);
     try testing.expectEqual(@as(usize, 0), chunk.cold.?.cjk_breaks.capacity);
     _ = try chunk.getLayoutInfo(arena.allocator(), &cache, &registry, 2, .unicode);
@@ -116,6 +119,8 @@ test "TextChunk keeps CJK line opportunities out of the word cache" {
             try testing.expectEqual(@as(usize, 1), lines.wrap_breaks.len);
             try testing.expectEqual(@as(usize, 2), lines.cjk_breaks.len);
             const cached_words = try chunk.getWordLayoutInfo(arena.allocator(), &cache, &registry, tab_width, method);
+            try testing.expectEqual(utf8.WordClass.cjk_word, cached_words.word_classes.first);
+            try testing.expectEqual(utf8.WordClass.cjk_word, cached_words.word_classes.last);
             try testing.expectEqual(@intFromPtr(words.wrap_breaks.ptr), @intFromPtr(cached_words.wrap_breaks.ptr));
             try testing.expectEqual(@as(usize, 1), cached_words.wrap_breaks.len);
             try testing.expectEqual(@as(usize, 2), chunk.getCachedLayoutInfo(tab_width, method).?.cjk_breaks.len);

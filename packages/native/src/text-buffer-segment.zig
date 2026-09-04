@@ -27,6 +27,13 @@ pub const WrapMode = enum {
 
 pub const RenderClusterInfo = utf8.RenderClusterInfo;
 pub const ChunkLayoutInfo = utf8.ChunkLayoutInfo;
+pub const WordLayoutInfo = struct {
+    wrap_breaks: []const utf8.LayoutWrapBreak,
+    word_classes: struct {
+        first: utf8.WordClass,
+        last: utf8.WordClass,
+    },
+};
 
 const CachedMeasure = struct {
     wrap_width: u32,
@@ -266,7 +273,7 @@ pub const TextChunk = struct {
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError!ChunkLayoutInfo {
+    ) TextBufferError!WordLayoutInfo {
         return self.getLayoutInfoForMode(true, allocator, cache, mem_registry, tabwidth, width_method);
     }
 
@@ -278,7 +285,7 @@ pub const TextChunk = struct {
         mem_registry: *const MemRegistry,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
-    ) TextBufferError!ChunkLayoutInfo {
+    ) TextBufferError!(if (word_only) WordLayoutInfo else ChunkLayoutInfo) {
         const cold = try self.getOrCreateCold(allocator);
         if (cold.wrap_breaks == null) {
             cold.next_layout_cache = cache.first;
@@ -291,9 +298,12 @@ pub const TextChunk = struct {
         if (cold.wrap_breaks_tab_width == tabwidth and cold.wrap_breaks_width_method == width_method and
             (word_only or cold.line_breaks_ready))
         {
-            return .{
+            return if (word_only) .{
                 .wrap_breaks = cached,
-                .cjk_breaks = if (word_only) &.{} else cold.cjk_breaks.items,
+                .word_classes = .{ .first = cold.word_classes.first, .last = cold.word_classes.last },
+            } else .{
+                .wrap_breaks = cached,
+                .cjk_breaks = cold.cjk_breaks.items,
                 .word_classes = cold.word_classes,
             };
         }
@@ -323,9 +333,12 @@ pub const TextChunk = struct {
         cold.line_breaks_ready = !word_only or !word_classes.has_cjk_breaks;
         cold.word_classes = word_classes;
 
-        return .{
+        return if (word_only) .{
             .wrap_breaks = wrap_breaks.items,
-            .cjk_breaks = if (word_only) &.{} else cjk_breaks.items,
+            .word_classes = .{ .first = word_classes.first, .last = word_classes.last },
+        } else .{
+            .wrap_breaks = wrap_breaks.items,
+            .cjk_breaks = cjk_breaks.items,
             .word_classes = word_classes,
         };
     }

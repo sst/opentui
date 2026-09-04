@@ -1582,6 +1582,7 @@ pub const UnifiedTextBufferView = struct {
             pending_word_pieces: if (wrap_mode == .word) std.ArrayListUnmanaged(PendingWordPiece) else void = if (wrap_mode == .word) .empty else {},
             pending_word_width_cols: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
+            word_line_preflight: if (wrap_mode == .word) bool else void,
             word_line_chunks: if (wrap_mode == .word) std.ArrayListUnmanaged(*const TextChunk) else void = if (wrap_mode == .word) .empty else {},
             word_line_first_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
             word_line_last_cp: if (wrap_mode == .word) ?u21 else void = if (wrap_mode == .word) null else {},
@@ -1977,10 +1978,12 @@ pub const UnifiedTextBufferView = struct {
                 else blk: {
                     if (comptime calculation == .render) {
                         if (!chunk.isAsciiOnly() and chunk_bytes.len >= 1024 and chunk_bytes.len <= 64 * 1024) {
-                            const info = if (wctx.source_line_cjk_breaks)
+                            const info: seg_mod.TextBufferError!utf8.ChunkLayoutInfo = if (wctx.source_line_cjk_breaks)
                                 wctx.text_buffer.getLayoutInfoFor(chunk)
-                            else
-                                wctx.text_buffer.getWordLayoutInfoFor(chunk);
+                            else if (wctx.text_buffer.getWordLayoutInfoFor(chunk)) |word_info| .{
+                                .wrap_breaks = word_info.wrap_breaks,
+                                .word_classes = .{ .first = word_info.word_classes.first, .last = word_info.word_classes.last },
+                            } else |err| err;
                             break :blk info catch |err| switch (err) {
                                 error.OutOfMemory => null,
                                 else => {
@@ -2147,11 +2150,27 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, _: u32) void {
+            fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
                 const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                 if (wctx.failed) return;
 
                 if (comptime wrap_mode == .word) {
+                    // Printable ASCII cannot join graphemes across chunks. Stream it,
+                    // retaining the single-chunk measurement-summary shortcut.
+                    if (!wctx.word_line_preflight) {
+                        if (comptime calculation == .measure) {
+                            if (wctx.word_line_first_chunk) |first| {
+                                processWordChunk(wctx, first);
+                                wctx.word_line_first_chunk = null;
+                                if (wctx.failed) return;
+                            } else if (chunk_idx_in_line == 0) {
+                                wctx.word_line_first_chunk = chunk;
+                                return;
+                            }
+                        }
+                        processWordChunk(wctx, chunk);
+                        return;
+                    }
                     // Decide the policy before emitting any CJK opportunities. Retain
                     // only this line's chunk pointers, without rescanning its bytes.
                     if (wctx.word_line_first_chunk == null) {
@@ -2320,6 +2339,7 @@ pub const UnifiedTextBufferView = struct {
             .allocator = allocator,
             .result = result,
             .word_layout = word_layout,
+            .word_line_preflight = if (comptime wrap_mode == .word) !text_buffer.rope().root.metrics().custom.ascii_only else {},
             .wrap_w = wrap_w,
             .current_wrap_width = if (first_line_offset > 0 and first_line_offset < wrap_w)
                 wrap_w - first_line_offset
