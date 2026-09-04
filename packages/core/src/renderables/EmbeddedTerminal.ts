@@ -148,7 +148,7 @@ export class EmbeddedTerminalRenderable extends Renderable {
       key: physical,
       mods: modifiers(key),
       text,
-      unshiftedCodepoint: key.baseCode ?? physicalUnshiftedCodepoint(physical),
+      unshiftedCodepoint: unshiftedCodepoint(key, physical),
     })
   }
 
@@ -382,8 +382,9 @@ function modifiers(input: {
 
 function physicalKey(key: KeyEvent) {
   if (key.code && !key.code.startsWith("[")) return key.code
-  if (/^[a-z]$/i.test(key.name)) return `Key${key.name.toUpperCase()}`
-  if (/^[0-9]$/.test(key.name)) return `Digit${key.name}`
+  const name = key.baseCode === undefined ? key.name : String.fromCodePoint(key.baseCode)
+  if (/^[a-z]$/i.test(name)) return `Key${name.toUpperCase()}`
+  if (/^[0-9]$/.test(name)) return `Digit${name}`
   return (
     {
       backspace: "Backspace",
@@ -413,7 +414,10 @@ function textualKey(key: KeyEvent) {
   if ([...key.name].length === 1 || /[^\x00-\x7f]/.test(key.name)) return key.name
 }
 
-function physicalUnshiftedCodepoint(code: string | undefined) {
+function unshiftedCodepoint(key: KeyEvent, code: string | undefined) {
+  // Kitty's baseCode is a physical-layout alternative, not the active layout's character.
+  if (key.name === "space") return 32
+  if ([...key.name].length === 1) return key.name.codePointAt(0)!
   if (code?.startsWith("Key") && code.length === 4) return code.charCodeAt(3) + 32
   if (code?.startsWith("Digit") && code.length === 6) return code.charCodeAt(5)
   return 0
