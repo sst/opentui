@@ -10,7 +10,7 @@ skill:
 
 OpenTUI plays, mixes, and captures audio through a native miniaudio engine. The `Audio` class in `@opentui/core` owns the engine and its resources.
 
-This page covers the engine and loaded-sound playback. See [Streaming audio](/docs/application-apis/audio-streaming) for decoded PCM writers, encoded byte sources, and radio URLs. See [Audio capture and recording](/docs/application-apis/audio-capture) for input devices, Float32 PCM, and WAV files.
+This page covers the engine and loaded-sound playback. See [Streaming audio](/docs/application-apis/audio-streaming) for PCM or encoded byte sources and radio URLs. See [Audio capture and recording](/docs/application-apis/audio-capture) for input devices, Float32 PCM, and WAV files.
 
 ## Play a loaded sound
 
@@ -88,6 +88,8 @@ Linux selects glibc by default. Set the documented libc selector when the target
 Both methods decode the complete WAV, FLAC, or MP3 input into native interleaved Float32 samples. The loaded-sound decoder does not include Vorbis support.
 
 Use [Streaming audio](/docs/application-apis/audio-streaming) for long MP3 or FLAC media. Streaming does not retain the complete decoded sound.
+
+For generated audio or an external decoder, use `await audio.playStream(source, { format: "pcm", sampleFormat: "f32le", sampleRate: 44100, channels: 1 })`. The source supplies little-endian Float32 bytes through a `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>`. It returns the same `AudioStream` as encoded playback; source EOF flushes and drains audio before `stream.closed` resolves.
 
 Each encoded input must fit the native unsigned 32-bit byte length. The maximum input length is `4,294,967,295` bytes.
 

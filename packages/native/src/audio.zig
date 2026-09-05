@@ -1713,6 +1713,13 @@ fn initStreamSound(engine: *Engine, stream: *Stream, volume: f32, pan: f32) i32 
     return Status.ok;
 }
 
+fn initPcmConverter(stream: *Stream) i32 {
+    const config = c.ma_data_converter_config_init(c.ma_format_f32, c.ma_format_f32, stream.pcm_input_channels, 2, stream.pcm_input_rate, stream.sample_rate);
+    if (c.ma_data_converter_init(&config, null, &stream.pcm_converter) != c.MA_SUCCESS) return Status.err_device;
+    stream.pcm_converter_ready = true;
+    return Status.ok;
+}
+
 pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
     if (options_ptr == null or out_stream_id == null) return Status.err_invalid;
     const options = options_ptr.?.*;
@@ -1782,12 +1789,10 @@ fn createStreamInternal(engine: *Engine, options: StreamOptions, input_rate: u32
     stream.source.stream = stream;
 
     if (input_rate != 0) {
-        const config = c.ma_data_converter_config_init(c.ma_format_f32, c.ma_format_f32, input_channels, 2, input_rate, e.sample_rate);
-        if (c.ma_data_converter_init(&config, null, &stream.pcm_converter) != c.MA_SUCCESS) {
+        if (initPcmConverter(stream) != Status.ok) {
             destroyStreamStorage(stream, null);
             return Status.err_device;
         }
-        stream.pcm_converter_ready = true;
         stream.state = StreamState.buffering;
         stream.ready_generation = 1;
     }
@@ -1879,9 +1884,12 @@ pub fn endPcmStream(engine: *Engine, stream_id: u32) i32 {
     const stream = getStream(engine, stream_id) orelse return Status.err_not_found;
     if (!stream.pcm_converter_ready or loadStreamState(stream) == StreamState.failed) return Status.err_invalid;
     stream.input_ended = 1;
+    // Miniaudio's output latency truncates fractional frames to zero when downsampling.
+    // Round the input latency up separately so even a sub-frame tail is flushed.
+    const tail_frames = (@as(u128, c.ma_data_converter_get_input_latency(&stream.pcm_converter)) * stream.sample_rate + stream.pcm_input_rate - 1) / stream.pcm_input_rate;
     const target: u64 = if (stream.pcm_input_frames == 0) 0 else @intCast(
         (@as(u128, stream.pcm_input_frames) * stream.sample_rate + stream.pcm_input_rate - 1) / stream.pcm_input_rate +
-            c.ma_data_converter_get_output_latency(&stream.pcm_converter),
+            tail_frames,
     );
     if (stream.pcm_output_frames < target) {
         const result = convertPcm(stream, null, pcm_write_batch_frames, target - stream.pcm_output_frames);
@@ -1916,7 +1924,14 @@ pub fn clearPcmStream(engine: *Engine, stream_id: u32) i32 {
     c.ma_sound_uninit(&stream.sound);
     stream.sound_ready = false;
     c.ma_pcm_rb_reset(&stream.pcm_ring);
-    _ = c.ma_data_converter_reset(&stream.pcm_converter);
+    // The vendored reset clears the order-one filter coefficient, not its history.
+    // Reinitialize so clear preserves the same filtering as a fresh stream.
+    c.ma_data_converter_uninit(&stream.pcm_converter, null);
+    stream.pcm_converter_ready = false;
+    if (initPcmConverter(stream) != Status.ok) {
+        failStreamWithCode(stream, Status.err_device);
+        return Status.err_device;
+    }
     stream.pcm_input_frames = 0;
     stream.pcm_output_frames = 0;
     stream.has_started_playback = false;
