@@ -993,6 +993,32 @@ export fn audioCreateStream(
     return native_audio.createStream(object_ptr, options_ptr, out_stream_id);
 }
 
+export fn audioCreatePcmStream(engine_handle: NativeHandle, options_ptr: ?*const native_audio.StreamOptions, sample_rate: u32, channels: u32, out_stream_id: ?*u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.createPcmStream(object_ptr, options_ptr, sample_rate, channels, out_stream_id);
+}
+
+export fn audioWritePcmStream(engine_handle: NativeHandle, stream_id: u32, data_ptr: ?[*]const f32, sample_count: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.writePcmStream(object_ptr, stream_id, data_ptr, sample_count);
+}
+
+export fn audioEndPcmStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.endPcmStream(object_ptr, stream_id);
+}
+
+export fn audioSetPcmStreamPaused(engine_handle: NativeHandle, stream_id: u32, paused: u8) i32 {
+    if (paused > 1) return native_audio.Status.err_invalid;
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setPcmStreamPaused(object_ptr, stream_id, paused != 0);
+}
+
+export fn audioClearPcmStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.clearPcmStream(object_ptr, stream_id);
+}
+
 export fn audioWriteStream(
     engine_handle: NativeHandle,
     stream_id: u32,

@@ -185,6 +185,9 @@ export type AudioStreamAction =
   | "setVolume"
   | "setPan"
   | "setGroup"
+  | "pause"
+  | "resume"
+  | "clear"
 
 export interface AudioStreamErrorContext {
   action: AudioStreamAction
@@ -2727,6 +2730,348 @@ export class AudioRecorder extends EventEmitter<AudioRecorderEvents> {
   }
 }
 
+export interface AudioPcmStreamOptions {
+  /** Interleaved float32 input rate in Hz (8,000–192,000). */
+  sampleRate: number
+  channels: 1 | 2
+  volume?: number
+  pan?: number
+  groupId?: number
+  buffer?: AudioStreamBufferOptions
+  signal?: AbortSignal
+}
+
+export type AudioPcmStreamState = "buffering" | "playing" | "paused" | "ended" | "errored" | "disposed"
+
+export interface AudioPcmStreamStats {
+  state: AudioPcmStreamState
+  /** Mixer rate; all output frame counts use this rate. */
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
+  bufferedDurationMs: number
+  /** Accepted input frames at the stream's input sample rate. */
+  framesWritten: bigint
+  framesConverted: bigint
+  framesPlayed: bigint
+  underruns: number
+}
+
+export interface AudioPcmStreamEvents {
+  ended: []
+  error: [error: AudioStreamError, context: AudioStreamErrorContext]
+  disposed: []
+}
+
+let createAudioPcmStream: (
+  lib: RenderLib,
+  engine: AudioEngineHandle,
+  options: AudioPcmStreamOptions,
+  removeFromOwner: () => void,
+) => AudioPcmStream
+
+/** A bounded PCM playback writer. Await each write before reusing its backing memory. */
+export class AudioPcmStream extends EventEmitter<AudioPcmStreamEvents> {
+  readonly closed: Promise<void>
+  readonly sampleRate: number
+  readonly channels: 1 | 2
+  private streamId: number | null
+  private snapshot: NativeAudioStreamStats
+  private terminalState: AudioPcmStreamState | null = null
+  private terminalError: AudioStreamError | null = null
+  private readonly controller = new AbortController()
+  private writeController: AbortController | null = null
+  private pendingWrite: Promise<void> | null = null
+  private ending: Promise<void> | null = null
+  private closedResolve!: () => void
+  private readonly onAbort = () => this.dispose()
+  private readonly signal?: AbortSignal
+
+  static {
+    createAudioPcmStream = (lib, engine, options, removeFromOwner) =>
+      new AudioPcmStream(lib, engine, options, removeFromOwner)
+  }
+
+  private constructor(
+    private readonly lib: RenderLib,
+    private readonly engine: AudioEngineHandle,
+    options: AudioPcmStreamOptions,
+    private readonly removeFromOwner: () => void,
+  ) {
+    super()
+    if (!Number.isInteger(options.sampleRate) || options.sampleRate < 8000 || options.sampleRate > 192000) {
+      throw new RangeError("sampleRate must be an integer from 8000 to 192000 Hz")
+    }
+    if (options.channels !== 1 && options.channels !== 2) throw new RangeError("channels must be 1 or 2")
+    const buffer = resolveAudioStreamOptions({
+      ...options,
+      buffer: { capacityMs: 500, startupMs: 20, resumeMs: 20, ...options.buffer },
+    })
+    if (!isU32(buffer.groupId) || !Number.isFinite(buffer.volume) || !Number.isFinite(buffer.pan)) {
+      throw new TypeError("Invalid PCM stream volume, pan, or groupId")
+    }
+    this.signal = options.signal
+    if (this.signal?.aborted) throw createAbortError()
+    this.sampleRate = options.sampleRate
+    this.channels = options.channels
+    const created = lib.audioCreatePcmStream(engine, {
+      ...buffer,
+      sampleRate: this.sampleRate,
+      channels: this.channels,
+    })
+    if (created.status !== 0 || created.streamId == null) {
+      throw new AudioStreamError(`PCM stream create failed: ${created.status}`, {
+        action: "create",
+        status: created.status,
+      })
+    }
+    this.streamId = created.streamId
+    this.closed = new Promise((resolve) => (this.closedResolve = resolve))
+    // Creation has completed conversion setup; no source or startup data is needed for readiness.
+    this.snapshot = {
+      bytesReceived: 0n,
+      framesDecoded: 0n,
+      framesPlayed: 0n,
+      state: StreamState.Buffering,
+      sampleRate: 0,
+      channels: 2,
+      bufferedFrames: 0,
+      capacityFrames: 0,
+      underruns: 0,
+      errorCode: 0,
+      readyGeneration: 1,
+    }
+    try {
+      this.refresh()
+      this.signal?.addEventListener("abort", this.onAbort, { once: true })
+    } catch (error) {
+      this.dispose()
+      throw error
+    }
+  }
+
+  get state(): AudioPcmStreamState {
+    return (
+      this.terminalState ??
+      (this.snapshot.state === StreamState.Paused
+        ? "paused"
+        : this.snapshot.state === StreamState.Playing
+          ? "playing"
+          : "buffering")
+    )
+  }
+
+  get error(): AudioStreamError | null {
+    return this.terminalError
+  }
+
+  getStats(): AudioPcmStreamStats {
+    if (this.streamId != null && !this.controller.signal.aborted) {
+      try {
+        this.refresh()
+      } catch (cause) {
+        throw this.fail("stats", cause)
+      }
+    }
+    const stats = this.snapshot
+    return {
+      state: this.state,
+      sampleRate: stats.sampleRate,
+      channels: stats.channels,
+      bufferedFrames: stats.bufferedFrames,
+      capacityFrames: stats.capacityFrames,
+      bufferedDurationMs: (stats.bufferedFrames * 1000) / stats.sampleRate,
+      framesWritten: stats.bytesReceived / BigInt(4 * this.channels),
+      framesConverted: stats.framesDecoded,
+      framesPlayed: stats.framesPlayed,
+      underruns: stats.underruns,
+    }
+  }
+
+  write(frames: Float32Array): Promise<void> {
+    try {
+      this.requireWritable()
+      if (this.pendingWrite != null) throw new Error("Await the previous PCM write before writing again")
+      if (!ArrayBuffer.isView(frames) || Object.prototype.toString.call(frames) !== "[object Float32Array]") {
+        throw new TypeError("PCM chunks must be Float32Array instances")
+      }
+      if (Object.prototype.toString.call(frames.buffer) === "[object SharedArrayBuffer]") {
+        throw new TypeError("PCM chunks must have non-shared backing memory")
+      }
+      if (frames.length % this.channels !== 0) throw new RangeError("PCM chunks must contain whole interleaved frames")
+    } catch (error) {
+      return Promise.reject(error)
+    }
+    const controller = new AbortController()
+    this.writeController = controller
+    const promise = this.writeChunk(frames, controller.signal)
+    this.pendingWrite = promise
+    const release = () => {
+      if (this.pendingWrite === promise) {
+        this.pendingWrite = null
+        this.writeController = null
+      }
+    }
+    void promise.then(release, release)
+    return promise
+  }
+
+  private async writeChunk(frames: Float32Array, signal: AbortSignal): Promise<void> {
+    try {
+      const length = frames.length
+      let offset = 0
+      let batches = 0
+      while (offset < length) {
+        if (signal.aborted || this.controller.signal.aborted) throw createAbortError()
+        const batch = frames.subarray(offset, Math.min(length, offset + 2048 * this.channels))
+        if (batch.length === 0) throw new TypeError("PCM backing memory was detached during write")
+        const accepted = this.lib.audioWritePcmStream(this.engine, this.streamId!, batch)
+        this.checkStatus("write", accepted)
+        offset += accepted * this.channels
+        // Bound work even for very large chunks and an actively draining output device.
+        if (accepted === 0 || ++batches % 32 === 0) {
+          await waitForDelay(accepted === 0 ? STREAM_POLL_INTERVAL_MS : 0, signal)
+        }
+      }
+    } catch (cause) {
+      if (signal.aborted || this.controller.signal.aborted) throw this.terminalError ?? createAbortError()
+      throw this.fail("write", cause)
+    }
+  }
+
+  /** Seal input, flush conversion history, drain playback, and release native storage. */
+  end(): Promise<void> {
+    if (this.ending != null) return this.ending
+    if (this.terminalState === "ended") return Promise.resolve()
+    if (this.controller.signal.aborted) return Promise.reject(this.terminalError ?? createAbortError())
+    this.ending = this.drain()
+    return this.ending
+  }
+
+  private async drain(): Promise<void> {
+    try {
+      await this.pendingWrite
+      while (!this.controller.signal.aborted) {
+        const status = this.lib.audioEndPcmStream(this.engine, this.streamId!)
+        this.checkStatus("end", status)
+        this.refresh()
+        if (status === 0 && this.snapshot.state === StreamState.Ended) {
+          this.finish("ended")
+          return
+        }
+        await waitForDelay(STREAM_POLL_INTERVAL_MS, this.controller.signal)
+      }
+      throw this.terminalError ?? createAbortError()
+    } catch (cause) {
+      if (this.controller.signal.aborted) throw this.terminalError ?? createAbortError()
+      throw this.fail("end", cause)
+    }
+  }
+
+  pause(): void {
+    this.control("pause", (id) => this.lib.audioSetPcmStreamPaused(this.engine, id, true))
+  }
+
+  resume(): void {
+    this.control("resume", (id) => this.lib.audioSetPcmStreamPaused(this.engine, id, false))
+  }
+
+  /** Discard queued audio and abort an in-flight write. The stream remains writable. */
+  clear(): void {
+    this.requireWritable()
+    this.control("clear", (id) => this.lib.audioClearPcmStream(this.engine, id))
+    this.writeController?.abort()
+    this.writeController = null
+    this.pendingWrite = null
+  }
+
+  setVolume(volume: number): void {
+    if (!Number.isFinite(volume)) throw new TypeError("volume must be finite")
+    this.control("setVolume", (id) => this.lib.audioSetStreamVolume(this.engine, id, volume))
+  }
+
+  setPan(pan: number): void {
+    if (!Number.isFinite(pan)) throw new TypeError("pan must be finite")
+    this.control("setPan", (id) => this.lib.audioSetStreamPan(this.engine, id, pan))
+  }
+
+  setGroup(groupId: number): void {
+    if (!isU32(groupId)) throw new TypeError("Invalid PCM stream groupId")
+    this.control("setGroup", (id) => this.lib.audioSetStreamGroup(this.engine, id, groupId))
+  }
+
+  dispose(): void {
+    if (this.streamId == null) return
+    this.finish("disposed")
+  }
+
+  private requireWritable(): void {
+    if (this.controller.signal.aborted) throw this.terminalError ?? createAbortError()
+    if (this.ending != null) throw new Error("PCM stream input has ended")
+  }
+
+  private checkStatus(action: AudioStreamAction, status: number): void {
+    if (status < 0) throw new AudioStreamError(`PCM stream ${action} failed: ${status}`, { action, status })
+  }
+
+  private refresh(): void {
+    const snapshot = this.lib.audioGetStreamStats(this.engine, this.streamId!)
+    if (snapshot == null) throw new AudioStreamError("PCM stream stats unavailable", { action: "stats" })
+    this.snapshot = snapshot
+    if (snapshot.state === StreamState.Failed) {
+      throw new AudioStreamError("PCM stream failed", { action: "stats", errorCode: snapshot.errorCode })
+    }
+  }
+
+  private control(action: AudioStreamAction, call: (id: number) => number): void {
+    if (this.controller.signal.aborted) throw this.terminalError ?? createAbortError()
+    try {
+      this.checkStatus(action, call(this.streamId!))
+      this.refresh()
+    } catch (cause) {
+      throw this.fail(action, cause)
+    }
+  }
+
+  private fail(action: AudioStreamAction, cause: unknown): AudioStreamError {
+    const error =
+      cause instanceof AudioStreamError ? cause : new AudioStreamError(`PCM stream ${action} failed`, { action }, cause)
+    this.terminalError = error
+    this.finish("errored")
+    return error
+  }
+
+  private finish(state: "ended" | "errored" | "disposed"): void {
+    this.controller.abort()
+    this.writeController?.abort()
+    const reason =
+      state === "ended"
+        ? CloseReason.PreserveNativeTerminal
+        : state === "errored"
+          ? CloseReason.TransportError
+          : CloseReason.Disposed
+    if (this.streamId != null) {
+      const result = this.lib.audioCloseStream(this.engine, this.streamId, reason)
+      this.checkStatus("destroy", result.status)
+      if (result.stats != null) this.snapshot = result.stats
+      this.streamId = null
+    }
+    this.terminalState = state
+    this.signal?.removeEventListener("abort", this.onAbort)
+    this.removeFromOwner()
+    queueMicrotask(() => {
+      try {
+        if (state === "errored") {
+          if (this.listenerCount("error") > 0) this.emit("error", this.terminalError!, this.terminalError!.context)
+        } else this.emit(state)
+      } finally {
+        this.closedResolve()
+      }
+    })
+  }
+}
+
 export class Audio extends EventEmitter<AudioEvents> {
   static create(options: AudioSetupOptions = {}): Audio {
     let lib: RenderLib
@@ -2951,6 +3296,15 @@ export class Audio extends EventEmitter<AudioEvents> {
     }
 
     return result.voiceId
+  }
+
+  createPcmStream(options: AudioPcmStreamOptions): AudioPcmStream {
+    const engine = this.engine
+    if (!engine || this.disposing) throw new Error("Audio engine unavailable during PCM stream creation")
+    let stream: AudioPcmStream
+    stream = createAudioPcmStream(this.lib, engine, options, () => this.streams.delete(stream))
+    this.streams.add(stream)
+    return stream
   }
 
   async playStream<M = AudioStreamMetadata>(

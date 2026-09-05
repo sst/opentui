@@ -81,6 +81,45 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("PCM creation borrows typed options/output and writes borrow the exact offset view", () => {
+    const create = symbols.audioCreatePcmStream
+    const write = symbols.audioWritePcmStream
+    const input = new Float32Array(10).subarray(2, 8)
+    symbols.audioCreatePcmStream = (_engine, packed: Uint8Array, rate, channels, output: Uint32Array) => {
+      expect(packed).toBeInstanceOf(Uint8Array)
+      expect(AudioStreamCreateOptionsStruct.unpack(packed.buffer as ArrayBuffer).capacityMs).toBe(500)
+      expect(rate).toBe(44100)
+      expect(channels).toBe(2)
+      expect(output).toBeInstanceOf(Uint32Array)
+      output[0] = 257
+      return 0
+    }
+    symbols.audioWritePcmStream = (_engine, id, view, samples) => {
+      expect(id).toBe(257)
+      expect(view).toBe(input)
+      expect(samples).toBe(6)
+      return 3
+    }
+    try {
+      expect(
+        lib.audioCreatePcmStream(1 as any, {
+          sampleRate: 44100,
+          channels: 2,
+          capacityMs: 500,
+          startupMs: 20,
+          resumeMs: 20,
+          volume: 1,
+          pan: 0,
+          groupId: 0,
+        }),
+      ).toEqual({ status: 0, streamId: 257 })
+      expect(lib.audioWritePcmStream(1 as any, 257, input)).toBe(3)
+    } finally {
+      symbols.audioCreatePcmStream = create
+      symbols.audioWritePcmStream = write
+    }
+  })
+
   test("passes reusable struct views through the native FFI boundary", () => {
     const buffer = lib.createEditBuffer("wcwidth")
     try {

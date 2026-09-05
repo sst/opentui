@@ -426,6 +426,11 @@ export type NativeAudioStreamStats = {
   readyGeneration: number
 }
 
+export type AudioPcmStreamCreateOptions = Omit<AudioStreamCreateOptions, "format" | "maxProbeBytes"> & {
+  sampleRate: number
+  channels: number
+}
+
 export const NativeAudioStreamState = {
   Initializing: 0,
   Buffering: 1,
@@ -434,6 +439,7 @@ export const NativeAudioStreamState = {
   Failed: 4,
   Cancelled: 5,
   Reconnecting: 6,
+  Paused: 7,
 } as const
 
 export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]

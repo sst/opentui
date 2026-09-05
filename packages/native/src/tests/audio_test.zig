@@ -25,6 +25,70 @@ fn streamOptions() audio.StreamOptions {
     };
 }
 
+test "PCM stream copies interleaved input, backpressures, pauses, clears, and drains" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    try expectStatusOk(audio.startMixer(engine));
+    var id: u32 = 0;
+    const options = streamOptions();
+    try expectStatusOk(audio.createPcmStream(engine, &options, TEST_SAMPLE_RATE, 2, &id));
+    var input: [960]f32 = undefined;
+    for (0..480) |frame| {
+        input[frame * 2] = 0.25;
+        input[frame * 2 + 1] = -0.5;
+    }
+    try testing.expectEqual(@as(i32, 480), audio.writePcmStream(engine, id, &input, input.len));
+    try testing.expectEqual(@as(i32, 0), audio.writePcmStream(engine, id, &input, input.len));
+    @memset(&input, 0);
+    try expectStatusOk(audio.setPcmStreamPaused(engine, id, true));
+    var output: [256]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 128, 2));
+    try testing.expect(!hasSignal(&output));
+    var stats: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+    try testing.expectEqual(@as(u32, 480), stats.buffered_frames);
+    try testing.expectEqual(audio.StreamState.paused, stats.state);
+    try expectStatusOk(audio.setPcmStreamPaused(engine, id, false));
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 128, 2));
+    // The shared mixer group has one frame of processing latency.
+    try testing.expectApproxEqAbs(@as(f32, 0.25), output[2], 0.0001);
+    try testing.expectApproxEqAbs(@as(f32, -0.5), output[3], 0.0001);
+    try expectStatusOk(audio.clearPcmStream(engine, id));
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 128, 2));
+    // Already mixed group history cannot be retracted by clearing one stream.
+    try testing.expect(!hasSignal(output[2..]));
+    try testing.expectEqual(@as(i32, 2), audio.writePcmStream(engine, id, &.{ 0.125, 0.375, 0.125, 0.375 }, 4));
+    try expectStatusOk(audio.endPcmStream(engine, id));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writePcmStream(engine, id, &input, input.len));
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 128, 2));
+    try testing.expectApproxEqAbs(@as(f32, 0.125), output[2], 0.0001);
+    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+    try testing.expectEqual(audio.StreamState.ended, stats.state);
+    try testing.expectEqual(@as(u64, 482 * 8), stats.bytes_received);
+    try expectStatusOk(audio.closeStream(engine, id, audio.StreamCloseReason.preserve_native_terminal, &stats));
+    try testing.expectEqual(audio.Status.err_not_found, audio.writePcmStream(engine, id, &input, input.len));
+}
+
+test "PCM stream rejects invalid formats and samples and finishes empty EOF" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    const options = streamOptions();
+    var id: u32 = 0;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createPcmStream(engine, &options, 0, 2, &id));
+    try testing.expectEqual(audio.Status.err_invalid, audio.createPcmStream(engine, &options, TEST_SAMPLE_RATE, 3, &id));
+    try expectStatusOk(audio.createPcmStream(engine, &options, TEST_SAMPLE_RATE, 2, &id));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writePcmStream(engine, id, &.{0}, 1));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writePcmStream(engine, id, &.{ std.math.nan(f32), 0 }, 2));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writePcmStream(engine, id, null, 2));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, id, &.{0}, 1));
+    try testing.expectEqual(audio.Status.err_invalid, audio.endStream(engine, id));
+    try expectStatusOk(audio.endPcmStream(engine, id));
+    var stats: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+    try testing.expectEqual(audio.StreamState.ended, stats.state);
+    try testing.expectEqual(@as(u64, 0), stats.frames_decoded);
+}
+
 fn buildPcm16Wav(allocator: std.mem.Allocator, channels: u16, sample_rate: u32, samples: []const i16) ![]u8 {
     if (channels == 0 or samples.len == 0) return error.InvalidInput;
     if (samples.len % @as(usize, channels) != 0) return error.InvalidInput;
