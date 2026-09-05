@@ -108,7 +108,7 @@ describe("CodeRenderable", () => {
     })
 
     const client = new MockTreeSitterClient()
-    const syntaxStyle = SyntaxStyle.create()
+    const syntaxStyle = SyntaxStyle.create(renderer.nativeScene)
 
     const code = new CodeRenderable(renderer, {
       content: "",

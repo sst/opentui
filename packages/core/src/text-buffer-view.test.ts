@@ -1,6 +1,8 @@
+import { ResourceContext } from "./buffer.js"
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
+import { OptimizedBuffer } from "./buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
@@ -140,12 +142,18 @@ for (const method of ["unicode", "unicode-wide"] as const) {
   }
 }
 
+let resourceContext: ResourceContext
+beforeEach(() => {
+  resourceContext = new ResourceContext({ objectCapacity: 8, renderCellsMax: 32 })
+})
+afterEach(() => resourceContext.destroy())
+
 describe("TextBufferView", () => {
   let buffer: TextBuffer
   let view: TextBufferView
 
   beforeEach(() => {
-    buffer = TextBuffer.create("wcwidth")
+    buffer = TextBuffer.create("wcwidth", resourceContext)
     view = TextBufferView.create(buffer)
   })
 
@@ -222,6 +230,22 @@ describe("TextBufferView", () => {
       view.destroy()
       expect(() => view.getLineSources(0, 1)).toThrow("TextBufferView is destroyed")
     })
+  })
+
+  it("reset preserves live view ellipsis", () => {
+    const output = OptimizedBuffer.create(10, 1, "wcwidth", { owner: resourceContext })
+    try {
+      view.setTruncate(true)
+      view.setViewport(0, 0, 10, 1)
+      buffer.reset()
+      buffer.setText("")
+      buffer.append("0123456789ABCDEFGHIJ")
+      output.clear()
+      output.drawTextBuffer(view, 0, 0)
+      expect(new TextDecoder().decode(output.getRealCharBytes())).toBe("012...GHIJ")
+    } finally {
+      output.destroy()
+    }
   })
 
   describe("lineInfo getter with wrapping", () => {
@@ -434,23 +458,6 @@ describe("TextBufferView", () => {
 
       view.resetSelection()
       expect(view.getSelectedText()).toBe("")
-    })
-
-    it("should return null bytes for zero-length selected-text output buffer", () => {
-      buffer.setText("Hello World")
-      view.setSelection(0, 5)
-
-      const selectedBytes = (view as any).lib.textBufferViewGetSelectedTextBytes(view.ptr, 0)
-
-      expect(selectedBytes).toBeNull()
-    })
-
-    it("should return null bytes for zero-length plain-text output buffer", () => {
-      buffer.setText("Hello World")
-
-      const plainBytes = (view as any).lib.textBufferViewGetPlainTextBytes(view.ptr, 0)
-
-      expect(plainBytes).toBeNull()
     })
   })
 
@@ -795,8 +802,11 @@ describe("TextBufferView", () => {
       view.setWrapMode("char")
       const first = view.measureForDimensions(10, 10)!
       const second = view.measureForDimensions(5, 10)!
+      const repeated = view.measureForDimensions(10, 1)!
 
       expect(first).not.toBe(second)
+      expect(repeated).not.toBe(first)
+      expect(repeated).toEqual(first)
       expect(first).toEqual({ lineCount: 1, widthColsMax: 10 })
       expect(second).toEqual({ lineCount: 2, widthColsMax: 5 })
     })

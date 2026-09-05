@@ -1,3 +1,12 @@
+import { ResourceContext } from "../buffer.js"
+import { beforeEach, afterEach } from "bun:test"
+
+let resourceContext: ResourceContext
+beforeEach(() => {
+  resourceContext = new ResourceContext({ objectCapacity: 65536, renderCellsMax: 1000000 })
+})
+afterEach(() => resourceContext.destroy())
+
 import { describe, expect, it } from "bun:test"
 import { TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
@@ -125,8 +134,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = "x".repeat(smallSize)
     const largeText = "x".repeat(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = TextBuffer.create("wcwidth", resourceContext)
+    const largeBuffer = TextBuffer.create("wcwidth", resourceContext)
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -181,8 +190,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = makeText(smallSize)
     const largeText = makeText(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = TextBuffer.create("wcwidth", resourceContext)
+    const largeBuffer = TextBuffer.create("wcwidth", resourceContext)
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -233,8 +242,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = "x".repeat(smallSize)
     const largeText = "x".repeat(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = TextBuffer.create("wcwidth", resourceContext)
+    const largeBuffer = TextBuffer.create("wcwidth", resourceContext)
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -281,7 +290,7 @@ describe("Word wrap algorithmic complexity", () => {
   it.skip("should scale linearly when wrap width changes", () => {
     const text = "x".repeat(50000)
 
-    const buffer = TextBuffer.create("wcwidth")
+    const buffer = TextBuffer.create("wcwidth", resourceContext)
     buffer.setStyledText(stringToStyledText(text))
 
     const view = TextBufferView.create(buffer)
