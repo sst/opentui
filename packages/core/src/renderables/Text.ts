@@ -26,23 +26,32 @@ export class TextRenderable extends TextBufferRenderable {
   constructor(ctx: RenderContext, options: TextOptions) {
     super(ctx, options)
 
-    const content = options.content ?? this._contentDefaultOptions.content
-    const styledText = typeof content === "string" ? stringToStyledText(content) : content
-    this._text = styledText
-    this._hasManualStyledText = options.content !== undefined && content !== ""
+    try {
+      const content = options.content ?? this._contentDefaultOptions.content
+      const styledText = typeof content === "string" ? stringToStyledText(content) : content
+      this._text = styledText
+      this._hasManualStyledText = options.content !== undefined && content !== ""
 
-    this.rootTextNode = new RootTextNodeRenderable(
-      ctx,
-      {
-        id: `${this.id}-root`,
-        fg: this._defaultFg,
-        bg: this._defaultBg,
-        attributes: this._defaultAttributes,
-      },
-      this,
-    )
+      this.rootTextNode = new RootTextNodeRenderable(
+        ctx,
+        {
+          id: `${this.id}-root`,
+          fg: this._defaultFg,
+          bg: this._defaultBg,
+          attributes: this._defaultAttributes,
+        },
+        this,
+      )
 
-    this.updateTextBuffer(styledText)
+      this.updateTextBuffer(styledText)
+    } catch (error) {
+      try {
+        super.destroy()
+      } catch {
+        // Preserve the construction failure.
+      }
+      throw error
+    }
   }
 
   private updateTextBuffer(styledText: StyledText): void {
@@ -141,7 +150,12 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   destroy(): void {
-    this.rootTextNode.children.length = 0
-    super.destroy()
+    if (this.isDestroyed) return
+    this.runCleanup((run) => {
+      run(() => {
+        this.rootTextNode.children.length = 0
+      })
+      run(() => super.destroy())
+    })
   }
 }

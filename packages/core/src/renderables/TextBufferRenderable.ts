@@ -58,54 +58,77 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   constructor(ctx: RenderContext, options: TextBufferOptions) {
     super(ctx, options, true)
 
-    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
-    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
-    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
-    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
-    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
-    this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
-    this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
-    this._tabIndicatorColor = options.tabIndicatorColor
-      ? parseColor(options.tabIndicatorColor)
-      : this._defaultOptions.tabIndicatorColor
-    this._truncate = options.truncate ?? this._defaultOptions.truncate
+    let textBuffer: TextBuffer | undefined
+    let textBufferView: TextBufferView | undefined
+    let syntaxStyle: SyntaxStyle | undefined
 
-    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
-    this.textBufferView = TextBufferView.create(this.textBuffer)
-    this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
+    try {
+      this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
+      this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+      this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+      this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
+      this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+      this.selectable = options.selectable ?? this._defaultOptions.selectable
+      this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+      this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
+      this._tabIndicatorColor = options.tabIndicatorColor
+        ? parseColor(options.tabIndicatorColor)
+        : this._defaultOptions.tabIndicatorColor
+      this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this._textBufferSyntaxStyle = SyntaxStyle.create()
-    this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
+      textBuffer = TextBuffer.create(this._ctx.widthMethod)
+      this.textBuffer = textBuffer
+      textBufferView = TextBufferView.create(textBuffer)
+      this.textBufferView = textBufferView
+      this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
 
-    this.textBufferView.setWrapMode(this._wrapMode)
-    this.textBufferView.setFirstLineOffset(this._firstLineOffset)
-    if (!this.setNativeMeasureTarget(NativeMeasureTargetKind.TextBufferView, this.textBufferView.ptr)) {
-      throw new Error("Failed to attach text buffer native measure target")
+      syntaxStyle = SyntaxStyle.create()
+      this._textBufferSyntaxStyle = syntaxStyle
+      textBuffer.setSyntaxStyle(syntaxStyle)
+
+      this.textBufferView.setWrapMode(this._wrapMode)
+      this.textBufferView.setFirstLineOffset(this._firstLineOffset)
+      if (!this.setNativeMeasureTarget(NativeMeasureTargetKind.TextBufferView, this.textBufferView.ptr)) {
+        throw new Error("Failed to attach text buffer native measure target")
+      }
+
+      this.textBuffer.setDefaultFg(this._defaultFg)
+      this.textBuffer.setDefaultBg(this._defaultBg)
+      this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+
+      if (this._tabIndicator !== undefined) {
+        this.textBufferView.setTabIndicator(this._tabIndicator)
+      }
+      if (this._tabIndicatorColor !== undefined) {
+        this.textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
+      }
+
+      if (this._wrapMode !== "none" && this.width > 0) {
+        this.textBufferView.setWrapWidth(this.width)
+      }
+
+      if (this.width > 0 && this.height > 0) {
+        this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      }
+
+      this.textBufferView.setTruncate(this._truncate)
+
+      this.updateTextInfo()
+    } catch (error) {
+      try {
+        this.runCleanup((run) => {
+          run(() => this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0))
+          run(() => textBuffer?.setSyntaxStyle(null))
+          run(() => syntaxStyle?.destroy())
+          run(() => textBufferView?.destroy())
+          run(() => textBuffer?.destroy())
+          run(() => this.abortConstruction())
+        })
+      } catch {
+        // Preserve the first construction failure.
+      }
+      throw error
     }
-
-    this.textBuffer.setDefaultFg(this._defaultFg)
-    this.textBuffer.setDefaultBg(this._defaultBg)
-    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-
-    if (this._tabIndicator !== undefined) {
-      this.textBufferView.setTabIndicator(this._tabIndicator)
-    }
-    if (this._tabIndicatorColor !== undefined) {
-      this.textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
-    }
-
-    if (this._wrapMode !== "none" && this.width > 0) {
-      this.textBufferView.setWrapWidth(this.width)
-    }
-
-    if (this.width > 0 && this.height > 0) {
-      this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
-    }
-
-    this.textBufferView.setTruncate(this._truncate)
-
-    this.updateTextInfo()
   }
 
   protected onMouseEvent(event: any): void {
@@ -476,15 +499,16 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   destroy(): void {
     if (this.isDestroyed) return
-
-    if (this.nativeRenderable) {
-      this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0)
-    }
-    this.textBuffer.setSyntaxStyle(null)
-    this._textBufferSyntaxStyle.destroy()
-    this.textBufferView.destroy()
-    this.textBuffer.destroy()
-    super.destroy()
+    this.runCleanup((run) => {
+      if (this.nativeRenderable) {
+        run(() => this.setNativeMeasureTarget(NativeMeasureTargetKind.None, 0))
+      }
+      run(() => this.textBuffer.setSyntaxStyle(null))
+      run(() => this._textBufferSyntaxStyle.destroy())
+      run(() => this.textBufferView.destroy())
+      run(() => this.textBuffer.destroy())
+      run(() => super.destroy())
+    })
   }
 
   protected onFgChanged(newColor: RGBA): void {
