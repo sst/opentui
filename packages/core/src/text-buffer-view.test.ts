@@ -1,11 +1,9 @@
-import { ResourceContext } from "./buffer.js"
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { OptimizedBuffer, ResourceContext } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
-import { OptimizedBuffer } from "./buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
-import { OptimizedBuffer } from "./buffer.js"
 
 it("cached word and CJK breaks retain streaming source order", () => {
   const part = "AB \u65e5\u672c\u3002\u8a9e\u6587 "
