@@ -20,6 +20,9 @@ Start with the visible symptom. Run the diagnostic in its row, then open the lin
 
 ## Node.js and native loading
 
+For a native crash, use [Native crash debugging](/docs/test-and-debug/native-crashes) to load matching release symbols
+and collect a useful report.
+
 | Symptom                                                    | Diagnostic and first action                                                                                                                                                                                                                                                                                              | Canonical guide                                                                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `OpenTUI native FFI is not available for this runtime yet` | Run `node --version`. It must print `v26.4.0` or later. Start the ESM app with `node --experimental-ffi app.mjs`. With `--permission`, also grant `--allow-ffi` and native-library read access.                                                                                                                          | [Node.js runtime](/docs/getting-started/runtime-support#runtime-versions)                                                                   |
@@ -59,6 +62,19 @@ Start with the visible symptom. Run the diagnostic in its row, then open the lin
 | Symptom                                              | Diagnostic and first action                                                                                                                                                                                            | Canonical guide                                                                            |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `Timed out waiting for visual idle after ... frames` | Read the attached `frameId`, `nativeFrameCount`, `cellsUpdated`, and scheduler fields. Stop unintended live rendering or release the live request. Increase `maxFrames` only when the expected work needs more frames. | [Waiting for observable output](/docs/core-concepts/testing#waiting-for-observable-output) |
+
+## Native builds across worktrees
+
+Zig shares its global cache by default. For repeated native builds across many worktrees, you can also share the project
+cache:
+
+```sh
+export ZIG_LOCAL_CACHE_DIR="$HOME/.cache/opentui/zig-local-0.16.0"
+bun run build:native
+```
+
+Use a persistent local directory. Use a separate directory for each Zig version. `bun run clean` does not remove an
+external cache.
 
 ## Next
 

@@ -62,6 +62,21 @@ Both constructors convert a non-finite channel to `0`. Channel setters apply the
 
 An alpha value of zero is transparent. Intermediate alpha values blend during supported buffer-composition operations.
 
+```typescript
+const overlay = RGBA.fromHex("#22c55e")
+overlay.a = 0.5
+buffer.fillRect(x, y, width, height, overlay)
+```
+
+These tiles draw the same green over a checkerboard. Only alpha changes:
+
+```text terminal=color-alpha
+
+
+
+ 0.00   0.25   0.50   0.75   1.00
+```
+
 After a blend, the result is a literal RGB color. It no longer identifies a terminal default or indexed palette slot.
 
 See [FrameBuffer](/docs/components/frame-buffer) and the [Buffer API](/docs/reference/buffer-api) for direct alpha drawing.
@@ -88,6 +103,33 @@ console.log(foreground.intent, background.intent)
 ```
 
 `fromIndex()` requires an integer from `0` through `255` and throws `RangeError` otherwise. Its default RGB snapshot comes from the built-in ANSI 256-color table.
+
+The fallback palette contains 16 terminal colors, a 216-color RGB cube, and 24 grays. Within each cube slice, blue increases to the right and green increases downward:
+
+```text terminal=color-palette
+0-15    terminal colors
+████████████████████████████████
+
+16-231  RGB cube
+R=0          R=95         R=135
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+
+R=175        R=215        R=255
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+████████████ ████████████ ████████████
+
+232-255 grayscale
+████████████████████████
+```
 
 Default foreground uses `[255, 255, 255]` as its snapshot. Default background uses `[0, 0, 0]`.
 

@@ -45,6 +45,13 @@ input.focus()
 renderer.root.add(input)
 ```
 
+An empty input displays its placeholder:
+
+```text terminal=input-placeholder surface
+Name
+Enter your name
+```
+
 ## Focus states
 
 The input changes appearance when focused:
@@ -59,6 +66,13 @@ const input = new InputRenderable(renderer, {
   textColor: "#FFFFFF",
   cursorColor: "#00FF00",
 })
+```
+
+After focusing the input and typing a name:
+
+```text terminal=input-focused surface
+Name
+Ada Lovelace
 ```
 
 ## Events

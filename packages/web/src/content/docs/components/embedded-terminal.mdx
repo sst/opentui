@@ -75,6 +75,15 @@ terminal.focus()
 
 `write()` accepts a string or `Uint8Array`. The parser keeps incomplete escape sequences across calls. After `write()` or a resize, the renderable drains generated replies. Nonempty reply bytes go to `onData` with source `"response"`.
 
+Parsed child output can produce this screen:
+
+```text terminal=embedded-terminal-vt
+$ bun test
+✓ parser accepts UTF-8
+✓ renderer draws wide cells
+2 passed, 0 failed
+```
+
 `screen()` reads the private cell buffer from the last paint. Call it after a render pass. It trims the end of each line and drops trailing empty rows. `columns` and `rows` are the renderable's current layout size. Cursor state also comes from the last compose, not from `write()` alone.
 
 ## Attach a process

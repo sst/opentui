@@ -30,13 +30,13 @@ const renderer = await createCliRenderer()
 
 const tabs = new TabSelectRenderable(renderer, {
   id: "tabs",
-  width: 60,
+  width: 36,
   options: [
-    { name: "Home", description: "Dashboard and overview" },
-    { name: "Files", description: "File management" },
-    { name: "Settings", description: "Application settings" },
+    { name: "Home", description: "View project overview" },
+    { name: "Files", description: "Browse project files" },
+    { name: "Settings", description: "Configure the project" },
   ],
-  tabWidth: 20,
+  tabWidth: 12,
 })
 
 tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index, option) => {
@@ -45,6 +45,14 @@ tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index, option) => {
 
 tabs.focus()
 renderer.root.add(tabs)
+```
+
+After pressing Right, Files is selected:
+
+```text terminal=tab-select-tabs surface
+ Home        Files       Settings
+            ▬▬▬▬▬▬▬▬▬▬▬▬
+ Browse project files
 ```
 
 ## Keyboard navigation

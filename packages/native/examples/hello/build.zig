@@ -31,4 +31,18 @@ pub fn build(b: *std.Build) void {
     run.step.dependOn(b.getInstallStep());
     const run_step = b.step("run", "Render two frames without JavaScript");
     run_step.dependOn(&run.step);
+
+    const test_module = b.createModule(.{
+        .root_source_file = b.path("src/acceptance_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    test_module.addImport("opentui", opentui.module("opentui"));
+    const tests = b.addTest(.{
+        .root_module = test_module,
+        .filters = if (b.option([]const u8, "test-filter", "Skip tests that do not match filter")) |f| &.{f} else &.{},
+    });
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run no-JavaScript acceptance tests");
+    test_step.dependOn(&run_tests.step);
 }

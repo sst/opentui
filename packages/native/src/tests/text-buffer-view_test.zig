@@ -11,6 +11,376 @@ const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = text_buffer.RGBA;
 
+test "TextBufferView first layout retains reusable word metadata" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    try tb.setText("alpha \u{754c}abc e\u{301} words\n" ** 100);
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 100), view.word_layout.layouts.items.len);
+    const ptr = view.word_layout.layouts.items.ptr;
+    const capacity = view.word_layout.arena.queryCapacity();
+    view.setWrapWidth(79);
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(ptr, view.word_layout.layouts.items.ptr);
+    try std.testing.expectEqual(capacity, view.word_layout.arena.queryCapacity());
+}
+
+test "TextBufferView fragmented ASCII measurement streams complete words without scratch allocation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.word);
+    try tb.append("word ");
+    const single = try view.measureForDimensions(10, 24);
+    try std.testing.expectEqual(@as(u32, 1), single.line_count);
+    try std.testing.expectEqual(@as(u32, 5), single.width_cols_max);
+    for (0..63) |_| try tb.append("word ");
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    view.measure_arena.child_allocator = failing.allocator();
+    for ([_]u32{ 10, 15, 10 }, [_]u32{ 32, 22, 32 }) |width, line_count| {
+        const measured = try view.measureForDimensions(width, 24);
+        try std.testing.expectEqual(line_count, measured.line_count);
+        try std.testing.expectEqual(width, measured.width_cols_max);
+        view.setWrapWidth(width);
+        try std.testing.expectEqual(line_count, view.getVirtualLineCount());
+    }
+    try std.testing.expect(!failing.has_induced_failure);
+    try std.testing.expectEqual(@as(usize, 0), view.measure_arena.queryCapacity());
+}
+
+test "TextBufferView CJK cache survives a failed sibling layout" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    try tb.setText("x\n" ++ ("\u{65e5}" ** 512));
+    const healthy = try TextBufferView.init(std.testing.allocator, tb);
+    defer healthy.deinit();
+    healthy.setWrapMode(.word);
+    healthy.setWrapWidth(80);
+    try std.testing.expectEqual(@as(u32, 14), healthy.getVirtualLineCount());
+    const chunk = tb.rope().get(4).?.asText().?;
+    const cached = chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?;
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, healthy.word_layout.layouts.items[1].cjk_breaks.ptr);
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const sibling = try TextBufferView.init(failing.allocator(), tb);
+    defer sibling.deinit();
+    sibling.setWrapMode(.word);
+    sibling.setWrapWidth(80);
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectEqual(@as(u32, 0), sibling.getVirtualLineCount());
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expect(!tb.isViewDirty(healthy.view_id));
+    try std.testing.expect(chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()) != null);
+
+    healthy.setWrapWidth(40);
+    try std.testing.expectEqual(@as(u32, 27), healthy.getVirtualLineCount());
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?.cjk_breaks.ptr);
+
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(@as(u32, 14), sibling.getVirtualLineCount());
+    try std.testing.expect(!sibling.virtual_lines_dirty);
+    healthy.setWrapWidth(80);
+    try std.testing.expectEqual(@as(u32, 14), healthy.getVirtualLineCount());
+    try std.testing.expectEqual(cached.cjk_breaks.ptr, chunk.getCachedLayoutInfo(tb.tabWidth(), tb.widthMethod()).?.cjk_breaks.ptr);
+}
+
+test "TextBufferView optional metadata failure preserves every streamed piece" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const links = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, links, .unicode);
+    defer tb.deinit();
+    try tb.setText(("a\u{754c}e\u{301} \u{0600} xy\tend-" ** 5000) ++ "\n" ++ ("\u{754c}abc e\u{301}\n" ** 100));
+    const expected = try TextBufferView.init(std.testing.allocator, tb);
+    defer expected.deinit();
+    expected.setWrapMode(.word);
+    expected.setWrapWidth(79);
+    const want = expected.getVirtualLines();
+    for (0..14) |failure| {
+        var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const actual = try TextBufferView.init(std.testing.allocator, tb);
+        defer actual.deinit();
+        actual.word_layout.arena.child_allocator = tracking.allocator();
+        actual.setWrapMode(.word);
+        tracking.fail_index = failure;
+        actual.setWrapWidth(79);
+        const got = actual.getVirtualLines();
+        try std.testing.expect(!actual.virtual_lines_dirty);
+        try std.testing.expectEqual(want.len, got.len);
+        for (want, got) |wl, gl| {
+            try std.testing.expectEqual(wl.width_cols, gl.width_cols);
+            try std.testing.expectEqual(wl.source_line, gl.source_line);
+            try std.testing.expectEqual(wl.source_col_start, gl.source_col_start);
+            try std.testing.expectEqual(wl.document_cell_offset, gl.document_cell_offset);
+            try std.testing.expectEqualDeep(wl.chunks.items, gl.chunks.items);
+        }
+        if (tracking.has_induced_failure) try std.testing.expectEqual(@as(usize, 0), actual.word_layout.layouts.items.len);
+        tracking.fail_index = std.math.maxInt(usize);
+        actual.setWrapWidth(80);
+        _ = actual.getVirtualLines();
+        actual.setWrapWidth(79);
+        try std.testing.expectEqual(want.len, actual.getVirtualLines().len);
+        const measured = try actual.measureForDimensions(79, 24);
+        try std.testing.expectEqual(want.len, measured.line_count);
+    }
+}
+
+test "TextBufferView width reuse does not leave metadata in old buffer roots" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var retained: [2]usize = undefined;
+    for (0..2) |side| {
+        var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const tb = try TextBuffer.init(tracking.allocator(), pool, link_pool, .unicode);
+        defer tb.deinit();
+        const view = try TextBufferView.init(tracking.allocator(), tb);
+        view.setWrapMode(.word);
+        view.setWrapWidth(80);
+        const mem_id = try tb.registerMemBuffer("", false);
+        for (0..20) |edit| {
+            const text = if (edit % 2 == 0)
+                "OpenTUI text metrics: \u{754c} e\u{301} abcdefghijklmnop \n" ** 100
+            else
+                "Changed text metrics: \u{754c} e\u{301} abcdefghijklmnop \n" ** 100;
+            try tb.replaceMemBuffer(mem_id, text, false);
+            try tb.setTextFromMemId(mem_id);
+            _ = view.getVirtualLines();
+            if (side == 1) for ([_]u32{ 79, 80, 43, 96, 80 }) |width| {
+                view.setWrapWidth(width);
+                _ = view.getVirtualLines();
+            };
+        }
+        view.deinit();
+        retained[side] = tracking.allocated_bytes - tracking.freed_bytes;
+    }
+    try std.testing.expectEqual(retained[0], retained[1]);
+}
+
+test "TextBufferView live word metadata follows views history and buffer switches" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const edit = try @import("../edit-buffer.zig").EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer edit.deinit();
+    const view = try TextBufferView.init(std.testing.allocator, edit.tb);
+    defer view.deinit();
+    const second = try TextBufferView.init(std.testing.allocator, edit.tb);
+    defer second.deinit();
+    const other = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer other.deinit();
+    try other.setText("unrelated\t\u{754c} text");
+    try edit.setText("alpha \u{754c} e\u{301} abcdefghijklmnopqrstuvwxyz\n" ** 10);
+    view.setWrapMode(.word);
+    second.setWrapMode(.word);
+    view.setWrapWidth(16);
+    second.setWrapWidth(32);
+    _ = view.getVirtualLines();
+    _ = second.getVirtualLines();
+    try std.testing.expect(view.word_layout.layouts.items.len > 0);
+    view.setWrapWidth(17);
+    second.setWrapWidth(33);
+    _ = view.getVirtualLines();
+    _ = second.getVirtualLines();
+    const ptr = view.word_layout.layouts.items.ptr;
+    const capacity = view.word_layout.arena.queryCapacity();
+    for ([_]u32{ 43, 7, 16, 96, 32 }) |width| {
+        view.setWrapWidth(width);
+        _ = view.getVirtualLines();
+        try std.testing.expectEqual(ptr, view.word_layout.layouts.items.ptr);
+        try std.testing.expectEqual(capacity, view.word_layout.arena.queryCapacity());
+    }
+    try edit.replaceText("changed\ttext \u{0600} \u{301} \u{754c} words\n" ** 10);
+    for (0..3) |step| {
+        if (step == 1) _ = try edit.undo();
+        if (step == 2) _ = try edit.redo();
+        edit.tb.setTabWidth(@intCast(2 + step * 2));
+        for ([_]*TextBufferView{ view, second }) |current| {
+            _ = current.getVirtualLines();
+            try std.testing.expect(current.word_layout.layouts.items.len > 0);
+            current.setWrapWidth(19);
+            _ = current.getVirtualLines();
+            current.setWrapWidth(23);
+            const measured = try current.measureForDimensions(23, 24);
+            try std.testing.expectEqual(measured.line_count, current.getVirtualLineCount());
+            try std.testing.expect(current.word_layout.layouts.items.len > 0);
+            var bytes: [4096]u8 = undefined;
+            const len = edit.tb.getPlainTextIntoBuffer(&bytes);
+            const fresh_tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+            defer fresh_tb.deinit();
+            fresh_tb.setTabWidth(edit.tb.tabWidth());
+            try fresh_tb.setText(bytes[0..len]);
+            const fresh = try TextBufferView.init(std.testing.allocator, fresh_tb);
+            defer fresh.deinit();
+            fresh.setWrapMode(.word);
+            fresh.setWrapWidth(23);
+            const expected = fresh.getVirtualLines();
+            const actual = current.getVirtualLines();
+            try std.testing.expectEqual(expected.len, actual.len);
+            for (expected, actual) |want, got| {
+                try std.testing.expectEqual(want.width_cols, got.width_cols);
+                try std.testing.expectEqual(want.source_line, got.source_line);
+                try std.testing.expectEqual(want.source_col_start, got.source_col_start);
+                try std.testing.expectEqual(want.document_cell_offset, got.document_cell_offset);
+                try std.testing.expectEqual(want.chunks.items.len, got.chunks.items.len);
+                for (want.chunks.items, got.chunks.items) |wc, gc| {
+                    try std.testing.expectEqual(wc.byte_start_in_chunk, gc.byte_start_in_chunk);
+                    try std.testing.expectEqual(wc.byte_len, gc.byte_len);
+                    try std.testing.expectEqual(wc.col_start_in_chunk, gc.col_start_in_chunk);
+                    try std.testing.expectEqual(wc.width_cols, gc.width_cols);
+                    try std.testing.expectEqualStrings(wc.chunk.getBytes(fresh_tb.memRegistry()), gc.chunk.getBytes(edit.tb.memRegistry()));
+                }
+            }
+        }
+    }
+    view.switchToBuffer(other);
+    try std.testing.expectEqual(@as(usize, 0), view.word_layout.layouts.items.len);
+    _ = view.getVirtualLines();
+    view.switchToOriginalBuffer();
+    try std.testing.expectEqual(@as(usize, 0), view.word_layout.layouts.items.len);
+    _ = view.getVirtualLines();
+    view.setWrapMode(.char);
+    _ = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 0), view.word_layout.arena.queryCapacity());
+}
+
+test "TextBufferView live word metadata discards partial allocation on failure" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    for (0..10) |failure| {
+        var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const tb = try TextBuffer.init(tracking.allocator(), pool, link_pool, .unicode);
+        defer tb.deinit();
+        const view = try TextBufferView.init(tracking.allocator(), tb);
+        defer view.deinit();
+        try tb.setText("alpha \u{754c} e\u{301} word word word word\n" ** 100);
+        view.setWrapMode(.word);
+        view.setWrapWidth(16);
+        tracking.fail_index = tracking.alloc_index + failure;
+        view.setWrapWidth(17);
+        _ = view.getVirtualLines();
+        if (tracking.has_induced_failure) {
+            try std.testing.expectEqual(@as(usize, 0), view.word_layout.layouts.items.len);
+            if (view.virtual_lines_dirty) try std.testing.expectEqual(@as(usize, 0), view.virtual_lines.items.len);
+        }
+        tracking.fail_index = std.math.maxInt(usize);
+        const measured = try view.measureForDimensions(17, 24);
+        try std.testing.expectEqual(measured.line_count, view.getVirtualLineCount());
+    }
+}
+
+test "TextBufferView rewrap reuses virtual line allocation without retaining cleared layout" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const tb = try TextBuffer.init(tracking.allocator(), pool, link_pool, .unicode);
+    defer tb.deinit();
+    const view = try TextBufferView.init(tracking.allocator(), tb);
+    defer view.deinit();
+    try tb.setText("OpenTUI text metrics: \u{754c} e\u{301} abcdefghijklmnop " ** 100);
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    _ = view.getVirtualLines();
+    view.setWrapWidth(79);
+    _ = view.getVirtualLines();
+    view.setWrapWidth(80);
+    _ = view.getVirtualLines();
+    const allocated = tracking.allocated_bytes;
+    const capacity = view.virtual_lines_arena.queryCapacity();
+    for (0..20) |i| {
+        view.setWrapWidth(@intCast(79 + i % 2));
+        _ = view.getVirtualLines();
+    }
+    try std.testing.expectEqual(allocated, tracking.allocated_bytes);
+    tb.clear();
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+    try std.testing.expect(view.virtual_lines_arena.queryCapacity() < capacity);
+}
+
+test "TextBufferView rewrap matches fresh layout after text and tab changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const texts = [_][]const u8{
+        "",                                                             "one",                                                              "one two three\n\nshort\n",
+        "\talpha \u{754c}abc e\u{301} \u{1f469}\u{200d}\u{1f4bb}\tend", "abcdefg \u{301} hi\n\u{0600} 0123456789abcdef\nword\u{200b}word ", "\u{754c} " ** 600,
+        "\u{754c}abc " ** 10000,
+    };
+    inline for (std.meta.tags(@import("../utf8.zig").WidthMethod)) |method| {
+        const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+        defer tb.deinit();
+        const view = try TextBufferView.init(std.testing.allocator, tb);
+        defer view.deinit();
+        view.setWrapMode(.word);
+        const mem_id = try tb.registerMemBuffer("", false);
+        for (texts) |text| {
+            try tb.replaceMemBuffer(mem_id, text, false);
+            try tb.setTextFromMemId(mem_id);
+            for ([_]u8{ 2, 4 }) |tab_width| {
+                tb.setTabWidth(tab_width);
+                for ([_]u32{ 7, 16, 79, 16 }) |width| {
+                    const fresh_tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+                    defer fresh_tb.deinit();
+                    fresh_tb.setTabWidth(tab_width);
+                    try fresh_tb.setText(text);
+                    const fresh = try TextBufferView.init(std.testing.allocator, fresh_tb);
+                    defer fresh.deinit();
+                    fresh.setWrapMode(.word);
+                    fresh.setWrapWidth(width);
+                    view.setWrapWidth(width);
+                    const measured = try view.measureForDimensions(width, 24);
+                    const expected = fresh.getVirtualLines();
+                    const actual = view.getVirtualLines();
+                    try std.testing.expectEqual(expected.len, actual.len);
+                    try std.testing.expectEqual(measured.line_count, actual.len);
+                    for (expected, actual) |want, got| {
+                        try std.testing.expectEqual(want.width_cols, got.width_cols);
+                        try std.testing.expectEqual(want.source_line, got.source_line);
+                        try std.testing.expectEqual(want.source_col_start, got.source_col_start);
+                        try std.testing.expectEqual(want.document_cell_offset, got.document_cell_offset);
+                        try std.testing.expectEqual(want.chunks.items.len, got.chunks.items.len);
+                        for (want.chunks.items, got.chunks.items) |wc, gc| {
+                            try std.testing.expectEqual(wc.byte_start_in_chunk, gc.byte_start_in_chunk);
+                            try std.testing.expectEqual(wc.byte_len, gc.byte_len);
+                            try std.testing.expectEqual(wc.col_start_in_chunk, gc.col_start_in_chunk);
+                            try std.testing.expectEqual(wc.width_cols, gc.width_cols);
+                            try std.testing.expectEqualStrings(wc.chunk.getBytes(fresh_tb.memRegistry()), gc.chunk.getBytes(tb.memRegistry()));
+                        }
+                    }
+                }
+            }
+        }
+        tb.clear();
+        try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+    }
+}
+
 test "TextBufferView wrapping - no wrap returns same line count" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1140,7 +1510,8 @@ test "TextBufferView word wrapping - fragmented ASCII CJK transition is a bounda
     view.setWrapMode(.word);
     view.setWrapWidth(5);
 
-    try std.testing.expectEqualSlices(u32, &.{ 3, 4 }, view.getCachedLineInfo().line_width_cols);
+    // "abc日" fills the first line; the CJK run may break between characters.
+    try std.testing.expectEqualSlices(u32, &.{ 5, 2 }, view.getCachedLineInfo().line_width_cols);
 }
 
 test "TextBufferView word wrapping - combining mark keeps base class across chunks" {
@@ -1165,7 +1536,146 @@ test "TextBufferView word wrapping - combining mark keeps base class across chun
 
     view.setWrapMode(.word);
     view.setWrapWidth(4);
-    try std.testing.expectEqualSlices(u32, &.{ 1, 4 }, view.getCachedLineInfo().line_width_cols);
+    // "a\u{0301}日" fills the first line; the CJK run may break between characters.
+    try std.testing.expectEqualSlices(u32, &.{ 3, 2 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - CJK run wraps between characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, space = 1 col, each CJK char = 2 cols.
+    try tb.setText("AB 测试文字");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(6);
+
+    // "AB 测" (5) then "试文字" (6); without intercharacter breaks the CJK run
+    // would drop to its own line and force-break after overflowing.
+    try std.testing.expectEqualSlices(u32, &.{ 5, 6 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - ideographic punctuation never starts a line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("测试。文字");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+
+    // "试。" stays together: no break opportunity exists before 。.
+    try std.testing.expectEqualSlices(u32, &.{ 2, 4, 4 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - CJK break spans chunk boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text = "你好世界";
+    const mem_id = try tb.registerMemBuffer(text, false);
+    var segments: std.ArrayListUnmanaged(seg_mod.Segment) = .empty;
+    defer segments.deinit(std.testing.allocator);
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 0, 6) });
+    try segments.append(std.testing.allocator, .{ .text = tb.createChunk(mem_id, 6, @intCast(text.len)) });
+    try tb.rope().setSegments(segments.items);
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+
+    // The 好|世 chunk edge is a break opportunity, so the run fills both lines
+    // instead of carrying "好" into the second chunk as one word.
+    try std.testing.expectEqualSlices(u32, &.{ 4, 4 }, view.getCachedLineInfo().line_width_cols);
+}
+
+test "TextBufferView word wrapping - non-CJK appends keep chunk-local boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    for ([_]@import("../utf8.zig").WidthMethod{ .unicode, .unicode_wide, .wcwidth, .no_zwj }) |method| {
+        var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+        defer tb.deinit();
+        var view = try TextBufferView.init(std.testing.allocator, tb);
+        defer view.deinit();
+        try tb.append("\u{1f1e6}");
+        try tb.append("\u{1f1e7}\u{1f1e8}");
+        try tb.append("\u{1f1e9}\u{1f1ea}\u{1f1eb}");
+        view.setWrapMode(.word);
+        view.setWrapWidth(3);
+        const measured = try view.measureForDimensions(3, 8);
+        try std.testing.expectEqual(@as(u32, 2), measured.line_count);
+        try std.testing.expectEqualSlices(u32, &.{ 3, 3 }, view.getCachedLineInfo().line_width_cols);
+    }
+}
+
+test "TextBufferView word wrapping - CJK policy retains bytes and uses legacy fitting for split chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const cases = [_]struct { parts: []const []const u8, width: u32, widths: []const u32 }{
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f1fa}", "\u{1f1f8}\u{1f1fa}\u{1f1f8}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f44b}", "\u{1f3fb}\u{8a9e}\u{6587}" }, .width = 4, .widths = &.{ 4, 4, 4 } },
+        .{ .parts = &.{ "\u{65e5}\u{672c}\u{1f44b}", "\u{1f3fb}" ++ ("\u{8a9e}\u{6587}" ** 256) ++ "\u{65e5}", "abc" }, .width = 4, .widths = &(([_]u32{4} ** 258) ++ [_]u32{ 2, 3 }) },
+        .{ .parts = &.{ "\u{304b}", "\u{3099}\u{304f}" }, .width = 8, .widths = &.{4} },
+        .{ .parts = &.{ "\u{306f}", "\u{309a}\u{3072}" }, .width = 8, .widths = &.{4} },
+        .{ .parts = &.{"\u{304b}\u{200d}\u{3099}"}, .width = 8, .widths = &.{2} },
+        .{ .parts = &.{"\u{306f}\u{200d}\u{309a}"}, .width = 8, .widths = &.{2} },
+        .{ .parts = &.{"AB \u{30ab}\u{30fb}\u{30ca}"}, .width = 6, .widths = &.{ 3, 6 } },
+        .{ .parts = &.{ "AB \u{30ab}", "\u{30fb}\u{30ca}" }, .width = 6, .widths = &.{ 3, 6 } },
+    };
+    for ([_]@import("../utf8.zig").WidthMethod{ .unicode, .unicode_wide, .wcwidth, .no_zwj }) |method| {
+        for (cases) |case| {
+            var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+            defer tb.deinit();
+            var view = try TextBufferView.init(std.testing.allocator, tb);
+            defer view.deinit();
+            for (case.parts) |part| try tb.append(part);
+            view.setWrapMode(.word);
+            const expected = try std.mem.concat(std.testing.allocator, u8, case.parts);
+            defer std.testing.allocator.free(expected);
+            var actual: std.ArrayListUnmanaged(u8) = .empty;
+            defer actual.deinit(std.testing.allocator);
+            for ([_]u32{ case.width, case.width + 2, case.width }) |width| {
+                view.setWrapWidth(width);
+                const measured = try view.measureForDimensions(width, 8);
+                const lines = view.getCachedLineInfo();
+                try std.testing.expectEqual(lines.line_width_cols.len, measured.line_count);
+                if (width == case.width) try std.testing.expectEqualSlices(u32, case.widths, lines.line_width_cols);
+                actual.clearRetainingCapacity();
+                for (view.getVirtualLines()) |line| {
+                    for (line.chunks.items) |chunk| {
+                        const bytes = chunk.chunk.getBytes(tb.memRegistry());
+                        try actual.appendSlice(std.testing.allocator, bytes[chunk.byte_start_in_chunk..][0..chunk.byte_len]);
+                    }
+                }
+                try std.testing.expectEqualStrings(expected, actual.items);
+            }
+        }
+    }
 }
 
 test "TextBufferView wrapping - very narrow width (1 char)" {
@@ -1344,9 +1854,9 @@ test "TextBufferView word wrapping - layout cache OOM falls back to complete str
     try std.testing.expectEqual(@as(u32, 26), measured.line_count);
 
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const internal_allocator = tb.allocator;
-    tb.allocator = failing.allocator();
-    defer tb.allocator = internal_allocator;
+    const layout_allocator = tb.layout_cache.allocator;
+    tb.layout_cache.allocator = failing.allocator();
+    defer tb.layout_cache.allocator = layout_allocator;
     const vlines = view.getVirtualLines();
 
     try std.testing.expect(failing.has_induced_failure);
@@ -2974,6 +3484,73 @@ test "TextBufferView truncation - allocation failure is atomic and retryable" {
     try std.testing.expectEqual(@as(usize, 3), retried.chunks.items.len);
 }
 
+test "TextBufferView truncation - fitting prebuilt lines do not allocate" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var view = try TextBufferView.init(failing.allocator(), tb);
+    defer view.deinit();
+
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(std.testing.allocator);
+    for (0..4096) |_| try text.appendSlice(std.testing.allocator, "fit\n");
+    try tb.setText(text.items);
+    view.setWrapMode(.none);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 4096 });
+    view.setTruncate(true);
+    view.updateVirtualLines();
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+    _ = view.getVirtualLines();
+
+    try std.testing.expect(!failing.has_induced_failure);
+    try std.testing.expectEqual(allocation_index, failing.alloc_index);
+}
+
+test "TextBufferView truncation - replacement staging is proportional to overflow" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var view = try TextBufferView.init(tracking.allocator(), tb);
+    defer view.deinit();
+
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(std.testing.allocator);
+    try text.appendSlice(std.testing.allocator, "first line overflows\n");
+    for (0..4096) |_| try text.appendSlice(std.testing.allocator, "fit\n");
+    try text.appendSlice(std.testing.allocator, "last line overflows");
+    try tb.setText(text.items);
+    view.setWrapMode(.none);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 4098 });
+    view.setTruncate(true);
+    view.updateVirtualLines();
+
+    const Replacement = struct {
+        chunks: std.ArrayListUnmanaged(text_buffer_view.VirtualChunk) = .empty,
+        width_cols: u32 = 0,
+        is_truncated: bool = false,
+        ellipsis_col: u32 = 0,
+        truncation_suffix_col_start: u32 = 0,
+    };
+    const allocated_bytes = tracking.allocated_bytes;
+    const lines = view.getVirtualLines();
+
+    try std.testing.expect(lines[0].is_truncated);
+    try std.testing.expect(lines[lines.len - 1].is_truncated);
+    try std.testing.expectEqual(2 * @sizeOf(Replacement), tracking.allocated_bytes - allocated_bytes);
+}
+
 test "TextBufferView truncation - multiline with truncate" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -3082,6 +3659,29 @@ test "TextBufferView truncation - very small viewport" {
 
     // With width=3, only room for "..." - should clear the line
     try std.testing.expectEqual(@as(u32, 0), vlines[0].width_cols);
+}
+
+test "TextBufferView truncation - empty suffix retains the source end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDE好");
+    view.setWrapMode(.none);
+    view.setTruncate(true);
+
+    for (2..5) |width| {
+        view.setViewport(.{ .x = 0, .y = 0, .width = @intCast(width), .height = 1 });
+        const line = view.getVirtualLines()[0];
+        try std.testing.expect(line.is_truncated);
+        try std.testing.expectEqual(@as(u32, 7), line.truncation_suffix_col_start);
+    }
 }
 
 test "TextBufferView truncation - verify ellipsis chunk injection" {

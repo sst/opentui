@@ -66,6 +66,16 @@ renderer.root.add(panel)
 } // Heavy lines: ┏━┓┃┗━┛
 ```
 
+```text terminal=box-borders
+┌─────single─────┐  ╔═════double═════╗
+│ single line    │  ║ double lines   ║
+└────────────────┘  ╚════════════════╝
+
+╭────rounded─────╮  ┏━━━━━heavy━━━━━━┓
+│ round corners  │  ┃ heavy strokes  ┃
+╰────────────────╯  ┗━━━━━━━━━━━━━━━━┛
+```
+
 ## Titles
 
 Add a title and bottom title to the box border:
@@ -106,6 +116,12 @@ const panel = new BoxRenderable(renderer, {
 {
   bottomTitleAlignment: "right"
 } // └────────── Title ┘
+```
+
+```text terminal=box-title-alignment
+┌───────────settings───────────┐
+│ Top and bottom titles        │
+└────────────────────────close─┘
 ```
 
 ## Layout container

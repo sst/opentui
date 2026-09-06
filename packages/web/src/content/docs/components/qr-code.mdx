@@ -103,6 +103,26 @@ Use `fit: "none"` when you want the configured scale to be the only rendered siz
 
 `quietZone` must be at least 4 modules for a standard QR code. OpenTUI validates the matrix and quiet-zone geometry, but scanner reliability still depends on terminal font, cell aspect ratio, display contrast, and camera conditions.
 
+The content `OPENTUI` and a four-module quiet zone fit a version-one symbol:
+
+```text terminal=qr-code-version-one
+
+
+    █▀▀▀▀▀█ ▀█▄▀█ █▀▀▀▀▀█
+    █ ███ █ ▀ ▀▀█ █ ███ █
+    █ ▀▀▀ █ ▀ ▀█  █ ▀▀▀ █
+    ▀▀▀▀▀▀▀ █ ▀▄█ ▀▀▀▀▀▀▀
+    ▄▄ ▄ ▀▀▄ █ ▄▀▄▀▄█▄█▄█
+    ▄█▀▀█▄▀ █ ▀▀▀▄▄█ ▀█▄
+     ▀  ▀ ▀▀█  ██▄ ▀▀ ▀ ▀
+    █▀▀▀▀▀█ ▄▄▀ ▀▀▄ ▀█▄█▀
+    █ ███ █  ▀███▀█ ▀▄▀
+    █ ▀▀▀ █  █ ▀▀▀▀▀█▄▀▀█
+    ▀▀▀▀▀▀▀  ▀ ▀   ▀ ▀▀
+
+
+```
+
 ## Fallback content
 
 When a container is too small to render even a scale-1 QR code, show fallback text instead of an empty area:

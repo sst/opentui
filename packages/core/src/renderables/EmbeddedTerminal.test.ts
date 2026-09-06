@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
+import { parseKeypress } from "../lib/parse.keypress.js"
 import { RGBA } from "../lib/RGBA.js"
 import { resolveRenderLib } from "../zig.js"
 import { EmbeddedTerminalRenderable } from "./EmbeddedTerminal.js"
@@ -85,6 +86,88 @@ describe("EmbeddedTerminalRenderable", () => {
     setup.renderer.clearSelection()
     expect(terminal.hasSelection()).toBe(false)
     expect(terminal.getSelectedText()).toBe("")
+  })
+
+  test("waits for a drag to leave its starting cell before selecting", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("hello")
+    await setup.renderOnce()
+    const original = setup.captureSpans().lines
+
+    await setup.mockMouse.pressDown(1, 0)
+    await setup.renderOnce()
+    expect(terminal.hasSelection()).toBe(false)
+    expect(setup.captureSpans().lines).toEqual(original)
+
+    await setup.mockMouse.moveTo(1, 0)
+    await setup.renderOnce()
+    expect(terminal.hasSelection()).toBe(false)
+    expect(setup.captureSpans().lines).toEqual(original)
+    await setup.mockMouse.release(1, 0)
+    await setup.renderOnce()
+    expect(terminal.hasSelection()).toBe(false)
+    expect(terminal.getSelectedText()).toBe("")
+    expect(setup.renderer.getSelection()?.getSelectedText()).toBe("")
+    expect(setup.captureSpans().lines).toEqual(original)
+
+    setup.renderer.clearSelection()
+    await setup.mockMouse.pressDown(1, 0)
+    await setup.mockMouse.moveTo(2, 0)
+    await setup.renderOnce()
+    expect(terminal.hasSelection()).toBe(true)
+    expect(terminal.getSelectedText()).toBe("el")
+    expect(setup.captureSpans().lines).not.toEqual(original)
+
+    // Crossing the threshold once enables normal selection, even back at the anchor.
+    await setup.mockMouse.moveTo(1, 0)
+    await setup.mockMouse.release(1, 0)
+    await setup.renderOnce()
+    expect(terminal.getSelectedText()).toBe("e")
+    expect(setup.captureSpans().lines).not.toEqual(original)
+
+    await setup.mockMouse.pressDown(4, 0)
+    await setup.renderOnce()
+    expect(terminal.hasSelection()).toBe(false)
+    expect(terminal.getSelectedText()).toBe("")
+    expect(setup.captureSpans().lines).toEqual(original)
+    await setup.mockMouse.release(4, 0)
+  })
+
+  test("starts selection on horizontal or vertical movement even when only one text cell is selected", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("hello")
+    await setup.renderOnce()
+    const original = setup.captureSpans().lines
+
+    for (const point of [
+      { x: 5, y: 0 },
+      { x: 4, y: 1 },
+    ]) {
+      setup.renderer.clearSelection()
+      await setup.mockMouse.pressDown(4, 0)
+      expect(terminal.hasSelection()).toBe(false)
+      await setup.mockMouse.moveTo(point.x, point.y)
+      await setup.renderOnce()
+      expect(terminal.hasSelection()).toBe(true)
+      expect(terminal.getSelectedText()).toBe("o")
+      expect(setup.captureSpans().lines).not.toEqual(original)
+      await setup.mockMouse.release(point.x, point.y)
+    }
+  })
+
+  test("does not delay word or line selection gestures", async () => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write("hello")
+    await setup.renderOnce()
+
+    for (const behavior of ["word", "line"] as const) {
+      setup.renderer.startSelection(terminal, 0, 0, behavior)
+      expect(terminal.hasSelection()).toBe(true)
+      expect(terminal.getSelectedText()).toBe("h")
+    }
   })
 
   test("encodes keys and bracketed paste", () => {
@@ -192,6 +275,45 @@ describe("EmbeddedTerminalRenderable", () => {
         ),
       ),
     ).toBe("\x1b[27u")
+  })
+
+  test.each([
+    ["plain Dvorak u", 1, "\x1b[117::102;1u", "u"],
+    ["plain Dvorak d", 1, "\x1b[100::104;1u", "d"],
+    ["Dvorak Ctrl+U", 1, "\x1b[117::102;5u", "\x1b[117;5u"],
+    ["Dvorak Ctrl+D", 1, "\x1b[100::104;5u", "\x1b[100;5u"],
+    ["Dvorak Ctrl+Shift+U", 1, "\x1b[117:85:102;6u", "\x1b[117;6u"],
+    ["Cyrillic Ctrl+ф", 1, "\x1b[1092::97;5u", "\x1b[1092;5u"],
+    ["QWERTY Ctrl+U", 1, "\x1b[117;5u", "\x1b[117;5u"],
+    ["Dvorak Ctrl+U in legacy mode", 0, "\x1b[117::102;5u", "\x15"],
+    ["Dvorak Ctrl+D in legacy mode", 0, "\x1b[100::104;5u", "\x04"],
+    ["Dvorak Ctrl+U with its base-layout alternative", 5, "\x1b[117::102;5u", "\x1b[117::102;5u"],
+    ["Dvorak Ctrl+D with its base-layout alternative", 5, "\x1b[100::104;5u", "\x1b[100::104;5u"],
+  ])("preserves %s", (_label, flags, raw, expected) => {
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
+    setup.renderer.root.add(terminal)
+    terminal.write(`\x1b[>${flags}u`)
+
+    const parsed = parseKeypress(raw, { useKittyKeyboard: true })!
+    expect(new TextDecoder().decode(terminal.encodeKey(new KeyEvent(parsed)))).toBe(expected)
+  })
+
+  test("forwards Dvorak press, repeat, and release with the same active-layout key", () => {
+    const output: string[] = []
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 20,
+      height: 4,
+      onData: (data) => output.push(new TextDecoder().decode(data)),
+    })
+    setup.renderer.root.add(terminal)
+    terminal.write("\x1b[>3u")
+    terminal.focus()
+
+    for (const raw of ["\x1b[117::102;5u", "\x1b[117::102;5:2u", "\x1b[117::102;5:3u"]) {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(raw, { useKittyKeyboard: true })!)
+    }
+
+    expect(output).toEqual(["\x1b[117;5u", "\x1b[117;5:2u", "\x1b[117;5:3u"])
   })
 
   test("drains the preserved response prefix after overflow", () => {

@@ -10,6 +10,34 @@ const EditBuffer = edit_buffer.EditBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const Cursor = edit_buffer.Cursor;
 
+test "EditBuffer - deleting final line contents preserves empty line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+    try eb.setText("a\nb");
+    try eb.setCursor(1, 0);
+    try eb.deleteForward();
+
+    var text: [16]u8 = undefined;
+    try std.testing.expectEqualStrings("a\n", text[0..eb.getText(&text)]);
+    try std.testing.expectEqual(@as(u32, 2), eb.tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 1), eb.tb.lineWidthAt(0));
+    try std.testing.expectEqual(@as(u32, 0), eb.tb.lineWidthAt(1));
+    try eb.tb.addHighlightByCharRange(1, 2, 1, 1, 0);
+    try std.testing.expectEqual(@as(usize, 0), eb.tb.getHighlightCount());
+
+    _ = try eb.undo();
+    try std.testing.expectEqualStrings("a\nb", text[0..eb.getText(&text)]);
+    _ = try eb.redo();
+    try std.testing.expectEqualStrings("a\n", text[0..eb.getText(&text)]);
+    try eb.insertText("c");
+    try std.testing.expectEqualStrings("a\nc", text[0..eb.getText(&text)]);
+}
+
 test "EditBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -362,6 +390,27 @@ test "EditBuffer - combining mark keeps word class across chunks" {
 
     try eb.setCursor(0, 5);
     try std.testing.expectEqual(@as(u32, 1), eb.getPrevWordBoundary().col);
+}
+
+test "EditBuffer - word boundary treats CJK run as one word" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    // Intercharacter wrap opportunities must not step word motion per character.
+    try eb.setText("日本語文字");
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 10), next_cursor.col);
+
+    try eb.setCursor(0, 10);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor.col);
 }
 
 test "EditBuffer - word boundary keeps Hangul run grouped" {
@@ -1654,7 +1703,7 @@ test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     _ = try eb.redo();
     try std.testing.expectEqual(@as(u32, 5), eb.tb.lineWidthAt(0));
 
-    eb.tb.setTabWidth(8);
+    eb.setTabWidth(8);
     try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
 
     _ = try eb.undo();
@@ -1666,6 +1715,125 @@ test "EditBuffer - undo redo refreshes tab metrics after tab width changes" {
     _ = try eb.redo();
     try std.testing.expectEqual(@as(u32, 11), eb.tb.lineWidthAt(0));
     try std.testing.expectEqual(@as(u32, 11), view.getVirtualLines()[0].width_cols);
+}
+
+test "EditBuffer - contiguous inserts coalesce across tab presence" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const Flags = seg_mod.TextChunk.Flags;
+    const cases = [_]struct { text: []const u8, split_byte: usize, flags: []const u8 }{
+        .{ .text = "\u{754c}\t", .split_byte = 3, .flags = &.{Flags.HAS_TAB} },
+        .{ .text = "\t\u{754c}", .split_byte = 1, .flags = &.{Flags.HAS_TAB} },
+        .{ .text = "\u{754c}\u{754c}", .split_byte = 3, .flags = &.{0} },
+        .{ .text = "abcd", .split_byte = 2, .flags = &.{Flags.ASCII_ONLY} },
+        .{ .text = "ab\t", .split_byte = 2, .flags = &.{ Flags.ASCII_ONLY, Flags.HAS_TAB } },
+        .{ .text = "\tab", .split_byte = 1, .flags = &.{ Flags.HAS_TAB, Flags.ASCII_ONLY } },
+        .{ .text = "ab\u{754c}", .split_byte = 2, .flags = &.{ Flags.ASCII_ONLY, 0 } },
+        .{ .text = "\u{754c}ab", .split_byte = 3, .flags = &.{ 0, Flags.ASCII_ONLY } },
+    };
+
+    for (cases) |case| {
+        const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+        defer eb.deinit();
+        try eb.insertText(case.text[0..case.split_byte]);
+        try eb.insertText(case.text[case.split_byte..]);
+
+        for (0..2) |stage| {
+            if (stage == 1) {
+                try eb.setCursor(0, 2);
+                try eb.insertText("\n");
+                try std.testing.expectEqual(@as(u32, 2), eb.tb.lineCount());
+                try eb.backspace();
+            }
+            var out: [16]u8 = undefined;
+            try std.testing.expectEqualStrings(case.text, out[0..eb.getText(&out)]);
+            try std.testing.expectEqual(@as(u32, 4), eb.tb.lineWidthAt(0));
+            try std.testing.expectEqual(case.flags.len + 1, eb.tb.rope().count());
+            for (case.flags, 0..) |flags, i| {
+                const chunk = eb.tb.rope().get(@intCast(i + 1)).?.asText().?;
+                try std.testing.expectEqual(flags, chunk.flags);
+            }
+        }
+
+        const has_tab = std.mem.indexOfScalar(u8, case.text, '\t') != null;
+        try std.testing.expectEqual(has_tab, eb.tb.rope().root.metrics().custom.has_tabs);
+        eb.tb.setTabWidth(8);
+        try std.testing.expectEqual(@as(u32, if (has_tab) 10 else 4), eb.tb.lineWidthAt(0));
+    }
+}
+
+test "EditBuffer - tab presence survives splitting merging and history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    var out: [64]u8 = undefined;
+
+    for ([_][]const u8{ "abc\tdef", "\u{754c}x\tdef" }) |text| {
+        eb.tb.setTabWidth(2);
+        try eb.setText(text);
+        try eb.setCursor(0, 3);
+        for (0..5) |stage| {
+            switch (stage) {
+                0 => try eb.insertText("\n"),
+                1 => try eb.backspace(),
+                2 => try eb.deleteRange(.{ .row = 0, .col = 3 }, .{ .row = 0, .col = 5 }),
+                3 => {
+                    eb.tb.setTabWidth(8);
+                    _ = try eb.undo();
+                    try std.testing.expectEqual(@as(u32, 14), eb.tb.lineWidthAt(0));
+                },
+                4 => {
+                    _ = try eb.redo();
+                    try std.testing.expectEqual(@as(u32, 6), eb.tb.lineWidthAt(0));
+                },
+                else => unreachable,
+            }
+            const bytes = out[0..eb.getText(&out)];
+            const has_tab = std.mem.indexOfScalar(u8, bytes, '\t') != null;
+            try std.testing.expectEqual(stage != 2 and stage != 4, has_tab);
+            try std.testing.expectEqual(has_tab, eb.tb.rope().root.metrics().custom.has_tabs);
+            for (0..eb.tb.rope().count()) |i| {
+                const segment = eb.tb.rope().get(@intCast(i)).?;
+                if (segment.asText()) |chunk| {
+                    const chunk_bytes = chunk.getBytes(eb.tb.memRegistry());
+                    try std.testing.expectEqual(std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null, chunk.hasTab());
+                    if (chunk.isAsciiOnly()) try std.testing.expect(!chunk.hasTab());
+                }
+            }
+            if (stage == 1 or stage == 3) try std.testing.expectEqualStrings(text, bytes);
+        }
+    }
+}
+
+test "EditBuffer - stale tab-free undo redo roots preserve Unicode widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
+    defer eb.deinit();
+    try eb.setText("界🙂alpha");
+    const initial_width = eb.tb.lineWidthAt(0);
+    try eb.setCursor(0, initial_width);
+    try eb.insertText("x");
+    const edited_width = eb.tb.lineWidthAt(0);
+
+    _ = try eb.undo();
+    try std.testing.expectEqual(initial_width, eb.tb.lineWidthAt(0));
+
+    eb.tb.setTabWidth(8);
+    _ = try eb.redo();
+    try std.testing.expectEqual(edited_width, eb.tb.lineWidthAt(0));
+
+    eb.tb.setTabWidth(4);
+    _ = try eb.undo();
+    try std.testing.expectEqual(initial_width, eb.tb.lineWidthAt(0));
 }
 
 test "EditBuffer - setText clears all history" {

@@ -364,7 +364,7 @@ test "drawTextBuffer - issue 799 CJK word wrap has no duplicated glyphs" {
         "在aber (“但”)引入的转折从句前表示让步：虽然，的确",
         .word,
         15,
-        &.{ "在aber (“但”)", "引入的转折从句", "前表示让步：", "虽然，的确" },
+        &.{ "在aber (“但”)引", "入的转折从句前", "表示让步：虽", "然，的确" },
         null,
     );
 }
@@ -2456,6 +2456,65 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     // Test that line count is reasonable
     const line_count = tb.getLineCount();
     try std.testing.expect(line_count > 15);
+}
+
+test "drawTextBuffer - wide glyph skips every crossed highlight boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+    const red = try style.registerStyle("red", ansi.rgbaFromFloats(1, 0, 0, 1), null, 0);
+    const green_color = ansi.rgbaFromFloats(0, 1, 0, 1);
+    const green = try style.registerStyle("green", green_color, null, 0);
+    try tb.setText("界X");
+    try tb.addHighlight(0, 0, 1, red, 1, 0);
+    try tb.addHighlight(0, 1, 2, red, 1, 0);
+    try tb.addHighlight(0, 2, 3, green, 1, 0);
+    const view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    const output = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{ .pool = pool, .width_method = .unicode });
+    defer output.deinit();
+    output.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+    output.drawTextBuffer(view, 0, 0);
+    try std.testing.expectEqual(@as(u32, 'X'), output.get(2, 0).?.char);
+    try std.testing.expectEqualDeep(green_color, output.get(2, 0).?.fg);
+}
+
+test "setStyledText - scalar-split grapheme keeps the following token color" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    const red = ansi.rgbaFromFloats(1, 0, 0, 1);
+    const green = ansi.rgbaFromFloats(0, 1, 0, 1);
+    inline for (.{ .wcwidth, .unicode, .no_zwj, .unicode_wide }) |method| {
+        const tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, method);
+        defer tb.deinit();
+        const style = try ss.SyntaxStyle.init(std.testing.allocator);
+        defer style.deinit();
+        tb.setSyntaxStyle(style);
+        const view = try TextBufferView.init(std.testing.allocator, tb);
+        defer view.deinit();
+        const output = try OptimizedBuffer.init(std.testing.allocator, 12, 1, .{ .pool = pool, .width_method = method });
+        defer output.deinit();
+        const chunks = [_]StyledChunk{
+            .{ .text_ptr = "👩".ptr, .text_len = "👩".len, .fg_ptr = @ptrCast(&red), .bg_ptr = null, .attributes = 0 },
+            .{ .text_ptr = "\u{200d}".ptr, .text_len = "\u{200d}".len, .fg_ptr = @ptrCast(&red), .bg_ptr = null, .attributes = 0 },
+            .{ .text_ptr = "💻".ptr, .text_len = "💻".len, .fg_ptr = @ptrCast(&red), .bg_ptr = null, .attributes = 0 },
+            .{ .text_ptr = "X".ptr, .text_len = 1, .fg_ptr = @ptrCast(&green), .bg_ptr = null, .attributes = 0 },
+        };
+        try tb.setStyledText(&chunks);
+        output.clear(ansi.rgbaFromFloats(0, 0, 0, 1), 32);
+        output.drawTextBuffer(view, 0, 0);
+        const cell = output.get(tb.measureText("👩‍💻"), 0).?;
+        try std.testing.expectEqual(@as(u32, 'X'), cell.char);
+        try std.testing.expectEqualDeep(green, cell.fg);
+    }
 }
 
 test "setStyledText - highlight positioning with Unicode text" {
