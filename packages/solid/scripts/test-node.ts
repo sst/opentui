@@ -16,10 +16,15 @@ const outDir = resolve(packageRoot, ".node-test")
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 5 * 60_000
 const nodePath = requireNode26()
-const emittedAllowlist = [".node-test/tests/box.test.js", ".node-test/tests/control-flow-updates.test.js"]
+const emittedAllowlist = [
+  ".node-test/tests/box.test.js",
+  ".node-test/tests/control-flow-updates.test.js",
+  ".node-test/tests/image.test.js",
+]
 const testEntries = [
   { source: "tests/box.test.tsx", output: "tests/box.test.js" },
   { source: "tests/control-flow-updates.test.tsx", output: "tests/control-flow-updates.test.js" },
+  { source: "tests/image.test.tsx", output: "tests/image.test.js" },
   { source: "src/testing/bun-test-node.ts", output: "src/testing/bun-test-node.js" },
 ]
 
@@ -109,7 +114,7 @@ async function buildEntryPoint(source: string, output: string): Promise<void> {
 function ensureCoreBuildArtifacts(): void {
   const nativePackageName = `@opentui/core-${process.platform}-${process.arch}`
   const nativePackageDir = join(corePackageRoot, "node_modules", nativePackageName)
-  const hasCoreDist = existsSync(join(coreDistRoot, "index.js")) && existsSync(join(coreDistRoot, "testing.js"))
+  const hasCoreDist = existsSync(join(coreDistRoot, "index.node.js")) && existsSync(join(coreDistRoot, "testing.js"))
 
   if (hasCoreDist && existsSync(nativePackageDir)) {
     return
@@ -125,7 +130,7 @@ function writeCoreDistProxyPackage(): void {
   const proxyDir = join(outDir, "node_modules", "@opentui", "core")
   mkdirSync(proxyDir, { recursive: true })
 
-  const relativeCoreDistIndex = relative(proxyDir, join(coreDistRoot, "index.js")).replaceAll("\\", "/")
+  const relativeCoreDistIndex = relative(proxyDir, join(coreDistRoot, "index.node.js")).replaceAll("\\", "/")
   const relativeCoreDistTesting = relative(proxyDir, join(coreDistRoot, "testing.js")).replaceAll("\\", "/")
 
   writeFileSync(join(proxyDir, "index.js"), `export * from ${JSON.stringify(relativeCoreDistIndex)}\n`)

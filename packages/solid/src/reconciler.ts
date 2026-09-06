@@ -2,9 +2,11 @@
 import {
   BaseRenderable,
   createTextAttributes,
+  ImageRenderable,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
+  isEditBufferRenderable,
   parseColor,
   Renderable,
   RootTextNodeRenderable,
@@ -17,8 +19,8 @@ import {
   TextRenderable,
   type TextNodeOptions,
 } from "@opentui/core"
-import { decodeHTML } from "entities"
-import { useContext } from "solid-js"
+import { decodeHTMLStrict } from "entities"
+import { onCleanup, useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"
 import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
 import { getNextId } from "./utils/id-counter.js"
@@ -138,7 +140,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   })
 }
 
-function _createTextNode(value: string | number): TextNode {
+function _createTextNode(value: string | number, decodeEntities: boolean): TextNode {
   log("Creating text node:", value)
 
   const id = getNextId("text-node")
@@ -147,7 +149,7 @@ function _createTextNode(value: string | number): TextNode {
     value = value.toString()
   }
 
-  return TextNode.fromString(decodeHTML(value), { id })
+  return TextNode.fromString(decodeEntities ? decodeHTMLStrict(value) : value, { id })
 }
 
 export function createSlotNode(): SlotRenderable {
@@ -202,11 +204,19 @@ export const {
     }
 
     const element = new elements[tagName](solidRenderer, { id })
+    if (element instanceof ImageRenderable) {
+      onCleanup(() => {
+        element.source = undefined
+      })
+    }
     log("Element created with id:", id)
     return element
   },
 
-  createTextNode: _createTextNode,
+  // The compiler escapes static JSX before calling createTextNode directly.
+  createTextNode: (value) => _createTextNode(value, true),
+
+  createDynamicTextNode: (value) => _createTextNode(value, false),
 
   createSlotNode,
 
@@ -214,7 +224,7 @@ export const {
     log("Replacing text:", value, "in node:", logId(textNode))
 
     if (!(textNode instanceof TextNode)) return
-    textNode.replace(decodeHTML(value), 0)
+    textNode.replace(value, 0)
   },
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
@@ -323,9 +333,21 @@ export const {
         }
         break
       case "style":
-        for (const prop in value) {
-          const propVal = value[prop]
-          if (prev !== undefined && propVal === prev[prop]) continue
+        const nextStyle = value ?? {}
+        const previousStyle = prev ?? {}
+        if (isEditBufferRenderable(node) && previousStyle.selectionOccupancy && !nextStyle.selectionOccupancy) {
+          node.selectionOccupancy = undefined
+        }
+        if (node instanceof ImageRenderable) {
+          for (const prop in previousStyle) {
+            if (Object.prototype.hasOwnProperty.call(nextStyle, prop)) continue
+            if (prop !== "fit" && prop !== "protocol") continue
+            node[prop] = undefined
+          }
+        }
+        for (const prop in nextStyle) {
+          const propVal = nextStyle[prop]
+          if (propVal === previousStyle[prop]) continue
           // @ts-expect-error todo validate if prop is actually settable
           node[prop] = propVal
         }
@@ -334,7 +356,7 @@ export const {
       case "content": {
         const textValue = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
         // @ts-expect-error todo validate if prop is actually settable
-        node[name] = decodeHTML(textValue)
+        node[name] = textValue
         break
       }
 

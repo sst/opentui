@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url"
 import stringWidthLib from "string-width"
 import stripAnsiLib from "strip-ansi"
 
+import { resolveAssetRootPath } from "./assets.js"
+
 export interface WriteFileOptions {
   createPath?: boolean
   mode?: number
@@ -24,6 +26,11 @@ interface FileImportModule {
 
 type FilePathFallback = string | URL | (() => string | URL)
 
+export interface ResolveBundledFilePathOptions {
+  loadBundledFileFallback?: boolean
+  useAssetRoot?: boolean
+}
+
 type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
@@ -40,20 +47,36 @@ export const writeFile: (
 
 // Bun only discovers bundled file-like assets from the literal import expression at the call site.
 export async function resolveBundledFilePath(
+  key: string,
   loadBundledFile: () => Promise<FileImportModule>,
   fallbackPath: FilePathFallback,
   metaUrl: string,
+  options: ResolveBundledFilePathOptions = {},
 ): Promise<string> {
+  if (options.useAssetRoot ?? true) {
+    const configuredPath = resolveAssetRootPath(key)
+    if (configuredPath !== undefined) {
+      return configuredPath
+    }
+  }
+
   if (!bun) {
     const path = resolveFallbackFilePath(fallbackPath, metaUrl)
     if (existsSync(path)) {
       return path
     }
 
-    return (await loadBundledFilePath(loadBundledFile, metaUrl)) ?? path
+    return (await loadBundledFilePath(loadBundledFile, metaUrl, options.loadBundledFileFallback ?? false)) ?? path
   }
 
-  return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
+  // A bundled `type: "file"` import can resolve to a module whose `default` is not a path string
+  // (e.g. when the same file is also emitted as a build entrypoint), so fall back to the source path.
+  const loaded = (await loadBundledFile()).default
+  if (typeof loaded !== "string") {
+    return resolveFallbackFilePath(fallbackPath, metaUrl)
+  }
+
+  return normalizeLoadedFilePath(loaded, metaUrl)
 }
 
 function resolveFallbackFilePath(fallbackPath: FilePathFallback, metaUrl: string): string {
@@ -76,10 +99,18 @@ function normalizeLoadedFilePath(loadedPath: string, baseUrl: string): string {
 async function loadBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
   metaUrl: string,
+  loadBundledFileFallback: boolean,
 ): Promise<string | undefined> {
   const specifier = extractBundledImportSpecifier(loadBundledFile)
   if (!specifier) {
-    return undefined
+    if (!loadBundledFileFallback) {
+      return undefined
+    }
+    try {
+      return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
+    } catch {
+      return undefined
+    }
   }
 
   try {

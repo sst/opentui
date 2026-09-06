@@ -24,6 +24,7 @@ import {
   type WorkerMessageEvent,
   Worker as PlatformWorker,
 } from "../../platform/worker.js"
+import { resolveDefaultTreeSitterWorkerPath, resolveTreeSitterWasm } from "#opentui/runtime-assets"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -210,9 +211,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    let workerPath = new URL("./parser.worker.js", import.meta.url).href
+    let workerPath = resolveDefaultTreeSitterWorkerPath(new URL("./parser.worker.js", import.meta.url))
 
-    if (!existsSync(resolve(import.meta.dirname, "parser.worker.js"))) {
+    if (!process.env.OTUI_ASSET_ROOT && !existsSync(workerPath)) {
       workerPath = new URL("./parser.worker.ts", import.meta.url).href
     }
 
@@ -306,6 +307,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private async initializeClient(generation: number, worker: TreeSitterWorkerHandle): Promise<void> {
+    const treeSitterWasmPath = await resolveTreeSitterWasm()
+    this.assertCurrentInitialization(generation, worker)
     await new Promise<void>((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
@@ -319,6 +322,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       this.sendWorkerMessage({
         type: "INIT",
         dataPath: this.options.dataPath,
+        treeSitterWasmPath,
       })
     })
 
@@ -525,6 +529,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }
 
       case "ERROR": {
+        if (message.messageId) {
+          const callback = this.messageCallbacks.get(message.messageId)
+          if (callback) {
+            this.messageCallbacks.delete(message.messageId)
+            callback.reject(new Error(message.error))
+          }
+        }
         this.emitError(message.error, message.bufferId)
         return
       }

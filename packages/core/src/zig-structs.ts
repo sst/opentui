@@ -88,9 +88,10 @@ export const VisualCursorStruct = defineStruct([
   ["offset", "u32"],
 ])
 
-const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
+const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1, "unicode-wide": 3 }, "u8")
 const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
 const Osc52SupportEnum = defineEnum({ unknown: 0, supported: 1, unsupported: 2 }, "u8")
+const ImageProtocolEnum = defineEnum({ auto: 0, kitty: 1, sixel: 2, blocks: 3 }, "u8")
 
 export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
@@ -112,6 +113,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["explicit_cursor_positioning", "bool_u8"],
   ["remote", "bool_u8"],
   ["multiplexer", TerminalMultiplexerEnum],
+  ["image_protocol", ImageProtocolEnum],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],
@@ -123,6 +125,42 @@ export const TerminalCapabilitiesStruct = defineStruct([
 export const EncodedCharStruct = defineStruct([
   ["width", "u8"],
   ["char", "u32"],
+])
+
+export interface NativeImageInfo {
+  width: number
+  height: number
+  sourceWidth: number
+  sourceHeight: number
+  format: number
+  colorStatus: number
+  orientation: number
+  hasAlpha: number
+}
+
+export const NativeImageInfoStruct = defineStruct([
+  ["width", "u32"],
+  ["height", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+  ["format", "u32"],
+  ["colorStatus", "u32"],
+  ["orientation", "u32"],
+  ["hasAlpha", "u32"],
+])
+
+export const ImageDrawOptionsStruct = defineStruct([
+  ["x", "i32"],
+  ["y", "i32"],
+  ["width", "u32"],
+  ["height", "u32"],
+  ["pixelWidth", "u32"],
+  ["pixelHeight", "u32"],
+  ["sourceX", "u32"],
+  ["sourceY", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+  ["protocol", "u32"],
 ])
 
 export const LineInfoStruct = defineStruct([
@@ -152,6 +190,30 @@ export const CursorStateStruct = defineStruct([
   ["g", "f32"],
   ["b", "f32"],
   ["a", "f32"],
+])
+
+export const EmbeddedTerminalCursorStruct = defineStruct([
+  ["x", "u16"],
+  ["y", "u16"],
+  ["hasValue", "bool_u8"],
+  ["visible", "bool_u8"],
+  ["blinking", "bool_u8"],
+  ["wideTail", "bool_u8"],
+  ["style", "u8"],
+  ["colorHasValue", "bool_u8"],
+  ["colorR", "u8"],
+  ["colorG", "u8"],
+  ["colorB", "u8"],
+  ["padding", "u8"],
+])
+
+export const EmbeddedTerminalKeyOptionsStruct = defineStruct([
+  ["action", "u8"],
+  ["composing", "u8"],
+  ["mods", "u16"],
+  ["consumedMods", "u16"],
+  ["padding", "u16"],
+  ["unshiftedCodepoint", "u32"],
 ])
 
 export const CursorStyleOptionsStruct = defineStruct([
@@ -332,6 +394,69 @@ export type AudioVoiceOptions = {
   groupId?: number
 }
 
+export const NativeAudioStreamFormat = {
+  Mp3: 1,
+  Flac: 2,
+} as const
+
+export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]
+
+export type AudioStreamCreateOptions = {
+  capacityMs: number
+  startupMs: number
+  resumeMs: number
+  volume: number
+  pan: number
+  groupId: number
+  maxProbeBytes: number
+  format: NativeAudioStreamFormat
+}
+
+export type NativeAudioStreamStats = {
+  bytesReceived: bigint
+  framesDecoded: bigint
+  framesPlayed: bigint
+  state: number
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
+  underruns: number
+  errorCode: number
+  readyGeneration: number
+}
+
+export const NativeAudioStreamState = {
+  Initializing: 0,
+  Buffering: 1,
+  Playing: 2,
+  Ended: 3,
+  Failed: 4,
+  Cancelled: 5,
+  Reconnecting: 6,
+} as const
+
+export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
+
+export const NativeAudioStreamStateNames = [
+  "initializing",
+  "buffering",
+  "playing",
+  "ended",
+  "errored",
+  "disposed",
+  "reconnecting",
+] as const
+
+export const NativeAudioStreamCloseReason = {
+  PreserveNativeTerminal: 0,
+  TransportError: 1,
+  Disposed: 2,
+} as const
+
+export type NativeAudioStreamCloseReason =
+  (typeof NativeAudioStreamCloseReason)[keyof typeof NativeAudioStreamCloseReason]
+
 export type AudioStats = {
   soundsLoaded: number
   voicesActive: number
@@ -339,6 +464,16 @@ export type AudioStats = {
   lockMisses: number
   lastPeak: number
   lastRms: number
+}
+
+export type NativeAudioCaptureStats = {
+  framesReceived: bigint
+  framesRead: bigint
+  framesDropped: bigint
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
 }
 
 export const AudioCreateOptionsStruct = defineStruct([
@@ -369,6 +504,42 @@ export const AudioVoiceOptionsStruct = defineStruct([
   ["pan", "f32", { default: 0 }],
   ["loop", "bool_u8", { default: false }],
   ["groupId", "u32", { default: 0 }],
+])
+
+export const AudioStreamCreateOptionsStruct = defineStruct([
+  ["capacityMs", "u32"],
+  ["startupMs", "u32"],
+  ["resumeMs", "u32"],
+  ["volume", "f32"],
+  ["pan", "f32"],
+  ["groupId", "u32"],
+  // Keep additions at the end so newer JS preserves the previous native prefix during local rebuilds.
+  ["maxProbeBytes", "u32"],
+  ["format", "u32"],
+])
+
+export const AudioStreamStatsStruct = defineStruct([
+  ["bytesReceived", "u64"],
+  ["framesDecoded", "u64"],
+  ["framesPlayed", "u64"],
+  ["state", "u32"],
+  ["sampleRate", "u32"],
+  ["channels", "u32"],
+  ["bufferedFrames", "u32"],
+  ["capacityFrames", "u32"],
+  ["underruns", "u32"],
+  ["errorCode", "i32"],
+  ["readyGeneration", "u32"],
+])
+
+export const AudioCaptureStatsStruct = defineStruct([
+  ["framesReceived", "u64"],
+  ["framesRead", "u64"],
+  ["framesDropped", "u64"],
+  ["sampleRate", "u32"],
+  ["channels", "u32"],
+  ["bufferedFrames", "u32"],
+  ["capacityFrames", "u32"],
 ])
 
 export const AudioStatsStruct = defineStruct([

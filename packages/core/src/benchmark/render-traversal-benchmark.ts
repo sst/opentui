@@ -6,7 +6,7 @@
 
 import { performance } from "node:perf_hooks"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Command } from "commander"
 import { BoxRenderable, RGBA, ScrollBarRenderable, ScrollBoxRenderable, TextRenderable } from "../index.js"
@@ -46,6 +46,7 @@ type ScenarioResult = {
   minMs: number
   maxMs: number
   stdDevMs: number
+  rsdPercent: number
   rmePercent: number
   approxUsPerRenderable: number
 }
@@ -57,6 +58,7 @@ type TimingStats = {
   minMs: number
   maxMs: number
   stdDevMs: number
+  rsdPercent: number
   rmePercent: number
 }
 
@@ -90,6 +92,8 @@ const COLORS = {
   accent: RGBA.fromInts(84, 171, 224),
   warning: RGBA.fromInts(219, 186, 96),
 } as const
+
+let benchmarkChecksum = 0
 
 const program = new Command()
 program
@@ -185,7 +189,7 @@ try {
     results.push(result)
     writeLine(
       outputEnabled,
-      `  avg=${result.avgMs.toFixed(4)}ms p95=${result.p95Ms.toFixed(4)}ms rme=${result.rmePercent.toFixed(2)}%`,
+      `  avg=${result.avgMs.toFixed(4)}ms p95=${result.p95Ms.toFixed(4)}ms rsd=${result.rsdPercent.toFixed(2)}% rme=${result.rmePercent.toFixed(2)}%`,
     )
   }
 } finally {
@@ -200,6 +204,7 @@ if (outputEnabled) {
       layoutOnlyBoxes: result.layoutOnlyBoxesPerIteration,
       avgMs: result.avgMs,
       p95Ms: result.p95Ms,
+      "rsd%": result.rsdPercent,
       "rme%": result.rmePercent,
       usPerRenderable: result.approxUsPerRenderable,
     })),
@@ -207,7 +212,7 @@ if (outputEnabled) {
 }
 
 if (jsonPath) {
-  await Bun.write(
+  await writeFile(
     jsonPath,
     JSON.stringify(
       {
@@ -219,6 +224,13 @@ if (jsonPath) {
           warmupIterations,
           scenarioFilter,
           timestamp: new Date().toISOString(),
+          runtime: {
+            name: typeof process.versions.bun === "string" ? "bun" : "node",
+            version: process.versions.bun ?? process.version,
+            platform: process.platform,
+            arch: process.arch,
+          },
+          checksum: benchmarkChecksum,
         },
         scenarios: results,
       },
@@ -231,6 +243,9 @@ if (jsonPath) {
 
 function createScenarios(): ScenarioDefinition[] {
   return [
+    createYogaLayoutReadScenario(100),
+    createYogaLayoutReadScenario(1000),
+    createYogaLayoutReadScenario(10000),
     {
       name: "layout_only_opencode_wrappers",
       description: "OpenCode-like nested layout boxes with no visible box output",
@@ -268,6 +283,31 @@ function createScenarios(): ScenarioDefinition[] {
           layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
           runIteration: async () => {
             await ctx.renderOnce()
+          },
+          teardown: () => {
+            state.root.destroyRecursively()
+          },
+        }
+      },
+    },
+    {
+      name: "render_list_hot_path",
+      description: "Repeated render-list traversal over an unchanged OpenCode-like tree",
+      setup: async (ctx) => {
+        const state = await buildOpencodeLayoutTree(ctx, {
+          messageCount: Math.max(48, ctx.height + 12),
+          includeVisibleBoxes: false,
+          includeText: false,
+        })
+        const batchSize = 1000
+
+        return {
+          renderablesPerIteration: state.stats.renderables * batchSize,
+          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes * batchSize,
+          runIteration: async () => {
+            for (let index = 0; index < batchSize; index++) {
+              ctx.renderer.root.render(ctx.renderer.nextRenderBuffer, 0)
+            }
           },
           teardown: () => {
             state.root.destroyRecursively()
@@ -466,6 +506,51 @@ function createScenarios(): ScenarioDefinition[] {
       },
     },
   ]
+}
+
+function createYogaLayoutReadScenario(nodeCount: number): ScenarioDefinition {
+  return {
+    name: `yoga_layout_reads_${nodeCount}`,
+    description: `Read ${nodeCount} computed Yoga layouts through the production FFI path`,
+    setup: async (ctx) => {
+      clearRoot(ctx.renderer)
+      resetBuffers(ctx.renderer)
+
+      const root = new BoxRenderable(ctx.renderer, {
+        id: `bench-yoga-layout-root-${nodeCount}`,
+        width: "100%",
+        flexDirection: "column",
+      })
+      ctx.renderer.root.add(root)
+
+      const nodes = Array.from({ length: nodeCount }, (_, index) => {
+        const node = new BoxRenderable(ctx.renderer, {
+          id: `bench-yoga-layout-node-${nodeCount}-${index}`,
+          width: "100%",
+          height: 1,
+          flexShrink: 0,
+        })
+        root.add(node)
+        return node.getLayoutNode()
+      })
+
+      await ctx.renderOnce()
+
+      return {
+        renderablesPerIteration: nodeCount,
+        layoutOnlyBoxesPerIteration: nodeCount,
+        runIteration: async () => {
+          let checksum = 0
+          for (let index = 0; index < nodes.length; index++) {
+            const layout = nodes[index]!.getComputedLayout()
+            checksum += layout.left + layout.top + layout.width + layout.height + index
+          }
+          benchmarkChecksum = (benchmarkChecksum + checksum) >>> 0
+        },
+        teardown: () => root.destroyRecursively(),
+      }
+    },
+  }
 }
 
 // Frame-time scaling with total child count under viewport culling, at a
@@ -817,6 +902,7 @@ async function runScenario(
       minMs: round(stats.minMs, 4),
       maxMs: round(stats.maxMs, 4),
       stdDevMs: round(stats.stdDevMs, 4),
+      rsdPercent: round(stats.rsdPercent, 2),
       rmePercent: round(stats.rmePercent, 2),
       approxUsPerRenderable:
         runtime.renderablesPerIteration > 0 ? round((stats.avgMs * 1000) / runtime.renderablesPerIteration, 3) : 0,
@@ -852,6 +938,7 @@ function calculateStats(samples: number[]): TimingStats {
       minMs: 0,
       maxMs: 0,
       stdDevMs: 0,
+      rsdPercent: 0,
       rmePercent: 0,
     }
   }
@@ -880,6 +967,7 @@ function calculateStats(samples: number[]): TimingStats {
     minMs,
     maxMs,
     stdDevMs: Math.sqrt(variance),
+    rsdPercent: avgMs === 0 ? 0 : (Math.sqrt(variance) / avgMs) * 100,
     rmePercent: relativeMarginOfError(samples, avgMs),
   }
 }

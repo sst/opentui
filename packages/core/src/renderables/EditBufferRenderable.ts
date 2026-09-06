@@ -3,7 +3,14 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
 import { EditorView, type VisualCursor } from "../editor-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
-import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types.js"
+import type {
+  RenderContext,
+  Highlight,
+  CursorStyleOptions,
+  LineInfoProvider,
+  LineInfo,
+  SelectionOccupancy,
+} from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import type { SyntaxStyle } from "../syntax-style.js"
 import { NativeMeasureTargetKind, resolveRenderLib, type NativeRenderableHandle } from "../zig.js"
@@ -59,6 +66,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   showCursor?: boolean
   cursorColor?: string | RGBA
   cursorStyle?: CursorStyleOptions
+  selectionOccupancy?: SelectionOccupancy
   syntaxStyle?: SyntaxStyle
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
@@ -143,6 +151,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     this.editorView.setWrapMode(this._wrapMode)
     this.editorView.setScrollMargin(this._scrollMargin)
+    if (options.selectionOccupancy === "boundary") {
+      this.editorView.setSelectionOccupancy("boundary")
+    }
 
     this.editBuffer.setDefaultFg(this._textColor)
     this.editBuffer.setDefaultBg(this._backgroundColor)
@@ -220,6 +231,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   set cursorOffset(offset: number) {
+    this.clearSelection()
     this.editorView.setCursorByOffset(offset)
     this.requestRender()
   }
@@ -372,6 +384,17 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
+  get selectionOccupancy(): SelectionOccupancy {
+    return this.editorView.getSelectionOccupancy()
+  }
+
+  set selectionOccupancy(value: SelectionOccupancy | null | undefined) {
+    const occupancy = value ?? "cell"
+    if (this.selectionOccupancy === occupancy) return
+    this.editorView.setSelectionOccupancy(occupancy)
+    this.requestRender()
+  }
+
   get tabIndicator(): string | number | undefined {
     return this._tabIndicator
   }
@@ -470,6 +493,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this._selectionBg,
       this._selectionFg,
       false,
+      false,
+      localSelection.behavior,
     )
   }
 
@@ -504,6 +529,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        localSelection.behavior,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -515,6 +541,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionFg,
         updateCursor,
         followCursor,
+        localSelection.behavior,
       )
     }
 
@@ -582,14 +609,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   private refreshSelectionStyle(): void {
-    if (this.lastLocalSelection) {
-      this.updateLocalSelection(this.lastLocalSelection)
-      return
-    }
-
-    const selection = this.getSelection()
-    if (!selection) return
-    this.editorView.setSelection(selection.start, selection.end, this._selectionBg, this._selectionFg)
+    this.editorView.setSelectionColors(this._selectionBg, this._selectionFg)
   }
 
   private deleteSelectedText(): void {
@@ -607,13 +627,16 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   setSelectionInclusive(start: number, end: number): void {
-    this.setSelection(Math.min(start, end), Math.max(start, end) + 1)
+    this.lastLocalSelection = null
+    this.editorView.resetLocalSelection()
+    this._ctx.clearSelection()
+    this.editorView.setSelectionInclusive(start, end, this._selectionBg, this._selectionFg)
+    this.requestRender()
   }
 
   clearSelection(): boolean {
     const had = this.hasSelection()
     this.lastLocalSelection = null
-    this.editorView.resetSelection()
     this.editorView.resetLocalSelection()
     this._ctx.clearSelection()
     if (had) {
@@ -631,6 +654,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   setCursor(row: number, col: number): void {
+    this.clearSelection()
     this.editBuffer.setCursor(row, col)
     this.requestRender()
   }
@@ -691,16 +715,18 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return true
   }
 
+  // Horizontal movement collapses to an edge without taking another step.
+  private collapseSelectionToEdge(edge: "start" | "end"): boolean {
+    const selection = this.getSelection()
+    if (!selection) return false
+    this.editBuffer.setCursorByOffset(edge === "start" ? selection.start : selection.end)
+    this.clearSelection()
+    return true
+  }
+
   public moveCursorLeft(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-
-    if (!select && this.hasSelection()) {
-      const selection = this.getSelection()!
-      this.editBuffer.setCursorByOffset(selection.start)
-      this._ctx.clearSelection()
-      this.requestRender()
-      return true
-    }
+    if (!select && this.collapseSelectionToEdge("start")) return true
 
     this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorLeft()
@@ -711,15 +737,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public moveCursorRight(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-
-    if (!select && this.hasSelection()) {
-      const selection = this.getSelection()!
-      const targetOffset = this.cursorOffset === selection.start ? selection.end - 1 : selection.end
-      this.editBuffer.setCursorByOffset(targetOffset)
-      this._ctx.clearSelection()
-      this.requestRender()
-      return true
-    }
+    if (!select && this.collapseSelectionToEdge("end")) return true
 
     this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorRight()
@@ -747,6 +765,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   public gotoLine(line: number): void {
+    this.clearSelection()
     this.editBuffer.gotoLine(line)
     this.requestRender()
   }
@@ -762,6 +781,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoLineHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("start")) return true
     this.updateSelectionForMovement(select, true)
     const cursor = this.editorView.getCursor()
     if (cursor.col === 0 && cursor.row > 0) {
@@ -779,6 +799,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("end")) return true
     this.updateSelectionForMovement(select, true)
     const cursor = this.editorView.getCursor()
     const eol = this.editBuffer.getEOL()
@@ -796,6 +817,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoVisualLineHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("start")) return true
     this.updateSelectionForMovement(select, true)
     const sol = this.editorView.getVisualSOL()
     this.editBuffer.setCursor(sol.logicalRow, sol.logicalCol)
@@ -806,9 +828,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoVisualLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("end")) return true
     this.updateSelectionForMovement(select, true)
-    const eol = this.editorView.getVisualEOL()
-    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
+    this.editorView.gotoVisualLineEnd()
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
@@ -816,6 +838,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoBufferHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("start")) return true
     this.updateSelectionForMovement(select, true)
     this.editBuffer.setCursor(0, 0)
     this.updateSelectionForMovement(select, false)
@@ -825,6 +848,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public gotoBufferEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("end")) return true
     this.updateSelectionForMovement(select, true)
     this.editBuffer.gotoLine(999999)
     this.updateSelectionForMovement(select, false)
@@ -879,6 +903,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public moveWordForward(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("end")) return true
     this.updateSelectionForMovement(select, true)
     const nextWord = this.editBuffer.getNextWordBoundary()
     this.editBuffer.setCursorByOffset(nextWord.offset)
@@ -889,6 +914,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public moveWordBackward(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+    if (!select && this.collapseSelectionToEdge("start")) return true
     this.updateSelectionForMovement(select, true)
     const prevWord = this.editBuffer.getPrevWordBoundary()
     this.editBuffer.setCursorByOffset(prevWord.offset)
@@ -1126,13 +1152,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
-    if (!this.selectable) return
-
     if (!shiftPressed) {
       this._keyboardSelectionActive = false
-      this._ctx.clearSelection()
+      this.clearSelection()
       return
     }
+
+    if (!this.selectable) return
 
     this._keyboardSelectionActive = true
 
@@ -1141,8 +1167,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow
 
     if (isBeforeMovement) {
-      if (!this._ctx.hasSelection) {
+      if (!this._ctx.hasSelection || !this.hasSelection()) {
         this._ctx.startSelection(this, cursorX, cursorY)
+      } else if (this._ctx.getSelection()?.behavior !== "cell") {
+        if (this.editorView.convertSelectionToCell()) {
+          const selection = this._ctx.getSelection()
+          if (selection) selection.behavior = "cell"
+        }
       }
       return
     }
