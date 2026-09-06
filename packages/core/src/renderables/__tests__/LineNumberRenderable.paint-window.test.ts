@@ -385,9 +385,7 @@ describe("LineNumber paint window", () => {
       doc.text.drawToBuffer(buffer, doc.text.x, 0)
       expect(new TextDecoder().decode(buffer.getRealCharBytes(true))).toContain("30 row-30")
       const offset = (29 * buffer.width + doc.text.x) * 4
-      expect(
-        buffer.withBuffers((cells) => Array.from(cells.bg.slice(offset, offset + 4))),
-      ).toEqual([32, 48, 64, 255])
+      expect(buffer.withBuffers((cells) => Array.from(cells.bg.slice(offset, offset + 4)))).toEqual([32, 48, 64, 255])
       expect(doc.gutter["frameBuffer"]!.height).toBe(30)
       await setup.renderOnce()
       expect(doc.gutter["frameBuffer"]!.height).toBe(6)

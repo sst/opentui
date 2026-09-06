@@ -123,24 +123,25 @@ test.each([
 ] as const)(
   "StyledText split %s links follow concatenated width-cursor chunk ranges",
   async (_name, parts, ranges, urlIndexes) => {
-  const target = await setup(ranges.length, 1)
-  target.renderer.stdin.emit("data", Buffer.from(kitty))
-  const urls = ["https://example.test/a", "https://example.test/b", "https://example.test/c"]
-  const text = new TextRenderable(target.renderer, {
-    selectable: false,
-    wrapMode: "none",
-    content: new StyledText(parts.map((text, index) => ({ __isChunk: true, text, link: { url: urls[index] } }))),
-  })
-  target.renderer.root.add(text)
-  await target.renderOnce()
-  const emitted = openings(target.take())
-  assert.deepEqual(
-    emitted.map(({ url }) => url),
-    urlIndexes.map((index) => urls[index]),
-  )
-  assert.deepEqual(
-    ids(target),
-    ranges.map((index) => emitted[index].id),
-  )
-  assert.equal(target.captureCharFrame(), parts.join("") + "\n")
-})
+    const target = await setup(ranges.length, 1)
+    target.renderer.stdin.emit("data", Buffer.from(kitty))
+    const urls = ["https://example.test/a", "https://example.test/b", "https://example.test/c"]
+    const text = new TextRenderable(target.renderer, {
+      selectable: false,
+      wrapMode: "none",
+      content: new StyledText(parts.map((text, index) => ({ __isChunk: true, text, link: { url: urls[index] } }))),
+    })
+    target.renderer.root.add(text)
+    await target.renderOnce()
+    const emitted = openings(target.take())
+    assert.deepEqual(
+      emitted.map(({ url }) => url),
+      urlIndexes.map((index) => urls[index]),
+    )
+    assert.deepEqual(
+      ids(target),
+      ranges.map((index) => emitted[index].id),
+    )
+    assert.equal(target.captureCharFrame(), parts.join("") + "\n")
+  },
+)
