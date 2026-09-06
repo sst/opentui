@@ -5,13 +5,19 @@ import { TextBufferView } from "./text-buffer-view.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 
+let resourceContext: ResourceContext
+beforeEach(() => {
+  resourceContext = new ResourceContext({ objectCapacity: 32, renderCellsMax: 4096 })
+})
+afterEach(() => resourceContext.destroy())
+
 it("cached word and CJK breaks retain streaming source order", () => {
   const part = "AB \u65e5\u672c\u3002\u8a9e\u6587 "
   const layouts = []
   for (const fragmented of [false, true]) {
-    const buffer = TextBuffer.create("wcwidth")
+    const buffer = TextBuffer.create("wcwidth", resourceContext)
     const view = TextBufferView.create(buffer)
-    const screen = OptimizedBuffer.create(10, 256, "wcwidth")
+    const screen = OptimizedBuffer.create(10, 256, "wcwidth", { owner: resourceContext })
     try {
       if (fragmented) {
         for (let i = 0; i < 64; i++) buffer.append(part)
@@ -80,9 +86,9 @@ for (const method of ["unicode", "unicode-wide", "wcwidth"] as const) {
     ["kana punctuation", ["AB \u30ab", "\u30fb\u30ca"], 6, ["AB", "\u30ab\u30fb\u30ca"]],
   ] as const) {
     it(`word wrapping preserves ${name} across appends (${method})`, () => {
-      const buffer = TextBuffer.create(method)
+      const buffer = TextBuffer.create(method, resourceContext)
       const view = TextBufferView.create(buffer)
-      const screen = OptimizedBuffer.create(width + 1, 8, method)
+      const screen = OptimizedBuffer.create(width + 1, 8, method, { owner: resourceContext })
       try {
         for (const part of parts) buffer.append(part)
         view.setWrapMode("word")
@@ -120,9 +126,9 @@ for (const method of ["unicode", "unicode-wide"] as const) {
     ["\u306f", "\u309a", "\u3072"],
   ]) {
     it(`word wrapping retains an appended kana mark (${method}, ${mark.codePointAt(0)})`, () => {
-      const buffer = TextBuffer.create(method)
+      const buffer = TextBuffer.create(method, resourceContext)
       const view = TextBufferView.create(buffer)
-      const screen = OptimizedBuffer.create(8, 2, method)
+      const screen = OptimizedBuffer.create(8, 2, method, { owner: resourceContext })
       try {
         buffer.setText(base)
         buffer.append(mark + suffix)
@@ -139,12 +145,6 @@ for (const method of ["unicode", "unicode-wide"] as const) {
     })
   }
 }
-
-let resourceContext: ResourceContext
-beforeEach(() => {
-  resourceContext = new ResourceContext({ objectCapacity: 8, renderCellsMax: 32 })
-})
-afterEach(() => resourceContext.destroy())
 
 describe("TextBufferView", () => {
   let buffer: TextBuffer
