@@ -77,6 +77,13 @@ pub fn styleRecord(ptr: ?*const c.ot_editor_style) !*const c.ot_editor_style {
     return value;
 }
 
+pub fn ot_edit_buffer_set_tab_width(context: ?*Owner, id: ?*const c.ot_handle, width: u32) callconv(.c) c.ot_status {
+    const owner = admit(context, false) catch |err| return fail(context, err);
+    if (id == null or width > 255) return fail(owner, error.InvalidOptions);
+    owner.core.editBufferSetTabWidth(abi.handleFromC(id.?.*), @intCast(width)) catch |err| return fail(owner, err);
+    return c.OT_OK;
+}
+
 pub fn ot_edit_buffer_command(context: ?*Owner, id: ?*const c.ot_handle, command: u32, argument: u32) callconv(.c) c.ot_status {
     const owner = admit(context, false) catch |err| return fail(context, err);
     if (id == null or command > c.OT_EDIT_DEBUG_ROPE or

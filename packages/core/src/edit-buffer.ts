@@ -123,12 +123,14 @@ export class EditBuffer extends EventEmitter {
 
   public setTabWidth(width: number): void {
     this.guard()
-    this.lib.editBufferSetTabWidth(this.bufferPtr, width)
+    this.runMutation(() => {
+      this.lib.contextEditBufferSetTabWidth(this.native.handle.context, this.native.handle, width)
+    })
   }
 
   public getTabWidth(): number {
     this.guard()
-    return this.lib.textBufferGetTabWidth(this.textBufferPtr)
+    return this.lib.contextEditBufferGetInfo(this.native.handle.context, this.native.handle).tabWidth
   }
 
   public getText(): string {

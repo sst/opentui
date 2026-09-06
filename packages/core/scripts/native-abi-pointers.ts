@@ -112,6 +112,7 @@ export const nativePointerPolicies = {
   ot_edit_buffer_set_cursor: { 0: context, 1: buffer },
   ot_edit_buffer_get_text: { 0: context, 1: buffer, 2: empty, 4: buffer },
   ot_edit_buffer_get_info: { 0: context, 1: buffer, 2: buffer },
+  ot_edit_buffer_set_tab_width: { 0: context, 1: buffer },
   ot_edit_buffer_command: { 0: context, 1: buffer },
   ot_edit_buffer_history: { 0: context, 1: buffer, 3: buffer, 5: buffer },
   ot_edit_buffer_get_position: { 0: context, 1: buffer, 5: buffer },

@@ -160,20 +160,17 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe("a\tby")
     })
 
-    it("routes borrowed text buffer tab changes through its editor", () => {
+    it("remaps the cursor when tab width changes after an insert", () => {
       buffer.setText("a\tb")
       buffer.setCursor(0, 4)
       buffer.insertText("x")
 
-      const lib = (buffer as any).lib
-      const textBuffer = lib.editBufferGetTextBuffer(buffer.ptr)
-      lib.textBufferSetTabWidth(textBuffer, 8)
-
+      buffer.setTabWidth(8)
       expect(buffer.getCursorPosition()).toEqual({ row: 0, col: 11, offset: 11 })
       expect(buffer.undo()).toBe("cursor:0:4:4")
       expect(buffer.getCursorPosition()).toEqual({ row: 0, col: 10, offset: 10 })
       expect(buffer.redo()).toBe("cursor:0:11:11")
-      lib.textBufferSetTabWidth(textBuffer, 3)
+      buffer.setTabWidth(4)
       expect(buffer.getCursorPosition()).toEqual({ row: 0, col: 7, offset: 7 })
       buffer.insertText("y")
       expect(buffer.getText()).toBe("a\tbxy")

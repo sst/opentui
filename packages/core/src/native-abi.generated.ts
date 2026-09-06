@@ -1,7 +1,7 @@
 // Generated from packages/native/include/opentui.h and scripts/native-abi-pointers.ts.
 // Run `bun run generate:abi` in packages/core. Do not edit.
 // Inspect audit input: bun scripts/native-abi.ts --audit
-// ABI audit SHA-256: 1722fc8626061d8a02a1782e68fa798b20dc3b78898b69c8c745212ebf36c371
+// ABI audit SHA-256: 13bf6b915137277a9cd2eb1efec633d3263ac3f00551a8f97d9c53984669c9f8
 
 export const nativeSymbols = {
   ot_scene_set_hooks: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
@@ -92,6 +92,7 @@ export const nativeSymbols = {
   ot_edit_buffer_set_cursor: { args: ["ptr", "buffer", "u32", "u32"], returns: "i32" },
   ot_edit_buffer_get_text: { args: ["ptr", "buffer", "ptr", "u32", "buffer"], returns: "i32" },
   ot_edit_buffer_get_info: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
+  ot_edit_buffer_set_tab_width: { args: ["ptr", "buffer", "u32"], returns: "i32" },
   ot_edit_buffer_command: { args: ["ptr", "buffer", "u32", "u32"], returns: "i32" },
   ot_edit_buffer_history: { args: ["ptr", "buffer", "u32", "buffer", "u32", "buffer"], returns: "i32" },
   ot_edit_buffer_get_position: { args: ["ptr", "buffer", "u32", "u32", "u32", "buffer"], returns: "i32" },
@@ -749,7 +750,7 @@ export const nativeLayouts = {
       cursor_offset: { offset: 32, size: 4, alignment: 4, type: "u32" },
       can_undo: { offset: 36, size: 4, alignment: 4, type: "u32" },
       can_redo: { offset: 40, size: 4, alignment: 4, type: "u32" },
-      reserved: { offset: 44, size: 4, alignment: 4, type: "u32" },
+      tab_width: { offset: 44, size: 4, alignment: 4, type: "u32" },
     },
   },
   ot_scene_editor_options: {

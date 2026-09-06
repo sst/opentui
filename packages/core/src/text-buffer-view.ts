@@ -227,7 +227,15 @@ export class TextBufferView {
 
   public getLineSources(startLine: number, lineCount: number): number[] {
     this.guard()
-    return this.lib.textBufferViewGetLineSources(this.viewPtr, startLine, lineCount)
+    for (const [value, name] of [
+      [startLine, "start line"],
+      [lineCount, "line count"],
+    ] as const) {
+      if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
+        throw new RangeError(`${name} must be a u32 integer`)
+      }
+    }
+    return this.logicalLineInfo.lineSources.slice(startLine, startLine + lineCount)
   }
 
   public getSelectedText(): string {

@@ -909,9 +909,10 @@ typedef struct ot_edit_buffer_options {
     uint32_t reserved;
 } ot_edit_buffer_options;
 
-/* Initialize size/version and zero reserved. Other fields are copied output.
+/* Initialize size/version and zero remaining fields. Other fields are copied output.
  * Cursor row is a zero-based document line; col and offset count display columns,
  * not UTF-8 bytes or code points. can_undo and can_redo are 0 or 1.
+ * tab_width is the even display-cell width in [2, 254].
  * content_epoch is an invalidation token, not a count of user edits. */
 typedef struct ot_edit_buffer_info {
     uint32_t struct_size;
@@ -924,7 +925,7 @@ typedef struct ot_edit_buffer_info {
     uint32_t cursor_offset;
     uint32_t can_undo;
     uint32_t can_redo;
-    uint32_t reserved;
+    uint32_t tab_width;
 } ot_edit_buffer_info;
 
 #define OT_EDIT_CURSOR_CHANGED UINT32_C(1)
@@ -982,6 +983,8 @@ ot_status ot_edit_buffer_set_cursor(ot_context *, const ot_handle *edit_buffer, 
 ot_status ot_edit_buffer_get_text(ot_context *, const ot_handle *edit_buffer,
     uint8_t *bytes, uint32_t capacity, uint32_t *out_count);
 ot_status ot_edit_buffer_get_info(ot_context *, const ot_handle *edit_buffer, ot_edit_buffer_info *out_info);
+/* width is a display-cell tab stop. Native code rounds it up to an even value in [2, 254]. */
+ot_status ot_edit_buffer_set_tab_width(ot_context *, const ot_handle *edit_buffer, uint32_t width);
 
 /* Editor transport records require exact size/version. Unknown selectors and
  * unused nonzero arguments reject. Mutations reject callback reentry and validate

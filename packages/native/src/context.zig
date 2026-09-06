@@ -2659,6 +2659,18 @@ pub const Context = struct {
         text.invalidate();
     }
 
+    pub fn editBufferSetTabWidth(self: *Context, handle: Handle, width: u8) !void {
+        try self.beginMutation();
+        defer self.mutating = false;
+        const edit = try self.getEditBuffer(handle);
+        try edit.checkMutable();
+        const tab_width: u32 = @min(254, @max(2, @as(u32, width) + width % 2));
+        const bytes_max = (std.math.maxInt(u32) - 1) / tab_width;
+        if (edit.buffer.tb.getByteSize() > bytes_max) return error.TextLimit;
+        edit.buffer.setTabWidth(@intCast(tab_width));
+        edit.invalidate();
+    }
+
     pub fn textBufferSetTabWidth(self: *Context, handle: Handle, width: u8) !void {
         try self.beginMutation();
         defer self.mutating = false;

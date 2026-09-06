@@ -257,7 +257,7 @@ class GutterRenderable extends Renderable {
   protected override createFrameBuffer(): void {}
   protected override handleFrameBufferResize(): void {}
 
-  public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+  protected override renderSelf(buffer: OptimizedBuffer): void {
     // Match native integer-cell drawing before deriving the source window.
     const x = this._screenX
     const y = Math.trunc(this._screenY)
@@ -269,6 +269,7 @@ class GutterRenderable extends Renderable {
       this.frameBuffer = OptimizedBuffer.create(this.width, end - start, this._ctx.widthMethod, {
         respectAlpha: true,
         id: `framebuffer-${this.id}`,
+        owner: this._ctx.nativeScene,
       })
     } else if (this.frameBuffer.width !== this.width || this.frameBuffer.height !== end - start) {
       this.frameBuffer.resize(this.width, end - start)
@@ -279,8 +280,7 @@ class GutterRenderable extends Renderable {
     // and source mappings can change without changing the number of visual rows.
     this.refreshFrameBuffer(this.frameBuffer, Math.trunc(this.target.scrollY) + start)
     this.markClean()
-    this._ctx.addToHitGrid(x, this._screenY, this.width, this.height, this.num)
-    buffer.drawFrameBuffer(x, y + start, this.frameBuffer)
+    if (buffer !== this.frameBuffer) buffer.drawFrameBuffer(x, y + start, this.frameBuffer)
   }
 
   private refreshFrameBuffer(buffer: OptimizedBuffer, startLine: number): void {

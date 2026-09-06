@@ -306,7 +306,7 @@ pub fn ot_edit_buffer_get_info(context: ?*ContextHandle, edit_ptr: ?*const c.ot_
     const owner = context.?;
     const id = edit_ptr orelse return sessionError(owner, error.InvalidOptions);
     const out = out_ptr orelse return sessionError(owner, error.InvalidOptions);
-    if (out.struct_size != @sizeOf(c.ot_edit_buffer_info) or out.reserved != 0) return sessionError(owner, error.InvalidOptions);
+    if (out.struct_size != @sizeOf(c.ot_edit_buffer_info)) return sessionError(owner, error.InvalidOptions);
     if (out.abi_version != c.OT_CONTEXT_ABI_VERSION) return sessionError(owner, error.UnsupportedVersion);
     const edit = owner.core.getEditBuffer(handleFromC(id.*)) catch |err| return sessionError(owner, err);
     const cursor = edit.buffer.getPrimaryCursor();
@@ -321,7 +321,7 @@ pub fn ot_edit_buffer_get_info(context: ?*ContextHandle, edit_ptr: ?*const c.ot_
         .cursor_offset = cursor.offset,
         .can_undo = @intFromBool(edit.buffer.canUndo()),
         .can_redo = @intFromBool(edit.buffer.canRedo()),
-        .reserved = 0,
+        .tab_width = edit.buffer.tb.getTabWidth(),
     };
     return c.OT_OK;
 }
@@ -2809,13 +2809,12 @@ test "Context editor ABI validates bindings records and readonly admission" {
         try std.testing.expectEqualDeep(accepted, (try core.getRenderable(handleFromC(node))).scene_node.?.control.editor);
     }
     var info = std.mem.zeroes(c.ot_edit_buffer_info);
-    info.struct_size = @sizeOf(c.ot_edit_buffer_info);
+    info.struct_size = 0;
     info.abi_version = c.OT_CONTEXT_ABI_VERSION;
-    info.reserved = 1;
     const before = info;
     try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_edit_buffer_get_info(handle, &edit, &info));
     try std.testing.expectEqualDeep(before, info);
-    info.reserved = 0;
+    info.struct_size = @sizeOf(c.ot_edit_buffer_info);
     core.mutating = true;
     try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_edit_buffer_get_info(handle, &edit, &info));
     core.scene_measuring = true;

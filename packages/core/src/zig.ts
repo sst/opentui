@@ -97,6 +97,9 @@ export type NativeHandle<T extends string> = Pointer & { readonly __nativeHandle
 declare const nativeContextBrand: unique symbol
 export type NativeContextHandle = { readonly [nativeContextBrand]: true }
 
+/** Native hyperlink URL slot bound. Longer URLs fail allocation. */
+export const MAX_LINK_URL_BYTES = 512
+
 export interface NativeContextOptions {
   objectCapacity: number
   renderCellsMax: number
@@ -136,6 +139,7 @@ export interface NativeEditBufferInfo {
   cursor: LogicalCursor
   canUndo: boolean
   canRedo: boolean
+  tabWidth: number
 }
 
 export interface NativeTextBufferInfo {
@@ -3973,7 +3977,24 @@ export class FFIRenderLib {
       },
       canUndo: words[layout.fields.can_undo.offset / 4] !== 0,
       canRedo: words[layout.fields.can_redo.offset / 4] !== 0,
+      tabWidth: words[layout.fields.tab_width.offset / 4],
     }
+  }
+
+  public contextEditBufferSetTabWidth(
+    context: NativeContextHandle,
+    editBuffer: ContextEditBufferHandle,
+    width: number,
+  ): void {
+    const handle = encodeContextHandle(context, editBuffer)
+    const value = toSafeFFIU32Length(width, "Edit buffer tab width")
+    this.getYogaHost().runMutation(() => {
+      const pointer = this.nativeContextPointer(context, "ot_edit_buffer_set_tab_width")
+      nativeResult(
+        "ot_edit_buffer_set_tab_width",
+        this.opentui.symbols.ot_edit_buffer_set_tab_width(pointer, handle, value),
+      )
+    })
   }
 
   public contextEditBufferCommand(
