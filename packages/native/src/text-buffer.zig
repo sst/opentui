@@ -332,7 +332,6 @@ pub const UnifiedTextBuffer = struct {
         defer global_allocator.destroy(self);
 
         self.retireStorage();
-        self.layout_cache.clear();
         self.view_dirty_flags.deinit(global_allocator);
         self.free_view_ids.deinit(global_allocator);
         self.mem_registry.deinit();
@@ -381,8 +380,8 @@ pub const UnifiedTextBuffer = struct {
         }
         self.link_tracker = null;
 
-        self.mem_registry.clear();
         self.layout_cache.clear();
+        self.mem_registry.clear();
         // The next owned replacement discards the empty rope, so do not consolidate its old backing.
         _ = self.arena.reset(.free_all);
     }
@@ -540,6 +539,7 @@ pub const UnifiedTextBuffer = struct {
         self.styled_text_mem_id = null;
         self.styled_capacity = 0;
 
+        self.layout_cache.clear();
         self.arena.deinit();
         self.arena.* = replacement_arena;
         self._rope = replacement_rope;
@@ -547,7 +547,6 @@ pub const UnifiedTextBuffer = struct {
         self._rope.marker_cache = UnifiedRope.MarkerCache.init(self.allocator);
 
         self.mem_registry.clear();
-        self.layout_cache.clear();
 
         self.markAllViewsDirty();
     }
@@ -711,6 +710,7 @@ pub const UnifiedTextBuffer = struct {
                 self.syntax_style = prepared.style;
                 prepared.listener_registered = false;
             }
+            self.layout_cache.clear();
             std.mem.swap(std.heap.ArenaAllocator, self.arena, &prepared.arena);
             self._rope = prepared.rope;
             self._rope.allocator = self.allocator;
@@ -954,6 +954,7 @@ pub const UnifiedTextBuffer = struct {
         if (meta) |value| try self._rope.store_undo(value);
         if (replacement_arena) |arena| {
             // The caller retires the old arena after publication, not during this swap.
+            self.layout_cache.clear();
             std.mem.swap(std.heap.ArenaAllocator, self.arena, arena);
             self._rope = candidate;
             self._rope.allocator = self.allocator;
@@ -1060,6 +1061,9 @@ pub const UnifiedTextBuffer = struct {
         var flags: u8 = 0;
         if (chunk_bytes.len > 0 and is_ascii) {
             flags |= TextChunk.Flags.ASCII_ONLY;
+        }
+        if (!is_ascii and std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null) {
+            flags |= TextChunk.Flags.HAS_TAB;
         }
 
         const chunk_width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method);
@@ -1693,6 +1697,7 @@ pub const UnifiedTextBuffer = struct {
                 null;
             self.clearLinkRefs();
             self.clearAllHighlights();
+            self.layout_cache.clear();
             self.arena.deinit();
             self.arena.* = replacement_arena;
             self._rope = replacement_rope;

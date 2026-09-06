@@ -1863,6 +1863,8 @@ function getOpenTUILib(libPath?: string) {
     imageReleaseIccCache: { args: [], returns: "void" },
     imageDecode: { args: ["ptr", "u32", "buffer"], returns: "u32" },
     imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageCreateFromPixels: { args: ["ptr", "u64", "u32", "u32", "u32", "u32", "u32", "buffer"], returns: "u32" },
+    imageUpdatePixels: { args: ["u32", "ptr", "u64", "u32", "u32", "u32"], returns: "u32" },
     imageDestroy: { args: ["u32"], returns: "void" },
     imageRetain: { args: ["u32", "buffer"], returns: "u32" },
     imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
@@ -7890,6 +7892,45 @@ export class FFIRenderLib {
       output,
     )
     return this.imageHandleResult(status, output)
+  }
+
+  public imageCreateFromPixels(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+    format: number,
+    alpha: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageCreateFromPixels(
+      pixels.byteLength === 0 ? null : pixels,
+      BigInt(pixels.byteLength),
+      width,
+      height,
+      stride,
+      format,
+      alpha,
+      output,
+    )
+    return this.imageHandleResult(status, output)
+  }
+
+  public imageUpdatePixels(
+    image: ImageHandle,
+    pixels: Uint8Array,
+    stride: number,
+    format: number,
+    alpha: number,
+  ): number {
+    return this.opentui.symbols.imageUpdatePixels(
+      image,
+      pixels.byteLength === 0 ? null : pixels,
+      BigInt(pixels.byteLength),
+      stride,
+      format,
+      alpha,
+    )
   }
 
   public imageDestroy(image: ImageHandle): void {

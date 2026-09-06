@@ -55,16 +55,71 @@ export fn imageCreateFromRgba(
     stride: u32,
     out_handle: ?*NativeHandle,
 ) u32 {
+    return imageCreateFromPixels(
+        pixels_ptr,
+        pixels_len,
+        width,
+        height,
+        stride,
+        @intFromEnum(native_image.PixelFormat.rgba8),
+        @intFromEnum(native_image.PixelAlpha.straight),
+        out_handle,
+    );
+}
+
+fn pixelImportOptions(stride: u32, format: u32, alpha: u32) !native_image.PixelImportOptions {
+    return .{
+        .stride = stride,
+        .format = std.enums.fromInt(native_image.PixelFormat, format) orelse return error.InvalidArgument,
+        .alpha = std.enums.fromInt(native_image.PixelAlpha, alpha) orelse return error.InvalidArgument,
+    };
+}
+
+export fn imageCreateFromPixels(
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    width: u32,
+    height: u32,
+    stride: u32,
+    format: u32,
+    alpha: u32,
+    out_handle: ?*NativeHandle,
+) u32 {
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
     if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
         return @intFromEnum(native_image.Status.invalid_argument);
     }
     const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
-    const image = native_image.createFromRgba(globalAllocator, pixels, width, height, stride) catch |err| {
+    const options = pixelImportOptions(stride, format, alpha) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    const image = native_image.createFromPixels(globalAllocator, pixels, width, height, options) catch |err| {
         return @intFromEnum(native_image.statusFromError(err));
     };
     return @intFromEnum(insertImage(image, output));
+}
+
+export fn imageUpdatePixels(
+    image_handle: NativeHandle,
+    pixels_ptr: ?[*]const u8,
+    pixels_len: u64,
+    stride: u32,
+    format: u32,
+    alpha: u32,
+) u32 {
+    const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
+    if (pixels_len > std.math.maxInt(usize) or (pixels_len > 0 and pixels_ptr == null)) {
+        return @intFromEnum(native_image.Status.invalid_argument);
+    }
+    const pixels = if (pixels_len == 0) "" else pixels_ptr.?[0..@intCast(pixels_len)];
+    const options = pixelImportOptions(stride, format, alpha) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    native_image.updatePixels(image, pixels, options) catch |err| {
+        return @intFromEnum(native_image.statusFromError(err));
+    };
+    return @intFromEnum(native_image.Status.ok);
 }
 
 export fn imageDestroy(image_handle: NativeHandle) void {

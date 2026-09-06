@@ -1588,6 +1588,7 @@ pub const UnifiedTextBufferView = struct {
             pending_word_width_cols: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             pending_word_last_class: if (wrap_mode == .word) utf8.WordClass else void = if (wrap_mode == .word) .other else {},
             source_line_has_non_whitespace: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) false else {},
+            source_line_cjk_breaks: if (wrap_mode == .word) bool else void = if (wrap_mode == .word) true else {},
             word_chunk: if (wrap_mode == .word) ?*const TextChunk else void = if (wrap_mode == .word) null else {},
             word_chunk_col_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
             word_chunk_byte_start: if (wrap_mode == .word) u32 else void = if (wrap_mode == .word) 0 else {},
@@ -1924,6 +1925,7 @@ pub const UnifiedTextBufferView = struct {
             }
 
             fn processWordWrapBreakValue(wctx: *@This(), wrap_break: utf8.LayoutWrapBreak) void {
+                if (wrap_break.kind == .cjk_intercharacter and !wctx.source_line_cjk_breaks) return;
                 const chunk = wctx.word_chunk orelse return;
                 const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
                 const col_end = @min(wrap_break.colEnd(), chunk.width_cols);
@@ -1986,7 +1988,9 @@ pub const UnifiedTextBufferView = struct {
                 else
                     utf8.chunkWordClassEdges(chunk_bytes);
                 if (wctx.pending_word_width_cols > 0 and
-                    utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first))
+                    (utf8.isCjkAsciiTransition(wctx.pending_word_last_class, word_classes.first) or
+                        (wctx.source_line_cjk_breaks and chunk_bytes.len > 0 and
+                            utf8.isCjkIntercharacterBreak(wctx.pending_word_last_class, word_classes.first, utf8.decodeUtf8Unchecked(chunk_bytes, 0).cp))))
                 {
                     finalizePendingWord(wctx);
                     if (wctx.failed) return;
@@ -1995,9 +1999,22 @@ pub const UnifiedTextBufferView = struct {
                 wctx.word_chunk_col_start = 0;
                 wctx.word_chunk_byte_start = 0;
                 const last_word_class = if (layout) |info| blk: {
+                    var cjk_idx: usize = 0;
                     for (info.wrap_breaks) |wrap_break| {
+                        if (wctx.source_line_cjk_breaks) {
+                            while (cjk_idx < info.cjk_breaks.len and info.cjk_breaks[cjk_idx].byte_start < wrap_break.byte_start) : (cjk_idx += 1) {
+                                processWordWrapBreakValue(wctx, info.cjk_breaks[cjk_idx]);
+                                if (wctx.failed) return;
+                            }
+                        }
                         processWordWrapBreakValue(wctx, wrap_break);
                         if (wctx.failed) return;
+                    }
+                    if (wctx.source_line_cjk_breaks) {
+                        for (info.cjk_breaks[cjk_idx..]) |wrap_break| {
+                            processWordWrapBreakValue(wctx, wrap_break);
+                            if (wctx.failed) return;
+                        }
                     }
                     break :blk info.word_classes.last;
                 } else blk: {
@@ -2226,7 +2243,10 @@ pub const UnifiedTextBufferView = struct {
                     wctx.current_line_first_vline_idx = @intCast(wctx.result.virtual_lines.items.len);
                     wctx.current_line_vline_count = 0;
                 }
-                if (comptime wrap_mode == .word) wctx.source_line_has_non_whitespace = false;
+                if (comptime wrap_mode == .word) {
+                    wctx.source_line_has_non_whitespace = false;
+                    wctx.source_line_cjk_breaks = true;
+                }
                 if (comptime wrap_mode == .word and calculation == .measure) {
                     wctx.logical_measure_line_count = 0;
                     wctx.logical_measure_width_max = 0;
@@ -2247,6 +2267,8 @@ pub const UnifiedTextBufferView = struct {
                 wrap_w,
         };
 
+        if (comptime calculation == .render and wrap_mode == .word) text_buffer.layout_cache.beginLayout();
+        defer if (comptime calculation == .render and wrap_mode == .word) text_buffer.layout_cache.endLayout();
         text_buffer.walkLinesAndSegments(&wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
         return !wrap_ctx.failed;
     }

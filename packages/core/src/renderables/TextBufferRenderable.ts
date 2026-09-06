@@ -410,6 +410,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected onResize(width: number, height: number): void {
+    if (!this.nativeTextScene) this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
     this.requestRender()
     this.emit("line-info-change")
   }
