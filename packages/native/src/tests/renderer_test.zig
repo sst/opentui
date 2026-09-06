@@ -2636,12 +2636,15 @@ test "renderer - split scrollback images remain addressable before and across pi
     defer gp.deinitGlobalPool();
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
+    const registry = try std.testing.allocator.create(handles.Registry);
+    defer std.testing.allocator.destroy(registry);
+    registry.init();
     const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
-    const image_handle = try handles.insert(.image, @ptrCast(value));
+    const image_handle = try registry.insert(.image, @ptrCast(value));
     defer {
-        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        const token = registry.beginDestroy(image_handle, .image, image.Image).?;
         token.ptr.deinit();
-        handles.finishDestroy(token.handle);
+        registry.finishDestroy(token.handle);
     }
 
     for ([_]bool{ false, true }) |sixel| {

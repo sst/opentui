@@ -202,6 +202,8 @@ test "TextBuffer styled text - failed growth keeps storage safe to reuse" {
     try tb.setStyledText(&small);
     var output: [1]u8 = undefined;
     try std.testing.expectEqualStrings("a", output[0..tb.getPlainTextIntoBuffer(&output)]);
+}
+
 test "TextBuffer rejection - single highlight preserves accepted highlights and spans" {
     try checkHighlightRejection(false, false);
 }

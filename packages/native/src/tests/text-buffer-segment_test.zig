@@ -45,6 +45,8 @@ test "TextChunk layout cache retries and releases partial allocations" {
         cache.clear();
         try testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
     }
+}
+
 test "TextChunk static ellipsis keeps byte ranges separate from registered text" {
     var registry = MemRegistry.init(testing.allocator);
     defer registry.deinit();

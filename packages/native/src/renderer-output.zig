@@ -103,7 +103,7 @@ test "stdout write failures remain observable for resource cleanup" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const full = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/full", .{ .mode = .write_only });
     defer full.close(std.testing.io);
-    var stdout_output = StdoutOutput.initForFile(full);
+    var stdout_output = StdoutOutput.initForFile(std.testing.io, full);
     stdout_output.bufferedOutput().write("cannot write");
     try std.testing.expect(stdout_output.failed.load(.acquire));
 }
@@ -954,18 +954,10 @@ pub const FeedBackend = struct {
     }
 
     pub fn shouldSkipFrame(self: *FeedBackend) bool {
+        const stats = self.feed.getStats();
         const cap = self.feed.options.span_queue_capacity;
-        if (self.frameActive) return true;
-        if (cap != 0) {
-            // Draining transfers spans to consumers; only releasing their chunk
-            // references returns credit. Count queued and in-flight spans once each.
-            var outstanding: u64 = 0;
-            for (self.feed.stateBuffer()) |refcount| {
-                outstanding += refcount;
-                if (outstanding >= cap) return true;
-            }
-        }
-        return !self.feed.hasAtomicCapacity();
+        return self.frameActive or (cap > 0 and stats.outstanding_spans >= cap) or
+            !self.feed.hasAtomicCapacity();
     }
 
     pub fn prepareFrame(self: *FeedBackend) WriteStatus {

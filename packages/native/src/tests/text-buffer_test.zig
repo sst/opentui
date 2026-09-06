@@ -109,7 +109,7 @@ test "TextBuffer CJK layout cache survives history and multiple views" {
     try std.testing.expectEqual(@as(u32, 10), first.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 8), second.getVirtualLineCount());
 
-    tb.reset();
+    try tb.reset();
     try std.testing.expectEqual(@as(u32, 1), first.getVirtualLineCount());
     try tb.setText(original);
     try std.testing.expectEqual(@as(u32, 11), second.getVirtualLineCount());
