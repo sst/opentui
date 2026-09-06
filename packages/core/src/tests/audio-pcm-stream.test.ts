@@ -165,7 +165,8 @@ test("PCM backpressures source reads and releases borrowed chunks before advanci
   const audio = createAudio()
   let reads = 0
   async function* input() {
-    const bytes = pcm(new Float32Array(2400).fill(0.125))
+    // Exceed the shared 256 KiB input queue plus the bounded worker batch/output ring.
+    const bytes = pcm(new Float32Array(100000).fill(0.125))
     reads++
     yield bytes
     bytes.fill(0)
@@ -177,8 +178,8 @@ test("PCM backpressures source reads and releases borrowed chunks before advanci
   expect(reads).toBe(1)
   const output = await drive(audio, stream)
   expect(reads).toBe(2)
-  expect(stream.getStats().framesPlayed).toBe(1201n)
-  expect(output.filter((sample) => sample === 0.125).length).toBe(2400)
+  expect(stream.getStats().framesPlayed).toBe(50001n)
+  expect(output.filter((sample) => sample === 0.125).length).toBe(100000)
 })
 
 test("PCM shares stream, group and master controls", async () => {

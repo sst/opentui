@@ -40,7 +40,7 @@ fn encodePcm(out: []u8, samples: []const f32) void {
     }
 }
 
-test "PCM stream copies interleaved bytes, backpressures, and drains" {
+test "PCM stream copies interleaved bytes and drains through the worker" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
     try expectStatusOk(audio.startMixer(engine));
@@ -48,9 +48,6 @@ test "PCM stream copies interleaved bytes, backpressures, and drains" {
     const options = pcmStreamOptions(TEST_SAMPLE_RATE, 2);
     try expectStatusOk(audio.createStream(engine, &options, &id));
     var stats: audio.StreamStats = undefined;
-    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
-    try testing.expectEqual(@as(u32, 1), stats.ready_generation);
-    try testing.expectEqual(audio.StreamState.buffering, stats.state);
     var input: [960]f32 = undefined;
     for (0..480) |frame| {
         input[frame * 2] = 0.25;
@@ -59,19 +56,19 @@ test "PCM stream copies interleaved bytes, backpressures, and drains" {
     var bytes: [input.len * 4]u8 = undefined;
     encodePcm(&bytes, &input);
     try testing.expectEqual(@as(i32, bytes.len), audio.writeStream(engine, id, &bytes, bytes.len));
-    try testing.expectEqual(@as(i32, 0), audio.writeStream(engine, id, &bytes, bytes.len));
     @memset(&bytes, 0);
-    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+    stats = try waitForBufferedFrames(engine, id, 480);
+    try testing.expectEqual(@as(u32, 1), stats.ready_generation);
+    try testing.expectEqual(audio.StreamState.buffering, stats.state);
     try testing.expectEqual(@as(u32, 480), stats.buffered_frames);
     try expectStatusOk(audio.endStream(engine, id));
     try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, id, &bytes, bytes.len));
-    var output: [1024]f32 = undefined;
-    try expectStatusOk(audio.mixToBuffer(engine, &output, 512, 2));
+    var output: [256]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 128, 2));
     // The shared mixer group has one frame of processing latency.
     try testing.expectApproxEqAbs(@as(f32, 0.25), output[2], 0.0001);
     try testing.expectApproxEqAbs(@as(f32, -0.5), output[3], 0.0001);
-    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
-    try testing.expectEqual(audio.StreamState.ended, stats.state);
+    stats = try mixStreamToEnd(engine, id);
     try testing.expectEqual(@as(u64, bytes.len), stats.bytes_received);
     try testing.expectEqual(@as(u64, 480), stats.frames_played);
     try expectStatusOk(audio.closeStream(engine, id, audio.StreamCloseReason.preserve_native_terminal, &stats));
@@ -99,36 +96,48 @@ test "PCM stream accepts unaligned bytes fragmented inside samples and frames" {
             try testing.expectEqual(@as(u64, offset), stats.bytes_received);
         }
         try expectStatusOk(audio.endStream(engine, id));
-        var output: [128]f32 = undefined;
-        try expectStatusOk(audio.mixToBuffer(engine, &output, 64, 2));
-        for (1..24) |frame| {
+        _ = try waitForBufferedFrames(engine, id, 24);
+        var output: [16]f32 = undefined;
+        try expectStatusOk(audio.mixToBuffer(engine, &output, 8, 2));
+        for (1..8) |frame| {
             try testing.expectApproxEqAbs(@as(f32, 0.25), output[frame * 2], 0.0001);
             try testing.expectApproxEqAbs(@as(f32, -0.5), output[frame * 2 + 1], 0.0001);
         }
-        var stats: audio.StreamStats = undefined;
-        try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+        const stats = try mixStreamToEnd(engine, id);
         try testing.expectEqual(@as(u64, 24), stats.frames_played);
         try testing.expectEqual(audio.StreamState.ended, stats.state);
     }
 }
 
-test "PCM stream bounds each write and does not scan input while backpressured" {
+test "PCM stream backpressures the shared input queue without scanning rejected bytes" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
     var options = pcmStreamOptions(TEST_SAMPLE_RATE, 2);
     options.capacity_ms = 100;
     var id: u32 = 0;
     try expectStatusOk(audio.createStream(engine, &options, &id));
-    const bytes = [_]u8{0} ** (4096 * 8);
-    try testing.expectEqual(@as(i32, 2048 * 8), audio.writeStream(engine, id, &bytes, bytes.len));
-    try testing.expectEqual(@as(i32, 2048 * 8), audio.writeStream(engine, id, &bytes, bytes.len));
-    try testing.expectEqual(@as(i32, (4800 - 4096) * 8), audio.writeStream(engine, id, &bytes, bytes.len));
+    const bytes = [_]u8{0} ** (64 * 1024);
+    var total: u64 = 0;
+    // Once output is full the worker cannot free further input space.
+    for (0..2) |pass| {
+        var accepted: i32 = 1;
+        for (0..16) |_| {
+            accepted = audio.writeStream(engine, id, &bytes, bytes.len);
+            try testing.expect(accepted >= 0);
+            total += @intCast(accepted);
+            if (accepted == 0) break;
+        }
+        try testing.expectEqual(@as(i32, 0), accepted);
+        if (pass == 0) _ = try waitForBufferedFrames(engine, id, 4800);
+    }
+    try testing.expect(total >= 256 * 1024);
+    try testing.expect(total <= 256 * 1024 + 2048 * 8 + 4800 * 8);
     var invalid: [8]u8 = undefined;
     encodePcm(&invalid, &.{ std.math.nan(f32), 0 });
     for (0..3) |_| try testing.expectEqual(@as(i32, 0), audio.writeStream(engine, id, &invalid, invalid.len));
     var stats: audio.StreamStats = undefined;
     try expectStatusOk(audio.getStreamStats(engine, id, &stats));
-    try testing.expectEqual(@as(u64, 4800 * 8), stats.bytes_received);
+    try testing.expectEqual(total, stats.bytes_received);
     try testing.expectEqual(@as(u32, 4800), stats.buffered_frames);
 }
 
@@ -142,9 +151,8 @@ test "PCM stream rejects incomplete final frames after accepting partial bytes" 
             try expectStatusOk(audio.createStream(engine, &options, &id));
             const bytes = [_]u8{0} ** 7;
             try testing.expectEqual(@as(i32, @intCast(partial)), audio.writeStream(engine, id, &bytes, @intCast(partial)));
-            try testing.expectEqual(audio.Status.err_invalid, audio.endStream(engine, id));
-            var stats: audio.StreamStats = undefined;
-            try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+            try expectStatusOk(audio.endStream(engine, id));
+            var stats = try waitForStreamState(engine, id, audio.StreamState.failed);
             try testing.expectEqual(@as(u64, partial), stats.bytes_received);
             try testing.expectEqual(@as(u64, 0), stats.frames_decoded);
             try expectStatusOk(audio.closeStream(engine, id, audio.StreamCloseReason.transport_error, &stats));
@@ -166,28 +174,18 @@ test "PCM stream EOF preserves sub-frame downsampling tails" {
             encodePcm(&bytes, &input);
             const byte_count = input_frames * channels * 4;
             try testing.expectEqual(@as(i32, @intCast(byte_count)), audio.writeStream(engine, id, &bytes, byte_count));
-            var before: audio.StreamStats = undefined;
-            try expectStatusOk(audio.getStreamStats(engine, id, &before));
             try expectStatusOk(audio.endStream(engine, id));
-            var sealed: audio.StreamStats = undefined;
-            try expectStatusOk(audio.getStreamStats(engine, id, &sealed));
-            try testing.expect(sealed.frames_decoded > before.frames_decoded);
             // Retrying EOF must not append another copy of the conversion tail.
             try expectStatusOk(audio.endStream(engine, id));
-            var output: [128]f32 = undefined;
-            try expectStatusOk(audio.mixToBuffer(engine, &output, 64, 2));
-            try testing.expect(hasSignal(&output));
-            var drained: audio.StreamStats = undefined;
-            try expectStatusOk(audio.getStreamStats(engine, id, &drained));
-            try testing.expectEqual(audio.StreamState.ended, drained.state);
-            try testing.expectEqual(sealed.frames_decoded, drained.frames_decoded);
+            const drained = try mixStreamToEnd(engine, id);
+            try testing.expectEqual(@as(u64, 2), drained.frames_decoded);
             try testing.expectEqual(drained.frames_decoded, drained.frames_played);
             try testing.expectEqual(@as(u64, input_frames) * channels * @sizeOf(f32), drained.bytes_received);
         }
     }
 }
 
-test "PCM stream EOF tail retries after ring backpressure without duplication" {
+test "PCM stream accepts EOF once while full and flushes its tail without duplication" {
     const engine = try createEngine(&.{ .sample_rate = 8_000 });
     defer audio.destroy(engine);
     try expectStatusOk(audio.startMixer(engine));
@@ -201,26 +199,18 @@ test "PCM stream EOF tail retries after ring backpressure without duplication" {
     var bytes: [input.len * 4]u8 = undefined;
     encodePcm(&bytes, &input);
     try testing.expectEqual(@as(i32, bytes.len), audio.writeStream(engine, id, &bytes, bytes.len));
-    var full: audio.StreamStats = undefined;
-    try expectStatusOk(audio.getStreamStats(engine, id, &full));
+    const full = try waitForBufferedFrames(engine, id, 8);
     try testing.expectEqual(full.capacity_frames, full.buffered_frames);
-    try testing.expectEqual(audio.Status.would_block, audio.endStream(engine, id));
-    try testing.expectEqual(audio.Status.would_block, audio.endStream(engine, id));
+    try expectStatusOk(audio.endStream(engine, id));
     try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, id, &bytes, bytes.len));
-    var output: [64]f32 = undefined;
-    try expectStatusOk(audio.mixToBuffer(engine, &output, 32, 2));
-    try expectStatusOk(audio.endStream(engine, id));
-    try expectStatusOk(audio.endStream(engine, id));
-    try expectStatusOk(audio.mixToBuffer(engine, &output, 32, 2));
-    try testing.expect(hasSignal(&output));
-    var drained: audio.StreamStats = undefined;
-    try expectStatusOk(audio.getStreamStats(engine, id, &drained));
+    var drained = try mixStreamToEnd(engine, id);
     try testing.expectEqual(audio.StreamState.ended, drained.state);
     try testing.expectEqual(@as(u64, 9), drained.frames_decoded);
     try testing.expectEqual(drained.frames_decoded, drained.frames_played);
     try expectStatusOk(audio.endStream(engine, id));
     try expectStatusOk(audio.getStreamStats(engine, id, &drained));
     try testing.expectEqual(@as(u64, 9), drained.frames_decoded);
+    try testing.expectEqual(audio.Status.err_invalid, audio.restartStream(engine, id));
 }
 
 test "PCM stream rejects invalid formats and samples and finishes empty EOF" {
@@ -246,21 +236,102 @@ test "PCM stream rejects invalid formats and samples and finishes empty EOF" {
         defer audio.destroy(invalid_engine);
         try testing.expectEqual(audio.Status.err_invalid, audio.createStream(invalid_engine, &options, &id));
     }
-    try expectStatusOk(audio.createStream(engine, &options, &id));
     var bytes: [8]u8 = undefined;
     for ([_]f32{ std.math.nan(f32), std.math.inf(f32), -std.math.inf(f32) }) |sample| {
+        try expectStatusOk(audio.createStream(engine, &options, &id));
         encodePcm(&bytes, &.{ sample, 0 });
-        try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, id, &bytes, bytes.len));
+        try testing.expectEqual(@as(i32, bytes.len), audio.writeStream(engine, id, &bytes, bytes.len));
+        var failed = try waitForStreamState(engine, id, audio.StreamState.failed);
+        try testing.expectEqual(@as(u64, 0), failed.frames_decoded);
+        try expectStatusOk(audio.closeStream(engine, id, audio.StreamCloseReason.preserve_native_terminal, &failed));
     }
+    try expectStatusOk(audio.createStream(engine, &options, &id));
     try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, id, null, 2));
     try testing.expectEqual(@as(i32, 0), audio.writeStream(engine, id, null, 0));
     try expectStatusOk(audio.endStream(engine, id));
     try expectStatusOk(audio.endStream(engine, id));
-    var stats: audio.StreamStats = undefined;
-    try expectStatusOk(audio.getStreamStats(engine, id, &stats));
+    const stats = try waitForStreamState(engine, id, audio.StreamState.ended);
     try testing.expectEqual(audio.StreamState.ended, stats.state);
     try testing.expectEqual(@as(u64, 0), stats.bytes_received);
     try testing.expectEqual(@as(u64, 0), stats.frames_decoded);
+}
+
+test "PCM stream converts a fragmented live frame before EOF without decoder coalescing" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    try expectStatusOk(audio.startMixer(engine));
+    const options = pcmStreamOptions(TEST_SAMPLE_RATE, 2);
+    var id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &id));
+    const ready = try waitForStreamState(engine, id, audio.StreamState.buffering);
+    try testing.expectEqual(@as(u32, 1), ready.ready_generation);
+    var bytes: [8]u8 = undefined;
+    encodePcm(&bytes, &.{ 0.25, -0.5 });
+    for (bytes, 0..) |_, i| {
+        try testing.expectEqual(@as(i32, 1), audio.writeStream(engine, id, bytes[i..].ptr, 1));
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
+    }
+    const buffered = try waitForBufferedFrames(engine, id, 1);
+    try testing.expectEqual(@as(u64, 8), buffered.bytes_received);
+    try expectStatusOk(audio.endStream(engine, id));
+    const drained = try mixStreamToEnd(engine, id);
+    try testing.expectEqual(@as(u64, 1), drained.frames_played);
+}
+
+test "PCM stream worker preserves fragmented conversion and resampling tails" {
+    for ([_][2]u32{ .{ 8000, 48000 }, .{ 44100, 48000 }, .{ 48000, 44100 }, .{ 192000, 8000 } }) |rates| {
+        for ([_]u32{ 1, 2 }) |channels| {
+            for ([_]usize{ 1, 7, 8191, 24000 }) |chunk_size| {
+                const engine = try createEngine(&.{ .sample_rate = rates[1] });
+                defer audio.destroy(engine);
+                try expectStatusOk(audio.startMixer(engine));
+                const options = pcmStreamOptions(rates[0], channels);
+                var id: u32 = 0;
+                try expectStatusOk(audio.createStream(engine, &options, &id));
+                const samples = [_]f32{0.5} ** 6000;
+                var bytes: [samples.len * 4]u8 = undefined;
+                encodePcm(&bytes, &samples);
+                var offset: usize = 0;
+                while (offset < bytes.len) {
+                    const end = @min(offset + chunk_size, bytes.len);
+                    try writeAllStreamBytes(engine, id, bytes[offset..end]);
+                    offset = end;
+                }
+                try expectStatusOk(audio.endStream(engine, id));
+                const drained = try mixStreamToEnd(engine, id);
+                const nominal = (@as(u64, samples.len / channels) * rates[1] + rates[0] - 1) / rates[0];
+                try testing.expect(drained.frames_decoded >= nominal);
+                try testing.expect(drained.frames_decoded <= nominal + 128);
+                try testing.expectEqual(drained.frames_decoded, drained.frames_played);
+                try testing.expectEqual(@as(u64, bytes.len), drained.bytes_received);
+            }
+        }
+    }
+}
+
+test "PCM stream close wakes the worker from input and output waits" {
+    for ([_]bool{ false, true }) |full| {
+        const engine = try createEngine(null);
+        defer audio.destroy(engine);
+        const options = pcmStreamOptions(TEST_SAMPLE_RATE, 2);
+        var id: u32 = 0;
+        try expectStatusOk(audio.createStream(engine, &options, &id));
+        _ = try waitForStreamState(engine, id, audio.StreamState.buffering);
+        if (full) {
+            const bytes = [_]u8{0} ** (64 * 1024);
+            var accepted: i32 = 1;
+            for (0..16) |_| {
+                accepted = audio.writeStream(engine, id, &bytes, bytes.len);
+                if (accepted == 0) break;
+                try testing.expect(accepted > 0);
+            }
+            try testing.expectEqual(@as(i32, 0), accepted);
+            _ = try waitForBufferedFrames(engine, id, 480);
+        }
+        var stats: audio.StreamStats = undefined;
+        try expectStatusOk(audio.closeStream(engine, id, audio.StreamCloseReason.disposed, &stats));
+        try testing.expectEqual(audio.Status.err_not_found, audio.getStreamStats(engine, id, &stats));
+    }
 }
 
 fn buildPcm16Wav(allocator: std.mem.Allocator, channels: u16, sample_rate: u32, samples: []const i16) ![]u8 {
@@ -357,6 +428,16 @@ fn waitForBufferedFrames(engine: *audio.Engine, stream_id: u32, minimum: u32) !a
         try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
         if (stats.buffered_frames >= minimum) return stats;
         if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
+        testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
+    }
+    return error.TestUnexpectedResult;
+}
+
+fn waitForStreamState(engine: *audio.Engine, stream_id: u32, state: u32) !audio.StreamStats {
+    var stats: audio.StreamStats = undefined;
+    for (0..5_000) |_| {
+        try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
+        if (stats.state == state) return stats;
         testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     return error.TestUnexpectedResult;

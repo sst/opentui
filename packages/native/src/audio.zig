@@ -5,7 +5,6 @@ const io = if (builtin.is_test) std.testing.io else @import("root").io;
 
 pub const Status = struct {
     pub const ok: i32 = 0;
-    pub const would_block: i32 = 1;
     pub const err_invalid: i32 = -1;
     pub const err_no_space: i32 = -2;
     pub const err_decode: i32 = -3;
@@ -323,10 +322,8 @@ const Stream = struct {
     error_code: i32 = 0,
     ready_generation: u32 = 0,
     has_started_playback: bool = false,
-    pcm_converter: c.ma_data_converter = undefined,
-    pcm_converter_ready: bool = false,
-    pcm_pending: [stream_bytes_per_frame - 1]u8 = undefined,
-    pcm_pending_len: usize = 0,
+    input_sample_rate: u32 = 0,
+    input_channels: u32 = 0,
 };
 
 const SoundGroup = struct {
@@ -621,7 +618,6 @@ fn destroyStreamStorage(stream: *Stream, out_final_stats: ?*StreamStats) void {
         c.ma_pcm_rb_uninit(&stream.pcm_ring);
         stream.pcm_ring_ready = false;
     }
-    if (stream.pcm_converter_ready) c.ma_data_converter_uninit(&stream.pcm_converter, null);
     stream.allocator.free(stream.pcm_buffer);
     stream.allocator.free(stream.input_buffer);
     stream.allocator.destroy(stream);
@@ -773,6 +769,11 @@ fn streamDecoderRead(
 ) callconv(.c) c.ma_result {
     if (bytes_read_out != null) bytes_read_out[0] = 0;
     const stream = streamFromDecoder(decoder) orelse return c.MA_INVALID_ARGS;
+    return readStreamInput(stream, buffer_out, bytes_to_read, bytes_read_out);
+}
+
+fn readStreamInput(stream: *Stream, buffer_out: ?*anyopaque, bytes_to_read: usize, bytes_read_out: [*c]usize) c.ma_result {
+    if (bytes_read_out != null) bytes_read_out[0] = 0;
     if (bytes_to_read == 0) return c.MA_SUCCESS;
     const output_ptr = buffer_out orelse return c.MA_INVALID_ARGS;
 
@@ -780,7 +781,8 @@ fn streamDecoderRead(
     defer stream.input_lock.unlock(io);
 
     const output = @as([*]u8, @ptrCast(output_ptr))[0..bytes_to_read];
-    const target_read = @min(bytes_to_read, stream_decoder_read_granularity);
+    // Raw PCM must not wait for an encoded decoder's minimum read size.
+    const target_read = if (stream.format == StreamFormat.pcm) 1 else @min(bytes_to_read, stream_decoder_read_granularity);
     var total_read: usize = 0;
     while (total_read < target_read) {
         while (stream.input_count == 0 and
@@ -845,21 +847,34 @@ fn streamDecoderSeek(decoder: ?*c.ma_decoder, byte_offset: c.ma_int64, origin: c
 }
 
 fn streamDecoderWorker(stream: *Stream) void {
-    var config = c.ma_decoder_config_init(c.ma_format_f32, 2, stream.sample_rate);
-    config.encodingFormat = switch (stream.format) {
-        StreamFormat.mp3 => c.ma_encoding_format_mp3,
-        StreamFormat.flac => c.ma_encoding_format_flac,
-        else => unreachable,
-    };
-    config.seekPointCount = 0;
-
+    const is_pcm = stream.format == StreamFormat.pcm;
     var decoder: c.ma_decoder = undefined;
-    const init_result = c.ma_decoder_init(streamDecoderRead, streamDecoderSeek, stream, &config, &decoder);
+    var converter: c.ma_data_converter = undefined;
+    const init_result = if (is_pcm) blk: {
+        const config = c.ma_data_converter_config_init(c.ma_format_f32, c.ma_format_f32, stream.input_channels, stream_channels, stream.input_sample_rate, stream.sample_rate);
+        break :blk c.ma_data_converter_init(&config, null, &converter);
+    } else blk: {
+        var config = c.ma_decoder_config_init(c.ma_format_f32, 2, stream.sample_rate);
+        config.encodingFormat = switch (stream.format) {
+            StreamFormat.mp3 => c.ma_encoding_format_mp3,
+            StreamFormat.flac => c.ma_encoding_format_flac,
+            else => unreachable,
+        };
+        config.seekPointCount = 0;
+        break :blk c.ma_decoder_init(streamDecoderRead, streamDecoderSeek, stream, &config, &decoder);
+    };
     if (init_result != c.MA_SUCCESS) {
         failDecoderWorker(stream);
         return;
     }
-    defer _ = c.ma_decoder_uninit(&decoder);
+    defer if (is_pcm) c.ma_data_converter_uninit(&converter, null) else {
+        _ = c.ma_decoder_uninit(&decoder);
+    };
+
+    // PCM conversion history and partial input belong only to this producer.
+    var samples: [stream_decoder_chunk_frames * stream_channels]f32 = undefined;
+    var input_offset: usize = 0;
+    var input_len: usize = 0;
 
     stream.input_lock.lockUncancelable(io);
     stream.probe_active = false;
@@ -893,7 +908,47 @@ fn streamDecoderWorker(stream: *Stream) void {
         }
 
         var frames_read: c.ma_uint64 = 0;
-        const result = c.ma_decoder_read_pcm_frames(&decoder, pcm_ptr, contiguous_frames, &frames_read);
+        const result = if (is_pcm) blk: {
+            const frame_bytes = stream.input_channels * @sizeOf(f32);
+            if (input_len - input_offset < frame_bytes) {
+                const bytes = std.mem.sliceAsBytes(samples[0 .. stream_decoder_chunk_frames * stream.input_channels]);
+                const pending = input_len - input_offset;
+                std.mem.copyForwards(u8, bytes[0..pending], bytes[input_offset..input_len]);
+                var read: usize = 0;
+                const status = readStreamInput(stream, bytes[pending..].ptr, bytes.len - pending, &read);
+                if (status != c.MA_SUCCESS and status != c.MA_AT_END) break :blk status;
+                input_offset = 0;
+                input_len = pending + read;
+                if (input_len < frame_bytes and input_len != 0) {
+                    if (status == c.MA_AT_END) break :blk c.MA_INVALID_ARGS;
+                    continue;
+                }
+                for (samples[0 .. input_len / frame_bytes * stream.input_channels], 0..) |*sample, index| {
+                    sample.* = @bitCast(std.mem.readInt(u32, bytes[index * 4 ..][0..4], .little));
+                    if (!std.math.isFinite(sample.*)) break :blk c.MA_INVALID_ARGS;
+                }
+            }
+
+            frames_read = contiguous_frames;
+            var input_frames: u64 = (input_len - input_offset) / frame_bytes;
+            const input = if (input_frames != 0) samples[input_offset / @sizeOf(f32) ..].ptr else null;
+            if (input == null) {
+                const input_rate = stream.input_sample_rate;
+                const received_frames = @atomicLoad(u64, &stream.bytes_received, .monotonic) / frame_bytes;
+                // Round input latency separately to preserve sub-frame downsampling tails.
+                const tail = (@as(u128, c.ma_data_converter_get_input_latency(&converter)) * stream.sample_rate + input_rate - 1) / input_rate;
+                const target: u64 = if (received_frames == 0) 0 else @intCast((@as(u128, received_frames) * stream.sample_rate + input_rate - 1) / input_rate + tail);
+                const produced = @atomicLoad(u64, &stream.frames_decoded, .monotonic);
+                frames_read = @min(frames_read, target -| produced);
+                if (frames_read == 0) break :blk c.MA_AT_END;
+                input_frames = stream_decoder_chunk_frames;
+            }
+            const status = c.ma_data_converter_process_pcm_frames(&converter, input, &input_frames, pcm_ptr, &frames_read);
+            if (input != null) input_offset += @intCast(input_frames * frame_bytes);
+            // Downsampling may consume a batch before it can produce the next frame.
+            if (status == c.MA_SUCCESS and frames_read == 0 and input != null and input_frames != 0) continue;
+            break :blk status;
+        } else c.ma_decoder_read_pcm_frames(&decoder, pcm_ptr, contiguous_frames, &frames_read);
         const decoded_frames = std.math.cast(u32, frames_read) orelse {
             failDecoderWorker(stream);
             return;
@@ -920,6 +975,7 @@ fn streamDecoderWorker(stream: *Stream) void {
             }
             if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
                 @atomicStore(u32, &stream.decoder_finished, 1, .release);
+                if (is_pcm and @atomicLoad(u64, &stream.frames_decoded, .monotonic) == 0) endStreamPlayback(stream);
                 stream.input_lock.unlock(io);
                 return;
             }
@@ -1728,7 +1784,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     };
 
     const stream = e.allocator.create(Stream) catch return Status.err_no_space;
-    const input_buffer = e.allocator.alloc(u8, if (options.format == StreamFormat.pcm) 0 else stream_input_capacity) catch {
+    const input_buffer = e.allocator.alloc(u8, stream_input_capacity) catch {
         e.allocator.destroy(stream);
         return Status.err_no_space;
     };
@@ -1751,21 +1807,12 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         .resume_frames = frame_options.resume_frames,
         .max_probe_bytes = options.max_probe_bytes,
         .format = options.format,
+        .input_sample_rate = options.sample_rate,
+        .input_channels = options.channels,
         .sample_rate = e.sample_rate,
         .capacity_frames = frame_options.capacity_frames,
     };
     stream.source.stream = stream;
-
-    if (options.format == StreamFormat.pcm) {
-        const config = c.ma_data_converter_config_init(c.ma_format_f32, c.ma_format_f32, options.channels, stream_channels, options.sample_rate, stream.sample_rate);
-        if (c.ma_data_converter_init(&config, null, &stream.pcm_converter) != c.MA_SUCCESS) {
-            destroyStreamStorage(stream, null);
-            return Status.err_device;
-        }
-        stream.pcm_converter_ready = true;
-        stream.state = StreamState.buffering;
-        stream.ready_generation = 1;
-    }
 
     if (c.ma_pcm_rb_init(c.ma_format_f32, 2, frame_options.capacity_frames, pcm_buffer.ptr, null, &stream.pcm_ring) != c.MA_SUCCESS) {
         destroyStreamStorage(stream, null);
@@ -1807,7 +1854,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     e.updateActiveVoiceCount();
     e.lock.unlock(io);
 
-    if (options.format != StreamFormat.pcm) stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
+    stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
         e.lock.lockUncancelable(io);
         if (stream.sound_ready) {
             _ = c.ma_sound_stop(&stream.sound);
@@ -1823,57 +1870,6 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
 
     out_stream_id.?.* = stream_id;
     return Status.ok;
-}
-
-// Called with the engine lock held: the ring consumer and disposal are excluded.
-// Miniaudio retains conversion history, never the borrowed input pointer.
-fn convertPcm(stream: *Stream, input: ?[*]const f32, input_frames: u32, output_limit: u64) i32 {
-    var contiguous: u32 = @intCast(@min(c.ma_pcm_rb_available_write(&stream.pcm_ring), stream_decoder_chunk_frames, output_limit));
-    if (contiguous == 0) return 0;
-    var output: ?*anyopaque = null;
-    if (c.ma_pcm_rb_acquire_write(&stream.pcm_ring, &contiguous, &output) != c.MA_SUCCESS or output == null) return Status.err_device;
-    var consumed: u64 = @min(input_frames, stream_decoder_chunk_frames);
-    var produced: u64 = contiguous;
-    if (c.ma_data_converter_process_pcm_frames(&stream.pcm_converter, input, &consumed, output, &produced) != c.MA_SUCCESS or
-        c.ma_pcm_rb_commit_write(&stream.pcm_ring, @intCast(produced)) != c.MA_SUCCESS) return Status.err_device;
-    _ = @atomicRmw(u64, &stream.frames_decoded, .Add, produced, .monotonic);
-    return @intCast(consumed);
-}
-
-fn writePcmBytes(stream: *Stream, data: []const u8) i32 {
-    // Do not repeatedly copy or validate a borrowed chunk while the output ring is full.
-    if (c.ma_pcm_rb_available_write(&stream.pcm_ring) == 0) return 0;
-    const channels = stream.pcm_converter.channelsIn;
-    const frame_bytes = channels * @sizeOf(f32);
-    const pending = stream.pcm_pending_len;
-    const frames: u32 = @intCast(@min((pending + data.len) / frame_bytes, stream_decoder_chunk_frames));
-    if (frames == 0) {
-        @memcpy(stream.pcm_pending[pending .. pending + data.len], data);
-        stream.pcm_pending_len += data.len;
-        return @intCast(data.len);
-    }
-
-    // Decode the little-endian wire format in one aligned buffer, independent of input alignment.
-    var samples: [stream_decoder_chunk_frames * stream_channels]f32 = undefined;
-    const batch = samples[0 .. frames * channels];
-    const bytes = std.mem.sliceAsBytes(batch);
-    @memcpy(bytes[0..pending], stream.pcm_pending[0..pending]);
-    @memcpy(bytes[pending..], data[0 .. bytes.len - pending]);
-    for (batch, 0..) |*sample, index| {
-        sample.* = @bitCast(std.mem.readInt(u32, bytes[index * 4 ..][0..4], .little));
-        if (!std.math.isFinite(sample.*)) return Status.err_invalid;
-    }
-    const consumed = convertPcm(stream, &samples, frames, stream_decoder_chunk_frames);
-    if (consumed <= 0) return consumed;
-    var accepted = @as(usize, @intCast(consumed)) * frame_bytes - pending;
-    stream.pcm_pending_len = 0;
-    if (data.len - accepted < frame_bytes) {
-        const tail = data[accepted..];
-        @memcpy(stream.pcm_pending[0..tail.len], tail);
-        stream.pcm_pending_len = tail.len;
-        accepted = data.len;
-    }
-    return @intCast(accepted);
 }
 
 pub fn writeStream(
@@ -1899,12 +1895,6 @@ pub fn writeStream(
         return Status.err_invalid;
     }
     if (data_len == 0) return 0;
-
-    if (stream.format == StreamFormat.pcm) {
-        const accepted = writePcmBytes(stream, data_ptr.?[0..data_len]);
-        if (accepted > 0) _ = @atomicRmw(u64, &stream.bytes_received, .Add, @intCast(accepted), .monotonic);
-        return accepted;
-    }
 
     const available = stream.input_buffer.len - stream.input_count;
     const write_count = @min(@as(usize, data_len), available);
@@ -1937,30 +1927,6 @@ pub fn endStream(engine: *Engine, stream_id: u32) i32 {
     if (loadStreamState(stream) == StreamState.failed or @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) {
         return Status.err_invalid;
     }
-    if (stream.format == StreamFormat.pcm) {
-        if (stream.pcm_pending_len != 0) return Status.err_invalid;
-        @atomicStore(u32, &stream.input_ended, 1, .release);
-        if (@atomicLoad(u32, &stream.decoder_finished, .acquire) != 0) return Status.ok;
-
-        const input_rate = stream.pcm_converter.sampleRateIn;
-        const frame_bytes = stream.pcm_converter.channelsIn * @sizeOf(f32);
-        const input_frames = @atomicLoad(u64, &stream.bytes_received, .monotonic) / frame_bytes;
-        // Miniaudio truncates sub-frame output latency. Round its input latency up separately.
-        const tail_frames = (@as(u128, c.ma_data_converter_get_input_latency(&stream.pcm_converter)) * stream.sample_rate + input_rate - 1) / input_rate;
-        const target: u64 = if (input_frames == 0) 0 else @intCast(
-            (@as(u128, input_frames) * stream.sample_rate + input_rate - 1) / input_rate + tail_frames,
-        );
-        const produced = @atomicLoad(u64, &stream.frames_decoded, .monotonic);
-        if (produced < target) {
-            const result = convertPcm(stream, null, stream_decoder_chunk_frames, target - produced);
-            if (result < 0) return result;
-            if (@atomicLoad(u64, &stream.frames_decoded, .monotonic) < target) return Status.would_block;
-        }
-        @atomicStore(u32, &stream.decoder_finished, 1, .release);
-        // Empty EOF also finishes without a running mixer.
-        if (c.ma_pcm_rb_available_read(&stream.pcm_ring) == 0) endStreamPlayback(stream);
-        return Status.ok;
-    }
     @atomicStore(u32, &stream.input_ended, 1, .release);
     stream.input_condition.broadcast(io);
     return Status.ok;
@@ -1980,6 +1946,7 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
     const state = loadStreamState(stream);
     if (state == StreamState.failed or
         state == StreamState.cancelled or
+        stream.format == StreamFormat.pcm or
         @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
         stream.worker == null)
     {

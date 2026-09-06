@@ -88,9 +88,9 @@ An external decoder's `f32le` byte pipe can be passed directly as the source. Ap
 
 PCM uses the shared buffer defaults: `capacityMs: 2000`, `startupMs: 1000`, and `resumeMs: 1000`. The example explicitly lowers them to `500`, `20`, and `20` milliseconds for low latency.
 
-OpenTUI converts input in batches of at most 2048 frames. A full output ring applies backpressure before the next source chunk is requested. Native code retains no JavaScript pointers.
+PCM uses the same native worker and 256 KiB input queue as MP3 and FLAC. The worker converts input in batches of at most 2048 frames into the output ring. A full output ring pauses the worker; a full input queue backpressures the source. Accepted bytes need not already be converted. Native code retains no JavaScript pointers.
 
-Source EOF automatically flushes the demuxer and conversion tail, then drains queued audio. Await `stream.closed` for terminal cleanup; there is no separate write or end call. `closed` never rejects, so attach an `error` listener to observe playback failures. It resolves after cancellation and errors too.
+Source EOF automatically flushes the demuxer and signals the worker to finish conversion, including its tail, then drains queued audio. Await `stream.closed` for terminal cleanup; there is no separate write or end call. `closed` never rejects, so attach an `error` listener to observe playback failures. It resolves after cancellation and errors too.
 
 Start the audio device first, or call `audio.startMixer()` and consume `audio.mixFrames()` regularly. A stopped mixer cannot drain queued audio. Completion means the mixer consumed the stream, not that the device physically presented the final sample.
 
@@ -225,12 +225,12 @@ OpenTUI bounds these internal layers:
 
 | Layer                    | Bound                                                  |
 | ------------------------ | ------------------------------------------------------ |
-| Native encoded input     | `256 KiB` per encoded stream                           |
+| Native input bytes       | `256 KiB` per stream                                   |
 | Native output PCM        | `buffer.capacityMs`, up to `268,435,452` stereo frames |
 | Native PCM conversion    | `2048` input frames per batch plus one partial frame   |
 | JavaScript source demand | One active `read()` or iterator `next()`               |
 
-OpenTUI finishes the current source chunk before it requests the next chunk. A full native input ring for encoded audio, or output ring for PCM, applies backpressure to that chunk.
+OpenTUI copies the current source chunk into the native input queue before it requests the next chunk. A full input queue applies backpressure to that chunk. `buffer.capacityMs` bounds the output ring, not audio also waiting in the input queue or worker batch.
 
 A blocked native write retries at 5 ms intervals. This polling exists only while that write has no space.
 
@@ -475,7 +475,7 @@ Transport, response, demuxer, native creation, and decoder setup failures reject
 
 Invalid source chunks reject or emit a `TypeError`. Cancellation uses an `AbortError` and becomes `disposed` after setup.
 
-Non-finite PCM samples and EOF with a partial input frame terminate playback with `AudioStreamError`. PCM follows the same setup rejection and asynchronous terminal-event rules as encoded streams.
+The worker detects non-finite PCM samples and EOF with a partial input frame; either terminates playback with `AudioStreamError`. Accepting input bytes does not mean they have passed conversion. PCM follows the same setup rejection and asynchronous terminal-event rules as encoded streams.
 
 Starting a stream after its owning `Audio` was disposed rejects with `Error`. Disposing the owner also disposes pending and active streams.
 

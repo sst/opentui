@@ -402,11 +402,6 @@ export const NativeAudioStreamFormat = {
 
 export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]
 
-export const NativeAudioStreamEndStatus = {
-  Complete: 0,
-  WouldBlock: 1,
-} as const
-
 export type AudioStreamCreateOptions = {
   capacityMs: number
   startupMs: number

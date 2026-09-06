@@ -11,7 +11,6 @@ import {
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import {
   NativeAudioStreamCloseReason as CloseReason,
-  NativeAudioStreamEndStatus as EndStatus,
   NativeAudioStreamFormat as NativeStreamFormat,
   NativeAudioStreamState as StreamState,
   NativeAudioStreamStateNames as StateNames,
@@ -1183,13 +1182,8 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
       return false
     }
     if (this.lifecycleController.signal.aborted) return false
-    let status: number
-    do {
-      status = this.lib.audioEndStream(this.engine, this.nativeStreamId!)
-      if (status !== EndStatus.WouldBlock) break
-      if (!(await waitForPoll(attempt.controller.signal)) || !this.isAttemptActive(attempt)) return false
-    } while (true)
-    if (status !== EndStatus.Complete) {
+    const status = this.lib.audioEndStream(this.engine, this.nativeStreamId!)
+    if (status !== 0) {
       const nativeError = this.snapshotError(this.readNativeStats())
       if (nativeError?.context.action === "decoder") throw nativeError
       const context: AudioStreamErrorContext = { action: "end", status }
