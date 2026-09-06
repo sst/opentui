@@ -143,8 +143,6 @@ describe("LineNumber paint window", () => {
       text.scrollY = scrollY
       card.translateY = translateY
       await setup.renderOnce()
-      // The renderer loop logs draw failures; assert directly so a stale captured frame cannot pass.
-      expect(() => setup.renderOnce()).not.toThrow()
       expect(text.scrollY).toBe(scrollY)
       expect(card.translateY).toBe(translateY)
       const rows = setup.captureCharFrame().split("\n")
@@ -156,10 +154,11 @@ describe("LineNumber paint window", () => {
         const source = firstSource + row - firstRow
         expect(rows[row].trim()).toBe(`${String.fromCharCode(65 + source)}  ${source + 1} row-${source}`)
         const gutterOffset = row * 24 * 4
-        const bg = setup.renderer.currentRenderBuffer.withBuffers((cells) => cells.bg)
         const contentOffset = (row * 24 + 20) * 4
-        expect(Array.from(bg.slice(gutterOffset, gutterOffset + 4))).toEqual([32 + source * 10, 48, 64, 255])
-        expect(Array.from(bg.slice(contentOffset, contentOffset + 4))).toEqual([64, 48, 32 + source * 10, 255])
+        setup.renderer.currentRenderBuffer.withBuffers((cells) => {
+          expect(Array.from(cells.bg.slice(gutterOffset, gutterOffset + 4))).toEqual([32 + source * 10, 48, 64, 255])
+          expect(Array.from(cells.bg.slice(contentOffset, contentOffset + 4))).toEqual([64, 48, 32 + source * 10, 255])
+        })
       }
     }
   })

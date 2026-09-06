@@ -1964,8 +1964,6 @@ pub const UnifiedTextBufferView = struct {
                     if (wctx.failed) return;
                     wctx.source_line_has_non_whitespace = true;
                 } else if (byte_end > wctx.word_chunk_byte_start) {
-                    // Zero-width continuations (combining marks) keep their bytes on the
-                    // pending word. Finalizing first dropped split-chunk dakuten/handakuten.
                     queuePendingWordPiece(wctx, chunk, wctx.word_chunk_col_start, 0, wctx.word_chunk_byte_start, byte_end);
                     if (wctx.failed) return;
                     if (wrap_break.kind.isWordBoundary() and wctx.pending_word_width_cols > 0) {

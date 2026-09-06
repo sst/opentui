@@ -2561,8 +2561,6 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    // Skip zero-width joiners and variation selectors. Combining marks that
-                    // start a later chunk still belong on the previous cell of this line.
                     if (cluster_width_cols == 0) {
                         if (utf8.isCombiningMark(grapheme_bytes)) {
                             try self.attachCombiningMark(checked, grapheme_bytes, currentX, currentY);
@@ -2679,22 +2677,23 @@ pub const OptimizedBuffer = struct {
         const y: u32 = @intCast(current_y);
         if (prev_x >= self.width or y >= self.height) return;
         const prev = self.buffer.char[self.coordsToIndex(prev_x, y)];
-        const start_x: u32 = if (gp.isContinuationChar(prev)) prev_x - gp.charLeftExtent(prev) else prev_x;
+        const start_x: u32 = if (gp.isContinuationChar(prev)) blk: {
+            const left = gp.charLeftExtent(prev);
+            if (left > prev_x) return;
+            break :blk prev_x - left;
+        } else prev_x;
         const start = self.coordsToIndex(start_x, y);
         const char_code = self.buffer.char[start];
-        if (char_code == 0) return;
+        if (char_code == 0 or gp.isContinuationChar(char_code) or gp.isImageChar(char_code)) return;
         var encoded: [4]u8 = undefined;
         const base: []const u8 = if (gp.isGraphemeChar(char_code))
             self.pool.get(gp.graphemeIdFromChar(char_code)) catch return
-        else if (gp.isContinuationChar(char_code) or gp.isImageChar(char_code))
-            return
         else blk: {
-            const codepoint = char_code;
-            if (codepoint > 0x10FFFF) return;
-            const length = std.unicode.utf8Encode(@intCast(codepoint), &encoded) catch return;
+            const codepoint = math.cast(u21, char_code) orelse return;
+            const length = std.unicode.utf8Encode(codepoint, &encoded) catch return;
             break :blk encoded[0..length];
         };
-        var combined: [64]u8 = undefined;
+        var combined: [128]u8 = undefined;
         if (base.len + mark.len > combined.len) return;
         @memcpy(combined[0..base.len], base);
         @memcpy(combined[base.len..][0..mark.len], mark);
