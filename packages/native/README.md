@@ -61,16 +61,8 @@ static and dynamic linking on the host. Linux acceptance targets glibc 2.17.
 checks do not establish macOS/Windows runtime linkage or terminal behavior.
 
 The external [`examples/hello`](examples/hello) package imports the public Zig module
-without JavaScript. From that directory, run `zig build run` and `zig build test`.
-Its example uses raw renderer primitives; `src/acceptance_test.zig` also exercises
-checked Context ownership, text measurement, and rendering. After native or
-cross-package output changes, run `bun run build` from the repository root. Native
-tests run from `packages/core` with `bun run test:native`.
+without JavaScript.
 
 The [`examples/rust`](examples/rust) Cargo crate provides Rust bindings to the checked
-C ABI with thread-affine Context, Session, and Node owners. It remains an example,
-but other Rust applications can use it as a path dependency. The crate links existing
-native artifacts without JavaScript or a Zig implementation bridge. Run
-`bun run test:rust` from this package for shared/static linkage, ABI, output delivery,
-resource cleanup, and compiler ownership checks. Run `sh run.sh` from the crate for
-the task-list app. Execution currently supports Linux x86_64 glibc only.
+C ABI with thread-affine Context, Session, and Node owners. It is an example.
+The crate links existing native artifacts without JavaScript or a Zig implementation bridge.

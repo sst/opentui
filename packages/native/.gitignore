@@ -8,3 +8,4 @@ zig-pkg
 examples/*/.zig-cache
 examples/*/zig-out
 examples/*/zig-pkg
+examples/hello/*.ansi
