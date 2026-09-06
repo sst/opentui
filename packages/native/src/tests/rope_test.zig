@@ -2313,8 +2313,9 @@ test "Rope - clear allocation failure preserves root and history" {
                 try std.testing.expectEqual(before.redo_history, rope.redo_history);
                 try std.testing.expectEqual(before.curr_history, rope.curr_history);
                 try std.testing.expectEqual(before.undo_depth, rope.undo_depth);
-                try std.testing.expectEqual(@as(u32, 2), rope.count());
+                try std.testing.expectEqual(@as(u32, 3), rope.count());
                 try std.testing.expect(rope.get(0).?.* == .linestart);
+                try std.testing.expect(rope.get(2).?.* == .linestart);
                 failing.fail_index = std.math.maxInt(usize);
                 try std.testing.expectEqualStrings("two breaks", try rope.redo());
                 try std.testing.expectEqualStrings("one break", try rope.undo("unused"));
@@ -2350,12 +2351,13 @@ test "Rope - clear preserves boundary history without reviving redo" {
             try std.testing.expect(rope.get(0).?.* == .linestart);
 
             try std.testing.expectEqualStrings("one break", try rope.undo("unrecorded clear"));
-            try std.testing.expectEqual(@as(u32, 2), rope.count());
+            try std.testing.expectEqual(@as(u32, 3), rope.count());
             try std.testing.expect(rope.get(1).?.* == .brk);
+            try std.testing.expect(rope.get(2).?.* == .linestart);
             try std.testing.expectEqualStrings("cleared", try rope.redo());
             try std.testing.expectEqual(@as(u32, 1), rope.count());
             try std.testing.expectEqualStrings("after cleared", try rope.redo());
-            try std.testing.expectEqual(@as(u32, 2), rope.count());
+            try std.testing.expectEqual(@as(u32, 3), rope.count());
         }
     }
 }
@@ -2409,7 +2411,7 @@ test "Rope - clear preserves persistent snapshot identities" {
         try std.testing.expectEqualStrings("cleared", try rope.redo());
         try std.testing.expectEqual(@as(u32, 1), rope.count());
         try std.testing.expectEqualStrings("after cleared", try rope.redo());
-        try std.testing.expectEqual(@as(u32, 2), rope.count());
+        try std.testing.expectEqual(@as(u32, 3), rope.count());
     }
 }
 

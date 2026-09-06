@@ -845,9 +845,14 @@ pub const UnifiedTextBuffer = struct {
         try highlights.ensureTotalCapacity(self.global_allocator, line_count);
         try spans.ensureTotalCapacity(self.global_allocator, line_count);
 
-        // Legacy ranges sum isolated chunk widths, even across split graphemes, then
-        // intersect whole-document lines without counting their separators. Both cursors
+        // Concatenated widths include a split grapheme once, then intersect
+        // whole-document lines without counting their separators. Both cursors
         // advance once; these ordered, disjoint ranges need no span boundary sort.
+        var width_cursor = utf8.TextWidthCursor{
+            .text = text,
+            .tab_width = self.tab_width,
+            .width_method = self.width_method,
+        };
         var chunk_index: usize = 0;
         var byte_offset: usize = 0;
         var remaining_cols: u32 = 0;
@@ -865,7 +870,8 @@ pub const UnifiedTextBuffer = struct {
                 while (remaining_cols == 0 and chunk_index < chunks.len) : (chunk_index += 1) {
                     const chunk = chunks[chunk_index];
                     const byte_end = byte_offset + chunk.byte_count;
-                    remaining_cols = self.measureText(text[byte_offset..byte_end]);
+                    const char_pos = width_cursor.columns;
+                    remaining_cols = width_cursor.advanceTo(byte_end) - char_pos;
                     style_id = chunk.style_id;
                     byte_offset = byte_end;
                 }
@@ -1458,7 +1464,8 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!void {
         const char_start = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return TextBufferError.InvalidIndex;
         const char_end = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return TextBufferError.InvalidIndex;
-        return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
+        // Rope offsets include line breaks; highlight offsets do not.
+        return self.addHighlightByCharRange(char_start - start_row, char_end - end_row, style_id, priority, hl_ref);
     }
 
     /// Add highlight by character range
@@ -1740,12 +1747,18 @@ pub const UnifiedTextBuffer = struct {
             self.startHighlightsTransaction();
             defer self.endHighlightsTransaction();
 
-            var char_pos: u32 = 0;
+            var width_cursor = utf8.TextWidthCursor{
+                .text = full_text,
+                .tab_width = self.tab_width,
+                .width_method = self.width_method,
+            };
+            var byte_end: usize = 0;
             for (chunks, 0..) |chunk, i| {
-                const chunk_text = chunk.text_ptr[0..chunk.text_len];
-                const chunk_len = self.measureText(chunk_text);
+                const char_pos = width_cursor.columns;
+                byte_end += chunk.text_len;
+                const char_end = width_cursor.advanceTo(byte_end);
 
-                if (chunk_len > 0) {
+                if (char_end > char_pos) {
                     const fg = if (chunk.fg_ptr) |fgPtr| utils.ptrToRGBA(fgPtr) else null;
                     const bg = if (chunk.bg_ptr) |bgPtr| utils.ptrToRGBA(bgPtr) else null;
 
@@ -1774,10 +1787,8 @@ pub const UnifiedTextBuffer = struct {
                         .attributes = attributes,
                     }) catch continue;
 
-                    self.addHighlightByCharRangeInternal(char_pos, char_pos + chunk_len, style_id, 1, 0, true) catch {};
+                    self.addHighlightByCharRangeInternal(char_pos, char_end, style_id, 1, 0, true) catch {};
                 }
-
-                char_pos += chunk_len;
             }
         }
     }

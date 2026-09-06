@@ -2166,7 +2166,7 @@ test "TextBuffer owned styled replacement rejects unowned and foreign links with
     try std.testing.expectEqualStrings("new", copy);
 }
 
-test "TextBuffer owned styled replacement preserves legacy isolated chunk ranges" {
+test "TextBuffer owned styled replacement matches concatenated chunk ranges" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
     var links = link.LinkPool.init(std.testing.allocator);
@@ -2191,8 +2191,15 @@ test "TextBuffer owned styled replacement preserves legacy isolated chunk ranges
             defer style.deinit();
             const tb = try TextBuffer.init(std.testing.allocator, &pool, &links, method);
             defer tb.deinit();
+            const copy = try std.mem.concat(std.testing.allocator, u8, parts);
+            var width_cursor = @import("../utf8.zig").TextWidthCursor{
+                .text = copy,
+                .tab_width = tb.tabWidth(),
+                .width_method = method,
+            };
             var legacy_chunks: [4]text_buffer.StyledChunk = undefined;
             var chunks: [4]text_buffer.OwnedStyledChunk = undefined;
+            var byte_end: usize = 0;
             for (parts, 0..) |part, i| {
                 const attributes: u32 = @intCast(i + 1);
                 legacy_chunks[i] = .{
@@ -2202,15 +2209,17 @@ test "TextBuffer owned styled replacement preserves legacy isolated chunk ranges
                     .bg_ptr = null,
                     .attributes = attributes,
                 };
+                const char_pos = width_cursor.columns;
+                byte_end += part.len;
+                const char_end = width_cursor.advanceTo(byte_end);
                 var name_buffer: [32]u8 = undefined;
                 const name = try std.fmt.bufPrint(&name_buffer, "chunk{d}", .{i});
                 chunks[i] = .{
                     .byte_count = @intCast(part.len),
-                    .style_id = if (tb.measureText(part) == 0) 0 else try style.registerStyle(name, null, null, attributes),
+                    .style_id = if (char_end == char_pos) 0 else try style.registerStyle(name, null, null, attributes),
                 };
             }
             try legacy.setStyledText(legacy_chunks[0..parts.len]);
-            const copy = try std.mem.concat(std.testing.allocator, u8, parts);
             _ = tb.replaceOwnedStyledText(copy, null, style, chunks[0..parts.len], null) catch |err| {
                 std.testing.allocator.free(copy);
                 return err;

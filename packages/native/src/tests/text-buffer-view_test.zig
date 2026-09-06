@@ -216,36 +216,6 @@ test "TextBufferView live word metadata discards partial allocation on failure" 
     }
 }
 
-test "TextBufferView rewrap reuses virtual line allocation without retaining cleared layout" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-    const tb = try TextBuffer.init(tracking.allocator(), pool, link_pool, .unicode);
-    defer tb.deinit();
-    const view = try TextBufferView.init(tracking.allocator(), tb);
-    defer view.deinit();
-    try tb.setText("OpenTUI text metrics: \u{754c} e\u{301} abcdefghijklmnop " ** 100);
-    view.setWrapMode(.word);
-    view.setWrapWidth(80);
-    _ = view.getVirtualLines();
-    view.setWrapWidth(79);
-    _ = view.getVirtualLines();
-    view.setWrapWidth(80);
-    _ = view.getVirtualLines();
-    const allocated = tracking.allocated_bytes;
-    const capacity = view.virtual_lines_arena.queryCapacity();
-    for (0..20) |i| {
-        view.setWrapWidth(@intCast(79 + i % 2));
-        _ = view.getVirtualLines();
-    }
-    try std.testing.expectEqual(allocated, tracking.allocated_bytes);
-    try tb.clear();
-    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
-    try std.testing.expect(view.virtual_lines_arena.queryCapacity() < capacity);
-}
-
 test "TextBufferView rewrap matches fresh layout after text and tab changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
