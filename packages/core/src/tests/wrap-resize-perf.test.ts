@@ -89,8 +89,8 @@ describe("Word wrap algorithmic complexity", () => {
   const MEASURE_WIDTHS = [76, 77, 78, 79, 80, 81, 82, 83]
 
   it("a split grapheme does not disable ASCII fitting for the remaining word", () => {
-    const control = TextBuffer.create("wcwidth")
-    const split = TextBuffer.create("wcwidth")
+    const control = TextBuffer.create("wcwidth", resourceContext)
+    const split = TextBuffer.create("wcwidth", resourceContext)
     const controlView = TextBufferView.create(control)
     const splitView = TextBufferView.create(split)
     try {

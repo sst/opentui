@@ -1,7 +1,7 @@
 // Generated from packages/native/include/opentui.h and scripts/native-abi-pointers.ts.
 // Run `bun run generate:abi` in packages/core. Do not edit.
 // Inspect audit input: bun scripts/native-abi.ts --audit
-// ABI audit SHA-256: 13bf6b915137277a9cd2eb1efec633d3263ac3f00551a8f97d9c53984669c9f8
+// ABI audit SHA-256: d81e5a18a504d628aae16e1f6e3829af6b4b51eec77294e96244e9a4698413b1
 
 export const nativeSymbols = {
   ot_scene_set_hooks: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
@@ -128,6 +128,12 @@ export const nativeSymbols = {
   ot_scene_set_image: { args: ["ptr", "buffer", "ptr", "u32", "u32", "ptr"], returns: "i32" },
   ot_buffer_draw_image: { args: ["ptr", "buffer", "ptr", "buffer", "buffer", "buffer"], returns: "i32" },
   ot_session_set_image_resolution: { args: ["ptr", "buffer", "u32", "u32", "u32", "u32"], returns: "i32" },
+  ot_session_set_kitty_image_transport: { args: ["ptr", "buffer", "u32"], returns: "i32" },
+  ot_session_get_kitty_image_transport: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
+  ot_session_poll_kitty_image_transport: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
+  ot_session_cancel_kitty_image_transport: { args: ["ptr", "buffer", "u32"], returns: "i32" },
+  ot_session_process_kitty_image_reply: { args: ["ptr", "buffer", "ptr", "u32", "buffer"], returns: "i32" },
+  ot_session_start_kitty_file_probe: { args: ["ptr", "buffer"], returns: "i32" },
   ot_text_buffer_create: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
   ot_text_buffer_destroy: { args: ["ptr", "buffer"], returns: "i32" },
   ot_text_buffer_view_create: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
@@ -169,6 +175,7 @@ export const nativeSymbols = {
   ot_context_destroy: { args: ["ptr"], returns: "i32" },
   ot_context_get_last_error: { args: ["ptr", "buffer"], returns: "i32" },
   ot_context_drain_diagnostics: { args: ["ptr", "ptr", "u32", "buffer"], returns: "i32" },
+  ot_context_get_link_url: { args: ["ptr", "u32", "buffer", "u32", "buffer"], returns: "i32" },
   ot_buffer_create: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
   ot_buffer_destroy: { args: ["ptr", "buffer"], returns: "i32" },
   ot_buffer_resize: { args: ["ptr", "buffer", "u32", "u32"], returns: "i32" },
@@ -177,7 +184,7 @@ export const nativeSymbols = {
   ot_buffer_draw_text: { args: ["ptr", "buffer", "buffer", "ptr", "u32"], returns: "i32" },
   ot_buffer_draw: { args: ["ptr", "buffer", "ptr", "buffer", "ptr", "buffer", "u32", "buffer", "u32"], returns: "i32" },
   ot_buffer_stack: {
-    args: ["ptr", "buffer", "ptr", "u32", "i32", "i32", "u32", "u32", "f32", "buffer"],
+    args: ["ptr", "buffer", "ptr", "u32", "i32", "i32", "u32", "u32", "buffer", "buffer"],
     returns: "i32",
   },
   ot_buffer_draw_grid: { args: ["ptr", "buffer", "ptr", "buffer", "buffer", "u32", "buffer", "u32"], returns: "i32" },
@@ -191,7 +198,7 @@ export const nativeSymbols = {
     returns: "i32",
   },
   ot_buffer_color_matrix: {
-    args: ["ptr", "buffer", "ptr", "buffer", "u32", "ptr", "u32", "f32", "u32"],
+    args: ["ptr", "buffer", "ptr", "buffer", "u32", "ptr", "u32", "buffer", "u32"],
     returns: "i32",
   },
   ot_buffer_acquire_lease: { args: ["ptr", "buffer", "buffer"], returns: "i32" },
@@ -893,6 +900,20 @@ export const nativeLayouts = {
       source_width: { offset: 48, size: 4, alignment: 4, type: "u32" },
       source_height: { offset: 52, size: 4, alignment: 4, type: "u32" },
       reserved: { offset: 56, size: 8, alignment: 4, type: "[2]u32" },
+    },
+  },
+  ot_session_kitty_image_transport: {
+    size: 32,
+    alignment: 4,
+    fields: {
+      struct_size: { offset: 0, size: 4, alignment: 4, type: "u32" },
+      abi_version: { offset: 4, size: 4, alignment: 4, type: "u32" },
+      requested: { offset: 8, size: 4, alignment: 4, type: "u32" },
+      effective: { offset: 12, size: 4, alignment: 4, type: "u32" },
+      file_state: { offset: 16, size: 4, alignment: 4, type: "u32" },
+      fallback: { offset: 20, size: 4, alignment: 4, type: "u32" },
+      pending_files: { offset: 24, size: 4, alignment: 4, type: "u32" },
+      pending_bytes: { offset: 28, size: 4, alignment: 4, type: "u32" },
     },
   },
   ot_text_buffer_info: {

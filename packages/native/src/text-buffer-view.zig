@@ -1713,7 +1713,7 @@ pub const UnifiedTextBufferView = struct {
             }
 
             fn queuePendingWordPiece(wctx: *@This(), chunk: *const TextChunk, col_start_in_chunk: u32, width_cols: u32, byte_start: u32, byte_end: u32) void {
-                if (width_cols == 0 or wctx.failed) return;
+                if (wctx.failed or (width_cols == 0 and byte_end <= byte_start)) return;
 
                 if (wctx.pending_word_pieces.items.len > 0) {
                     const last = &wctx.pending_word_pieces.items[wctx.pending_word_pieces.items.len - 1];
@@ -1963,9 +1963,15 @@ pub const UnifiedTextBufferView = struct {
                     );
                     if (wctx.failed) return;
                     wctx.source_line_has_non_whitespace = true;
-                } else if (byte_end > wctx.word_chunk_byte_start and wctx.pending_word_width_cols > 0) {
-                    finalizePendingWord(wctx);
+                } else if (byte_end > wctx.word_chunk_byte_start) {
+                    // Zero-width continuations (combining marks) keep their bytes on the
+                    // pending word. Finalizing first dropped split-chunk dakuten/handakuten.
+                    queuePendingWordPiece(wctx, chunk, wctx.word_chunk_col_start, 0, wctx.word_chunk_byte_start, byte_end);
                     if (wctx.failed) return;
+                    if (wrap_break.kind.isWordBoundary() and wctx.pending_word_width_cols > 0) {
+                        finalizePendingWord(wctx);
+                        if (wctx.failed) return;
+                    }
                 }
                 wctx.word_chunk_col_start = col_end;
                 wctx.word_chunk_byte_start = byte_end;

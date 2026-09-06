@@ -514,6 +514,7 @@ pub const CliRenderer = struct {
 
     /// Release renderer storage after the owner restores or disconnects its terminal.
     pub fn destroyStorage(self: *CliRenderer) void {
+        self.kittyTransport.cancel(.cancelled);
         self.backend.deinit();
         self.terminal.deinit();
 
@@ -3404,7 +3405,13 @@ pub const CliRenderer = struct {
     }
 
     fn startKittyFileProbe(self: *CliRenderer) void {
-        if (!self.terminalSetup or self.terminalSuspended or self.kittyTransport.mode != .file) return;
+        if (!self.terminalSetup) return;
+        self.startKittyFileProbeFromSession();
+    }
+
+    /// Session-managed terminals never set terminalSetup; probe only while active.
+    pub fn startKittyFileProbeFromSession(self: *CliRenderer) void {
+        if (self.terminalSuspended or self.kittyTransport.mode != .file) return;
         _ = self.pollKittyImageTransport();
         if (self.kittyTransport.file_state != .disabled) return;
         if (self.reserveKittyHistoryImageIds(2)) |base| {
@@ -3413,6 +3420,23 @@ pub const CliRenderer = struct {
             self.kittyTransport.startProbe(&writer, base + 1, self.kittyTempDirectory()) catch {};
             self.backend.writeOut(writer.buffered());
         } else self.kittyTransport.cancel(.unsupported);
+    }
+
+    pub fn kittyImageTransportStatus(self: *const CliRenderer) [6]u32 {
+        const transport = &self.kittyTransport;
+        return .{
+            @intFromEnum(transport.mode),
+            @intFromEnum(transport.effective),
+            @intFromEnum(transport.file_state),
+            @intFromEnum(transport.fallback),
+            transport.pendingCount(),
+            @intCast(transport.pendingBytes()),
+        };
+    }
+
+    pub fn cancelKittyImageTransport(self: *CliRenderer, failed: bool) void {
+        self.kittyTransport.cancel(if (failed) .io_error else .cancelled);
+        _ = self.pollKittyImageTransport();
     }
 
     pub fn pollKittyImageTransport(self: *CliRenderer) bool {

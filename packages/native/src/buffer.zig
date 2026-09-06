@@ -2561,9 +2561,12 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    // Skip zero-width characters (ZWJ, VS16, etc.) - don't render them
-                    // Don't increment col since they take no space
+                    // Skip zero-width joiners and variation selectors. Combining marks that
+                    // start a later chunk still belong on the previous cell of this line.
                     if (cluster_width_cols == 0) {
+                        if (utf8.isCombiningMark(grapheme_bytes)) {
+                            try self.attachCombiningMark(checked, grapheme_bytes, currentX, currentY);
+                        }
                         continue;
                     }
 
@@ -2668,6 +2671,43 @@ pub const OptimizedBuffer = struct {
 
             currentY += 1;
         }
+    }
+
+    fn attachCombiningMark(self: *OptimizedBuffer, comptime checked: bool, mark: []const u8, current_x: i32, current_y: i32) !void {
+        if (current_x <= 0 or current_y < 0) return;
+        const prev_x: u32 = @intCast(current_x - 1);
+        const y: u32 = @intCast(current_y);
+        if (prev_x >= self.width or y >= self.height) return;
+        const prev = self.buffer.char[self.coordsToIndex(prev_x, y)];
+        const start_x: u32 = if (gp.isContinuationChar(prev)) prev_x - gp.charLeftExtent(prev) else prev_x;
+        const start = self.coordsToIndex(start_x, y);
+        const char_code = self.buffer.char[start];
+        if (char_code == 0) return;
+        var encoded: [4]u8 = undefined;
+        const base: []const u8 = if (gp.isGraphemeChar(char_code))
+            self.pool.get(gp.graphemeIdFromChar(char_code)) catch return
+        else if (gp.isContinuationChar(char_code) or gp.isImageChar(char_code))
+            return
+        else blk: {
+            const codepoint = char_code;
+            if (codepoint > 0x10FFFF) return;
+            const length = std.unicode.utf8Encode(@intCast(codepoint), &encoded) catch return;
+            break :blk encoded[0..length];
+        };
+        var combined: [64]u8 = undefined;
+        if (base.len + mark.len > combined.len) return;
+        @memcpy(combined[0..base.len], base);
+        @memcpy(combined[base.len..][0..mark.len], mark);
+        try self.drawTextBufferGrapheme(
+            checked,
+            combined[0 .. base.len + mark.len],
+            gp.encodedCharWidth(char_code),
+            start_x,
+            y,
+            self.buffer.fg[start],
+            self.buffer.bg[start],
+            self.buffer.attributes[start],
+        );
     }
 
     fn drawTextBufferGrapheme(self: *OptimizedBuffer, comptime checked: bool, bytes: []const u8, width: u32, x: u32, y: u32, fg: RGBA, bg: RGBA, attributes: u32) !void {

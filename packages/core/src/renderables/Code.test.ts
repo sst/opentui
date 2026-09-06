@@ -1300,7 +1300,7 @@ test("CodeRenderable - updating initial styled text refreshes an unresolved stre
     id: "test-code-streaming-styled-preview",
     content: "[Label](https://example.com)",
     filetype: "markdown",
-    syntaxStyle: SyntaxStyle.create(),
+    syntaxStyle: SyntaxStyle.create(currentRenderer.nativeScene),
     treeSitterClient: mockClient,
     streaming: true,
     drawUnstyledText: true,
@@ -1425,7 +1425,7 @@ test("CodeRenderable - onChunks receives exact source ranges for concealed repla
     id: "test-code-source-ranges",
     content,
     filetype: "markdown",
-    syntaxStyle: SyntaxStyle.create(),
+    syntaxStyle: SyntaxStyle.create(currentRenderer.nativeScene),
     treeSitterClient: mockClient,
     onChunks: (chunks, context) => {
       observedChunks = chunks.map((item) => item.text)

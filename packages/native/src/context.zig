@@ -557,6 +557,19 @@ pub const Context = struct {
         self.allocator.destroy(self);
     }
 
+    /// A size query returns the interned URL byte count. Copies require that
+    /// bound. Link id 0 and unknown IDs fail. URLs fit in MAX_URL_LENGTH bytes.
+    pub fn getLinkUrl(self: *Context, id: u32, out: []u8) Error!u32 {
+        if (id == 0) return error.InvalidOptions;
+        const url = self.links.get(id) catch return error.InvalidOptions;
+        std.debug.assert(url.len <= link.MAX_URL_LENGTH);
+        const count: u32 = @intCast(url.len);
+        if (out.len == 0) return count;
+        if (out.len < url.len) return error.InvalidOptions;
+        @memcpy(out[0..url.len], url);
+        return count;
+    }
+
     fn checkSessionTeardown(value: *session.Session) Error!void {
         if (!value.canDestroy()) return error.ContextBusy;
         const owned = value.scene orelse return;
@@ -1162,6 +1175,40 @@ pub const Context = struct {
             .pixel_width = pixel_width,
             .pixel_height = pixel_height,
         };
+    }
+
+    pub fn sessionSetKittyImageTransport(self: *Context, handle: Handle, mode: u32) !void {
+        try self.beginMutation();
+        defer self.mutating = false;
+        try (try self.getSession(handle)).setKittyImageTransport(mode);
+    }
+
+    pub fn sessionKittyImageTransportStatus(self: *Context, handle: Handle) ![6]u32 {
+        return (try self.getSession(handle)).kittyImageTransportStatus();
+    }
+
+    pub fn sessionPollKittyImageTransport(self: *Context, handle: Handle) !bool {
+        try self.beginMutation();
+        defer self.mutating = false;
+        return (try self.getSession(handle)).pollKittyImageTransport();
+    }
+
+    pub fn sessionCancelKittyImageTransport(self: *Context, handle: Handle, failed: bool) !void {
+        try self.beginMutation();
+        defer self.mutating = false;
+        try (try self.getSession(handle)).cancelKittyImageTransport(failed);
+    }
+
+    pub fn sessionProcessKittyImageReply(self: *Context, handle: Handle, response: []const u8) !u32 {
+        try self.beginMutation();
+        defer self.mutating = false;
+        return (try self.getSession(handle)).processKittyImageReply(response);
+    }
+
+    pub fn sessionStartKittyFileProbe(self: *Context, handle: Handle) !void {
+        try self.beginMutation();
+        defer self.mutating = false;
+        try (try self.getSession(handle)).startKittyFileProbe();
     }
 
     pub fn getBuffer(self: *Context, handle: Handle) Error!*buf.OptimizedBuffer {

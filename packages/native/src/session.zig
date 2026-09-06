@@ -509,6 +509,9 @@ pub const Session = struct {
             else => return error.InvalidTerminalState,
         }
         if (preparation_yielded) self.cancelSceneFrame();
+        const value = self.renderer.?;
+        value.terminalSuspended = true;
+        value.cancelKittyImageTransport(false);
         self.lifecycle.phase = .suspending;
         self.lifecycle.step = .delete_images;
         self.lifecycle.image_index = 0;
@@ -523,6 +526,7 @@ pub const Session = struct {
         const packets = try setupPackets(try cleanupPackets(value.currentImages.items.len), rows, false);
         try self.reserveControlSequence(packets);
         value.terminal.setCursorPosition(1, 1, false);
+        value.terminalSuspended = false;
         self.lifecycle.phase = .resuming;
         self.lifecycle.step = .setup_screen;
         self.lifecycle.rows_remaining = rows;
@@ -608,6 +612,44 @@ pub const Session = struct {
         self.output.writeAtomic(writer.buffered()) catch return false;
         value.terminal.notification_id_counter = candidate.notification_id_counter;
         return true;
+    }
+
+    pub fn setKittyImageTransport(self: *Session, mode: u32) Error!void {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        if (!value.setKittyImageTransport(mode)) return error.InvalidOptions;
+        if (self.lifecycle.phase == .active) value.startKittyFileProbeFromSession();
+    }
+
+    pub fn kittyImageTransportStatus(self: *Session) Error![6]u32 {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        return value.kittyImageTransportStatus();
+    }
+
+    pub fn pollKittyImageTransport(self: *Session) Error!bool {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        return value.pollKittyImageTransport();
+    }
+
+    pub fn cancelKittyImageTransport(self: *Session, failed: bool) Error!void {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        value.cancelKittyImageTransport(failed);
+    }
+
+    pub fn processKittyImageReply(self: *Session, response: []const u8) Error!u32 {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        return value.processKittyImageReply(response);
+    }
+
+    pub fn startKittyFileProbe(self: *Session) Error!void {
+        try self.checkOpen();
+        const value = self.renderer orelse return error.RendererNotAttached;
+        if (self.lifecycle.phase != .active) return;
+        value.startKittyFileProbeFromSession();
     }
 
     fn validatePaletteQuery(bytes: []const u8) Error!void {

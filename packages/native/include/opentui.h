@@ -1260,6 +1260,41 @@ ot_status ot_buffer_draw_image(ot_context *, const ot_handle *target, const ot_s
 ot_status ot_session_set_image_resolution(ot_context *, const ot_handle *session,
     uint32_t terminal_width, uint32_t terminal_height, uint32_t pixel_width, uint32_t pixel_height);
 
+/* Kitty image transport is renderer state, not a terminal control packet.
+ * requested is 0=raw, 1=zlib, 2=file. effective is 0=raw, 1=zlib, 2=png, 3=file.
+ * file_state is 0=disabled, 1=probing, 2=ready, 3=unsupported, 4=timeout,
+ * 5=io-error, 6=cancelled. fallback is 0=none, 1=not-ready, 2=unavailable,
+ * 3=budget, 4=busy, 5=preparation, 6=compression. pending_bytes fits u32.
+ * Set, poll, cancel, and reply require an attached renderer and may run in any
+ * open phase so resume can consume probe replies before JS restores control.
+ * File probes emit only while the terminal is active and not suspended. */
+typedef struct ot_session_kitty_image_transport {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    uint32_t requested;
+    uint32_t effective;
+    uint32_t file_state;
+    uint32_t fallback;
+    uint32_t pending_files;
+    uint32_t pending_bytes;
+} ot_session_kitty_image_transport;
+
+ot_status ot_session_set_kitty_image_transport(ot_context *, const ot_handle *session, uint32_t mode);
+ot_status ot_session_get_kitty_image_transport(
+    ot_context *,
+    const ot_handle *session,
+    ot_session_kitty_image_transport *out_status);
+ot_status ot_session_poll_kitty_image_transport(ot_context *, const ot_handle *session, uint32_t *out_retry);
+ot_status ot_session_cancel_kitty_image_transport(ot_context *, const ot_handle *session, uint32_t failed);
+/* out_result is 0=ignored, 1=consumed, 2=consumed and images should retransmit. */
+ot_status ot_session_process_kitty_image_reply(
+    ot_context *,
+    const ot_handle *session,
+    const uint8_t *bytes,
+    uint32_t byte_count,
+    uint32_t *out_result);
+ot_status ot_session_start_kitty_file_probe(ot_context *, const ot_handle *session);
+
 /* Shared text buffers own copied bytes, styles and links. Destroying a buffer
  * destroys its dependent views; destroying a node only unbinds its view.
  * Existing editor style, highlight, viewport, selection and measurement records
@@ -1716,6 +1751,14 @@ ot_status ot_context_drain_diagnostics(
     uint32_t capacity,
     ot_diagnostic_drain *out_drain);
 
+/* Copy a live interned hyperlink URL. Zero capacity reports the byte count.
+ * Nonzero capacity must fit that count; out_count is the copied byte count.
+ * bytes may be NULL only when capacity is zero. URLs are at most 512 bytes.
+ * Unknown or retired IDs return OT_INVALID_ARGUMENT. Outputs are unchanged on
+ * rejection. Owner-thread and busy-operation rules apply. */
+ot_status ot_context_get_link_url(ot_context *context, uint32_t link_id,
+    uint8_t *bytes, uint32_t capacity, uint32_t *out_count);
+
 /* Options require the exact size and version. Failure leaves out_buffer unchanged.
  * The Context owns the buffer and its pools; legacy buffer handles are not accepted.
  * These functions obey the Context owner-thread and busy-operation rules. */
@@ -1777,16 +1820,18 @@ ot_status ot_buffer_draw(ot_context *context, const ot_handle *target,
  * At most OT_BUFFER_STACK_DEPTH_MAX custom entries per stack are permitted;
  * exceeding this limit returns OT_OBJECT_LIMIT without changing either stack.
  * Clip sizes and signed endpoints must fit int32_t; empty clips are valid.
- * Opacity must be finite and is clamped to [0, 1]. Only PUSH operations use
- * their corresponding rectangle/opacity arguments. Pop on an empty custom
- * stack is a no-op. Pop/clear cannot remove inherited scene clip or opacity.
- * Custom frame stacks reset on callback acknowledgement or frame cancellation;
- * owned buffer stacks persist until explicitly popped/cleared or destroyed.
- * out_opacity is required and receives the effective opacity on success only. */
+ * Opacity must be finite and is clamped to [0, 1]. Pass it as a one-float
+ * buffer so host FFI can keep the portable integer/buffer calling convention.
+ * Only PUSH operations use their corresponding rectangle/opacity arguments.
+ * Pop on an empty custom stack is a no-op. Pop/clear cannot remove inherited
+ * scene clip or opacity. Custom frame stacks reset on callback acknowledgement
+ * or frame cancellation; owned buffer stacks persist until explicitly
+ * popped/cleared or destroyed. out_opacity is required and receives the
+ * effective opacity on success only. */
 ot_status ot_buffer_stack(ot_context *context, const ot_handle *target,
     const ot_scene_frame_request *frame, uint32_t operation,
     int32_t x, int32_t y, uint32_t width, uint32_t height,
-    float opacity, float *out_opacity);
+    const float *opacity, float *out_opacity);
 
 /* Draw a grid with the same target/frame authority as ot_buffer_draw. Counts are
  * offset-array lengths, not cell counts. Arrays must be strictly increasing,
@@ -1832,7 +1877,7 @@ ot_status ot_buffer_draw_grayscale(ot_context *, const ot_handle *, const ot_sce
  * same as ot_buffer_draw, including no-ops. Inputs are not retained. */
 ot_status ot_buffer_color_matrix(ot_context *, const ot_handle *, const ot_scene_frame_request *,
     const float *matrix, uint32_t matrix_count, const float *mask, uint32_t mask_count,
-    float strength, uint32_t channel);
+    const float *strength, uint32_t channel);
 
 /* Retain one offscreen storage generation under the same limits and raw-plane
  * restrictions as Session leases. The snapshot requires exact size/version and

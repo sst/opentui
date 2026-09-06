@@ -470,3 +470,49 @@ test "Session clipboard rejects inactive phases and unsupported capability witho
     try testing.expect(f.value.canDestroy());
     try testing.expectEqual(@as(usize, 0), f.value.output.staged_bytes);
 }
+
+test "Session Kitty image transport is readable before setup and probes only while active" {
+    const f = try Fixture.initWithOptions(testing.allocator, testing.io, 4, 2, transport, .{ .object_capacity = 2 });
+    defer f.deinit();
+    try testing.expectError(error.InvalidOptions, f.value.setKittyImageTransport(3));
+    try f.value.setKittyImageTransport(2);
+    try testing.expectEqual(.file, f.cli.kittyTransport.mode);
+    try testing.expectEqual(.disabled, f.cli.kittyTransport.file_state);
+    try f.value.startKittyFileProbe();
+    try testing.expectEqual(.disabled, f.cli.kittyTransport.file_state);
+
+    var now_ns: u64 = 0;
+    var bytes: [8192]u8 = undefined;
+    try f.owner.setupSessionTerminal(f.id, .{});
+    _ = try f.driveOutput(&now_ns, .active, &bytes, 32);
+    try f.value.startKittyFileProbe();
+    if (builtin.os.tag == .windows) {
+        try testing.expectEqual(.unsupported, f.cli.kittyTransport.file_state);
+    } else {
+        try testing.expectEqual(.probing, f.cli.kittyTransport.file_state);
+    }
+    try f.value.cancelKittyImageTransport(false);
+    try testing.expectEqual(.cancelled, f.cli.kittyTransport.file_state);
+    try testing.expectEqual(@as(u32, 0), f.value.processKittyImageReply("not-a-reply"));
+}
+
+test "Session Kitty file transport selected while suspended probes on resume" {
+    const f = try Fixture.initWithOptions(testing.allocator, testing.io, 4, 2, transport, .{ .object_capacity = 2 });
+    defer f.deinit();
+    var now_ns: u64 = 0;
+    var bytes: [8192]u8 = undefined;
+    try f.owner.setupSessionTerminal(f.id, .{});
+    _ = try f.driveOutput(&now_ns, .active, &bytes, 32);
+    try f.owner.suspendSession(f.id);
+    _ = try f.driveOutput(&now_ns, .suspended, &bytes, 32);
+    try f.value.setKittyImageTransport(2);
+    try testing.expectEqual(.disabled, f.cli.kittyTransport.file_state);
+    try f.owner.resumeSession(f.id);
+    _ = try f.driveOutput(&now_ns, .active, &bytes, 32);
+    try f.value.startKittyFileProbe();
+    if (builtin.os.tag == .windows) {
+        try testing.expectEqual(.unsupported, f.cli.kittyTransport.file_state);
+    } else {
+        try testing.expectEqual(.probing, f.cli.kittyTransport.file_state);
+    }
+}

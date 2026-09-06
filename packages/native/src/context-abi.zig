@@ -165,6 +165,25 @@ pub fn ot_context_drain_diagnostics(
     return c.OT_OK;
 }
 
+pub fn ot_context_get_link_url(
+    context: ?*ContextHandle,
+    link_id: u32,
+    bytes: ?[*]u8,
+    capacity: u32,
+    out: ?*u32,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    if (out == null or (capacity != 0 and bytes == null)) return sessionError(owner, error.InvalidOptions);
+    const count = owner.core.getLinkUrl(
+        link_id,
+        if (capacity == 0) &.{} else bytes.?[0..capacity],
+    ) catch |err| return sessionError(owner, err);
+    out.?.* = count;
+    return c.OT_OK;
+}
+
 pub fn ot_edit_buffer_create(context: ?*ContextHandle, options_ptr: ?*const c.ot_edit_buffer_options, out_ptr: ?*c.ot_handle) callconv(.c) c.ot_status {
     const status = sessionContextStatus(context);
     if (status != c.OT_OK) return status;
@@ -434,6 +453,107 @@ pub fn ot_session_set_image_resolution(context: ?*ContextHandle, session_ptr: ?*
     return c.OT_OK;
 }
 
+pub fn ot_session_set_kitty_image_transport(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+    mode: u32,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    owner.core.sessionSetKittyImageTransport(handleFromC(id.*), mode) catch |err| return sessionError(owner, err);
+    return c.OT_OK;
+}
+
+pub fn ot_session_get_kitty_image_transport(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+    out_status_ptr: ?*c.ot_session_kitty_image_transport,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    const out = out_status_ptr orelse return sessionError(owner, error.InvalidOptions);
+    if (out.struct_size != @sizeOf(c.ot_session_kitty_image_transport)) return sessionError(owner, error.InvalidOptions);
+    if (out.abi_version != c.OT_CONTEXT_ABI_VERSION) return sessionError(owner, error.UnsupportedVersion);
+    const values = owner.core.sessionKittyImageTransportStatus(handleFromC(id.*)) catch |err| return sessionError(owner, err);
+    out.* = .{
+        .struct_size = @sizeOf(c.ot_session_kitty_image_transport),
+        .abi_version = c.OT_CONTEXT_ABI_VERSION,
+        .requested = values[0],
+        .effective = values[1],
+        .file_state = values[2],
+        .fallback = values[3],
+        .pending_files = values[4],
+        .pending_bytes = values[5],
+    };
+    return c.OT_OK;
+}
+
+pub fn ot_session_poll_kitty_image_transport(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+    out_retry_ptr: ?*u32,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    const out = out_retry_ptr orelse return sessionError(owner, error.InvalidOptions);
+    out.* = 0;
+    const retry = owner.core.sessionPollKittyImageTransport(handleFromC(id.*)) catch |err| return sessionError(owner, err);
+    out.* = @intFromBool(retry);
+    return c.OT_OK;
+}
+
+pub fn ot_session_cancel_kitty_image_transport(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+    failed: u32,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    if (failed > 1) return sessionError(owner, error.InvalidOptions);
+    owner.core.sessionCancelKittyImageTransport(handleFromC(id.*), failed != 0) catch |err| return sessionError(owner, err);
+    return c.OT_OK;
+}
+
+pub fn ot_session_process_kitty_image_reply(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+    bytes_ptr: ?[*]const u8,
+    byte_count: u32,
+    out_result_ptr: ?*u32,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    const out = out_result_ptr orelse return sessionError(owner, error.InvalidOptions);
+    out.* = 0;
+    if (byte_count != 0 and bytes_ptr == null) return sessionError(owner, error.InvalidOptions);
+    const bytes = if (bytes_ptr) |ptr| ptr[0..byte_count] else &.{};
+    const result = owner.core.sessionProcessKittyImageReply(handleFromC(id.*), bytes) catch |err| return sessionError(owner, err);
+    out.* = result;
+    return c.OT_OK;
+}
+
+pub fn ot_session_start_kitty_file_probe(
+    context: ?*ContextHandle,
+    session_ptr: ?*const c.ot_handle,
+) callconv(.c) c.ot_status {
+    const status = sessionContextStatus(context);
+    if (status != c.OT_OK) return status;
+    const owner = context.?;
+    const id = session_ptr orelse return sessionError(owner, error.InvalidOptions);
+    owner.core.sessionStartKittyFileProbe(handleFromC(id.*)) catch |err| return sessionError(owner, err);
+    return c.OT_OK;
+}
+
 pub fn ot_buffer_create(
     context: ?*ContextHandle,
     options_ptr: ?*const c.ot_buffer_options,
@@ -584,12 +704,13 @@ pub fn ot_buffer_draw(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle,
     return c.OT_OK;
 }
 
-pub fn ot_buffer_stack(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle, frame_ptr: ?*const c.ot_scene_frame_request, operation: u32, x: i32, y: i32, width: u32, height: u32, opacity: f32, out_ptr: ?*f32) callconv(.c) c.ot_status {
+pub fn ot_buffer_stack(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle, frame_ptr: ?*const c.ot_scene_frame_request, operation: u32, x: i32, y: i32, width: u32, height: u32, opacity_ptr: ?*const f32, out_ptr: ?*f32) callconv(.c) c.ot_status {
     const status = sessionContextStatus(context);
     if (status != c.OT_OK) return status;
     const owner = context.?;
     const target = target_ptr orelse return sessionError(owner, error.InvalidOptions);
     const out = out_ptr orelse return sessionError(owner, error.InvalidOptions);
+    const opacity = opacity_ptr orelse return sessionError(owner, error.InvalidOptions);
     if (operation > c.OT_BUFFER_STACK_CLEAR_OPACITY) return sessionError(owner, error.InvalidOptions);
     const frame = if (frame_ptr) |record| frameRequestFromC(record.*) catch |err| return sessionError(owner, err) else null;
     out.* = owner.core.bufferStack(handleFromC(target.*), frame, .{
@@ -598,7 +719,7 @@ pub fn ot_buffer_stack(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle
         .y = y,
         .width = width,
         .height = height,
-        .opacity = opacity,
+        .opacity = opacity.*,
     }) catch |err| return sessionError(owner, err);
     return c.OT_OK;
 }
@@ -657,14 +778,15 @@ pub fn ot_buffer_draw_grayscale(context: ?*ContextHandle, target_ptr: ?*const c.
     return c.OT_OK;
 }
 
-pub fn ot_buffer_color_matrix(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle, frame_ptr: ?*const c.ot_scene_frame_request, matrix_ptr: ?[*]align(1) const f32, matrix_count: u32, mask_ptr: ?[*]align(1) const f32, mask_count: u32, strength: f32, channel: u32) callconv(.c) c.ot_status {
+pub fn ot_buffer_color_matrix(context: ?*ContextHandle, target_ptr: ?*const c.ot_handle, frame_ptr: ?*const c.ot_scene_frame_request, matrix_ptr: ?[*]align(1) const f32, matrix_count: u32, mask_ptr: ?[*]align(1) const f32, mask_count: u32, strength_ptr: ?*const f32, channel: u32) callconv(.c) c.ot_status {
     const status = sessionContextStatus(context);
     if (status != c.OT_OK) return status;
     const owner = context.?;
     const target = target_ptr orelse return sessionError(owner, error.InvalidOptions);
+    const strength = strength_ptr orelse return sessionError(owner, error.InvalidOptions);
     if (matrix_count != 16 or matrix_ptr == null or (mask_count != 0 and mask_ptr == null)) return sessionError(owner, error.InvalidOptions);
     const frame = if (frame_ptr) |record| frameRequestFromC(record.*) catch |err| return sessionError(owner, err) else null;
-    owner.core.colorMatrixBuffer(handleFromC(target.*), frame, matrix_ptr.?[0..matrix_count], if (mask_ptr) |ptr| ptr[0..mask_count] else null, strength, channel) catch |err| return sessionError(owner, err);
+    owner.core.colorMatrixBuffer(handleFromC(target.*), frame, matrix_ptr.?[0..matrix_count], if (mask_ptr) |ptr| ptr[0..mask_count] else null, strength.*, channel) catch |err| return sessionError(owner, err);
     return c.OT_OK;
 }
 
@@ -2373,6 +2495,42 @@ pub fn createTestContext(options: struct { object_capacity: u32, render_cells_ma
     return context.?;
 }
 
+test "Context link URL ABI copies interned URLs and rejects unknown ids" {
+    const context: ?*ContextHandle = try createTestContext(.{ .object_capacity = 4, .render_cells_max = 4 });
+    defer std.testing.expectEqual(c.OT_OK, ot_context_destroy(context)) catch unreachable;
+    const url = "https://example.com/link";
+    const id = try context.?.core.links.acquire(url);
+    var count: u32 = 99;
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_context_get_link_url(null, id, null, 0, &count));
+    try std.testing.expectEqual(@as(u32, 99), count);
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_context_get_link_url(context, id, null, 1, &count));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_context_get_link_url(context, id, null, 0, null));
+    try std.testing.expectEqual(c.OT_OK, ot_context_get_link_url(context, id, null, 0, &count));
+    try std.testing.expectEqual(@as(u32, url.len), count);
+    var too_small: [3]u8 = undefined;
+    count = 99;
+    try std.testing.expectEqual(
+        c.OT_INVALID_ARGUMENT,
+        ot_context_get_link_url(context, id, &too_small, too_small.len, &count),
+    );
+    try std.testing.expectEqual(@as(u32, 99), count);
+    var output: [64]u8 = undefined;
+    @memset(&output, 'x');
+    try std.testing.expectEqual(c.OT_OK, ot_context_get_link_url(context, id, &output, output.len, &count));
+    try std.testing.expectEqual(@as(u32, url.len), count);
+    try std.testing.expectEqualStrings(url, output[0..url.len]);
+    try std.testing.expectEqual(
+        c.OT_INVALID_ARGUMENT,
+        ot_context_get_link_url(context, 0, &output, output.len, &count),
+    );
+    context.?.core.mutating = true;
+    defer context.?.core.mutating = false;
+    try std.testing.expectEqual(
+        c.OT_CONTEXT_BUSY,
+        ot_context_get_link_url(context, id, &output, output.len, &count),
+    );
+}
+
 test "Context synchronous text drawing ABI validates sources and frame records before painting" {
     const context: ?*ContextHandle = try createTestContext(.{ .object_capacity = 8, .render_cells_max = 8 });
     defer std.testing.expectEqual(c.OT_OK, ot_context_destroy(context)) catch unreachable;
@@ -2436,22 +2594,23 @@ test "Context color matrix ABI checks spans handles and reentry" {
     const core = context.?.core;
     const target = handleToC(try core.createBuffer(2, 1, .{}));
     const matrix = [_]f32{ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(null, &target, null, &matrix, 16, null, 0, 1, 0));
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, null, null, &matrix, 16, null, 0, 1, 0));
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, null, 16, null, 0, 1, 0));
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, &matrix, 15, null, 0, 1, 0));
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 3, 1, 0));
+    var strength: f32 = 1;
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(null, &target, null, &matrix, 16, null, 0, &strength, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, null, null, &matrix, 16, null, 0, &strength, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, null, 16, null, 0, &strength, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, &matrix, 15, null, 0, &strength, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 3, &strength, 0));
     var foreign = target;
     foreign.context_id += 1;
-    try std.testing.expectEqual(c.OT_WRONG_CONTEXT, ot_buffer_color_matrix(context, &foreign, null, &matrix, 16, null, 0, 1, 0));
+    try std.testing.expectEqual(c.OT_WRONG_CONTEXT, ot_buffer_color_matrix(context, &foreign, null, &matrix, 16, null, 0, &strength, 0));
     var frame = std.mem.zeroes(c.ot_scene_frame_request);
-    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, &frame, &matrix, 16, null, 0, 1, 0));
-    try std.testing.expectEqual(c.OT_OK, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, 1, 3));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_buffer_color_matrix(context, &target, &frame, &matrix, 16, null, 0, &strength, 0));
+    try std.testing.expectEqual(c.OT_OK, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, &strength, 3));
     core.mutating = true;
-    try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, 1, 0));
+    try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, &strength, 0));
     core.mutating = false;
     try core.destroy(handleFromC(target));
-    try std.testing.expectEqual(c.OT_STALE_HANDLE, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, 1, 0));
+    try std.testing.expectEqual(c.OT_STALE_HANDLE, ot_buffer_color_matrix(context, &target, null, &matrix, 16, null, 0, &strength, 0));
 }
 
 test "Context image ABI rejects invalid records identities and mutation reentry" {
@@ -2526,6 +2685,29 @@ test "Context image ABI rejects invalid records identities and mutation reentry"
     try std.testing.expectEqual(c.OT_WRONG_KIND, ot_session_set_image_resolution(context, &image, 2, 1, 16, 16));
     try std.testing.expectEqual(c.OT_OK, ot_session_set_image_resolution(context, &session_c, 2, 1, 16, 16));
     try std.testing.expectEqual(c.OT_OK, ot_session_set_image_resolution(context, &session_c, 0, 0, 0, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_set_kitty_image_transport(null, &session_c, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_set_kitty_image_transport(context, null, 0));
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_set_kitty_image_transport(context, &session_c, 3));
+    try std.testing.expectEqual(c.OT_WRONG_KIND, ot_session_set_kitty_image_transport(context, &image, 0));
+    try std.testing.expectEqual(c.OT_OK, ot_session_set_kitty_image_transport(context, &session_c, 0));
+    try std.testing.expectEqual(c.OT_OK, ot_session_set_kitty_image_transport(context, &session_c, 1));
+    var kitty = std.mem.zeroes(c.ot_session_kitty_image_transport);
+    kitty.struct_size = @sizeOf(c.ot_session_kitty_image_transport);
+    kitty.abi_version = c.OT_CONTEXT_ABI_VERSION;
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_get_kitty_image_transport(context, &session_c, null));
+    try std.testing.expectEqual(c.OT_OK, ot_session_get_kitty_image_transport(context, &session_c, &kitty));
+    try std.testing.expectEqual(@as(u32, 1), kitty.requested);
+    var retry: u32 = 99;
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_poll_kitty_image_transport(context, &session_c, null));
+    try std.testing.expectEqual(c.OT_OK, ot_session_poll_kitty_image_transport(context, &session_c, &retry));
+    try std.testing.expectEqual(@as(u32, 0), retry);
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_cancel_kitty_image_transport(context, &session_c, 2));
+    try std.testing.expectEqual(c.OT_OK, ot_session_cancel_kitty_image_transport(context, &session_c, 0));
+    var reply_result: u32 = 99;
+    try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_session_process_kitty_image_reply(context, &session_c, null, 1, &reply_result));
+    try std.testing.expectEqual(c.OT_OK, ot_session_process_kitty_image_reply(context, &session_c, null, 0, &reply_result));
+    try std.testing.expectEqual(@as(u32, 0), reply_result);
+    try std.testing.expectEqual(c.OT_OK, ot_session_start_kitty_file_probe(context, &session_c));
     {
         core.mutating = true;
         defer core.mutating = false;
@@ -2537,6 +2719,8 @@ test "Context image ABI rejects invalid records identities and mutation reentry"
         try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_buffer_draw_image(context, &target, null, &image, &draw, &drawn));
         try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_image_destroy(context, &image));
         try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_session_set_image_resolution(context, &session_c, 0, 0, 0, 0));
+        try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_session_set_kitty_image_transport(context, &session_c, 0));
+        try std.testing.expectEqual(c.OT_CONTEXT_BUSY, ot_session_start_kitty_file_probe(context, &session_c));
     }
     try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_image_destroy(null, &image));
     try std.testing.expectEqual(c.OT_INVALID_ARGUMENT, ot_image_destroy(context, null));
@@ -4160,4 +4344,5 @@ comptime {
     std.debug.assert(@alignOf(c.ot_scene_style_value) == 4);
     std.debug.assert(@sizeOf(usize) == 8);
     std.debug.assert(c.OT_BUFFER_TEXT_BYTES_MAX == @import("buffer.zig").text_bytes_max);
+    std.debug.assert(@import("link.zig").MAX_URL_LENGTH == 512);
 }

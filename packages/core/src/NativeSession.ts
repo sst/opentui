@@ -14,6 +14,7 @@ import {
   type NativeSceneFrameRequest,
   type NativeSessionCapabilities,
   type NativeSessionControl,
+  type NativeSessionKittyImageTransportStatus,
   type NativeSessionOptions,
   type NativeSessionRendererOptions,
   type NativeSessionTerminalOptions,
@@ -443,6 +444,38 @@ export class NativeSession {
     const accepted = this.lib.sessionNotification(this.context, this.session, message, title)
     if (accepted) this.schedule()
     return accepted
+  }
+
+  setKittyImageTransport(mode: number): void {
+    this.checkOpen()
+    this.lib.sessionSetKittyImageTransport(this.context, this.session, mode)
+    this.schedule()
+  }
+
+  getKittyImageTransport(): NativeSessionKittyImageTransportStatus {
+    this.checkOpen()
+    return this.lib.sessionGetKittyImageTransport(this.context, this.session)
+  }
+
+  pollKittyImageTransport(): boolean {
+    this.checkOpen()
+    return this.lib.sessionPollKittyImageTransport(this.context, this.session)
+  }
+
+  cancelKittyImageTransport(failed: boolean): void {
+    this.checkOpen()
+    this.lib.sessionCancelKittyImageTransport(this.context, this.session, failed)
+  }
+
+  processKittyImageReply(bytes: Uint8Array): number {
+    this.checkOpen()
+    return this.lib.sessionProcessKittyImageReply(this.context, this.session, bytes)
+  }
+
+  startKittyFileProbe(): void {
+    this.checkOpen()
+    this.lib.sessionStartKittyFileProbe(this.context, this.session)
+    this.schedule()
   }
 
   getCapabilities(): NativeSessionCapabilities {

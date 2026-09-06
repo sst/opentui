@@ -119,8 +119,8 @@ test("StyledText ignores same-object URL edits but ingests a URL-only replacemen
 
 test.each([
   ["combining", ["e", "\u0301X", "Y"], [0, 1, 2]],
-  ["ZWJ", ["\ud83d\udc69", "\u200d\ud83d\udcbb", "WXYZ"], [0, 0, 1, 1, 2, 2]],
-] as const)("StyledText split %s links follow independently measured chunk ranges", async (_name, parts, ranges) => {
+  ["ZWJ", ["\ud83d\udc69", "\u200d\ud83d\udcbb", "WXYZ"], [0, 0, 1, 1, 1, 1]],
+] as const)("StyledText split %s links follow concatenated width-cursor chunk ranges", async (_name, parts, ranges) => {
   const target = await setup(ranges.length, 1)
   target.renderer.stdin.emit("data", Buffer.from(kitty))
   const urls = ["https://example.test/a", "https://example.test/b", "https://example.test/c"]
@@ -132,9 +132,10 @@ test.each([
   target.renderer.root.add(text)
   await target.renderOnce()
   const emitted = openings(target.take())
+  const expectedUrls = _name === "ZWJ" ? [urls[0], urls[2]] : [...urls]
   assert.deepEqual(
     emitted.map(({ url }) => url),
-    urls,
+    expectedUrls,
   )
   assert.deepEqual(
     ids(target),

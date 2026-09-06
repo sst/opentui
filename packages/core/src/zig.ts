@@ -559,6 +559,15 @@ export interface NativeSessionRendererState {
   framePending: boolean
 }
 
+export interface NativeSessionKittyImageTransportStatus {
+  requested: number
+  effective: number
+  fileState: number
+  fallback: number
+  pendingFiles: number
+  pendingBytes: number
+}
+
 export const NATIVE_SESSION_CONTROL_PACKET_BYTES = nativeConstants.OT_SESSION_CONTROL_PACKET_BYTES
 
 export interface NativeSessionTerminalOptions {
@@ -2502,6 +2511,19 @@ export class FFIRenderLib {
       events.buffers.clear()
     }
     this.contextEditEvents.delete(context)
+  }
+
+  public contextGetLinkUrl(context: NativeContextHandle, linkId: number): string {
+    const id = toSafeFFIU32Length(linkId, "Link id")
+    const bytes = new Uint8Array(MAX_LINK_URL_BYTES)
+    const count = new Uint32Array(1)
+    const pointer = this.nativeContextPointer(context, "ot_context_get_link_url")
+    nativeResult(
+      "ot_context_get_link_url",
+      this.opentui.symbols.ot_context_get_link_url(pointer, id, bytes, bytes.length, count),
+    )
+    if (count[0] > bytes.length) throw new NativeError("ot_context_get_link_url", NativeStatus.InternalError)
+    return count[0] === 0 ? "" : this.decoder.decode(bytes.subarray(0, count[0]))
   }
 
   public createContextTextBuffer(
@@ -4726,6 +4748,90 @@ export class FFIRenderLib {
     })
   }
 
+  public sessionSetKittyImageTransport(context: NativeContextHandle, session: SessionHandle, mode: number): void {
+    const handle = encodeContextHandle(context, session)
+    const value = toSafeFFIU32Length(mode, "Session Kitty image transport")
+    const pointer = this.nativeContextPointer(context, "ot_session_set_kitty_image_transport")
+    nativeResult(
+      "ot_session_set_kitty_image_transport",
+      this.opentui.symbols.ot_session_set_kitty_image_transport(pointer, handle, value),
+    )
+  }
+
+  public sessionGetKittyImageTransport(
+    context: NativeContextHandle,
+    session: SessionHandle,
+  ): NativeSessionKittyImageTransportStatus {
+    const layout = nativeLayouts.ot_session_kitty_image_transport
+    const handle = encodeContextHandle(context, session)
+    const output = createContextRecord(layout)
+    const pointer = this.nativeContextPointer(context, "ot_session_get_kitty_image_transport")
+    nativeResult(
+      "ot_session_get_kitty_image_transport",
+      this.opentui.symbols.ot_session_get_kitty_image_transport(pointer, handle, output),
+    )
+    return {
+      requested: output[layout.fields.requested.offset / 4],
+      effective: output[layout.fields.effective.offset / 4],
+      fileState: output[layout.fields.file_state.offset / 4],
+      fallback: output[layout.fields.fallback.offset / 4],
+      pendingFiles: output[layout.fields.pending_files.offset / 4],
+      pendingBytes: output[layout.fields.pending_bytes.offset / 4],
+    }
+  }
+
+  public sessionPollKittyImageTransport(context: NativeContextHandle, session: SessionHandle): boolean {
+    const handle = encodeContextHandle(context, session)
+    const output = new Uint32Array(1)
+    const pointer = this.nativeContextPointer(context, "ot_session_poll_kitty_image_transport")
+    nativeResult(
+      "ot_session_poll_kitty_image_transport",
+      this.opentui.symbols.ot_session_poll_kitty_image_transport(pointer, handle, output),
+    )
+    return output[0] !== 0
+  }
+
+  public sessionCancelKittyImageTransport(context: NativeContextHandle, session: SessionHandle, failed: boolean): void {
+    const handle = encodeContextHandle(context, session)
+    const value = toFFIBool(failed, "Session Kitty image transport failed")
+    const pointer = this.nativeContextPointer(context, "ot_session_cancel_kitty_image_transport")
+    nativeResult(
+      "ot_session_cancel_kitty_image_transport",
+      this.opentui.symbols.ot_session_cancel_kitty_image_transport(pointer, handle, value),
+    )
+  }
+
+  public sessionProcessKittyImageReply(
+    context: NativeContextHandle,
+    session: SessionHandle,
+    bytes: Uint8Array,
+  ): number {
+    const handle = encodeContextHandle(context, session)
+    const input = sessionBytes(bytes, "Session Kitty image reply length")
+    const output = new Uint32Array(1)
+    const pointer = this.nativeContextPointer(context, "ot_session_process_kitty_image_reply")
+    nativeResult(
+      "ot_session_process_kitty_image_reply",
+      this.opentui.symbols.ot_session_process_kitty_image_reply(
+        pointer,
+        handle,
+        viewOrNull(input),
+        input.byteLength,
+        output,
+      ),
+    )
+    return output[0]
+  }
+
+  public sessionStartKittyFileProbe(context: NativeContextHandle, session: SessionHandle): void {
+    const handle = encodeContextHandle(context, session)
+    const pointer = this.nativeContextPointer(context, "ot_session_start_kitty_file_probe")
+    nativeResult(
+      "ot_session_start_kitty_file_probe",
+      this.opentui.symbols.ot_session_start_kitty_file_probe(pointer, handle),
+    )
+  }
+
   public createContextBuffer(context: NativeContextHandle, options: NativeContextBufferOptions): ContextBufferHandle {
     const layout = nativeLayouts.ot_buffer_options
     const widthMethod = options.widthMethod ?? "unicode"
@@ -4886,22 +4992,12 @@ export class FFIRenderLib {
     const height = toSafeFFIU32Length(options.height ?? 0, "Buffer scissor height")
     const opacity = options.opacity ?? 1
     if (!Number.isFinite(opacity)) throw new RangeError("Buffer opacity must be finite")
+    const input = new Float32Array([Math.max(0, Math.min(1, opacity))])
     const output = new Float32Array(1)
     const pointer = this.nativeContextPointer(context, "ot_buffer_stack")
     nativeResult(
       "ot_buffer_stack",
-      this.opentui.symbols.ot_buffer_stack(
-        pointer,
-        handle,
-        ticket,
-        operation,
-        x,
-        y,
-        width,
-        height,
-        Math.max(0, Math.min(1, opacity)),
-        output,
-      ),
+      this.opentui.symbols.ot_buffer_stack(pointer, handle, ticket, operation, x, y, width, height, input, output),
     )
     return output[0]
   }
@@ -5083,7 +5179,7 @@ export class FFIRenderLib {
         // An empty mask must remain non-null on runtimes with null empty-array pointers.
         cells?.length === 0 ? transform : cells,
         count,
-        strength,
+        new Float32Array([strength]),
         targetChannel,
       ),
     )

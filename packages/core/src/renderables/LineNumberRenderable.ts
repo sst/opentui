@@ -84,7 +84,7 @@ class GutterRenderable extends Renderable {
       height: "auto",
       flexGrow: 0,
       flexShrink: 0,
-      buffered: true,
+      // Window-sized raster cache is not a Yoga-sized buffered surface.
     })
     try {
       this.target = target
@@ -259,7 +259,7 @@ class GutterRenderable extends Renderable {
 
   protected override renderSelf(buffer: OptimizedBuffer): void {
     // Match native integer-cell drawing before deriving the source window.
-    const x = this._screenX
+    const x = Math.trunc(this._screenX)
     const y = Math.trunc(this._screenY)
     const start = Math.max(0, -y)
     const end = Math.min(this.height, buffer.height - y)

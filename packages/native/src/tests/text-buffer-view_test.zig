@@ -1434,6 +1434,30 @@ test "TextBufferView word wrapping - combining mark keeps base class across chun
     try std.testing.expectEqualSlices(u32, &.{ 3, 2 }, view.getCachedLineInfo().line_width_cols);
 }
 
+test "TextBufferView word wrapping - appended kana combining mark keeps trailing bytes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("か");
+    try tb.append("\u{3099}く");
+    view.setWrapMode(.word);
+    view.setWrapWidth(8);
+
+    const expected = "か\u{3099}く";
+    var bytes: usize = 0;
+    for (view.getVirtualLines()) |vline| {
+        for (vline.chunks.items) |chunk| bytes += chunk.byte_len;
+    }
+    try std.testing.expectEqual(expected.len, bytes);
+}
+
 test "TextBufferView word wrapping - CJK run wraps between characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

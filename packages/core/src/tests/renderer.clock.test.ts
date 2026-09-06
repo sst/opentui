@@ -193,38 +193,33 @@ test("Session output backpressure retries a skipped native frame", async () => {
 test("threaded output backpressure delivers the final automatic animation frame before going idle", async () => {
   const text = new TextRenderable(renderer, { content: "before" })
   renderer.root.add(text)
-  clock.advance(100)
-  await Promise.resolve()
+  await renderOnce()
   expect(captureCharFrame()).toContain("before")
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 
-  const internals = renderer as unknown as { renderNative: () => string }
-  const originalRenderNative = internals.renderNative
+  const driver = renderer.nativeScene.driver
+  const originalRender = driver.render.bind(driver)
   let attempts = 0
-  // Reject only the final animation frame; accepted frames still use the native renderer.
-  internals.renderNative = () => {
-    if (attempts++ === 0) return "backpressured"
-    return originalRenderNative.call(renderer)
-  }
-
+  const render = spyOn(driver, "render").mockImplementation((...args) =>
+    attempts++ === 0 ? NativeSessionRenderStatus.Skipped : originalRender(...args),
+  )
   try {
-    requestAnimationFrame(() => {
+    renderer.requestAnimationFrame(() => {
       text.content = "after"
     })
-    await Promise.resolve()
-    expect(captureCharFrame()).toContain("before")
-
     clock.advance(20)
-    await Promise.resolve()
+    await serviceReadyFrames()
+    expect(captureCharFrame()).toContain("before")
+    clock.advance(20)
+    await renderer.idle()
     expect(captureCharFrame()).toContain("after")
-    expect(attempts).toBe(2)
     expect(renderer.getSchedulerState()).toEqual({
       isRunning: false,
       isRendering: false,
       hasScheduledRender: false,
     })
   } finally {
-    internals.renderNative = originalRenderNative
+    render.mockRestore()
   }
 })
 

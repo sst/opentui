@@ -60,6 +60,7 @@ import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 import { matchesKeyBinding } from "./lib/keybinding.internal.js"
 import { RendererThemeMode } from "./renderer-theme-mode.js"
+import { getLinkId } from "./utils.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -103,6 +104,18 @@ registerEnvVar({
   default: false,
 })
 
+export type KittyImageTransport = "raw" | "zlib" | "file"
+const KITTY_IMAGE_TRANSPORTS: KittyImageTransport[] = ["raw", "zlib", "file"]
+
+export interface KittyImageTransportStatus {
+  requested: KittyImageTransport
+  effective: "raw" | "zlib" | "png" | "file"
+  fileState: "disabled" | "probing" | "ready" | "unsupported" | "timeout" | "io-error" | "cancelled"
+  fallback: "none" | "not-ready" | "unavailable" | "budget" | "busy" | "preparation" | "compression"
+  pendingFiles: number
+  pendingBytes: number
+}
+
 export interface CliRendererConfig {
   /** Transfer this driver's ownership after attachment succeeds. Requires the same stdout. */
   nativeSession?: NativeSession
@@ -131,6 +144,9 @@ export interface CliRendererConfig {
   // native startup auto-detects SSH/mosh sessions; custom stdout feed output
   // defaults to remote because it is not connected to the host TTY directly.
   remote?: boolean
+
+  // Raw is the default. File requires a local terminal with medium and upload ACK support.
+  kittyImageTransport?: KittyImageTransport
 
   // Use an in-memory native buffered output destination instead of process stdout.
   // Intended for test helpers that need native rendering without terminal I/O.
@@ -602,6 +618,7 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMPDIR",
   "SSH_CONNECTION",
   "SSH_CLIENT",
   "SSH_TTY",
@@ -848,6 +865,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private readonly detachedSurfaces = new Set<() => void>()
   private nativeResizeWait: Promise<void> | null = null
   private nativeKittyKeyboardFlags = 0
+  private kittyTransportMode: KittyImageTransport = "raw"
+  private kittyTransportTimer: TimerHandle | null = null
   private _lastSceneTimeMs = 0
 
   public get lastSceneTimeMs(): number {
@@ -1151,6 +1170,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         throw new Error(`${name} must be a positive u32`)
       }
     }
+    this.kittyTransportMode = config.kittyImageTransport ?? "raw"
+    const transportCode = KITTY_IMAGE_TRANSPORTS.indexOf(this.kittyTransportMode)
+    if (transportCode < 0) throw new TypeError("Invalid kittyImageTransport")
     const useMemoryBufferedOutput = config.bufferedOutput === "memory"
     if (config.nativeSession) {
       if (useMemoryBufferedOutput) throw new Error("nativeSession does not support memory buffered output")
@@ -1214,6 +1236,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         config.nativeScenePaintBudget,
         config.nativeSceneWorkBudget,
       )
+      this.nativeSession.setKittyImageTransport(transportCode)
     } catch (error) {
       // A supplied Session transfers only after attachRenderer succeeds.
       if (!config.nativeSession || this.nativeSession) driver?.dispose()
@@ -1904,6 +1927,56 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get capabilities(): TerminalCapabilities | null {
     return this._capabilities
+  }
+
+  public get kittyImageTransport(): KittyImageTransport {
+    return this.kittyTransportMode
+  }
+
+  public set kittyImageTransport(mode: KittyImageTransport) {
+    const code = KITTY_IMAGE_TRANSPORTS.indexOf(mode)
+    if (code < 0) throw new TypeError("Invalid kittyImageTransport")
+    if (this._isDestroyed || mode === this.kittyTransportMode) return
+    this.kittyTransportMode = mode
+    this.startKittyTransportPolling()
+    this.nativeSession.setKittyImageTransport(code)
+    this.requestRender()
+  }
+
+  private startKittyTransportPolling(): void {
+    if (!this._terminalIsSetup || this.kittyTransportMode !== "file" || this.kittyTransportTimer !== null) return
+    // Old file transfers still need ACKs, expiry, and error cleanup after selecting an inline mode.
+    this.stdout.on("error", this.kittyOutputErrorHandler)
+    this.kittyTransportTimer = this.clock.setInterval(() => {
+      if (!this._isDestroyed && this.nativeSession.pollKittyImageTransport()) this.requestRender()
+    }, 1000)
+  }
+
+  public get kittyImageTransportStatus(): KittyImageTransportStatus {
+    const status = this.nativeSession.getKittyImageTransport()
+    return {
+      requested: KITTY_IMAGE_TRANSPORTS[status.requested]!,
+      effective: (["raw", "zlib", "png", "file"] as const)[status.effective]!,
+      fileState: (["disabled", "probing", "ready", "unsupported", "timeout", "io-error", "cancelled"] as const)[
+        status.fileState
+      ]!,
+      fallback: (["none", "not-ready", "unavailable", "budget", "busy", "preparation", "compression"] as const)[
+        status.fallback
+      ]!,
+      pendingFiles: status.pendingFiles,
+      pendingBytes: status.pendingBytes,
+    }
+  }
+
+  public cancelKittyImageTransport(): void {
+    if (this._isDestroyed) return
+    this.nativeSession.cancelKittyImageTransport(false)
+    this.requestRender()
+  }
+
+  private kittyOutputErrorHandler = (): void => {
+    if (this._isDestroyed || this.nativeSession.disposed || this.nativeSession.error) return
+    this.nativeSession.cancelKittyImageTransport(true)
   }
 
   public triggerNotification(message: string, title?: string): boolean {
@@ -3155,6 +3228,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           if (this._isDestroyed) return
           this._terminalIsSetup = true
           this._capabilities = this.nativeSession.getCapabilities()
+          this.startKittyTransportPolling()
+          this.nativeSession.startKittyFileProbe()
         },
       )
     } catch (error) {
@@ -3388,6 +3463,25 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinEvent(event: StdinEvent): void {
+    // Native resume can publish probes before the JS control state is restored.
+    if (event.type === "response" && event.sequence.startsWith("\x1b_G")) {
+      try {
+        const result = this.nativeSession.processKittyImageReply(Buffer.from(event.sequence))
+        if (result !== 0) {
+          if (result === 2) this.requestRender()
+          return
+        }
+      } catch (error) {
+        if (
+          !(error instanceof NativeError) ||
+          (error.status !== NativeStatus.SessionClosed &&
+            error.status !== NativeStatus.StaleHandle &&
+            error.status !== NativeStatus.RendererNotAttached)
+        ) {
+          throw error
+        }
+      }
+    }
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       if (event.type === "response" && isPixelResolutionResponse(event.sequence)) {
         this.dispatchSequenceHandlers(event.sequence)
@@ -4095,6 +4189,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.sessionDumpHitGrid(this.nativeSession.context, this.nativeSession.session)
   }
 
+  public getLinkIdAt(x: number, y: number): number {
+    if (this._isDestroyed || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) return 0
+    return this.currentRenderBuffer.withBuffers((cells) => {
+      if (x >= cells.width || y >= cells.height) return 0
+      return getLinkId(cells.attributes[y * cells.width + x])
+    })
+  }
+
+  public getLinkAt(x: number, y: number): string | null {
+    const linkId = this.getLinkIdAt(x, y)
+    return linkId === 0 ? null : this.lib.contextGetLinkUrl(this.nativeSession.context, linkId) || null
+  }
+
   public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
     renderer.setCursorPosition(x, y, visible)
   }
@@ -4365,6 +4472,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.forceFullRepaintRequested = true
+    this.startKittyTransportPolling()
+    this.nativeSession.startKittyFileProbe()
     this._controlState = this._previousControlState
     if (this.pixelResolutionRequeryPending) this.queryPixelResolution()
     this.stdinParser?.resumePendingTimeout()
@@ -4454,6 +4563,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private cleanupBeforeDestroy(): void {
     if (this._destroyCleanupPrepared) return
     this._destroyCleanupPrepared = true
+    if (this.kittyTransportTimer !== null) {
+      this.clock.clearInterval(this.kittyTransportTimer)
+      this.kittyTransportTimer = null
+      this.stdout.off("error", this.kittyOutputErrorHandler)
+      if (!this.nativeSession.disposed && !this.nativeSession.error) this.nativeSession.cancelKittyImageTransport(false)
+    }
     this.pendingNativeResize = null
     this.cancelReadyFrame?.()
     this.cancelReadyFrame = null

@@ -97,12 +97,11 @@ for (const fixture of [
     width: 6,
     expected: [
       ["\ud83d\udc69\u200d\ud83d\udcbb", 2, red, blue, BOLD],
-      ["WX", 2, green, red, ITALIC],
-      ["YZ", 2, blue, green, UNDERLINE],
+      ["WXYZ", 4, blue, green, UNDERLINE],
     ],
   },
 ]) {
-  test(`legacy StyledText uses independently measured chunk style ranges across a split ${fixture.name}`, async () => {
+  test(`legacy StyledText uses concatenated width-cursor style ranges across a split ${fixture.name}`, async () => {
     const target = await setup(fixture.width)
     const text = new TextRenderable(target.renderer, {
       selectable: false,
