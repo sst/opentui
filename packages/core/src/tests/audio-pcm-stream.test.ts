@@ -122,6 +122,45 @@ test("PCM accepts offset byte views split inside samples and stereo frames", asy
   }
 })
 
+test("PCM byte accounting includes a pending fragment without converting it early", async () => {
+  const audio = createAudio()
+  const input = source()
+  const stream = await audio.playStream(input.body, options)
+  const bytes = pcm([0.25, -0.5])
+  input.push(bytes.subarray(0, 3))
+  await until(() => stream.getStats().bytesReceived === 3n)
+  expect(stream.getStats().framesDecoded).toBe(0n)
+  input.push(bytes.subarray(3))
+  await until(() => stream.getStats().bytesReceived === 8n)
+  input.end()
+  const output = await drive(audio, stream)
+  expect(output.some((sample) => sample === 0.25)).toBe(true)
+  expect(stream.getStats().framesPlayed).toBe(1n)
+})
+
+test("shared stream pumping yields across small positive writes so cancellation can run", async () => {
+  const audio = createAudio()
+  const controller = new AbortController()
+  let reads = 0
+  async function* input() {
+    const bytes = pcm([0.25, -0.5])
+    for (; reads < 1024; reads++) yield bytes
+  }
+  const stream = await audio.playStream(input(), {
+    ...options,
+    buffer: { capacityMs: 100, startupMs: 1, resumeMs: 1 },
+    signal: controller.signal,
+  })
+  const timer = setTimeout(() => controller.abort(), 0)
+  try {
+    await stream.closed
+    expect(stream.state).toBe("disposed")
+    expect(reads).toBeLessThan(1024)
+  } finally {
+    clearTimeout(timer)
+  }
+})
+
 test("PCM backpressures source reads and releases borrowed chunks before advancing", async () => {
   const audio = createAudio()
   let reads = 0

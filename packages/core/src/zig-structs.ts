@@ -397,9 +397,15 @@ export type AudioVoiceOptions = {
 export const NativeAudioStreamFormat = {
   Mp3: 1,
   Flac: 2,
+  Pcm: 3,
 } as const
 
 export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]
+
+export const NativeAudioStreamEndStatus = {
+  Complete: 0,
+  WouldBlock: 1,
+} as const
 
 export type AudioStreamCreateOptions = {
   capacityMs: number
@@ -410,6 +416,8 @@ export type AudioStreamCreateOptions = {
   groupId: number
   maxProbeBytes: number
   format: NativeAudioStreamFormat
+  sampleRate?: number
+  channels?: number
 }
 
 export type NativeAudioStreamStats = {
@@ -426,11 +434,6 @@ export type NativeAudioStreamStats = {
   readyGeneration: number
 }
 
-export type AudioPcmStreamCreateOptions = Omit<AudioStreamCreateOptions, "format" | "maxProbeBytes"> & {
-  sampleRate: number
-  channels: number
-}
-
 export const NativeAudioStreamState = {
   Initializing: 0,
   Buffering: 1,
@@ -439,7 +442,6 @@ export const NativeAudioStreamState = {
   Failed: 4,
   Cancelled: 5,
   Reconnecting: 6,
-  Paused: 7,
 } as const
 
 export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
@@ -522,6 +524,8 @@ export const AudioStreamCreateOptionsStruct = defineStruct([
   // Keep additions at the end so newer JS preserves the previous native prefix during local rebuilds.
   ["maxProbeBytes", "u32"],
   ["format", "u32"],
+  ["sampleRate", "u32", { default: 0 }],
+  ["channels", "u32", { default: 0 }],
 ])
 
 export const AudioStreamStatsStruct = defineStruct([

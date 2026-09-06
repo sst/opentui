@@ -30,7 +30,6 @@ export type {
   LineInfo,
   AllocatorStats,
   AudioStreamCreateOptions,
-  AudioPcmStreamCreateOptions,
   BuildOptions,
   NativeAudioCaptureStats,
   NativeAudioStreamStats,
@@ -82,7 +81,6 @@ import type {
   AudioStartOptions,
   AudioVoiceOptions,
   AudioStreamCreateOptions,
-  AudioPcmStreamCreateOptions,
   NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonType,
   NativeAudioStreamFormat as NativeAudioStreamFormatType,
   NativeAudioStreamState as NativeAudioStreamStateType,
@@ -1943,31 +1941,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioCreateStream: {
-      args: ["u32", "ptr", "ptr"],
+      args: ["u32", "buffer", "buffer"],
       returns: "i32",
     },
     audioWriteStream: {
       args: ["u32", "u32", "ptr", "u32"],
-      returns: "i32",
-    },
-    audioCreatePcmStream: {
-      args: ["u32", "buffer", "u32", "u32", "buffer"],
-      returns: "i32",
-    },
-    audioWritePcmStream: {
-      args: ["u32", "u32", "buffer", "u32"],
-      returns: "i32",
-    },
-    audioEndPcmStream: {
-      args: ["u32", "u32"],
-      returns: "i32",
-    },
-    audioSetPcmStreamPaused: {
-      args: ["u32", "u32", "u8"],
-      returns: "i32",
-    },
-    audioClearPcmStream: {
-      args: ["u32", "u32"],
       returns: "i32",
     },
     audioEndStream: {
@@ -2427,14 +2405,6 @@ export interface AudioEngineLib {
     options: AudioStreamCreateOptions,
   ) => { status: number; streamId: number | null }
   audioWriteStream: (engine: AudioEngineHandle, streamId: number, data: Uint8Array) => number
-  audioCreatePcmStream: (
-    engine: AudioEngineHandle,
-    options: AudioPcmStreamCreateOptions,
-  ) => { status: number; streamId: number | null }
-  audioWritePcmStream: (engine: AudioEngineHandle, streamId: number, data: Float32Array) => number
-  audioEndPcmStream: (engine: AudioEngineHandle, streamId: number) => number
-  audioSetPcmStreamPaused: (engine: AudioEngineHandle, streamId: number, paused: boolean) => number
-  audioClearPcmStream: (engine: AudioEngineHandle, streamId: number) => number
   audioEndStream: (engine: AudioEngineHandle, streamId: number) => number
   audioRestartStream: (engine: AudioEngineHandle, streamId: number) => number
   audioSetStreamVolume: (engine: AudioEngineHandle, streamId: number, volume: number) => number
@@ -6374,54 +6344,17 @@ class FFIRenderLib implements RenderLib {
   ): { status: number; streamId: number | null } {
     if (
       !isFFIU32(options.groupId) ||
-      (options.format !== NativeAudioStreamFormat.Mp3 && options.format !== NativeAudioStreamFormat.Flac)
+      !isFFIU32(options.sampleRate ?? 0) ||
+      !isFFIU32(options.channels ?? 0) ||
+      !Object.values(NativeAudioStreamFormat).includes(options.format)
     ) {
       return { status: -1, streamId: null }
     }
-    const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)
-    const outBuffer = new ArrayBuffer(4)
+    const optionsBuffer = new Uint8Array(AudioStreamCreateOptionsStruct.pack(options))
+    const outBuffer = new Uint32Array(1)
     const status = this.opentui.symbols.audioCreateStream(engine, optionsBuffer, outBuffer)
     if (status !== 0) return { status, streamId: null }
-    return { status, streamId: new Uint32Array(outBuffer)[0] ?? null }
-  }
-
-  public audioCreatePcmStream(
-    engine: AudioEngineHandle,
-    options: AudioPcmStreamCreateOptions,
-  ): { status: number; streamId: number | null } {
-    if (!isFFIU32(options.groupId) || !isFFIU32(options.sampleRate) || !isFFIU32(options.channels)) {
-      return { status: -1, streamId: null }
-    }
-    const packed = new Uint8Array(AudioStreamCreateOptionsStruct.pack({ ...options, format: 0, maxProbeBytes: 0 }))
-    const output = new Uint32Array(1)
-    const status = this.opentui.symbols.audioCreatePcmStream(
-      engine,
-      packed,
-      options.sampleRate,
-      options.channels,
-      output,
-    )
-    return { status, streamId: status === 0 ? output[0]! : null }
-  }
-
-  public audioWritePcmStream(engine: AudioEngineHandle, streamId: number, data: Float32Array): number {
-    if (!ArrayBuffer.isView(data) || Object.prototype.toString.call(data) !== "[object Float32Array]") {
-      throw new TypeError("PCM data must be a Float32Array")
-    }
-    const length = toSafeFFIU32Length(data.length, "PCM sample count")
-    return this.opentui.symbols.audioWritePcmStream(engine, streamId, data, length)
-  }
-
-  public audioEndPcmStream(engine: AudioEngineHandle, streamId: number): number {
-    return this.opentui.symbols.audioEndPcmStream(engine, streamId)
-  }
-
-  public audioSetPcmStreamPaused(engine: AudioEngineHandle, streamId: number, paused: boolean): number {
-    return this.opentui.symbols.audioSetPcmStreamPaused(engine, streamId, paused ? 1 : 0)
-  }
-
-  public audioClearPcmStream(engine: AudioEngineHandle, streamId: number): number {
-    return this.opentui.symbols.audioClearPcmStream(engine, streamId)
+    return { status, streamId: outBuffer[0] ?? null }
   }
 
   public audioWriteStream(engine: AudioEngineHandle, streamId: number, data: Uint8Array): number {

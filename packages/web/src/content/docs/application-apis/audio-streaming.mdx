@@ -98,7 +98,7 @@ Use the existing `setVolume()`, `setPan()`, `setGroup()`, and `dispose()` method
 
 The same PCM options work with `playStreamUrl()` and `playStreamSource()`, including custom demuxers where supported. PCM reconnect is not supported: passing `reconnect` rejects before the source opens.
 
-PCM uses the shared [statistics](#members-state-and-statistics): `bytesReceived` counts bytes in accepted whole input frames; `framesDecoded` counts converted engine-rate output, including the conversion tail. There is no separate input-frame counter.
+PCM uses the shared [statistics](#members-state-and-statistics): `bytesReceived` counts accepted input bytes, including a pending partial frame; `framesDecoded` counts converted engine-rate output, including the conversion tail. There is no separate input-frame counter.
 
 Run the [generated-tone example](https://github.com/anomalyco/opentui/blob/main/packages/examples/src/pcm-playback.ts) from the examples package with `bun src/pcm-playback.ts`. Add `--headless` to exercise conversion and mixing without an output device.
 
@@ -223,12 +223,12 @@ During a reconnect, a stream that already started can play PCM left in its decod
 
 OpenTUI bounds these internal layers:
 
-| Layer                     | Bound                                                  |
-| ------------------------- | ------------------------------------------------------ |
-| Native encoded input      | `256 KiB` per encoded stream                           |
-| Native output PCM         | `buffer.capacityMs`, up to `268,435,452` stereo frames |
-| JavaScript PCM conversion | `2048` input frames per batch plus one partial frame   |
-| JavaScript source demand  | One active `read()` or iterator `next()`               |
+| Layer                    | Bound                                                  |
+| ------------------------ | ------------------------------------------------------ |
+| Native encoded input     | `256 KiB` per encoded stream                           |
+| Native output PCM        | `buffer.capacityMs`, up to `268,435,452` stereo frames |
+| Native PCM conversion    | `2048` input frames per batch plus one partial frame   |
+| JavaScript source demand | One active `read()` or iterator `next()`               |
 
 OpenTUI finishes the current source chunk before it requests the next chunk. A full native input ring for encoded audio, or output ring for PCM, applies backpressure to that chunk.
 
@@ -436,7 +436,7 @@ Controls remain active across reconnects. They return `false` after terminal cle
 | `underruns`                        | Starvation transitions after playback starts   |
 | `reconnectAttempts`                | Cumulative reconnect attempts                  |
 
-`bytesReceived` excludes framing and metadata bytes. For PCM it counts only bytes in whole input frames accepted by native conversion, not a pending partial frame. Divide by `channels * 4` using the input channel count to recover accepted input frames.
+`bytesReceived` excludes framing and metadata bytes. For PCM it includes bytes held in a pending partial frame. Integer-divide by `channels * 4` using the input channel count to recover the number of complete input frames received.
 
 `framesDecoded` means decoded frames for encoded formats and converted output frames for PCM. PCM output includes conversion delay and the flushed filter tail. `framesPlayed` excludes underrun silence. Frame counters are `bigint` and use the engine rate; buffered duration excludes device buffers. Final statistics and metadata remain readable after natural completion.
 

@@ -11,9 +11,11 @@ import {
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import {
   NativeAudioStreamCloseReason as CloseReason,
+  NativeAudioStreamEndStatus as EndStatus,
   NativeAudioStreamFormat as NativeStreamFormat,
   NativeAudioStreamState as StreamState,
   NativeAudioStreamStateNames as StateNames,
+  type AudioStreamCreateOptions,
   type AudioStats,
   type NativeAudioStreamCloseReason,
   type NativeAudioStreamFormat,
@@ -442,15 +444,7 @@ interface ResolvedAudioStreamReconnectOptions {
 
 interface ResolvedAudioStreamOptions {
   format: AudioStreamFormat
-  sampleRate?: number
-  channels?: 1 | 2
-  capacityMs: number
-  startupMs: number
-  resumeMs: number
-  volume: number
-  pan: number
-  groupId: number
-  maxProbeBytes: number
+  native: AudioStreamCreateOptions
   signal?: AbortSignal
   reconnect?: ResolvedAudioStreamReconnectOptions
 }
@@ -472,6 +466,7 @@ interface AudioStreamInit<I, M> {
 
 interface AudioStreamAttempt<M> {
   controller: AbortController
+  writeBatches: number
   body: AudioStreamBody | null
   closeConnection: (() => void | Promise<void>) | null
   reader: ReadableStreamDefaultReader<Uint8Array> | null
@@ -603,7 +598,7 @@ function resolveAudioStreamOptions(
   const channels = options.channels
   if (format === "pcm") {
     if (options.sampleFormat !== "f32le") throw new TypeError("PCM sampleFormat must be 'f32le'")
-    if (!Number.isInteger(sampleRate) || sampleRate! < 8000 || sampleRate! > 192000) {
+    if (typeof sampleRate !== "number" || !Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 192000) {
       throw new RangeError("PCM sampleRate must be an integer from 8000 to 192000 Hz")
     }
     if (channels !== 1 && channels !== 2) throw new RangeError("PCM channels must be 1 or 2")
@@ -620,15 +615,18 @@ function resolveAudioStreamOptions(
 
   return {
     format,
-    sampleRate,
-    channels,
-    capacityMs,
-    startupMs,
-    resumeMs,
-    volume: options.volume ?? 1,
-    pan: options.pan ?? 0,
-    groupId: options.groupId ?? 0,
-    maxProbeBytes,
+    native: {
+      format: toNativeAudioStreamFormat(format),
+      sampleRate,
+      channels,
+      capacityMs,
+      startupMs,
+      resumeMs,
+      volume: options.volume ?? 1,
+      pan: options.pan ?? 0,
+      groupId: options.groupId ?? 0,
+      maxProbeBytes,
+    },
     signal: options.signal,
     reconnect: options.reconnect === undefined ? undefined : resolveReconnectOptions(options.reconnect),
   }
@@ -703,12 +701,14 @@ function resolveAudioStreamFormat(value: AudioStreamFormat | undefined): AudioSt
   return format
 }
 
-function toNativeAudioStreamFormat(format: Exclude<AudioStreamFormat, "pcm">): NativeAudioStreamFormat {
+function toNativeAudioStreamFormat(format: AudioStreamFormat): NativeAudioStreamFormat {
   switch (format) {
     case "mp3":
       return NativeStreamFormat.Mp3
     case "flac":
       return NativeStreamFormat.Flac
+    case "pcm":
+      return NativeStreamFormat.Pcm
   }
 }
 
@@ -878,6 +878,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   private readonly lifecycleController = new AbortController()
   private nativeStreamId: number | null = null
   private nativeStats: NativeAudioStreamStats | null = null
+  private readyGeneration = 0
   private activeAttempt: AudioStreamAttempt<M> | null = null
   private pendingCleanup: Promise<void> | null = null
   private reconnectAttempts = 0
@@ -894,7 +895,6 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   private closedResolve!: () => void
   private readonly setupPromise: Promise<void>
   private readonly overallAbortListener = () => this.dispose()
-  private readonly pcm: { frame: Uint8Array; frameBytes: number; batch: Float32Array; batches: number } | null
 
   static {
     createAudioStream = <I, T>(init: AudioStreamInit<I, T>) => new AudioStream<T>(init as AudioStreamInit<unknown, T>)
@@ -910,10 +910,6 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     this.readAction = init.readAction
     this.options = resolveAudioStreamOptions(init.options)
     this.format = this.options.format
-    this.pcm =
-      this.format === "pcm"
-        ? { frame: new Uint8Array(8), frameBytes: 0, batch: new Float32Array(2048 * 2), batches: 0 }
-        : null
     this.removeFromOwner = init.removeFromOwner
     this.setupPromise = new Promise((resolve, reject) => ((this.setupResolve = resolve), (this.setupReject = reject)))
     this.closed = new Promise((resolve) => (this.closedResolve = resolve))
@@ -1021,6 +1017,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     while (!this.lifecycleController.signal.aborted) {
       const attempt: AudioStreamAttempt<M> = {
         controller: new AbortController(),
+        writeBatches: 0,
         body: null,
         closeConnection: null,
         reader: null,
@@ -1161,26 +1158,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
 
   private createNativeStream(): void {
     if (this.nativeStreamId != null) return
-    const options = {
-      capacityMs: this.options.capacityMs,
-      startupMs: this.options.startupMs,
-      resumeMs: this.options.resumeMs,
-      maxProbeBytes: this.options.maxProbeBytes,
-      volume: this.options.volume,
-      pan: this.options.pan,
-      groupId: this.options.groupId,
-    }
-    const created =
-      this.options.format === "pcm"
-        ? this.lib.audioCreatePcmStream(this.engine, {
-            ...options,
-            sampleRate: this.options.sampleRate!,
-            channels: this.options.channels!,
-          })
-        : this.lib.audioCreateStream(this.engine, {
-            ...options,
-            format: toNativeAudioStreamFormat(this.options.format),
-          })
+    const created = this.lib.audioCreateStream(this.engine, this.options.native)
     if (created.status !== 0 || created.streamId == null) {
       const context: AudioStreamErrorContext = { action: "create", status: created.status }
       throw new AudioStreamError(`Audio stream create failed: ${created.status}`, context)
@@ -1192,33 +1170,26 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     connection: ResolvedAudioStreamConnection<unknown>,
     attempt: AudioStreamAttempt<M>,
   ): Promise<boolean> {
-    const initial = await this.pollNativeSnapshot(attempt)
-    if (initial == null || !this.isAttemptActive(attempt)) return false
-    // PCM conversion is ready at creation, before the source supplies its first frame.
-    const decoderReady = this.awaitReady(attempt, this.format === "pcm" ? 0 : initial.readyGeneration)
+    const previousGeneration = this.readyGeneration
+    if ((await this.pollNativeSnapshot(attempt)) == null || !this.isAttemptActive(attempt)) return false
+    const decoderReady = this.awaitReady(attempt, previousGeneration)
     try {
       await this.pumpSource(connection, attempt)
     } catch (cause) {
-      this.observeReady(this.readNativeStats(), this.format === "pcm" ? 0 : initial.readyGeneration)
+      this.observeReady(this.readNativeStats(), previousGeneration)
       await this.stopSource(attempt)
       await decoderReady
       if (!this.lifecycleController.signal.aborted) throw cause
       return false
     }
     if (this.lifecycleController.signal.aborted) return false
-    if (this.pcm != null && this.pcm.frameBytes !== 0) {
-      throw new AudioStreamError("PCM source ended with an incomplete interleaved frame", { action: "end" })
-    }
     let status: number
     do {
-      status =
-        this.format === "pcm"
-          ? this.lib.audioEndPcmStream(this.engine, this.nativeStreamId!)
-          : this.lib.audioEndStream(this.engine, this.nativeStreamId!)
-      if (status !== 1 || this.format !== "pcm") break
+      status = this.lib.audioEndStream(this.engine, this.nativeStreamId!)
+      if (status !== EndStatus.WouldBlock) break
       if (!(await waitForPoll(attempt.controller.signal)) || !this.isAttemptActive(attempt)) return false
     } while (true)
-    if (status !== 0) {
+    if (status !== EndStatus.Complete) {
       const nativeError = this.snapshotError(this.readNativeStats())
       if (nativeError?.context.action === "decoder") throw nativeError
       const context: AudioStreamErrorContext = { action: "end", status }
@@ -1346,7 +1317,9 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   }
 
   private async writeStreamChunk(chunk: Uint8Array, attempt: AudioStreamAttempt<M>): Promise<void> {
-    if (this.format === "pcm") return this.writePcmChunk(chunk, attempt)
+    if (Object.prototype.toString.call(chunk.buffer) === "[object SharedArrayBuffer]") {
+      throw new AudioStreamError("Audio stream chunks must have non-shared backing memory", { action: "write" })
+    }
     let offset = 0
     while (offset < chunk.byteLength && this.isAttemptActive(attempt)) {
       const streamId = this.nativeStreamId
@@ -1362,54 +1335,12 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
         const context: AudioStreamErrorContext = { action: "write", status: accepted }
         throw new AudioStreamError(`Audio stream write failed: ${accepted}`, context)
       }
-      if (accepted === 0) {
-        // Polling exists only for the current backpressured write; no idle timer remains afterward.
-        if ((await this.pollNativeSnapshot(attempt)) == null) return
-        await waitForDelay(STREAM_POLL_INTERVAL_MS, attempt.controller.signal)
-        continue
-      }
       offset += accepted
-    }
-  }
-
-  private async writePcmChunk(chunk: Uint8Array, attempt: AudioStreamAttempt<M>): Promise<void> {
-    if (Object.prototype.toString.call(chunk.buffer) === "[object SharedArrayBuffer]") {
-      throw new AudioStreamError("PCM chunks must have non-shared backing memory", { action: "write" })
-    }
-    const channels = this.options.channels!
-    const pcm = this.pcm!
-    const frameBytes = channels * Float32Array.BYTES_PER_ELEMENT
-    const length = chunk.byteLength
-    const view = new DataView(chunk.buffer, chunk.byteOffset, length)
-    let offset = 0
-    while (offset < length && this.isAttemptActive(attempt)) {
-      let samples = 0
-      if (pcm.frameBytes > 0 || length - offset < frameBytes) {
-        const bytes = Math.min(frameBytes - pcm.frameBytes, length - offset)
-        pcm.frame.set(chunk.subarray(offset, offset + bytes), pcm.frameBytes)
-        pcm.frameBytes += bytes
-        offset += bytes
-        if (pcm.frameBytes < frameBytes) break
-        const frame = new DataView(pcm.frame.buffer)
-        for (let channel = 0; channel < channels; channel++) pcm.batch[samples++] = frame.getFloat32(channel * 4, true)
-        pcm.frameBytes = 0
-      }
-      const frames = Math.min(2048 - samples / channels, Math.floor((length - offset) / frameBytes))
-      for (let i = 0; i < frames * channels; i++, offset += 4) pcm.batch[samples++] = view.getFloat32(offset, true)
-      let written = 0
-      while (written < samples && this.isAttemptActive(attempt)) {
-        const accepted = this.lib.audioWritePcmStream(
-          this.engine,
-          this.nativeStreamId!,
-          pcm.batch.subarray(written, samples),
-        )
-        if (accepted < 0)
-          throw new AudioStreamError(`Audio stream write failed: ${accepted}`, { action: "write", status: accepted })
-        written += accepted * channels
-        if (accepted === 0 || ++pcm.batches % 32 === 0) {
-          if ((await this.pollNativeSnapshot(attempt)) == null) return
-          await waitForDelay(accepted === 0 ? STREAM_POLL_INTERVAL_MS : 0, attempt.controller.signal)
-        }
+      if (accepted === 0 || ++attempt.writeBatches >= 32) {
+        // Yield across chunk boundaries as well as on backpressure so fast sources remain cancellable.
+        attempt.writeBatches = 0
+        if ((await this.pollNativeSnapshot(attempt)) == null) return
+        await waitForDelay(accepted === 0 ? STREAM_POLL_INTERVAL_MS : 0, attempt.controller.signal)
       }
     }
   }
@@ -1603,13 +1534,16 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     if (this.lifecycleController.signal.aborted) return false
 
     if (this.nativeStreamId != null) {
-      const nativeError = this.snapshotError(this.readNativeStats())
+      const stats = this.readNativeStats()
+      const nativeError = this.snapshotError(stats)
       if (nativeError != null) {
         const reason =
           nativeError.context.action === "decoder" ? CloseReason.PreserveNativeTerminal : CloseReason.TransportError
         await this.finish(reason, nativeError)
         return false
       }
+      // Save the old decoder generation before restart can publish its replacement's readiness.
+      if (stats != null) this.readyGeneration = stats.readyGeneration
       const restartStatus = this.lib.audioRestartStream(this.engine, this.nativeStreamId)
       if (restartStatus !== 0) {
         const restartContext: AudioStreamErrorContext = { action: "restart", status: restartStatus }
@@ -1656,6 +1590,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
 
   private observeReady(stats: NativeAudioStreamStats | null, previousGeneration: number): boolean {
     if (stats == null || stats.readyGeneration === previousGeneration) return false
+    this.readyGeneration = stats.readyGeneration
     this.consecutiveReconnectAttempts = 0
     this.setupResolve()
     return true
