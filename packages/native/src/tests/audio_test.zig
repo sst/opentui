@@ -263,8 +263,7 @@ test "PCM stream converts a fragmented live frame before EOF without decoder coa
     const options = pcmStreamOptions(TEST_SAMPLE_RATE, 2);
     var id: u32 = 0;
     try expectStatusOk(audio.createStream(engine, &options, &id));
-    const ready = try waitForStreamState(engine, id, audio.StreamState.buffering);
-    try testing.expectEqual(@as(u32, 1), ready.ready_generation);
+    _ = try waitForStreamState(engine, id, audio.StreamState.buffering);
     var bytes: [8]u8 = undefined;
     encodePcm(&bytes, &.{ 0.25, -0.5 });
     for (bytes, 0..) |_, i| {
@@ -272,6 +271,7 @@ test "PCM stream converts a fragmented live frame before EOF without decoder coa
         testing.io.sleep(.fromMilliseconds(1), .awake) catch {};
     }
     const buffered = try waitForBufferedFrames(engine, id, 1);
+    try testing.expectEqual(@as(u32, 1), buffered.ready_generation);
     try testing.expectEqual(@as(u64, 8), buffered.bytes_received);
     try expectStatusOk(audio.endStream(engine, id));
     const drained = try mixStreamToEnd(engine, id);
