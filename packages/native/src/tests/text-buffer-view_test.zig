@@ -5168,11 +5168,49 @@ test "TextBufferView wrap indent - measure includes continuation pad" {
     // Word wrap: first visual row is short; continuation occupies full wrap width with pad.
     try tb.setText("    hello world_and_more");
     view.setWrapMode(.word);
+    view.setWrapWidth(12);
     view.setWrapIndent(.same);
 
     const result = try view.measureForDimensions(12, 10);
+    try std.testing.expectEqual(result.line_count, view.getVirtualLineCount());
     try std.testing.expect(result.line_count >= 2);
     try std.testing.expectEqual(@as(u32, 12), result.width_cols_max);
+}
+
+test "TextBufferView wrap indent - same measure does not poison none word summary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("    hello world_and_more extra_words");
+    view.setWrapMode(.word);
+    view.setWrapWidth(12);
+    view.setWrapIndent(.same);
+
+    const same_measured = try view.measureForDimensions(12, 10);
+    try std.testing.expectEqual(same_measured.line_count, view.getVirtualLineCount());
+    try std.testing.expect(same_measured.line_count >= 2);
+
+    view.setWrapIndent(.none);
+    const none_measured = try view.measureForDimensions(12, 10);
+    try std.testing.expectEqual(none_measured.line_count, view.getVirtualLineCount());
+
+    const fresh_tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer fresh_tb.deinit();
+    const fresh = try TextBufferView.init(std.testing.allocator, fresh_tb);
+    defer fresh.deinit();
+    try fresh_tb.setText("    hello world_and_more extra_words");
+    fresh.setWrapMode(.word);
+    fresh.setWrapWidth(12);
+    const fresh_measured = try fresh.measureForDimensions(12, 10);
+    try std.testing.expectEqual(fresh_measured.line_count, none_measured.line_count);
+    try std.testing.expectEqual(fresh.getVirtualLineCount(), view.getVirtualLineCount());
 }
 
 test "TextBufferView wrap indent - truncation accounts for pad" {

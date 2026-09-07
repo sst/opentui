@@ -2287,10 +2287,12 @@ pub const UnifiedTextBufferView = struct {
                 if (comptime wrap_mode == .word and calculation == .measure) {
                     if (wctx.word_line_first_chunk != null and wctx.word_line_chunks.items.len == 0) {
                         const chunk = wctx.word_line_first_chunk.?;
-                        measure_cache_chunk = chunk;
                         const first_width = wctx.lineWrapWidth();
-                        measure_cache_first_width = first_width;
+                        // Continuation pad changes wrap width after the first visual
+                        // line; the chunk summary is keyed without wrap_indent.
                         if (wctx.wrap_indent == .none) {
+                            measure_cache_chunk = chunk;
+                            measure_cache_first_width = first_width;
                             if (chunk.getWordMeasureSummary(
                                 wctx.wrap_w,
                                 first_width,
@@ -2301,13 +2303,7 @@ pub const UnifiedTextBufferView = struct {
                                 wctx.result.width_cols_max = @max(wctx.result.width_cols_max, summary.width_max);
                                 wctx.document_cell_offset += chunk.width_cols;
                                 used_measure_cache = true;
-                            } else {
-                                processWordChunk(wctx, chunk);
-                                if (wctx.failed) return;
                             }
-                        } else {
-                            processWordChunk(wctx, chunk);
-                            if (wctx.failed) return;
                         }
                     }
                 }
