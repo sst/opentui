@@ -79,8 +79,15 @@ jobs:
 
       - name: Test changed packages
         run: |
+          has_script() {
+            python3 -c 'import json, sys; sys.exit(0 if (json.load(open("package.json")).get("scripts") or {}).get(sys.argv[1]) else 1)' "$1"
+          }
           while IFS= read -r package; do
             [ -f "$package/package.json" ] || continue
-            bun run --cwd "$package" --if-present typecheck
-            bun run --cwd "$package" --if-present test
+            if (cd "$package" && has_script typecheck); then
+              bun run --cwd "$package" typecheck
+            fi
+            if (cd "$package" && has_script test); then
+              bun run --cwd "$package" test
+            fi
           done < "$RUNNER_TEMP/changed-packages"
