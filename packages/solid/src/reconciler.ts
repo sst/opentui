@@ -458,7 +458,7 @@ export function _render(code: () => DomNode, root: DomNode): () => void {
       RenderableContext.Provider({
         value: root instanceof Renderable ? () => root.ctx : undefined,
         get children() {
-          return code()
+          return code() as any
         },
       }) as unknown as DomNode,
     root,
