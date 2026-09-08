@@ -1689,7 +1689,7 @@ export abstract class Renderable extends BaseRenderable {
     const renderable = this._childrenInLayoutOrder[index]
     this.runMutation(() => {
       this._ctx.nativeScene.moveNode(renderable, null, 0)
-      this._childrenInLayoutOrder.splice(index, 1)
+      this.removeLayoutChildAt(index)
       this.runCleanup((run) => {
         if (renderable._focused || renderable._hasFocusedDescendant) {
           run(() => renderable.propagateFocusChange(false))
@@ -2190,6 +2190,12 @@ export abstract class Renderable extends BaseRenderable {
     if (deferred) for (const resume of deferred) run(resume)
   }
 
+  private removeLayoutChildAt(index: number): void {
+    const children = this._childrenInLayoutOrder
+    if (index === children.length - 1) children.pop()
+    else children.splice(index, 1)
+  }
+
   private detachFromParent(): void {
     const parent = this.parent
     if (!parent) return
@@ -2197,7 +2203,7 @@ export abstract class Renderable extends BaseRenderable {
     const layoutIndex = parent._childrenInLayoutOrder.indexOf(this)
     if (layoutIndex !== -1) {
       this._ctx.nativeScene.moveNode(this, null, 0)
-      parent._childrenInLayoutOrder.splice(layoutIndex, 1)
+      parent.removeLayoutChildAt(layoutIndex)
       if (this._liveCount > 0) {
         parent.propagateLiveCount(-this._liveCount)
       }

@@ -802,6 +802,19 @@ describe("Renderable - Child Management", () => {
     expect(parent.isDestroyed).toBe(true)
   })
 
+  test("destroyRecursively destroys many siblings", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const children = Array.from(
+      { length: 64 },
+      (_, index) => new TestRenderable(testRenderer, { id: `child-${index}` }),
+    )
+    for (const child of children) parent.add(child)
+    parent.destroyRecursively()
+    expect(parent.isDestroyed).toBe(true)
+    expect(children.every((child) => child.isDestroyed)).toBe(true)
+    expect(parent.getChildrenCount()).toBe(0)
+  })
+
   test("destroyRecursively destroys all children correctly with multiple children", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child1 = new TestRenderable(testRenderer, { id: "child1" })
