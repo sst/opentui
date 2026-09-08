@@ -138,7 +138,7 @@ test "Scene custom paint admits self on every nonroot kind and custom nodes have
         const child = try node(f.owner, f.id, f.root, @intCast(kind), @intCast(kind + 1), 0);
         if (kind == 2) try f.owner.sceneSetText(child, "native text");
         try f.owner.sceneSetHooks(child, 32, 1, 2, 1);
-        const registration = &(try f.owner.getRenderable(child)).scene_node.?;
+        const registration = (try f.owner.getRenderable(child)).scene_node.?;
         const hook_count = f.state.hook_count;
         for ([_]u32{ 256, 288, 312, 447 }) |flags| {
             try testing.expectError(error.InvalidOptions, f.owner.sceneSetHooks(child, flags, 2, 99, 99));
@@ -173,7 +173,7 @@ test "Scene custom paint text and editor before hooks require host self without 
         const child = try node(f.owner, f.id, f.state.root.?.scene_node.?.handle, kind, kind + 2, 0);
         if (kind == 2) try f.owner.sceneSetText(child, "T");
         try f.owner.sceneSetHooks(child, 16, 1, 2, 1);
-        const registration = &(try f.owner.getRenderable(child)).scene_node.?;
+        const registration = (try f.owner.getRenderable(child)).scene_node.?;
         const hook_count = f.state.hook_count;
         for ([_]u32{ 8, 24 }) |flags| {
             try testing.expectError(error.InvalidOptions, f.owner.sceneSetHooks(child, flags, 2, 99, 99));

@@ -27,7 +27,7 @@ pub const NativeRenderable = struct {
     measure_dependents: ?*?*NativeRenderable = null,
     measure_previous: ?*NativeRenderable = null,
     measure_next: ?*NativeRenderable = null,
-    scene_node: ?scene.Node = null,
+    scene_node: ?*scene.Node = null,
     surface: ?*buffer.OptimizedBuffer = null,
 
     pub fn init() native_yoga.Error!NativeRenderable {
@@ -139,7 +139,7 @@ pub const NativeRenderable = struct {
 };
 
 // Idle ownership travels between the Context pool and scene insertion/removal.
-// Keeping it outside live nodes preserves their 512-byte release allocation class.
+// Scene state is a separate allocation so live Yoga owners stay small.
 pub const NodeStorage = struct {
     node: *NativeRenderable,
     children: std.ArrayListUnmanaged(*NativeRenderable) = .empty,

@@ -1544,8 +1544,10 @@ pub const Context = struct {
             resource.view.setWrapMode(.word);
             try node.setMeasureTarget(.{ .text_buffer_view = resource.view });
         }
+        const scene_state = try self.allocator.create(scene.Node);
+        errdefer self.allocator.destroy(scene_state);
         const handle = try self.objects.insert(.native_renderable, node);
-        owned.insert(storage, handle, kind, num);
+        owned.insert(storage, handle, kind, num, scene_state);
         node.scene_node.?.text = text;
         value.scene = owned;
         return handle;
@@ -1687,7 +1689,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 1) return error.WrongKind;
         var paint = node.paint;
         paint.borderStyle = style;
@@ -1700,7 +1702,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 5) return error.WrongKind;
         const editor = if (view_handle) |id| try self.getEditorView(id) else null;
         if (editor) |view| {
@@ -1718,7 +1720,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 5) return error.WrongKind;
         if (options.style > 3 or options.mouse_pointer > 6) return error.InvalidOptions;
         try buf.validateColor(options.color);
@@ -1729,7 +1731,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 7) return error.WrongKind;
         const text_view = if (view_handle) |id| try self.getTextBufferView(id) else null;
         if (text_view) |view| {
@@ -1747,7 +1749,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 7) return error.WrongKind;
         node.control.text_view.paint = enabled;
     }
@@ -1890,7 +1892,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 1) return error.WrongKind;
         if (viewport_handle) |id| {
             const viewport = try self.sceneNode(id);
@@ -1936,7 +1938,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 3) return error.WrongKind;
         try buf.validateColor(options.foreground);
         try buf.validateColor(options.background);
@@ -1952,7 +1954,7 @@ pub const Context = struct {
     pub fn sceneGetSliderThumb(self: *Context, handle: Handle) !scene.SliderThumb {
         try self.beginMutation();
         defer self.mutating = false;
-        const node = &(try self.sceneNode(handle)).scene_node.?;
+        const node = (try self.sceneNode(handle)).scene_node.?;
         if (node.kind != 3) return error.WrongKind;
         return scene.sliderThumb(node.control.slider, node.resize_width, node.resize_height);
     }
@@ -1961,7 +1963,7 @@ pub const Context = struct {
         try self.beginMutation();
         defer self.mutating = false;
         const value = try self.sceneMutableNode(handle);
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 4) return error.WrongKind;
         if (options.direction > 3 or options.attributes & ~@import("ansi.zig").TextAttributes.ATTRIBUTE_BASE_MASK != 0) return error.InvalidOptions;
         try buf.validateColor(options.foreground);
@@ -3379,7 +3381,7 @@ pub const Context = struct {
             },
             .native_renderable => {
                 const value: *native_renderable.NativeRenderable = @ptrCast(@alignCast(token.ptr));
-                const state = &value.scene_node.?;
+                const state = value.scene_node.?;
                 const text = state.text;
                 if (state.editor) |editor| editor.node = null;
                 if (state.kind == 7) {

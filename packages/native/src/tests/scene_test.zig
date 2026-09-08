@@ -6,9 +6,15 @@ const yoga = @import("../yoga.zig");
 const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const scene = @import("../scene.zig");
+const native = @import("../native-renderable.zig");
 
 test {
     _ = @import("scene_editor_test.zig");
+}
+
+test "scene Node is not inlined into NativeRenderable" {
+    try testing.expect(@sizeOf(native.NativeRenderable) <= 128);
+    try testing.expect(@sizeOf(*scene.Node) < @sizeOf(scene.Node));
 }
 
 const frame_options: scene.FrameOptions = .{
@@ -187,7 +193,7 @@ test "Scene geometry cache retries a failed third solve in one frame with clean 
     try dimensions(f.owner, box, 3, 1);
     try f.owner.sceneMoveNode(box, f.root, 0);
     try f.owner.sceneSetHooks(f.root, 4, 1, 0, 0);
-    const node = &(try f.owner.getRenderable(box)).scene_node.?;
+    const node = (try f.owner.getRenderable(box)).scene_node.?;
     var request = try f.step(null, frame_options, 3, null);
     try testing.expectEqual(@as(u32, 1), node.prepared_round);
     const frame_id = request.frame_id;
@@ -240,7 +246,7 @@ test "Scene geometry cache preserves stamp limits and rootless frames" {
     options.max_layout_rounds = std.math.maxInt(u32);
     const request = try f.step(null, options, 3, null);
     try testing.expectEqual(std.math.maxInt(u64), request.layout_epoch);
-    const node = &(try f.owner.getRenderable(f.root)).scene_node.?;
+    const node = (try f.owner.getRenderable(f.root)).scene_node.?;
     try testing.expectEqual(request.frame_id, node.prepared_frame);
     try testing.expectEqual(@as(u32, 1), node.prepared_round);
 
@@ -464,7 +470,7 @@ test "Scene viewport append refreshes 10000 plain Text children without queued f
     }
     try f.owner.scenePaint(f.id, frame_options.background, true, 0);
     for (children, 0..) |child, index| {
-        const node = &(try f.owner.getRenderable(child)).scene_node.?;
+        const node = (try f.owner.getRenderable(child)).scene_node.?;
         const layout = try f.owner.sceneGetLayout(child, false);
         try testing.expectEqual(@as(f32, 4), layout.width);
         try testing.expectEqual(@as(f32, 1), layout.height);

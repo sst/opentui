@@ -37,7 +37,7 @@ fn frame(f: Fixture, updates: []const context.Handle) !void {
 }
 
 fn expectTop(f: Fixture, child: context.Handle) !void {
-    const node = &(try f.owner.getRenderable(child)).scene_node.?;
+    const node = (try f.owner.getRenderable(child)).scene_node.?;
     for (0..2) |x| {
         const cell = f.cli.getNextBuffer().get(@intCast(x), 0).?;
         try testing.expectEqual(@as(u32, ' '), cell.char);

@@ -409,10 +409,10 @@ pub const Scene = struct {
         try self.tokens.ensureUnusedCapacity(self.allocator, 1);
     }
 
-    pub fn insert(self: *Scene, storage: native.NodeStorage, handle: handles.Handle, kind: u32, num: u32) void {
+    pub fn insert(self: *Scene, storage: native.NodeStorage, handle: handles.Handle, kind: u32, num: u32, node_ptr: *Node) void {
         const value = storage.node;
         self.last_token += 1;
-        value.scene_node = .{
+        node_ptr.* = .{
             .owner = self,
             .handle = handle,
             .kind = kind,
@@ -422,6 +422,7 @@ pub const Scene = struct {
             .children = storage.children,
             .paint_children = storage.paint_children,
         };
+        value.scene_node = node_ptr;
         if (kind == 1) value.scene_node.?.control = .{ .box = null };
         if (kind == 4) value.scene_node.?.control = .{ .arrow = .{} };
         if (kind == 5) value.scene_node.?.control = .{ .editor = .{} };
@@ -437,13 +438,13 @@ pub const Scene = struct {
     }
 
     pub fn move(self: *Scene, value: *native.NativeRenderable, destination: ?*native.NativeRenderable, index: u32) !void {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind == 0) return error.YogaInvalidArgument;
         const reparented = node.parent != destination;
         const new_placement = destination != null and (reparented or node.placement == 0);
         if (new_placement and self.last_placement == std.math.maxInt(u64)) return error.ObjectLimit;
         if (destination) |parent| {
-            const target = &parent.scene_node.?;
+            const target = parent.scene_node.?;
             if (target.owner != self) return error.WrongSession;
             if (index > target.children.items.len - @intFromBool(node.parent == parent)) return error.YogaInvalidArgument;
             if (node.parent != parent) {
@@ -497,7 +498,7 @@ pub const Scene = struct {
     }
 
     pub fn remove(self: *Scene, value: *native.NativeRenderable) native.NodeStorage {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (self.prefix) |*prefix| {
             // Future destroyed entries skip; an entered node finishes its paint phases.
             if (prefix.phase != .before and std.meta.eql(self.paint_members.items[prefix.cursor].node, node.handle)) {
@@ -553,6 +554,7 @@ pub const Scene = struct {
         self.work.clearRetainingCapacity();
         const storage: native.NodeStorage = .{ .node = value, .children = node.children, .paint_children = node.paint_children };
         value.scene_node = null;
+        self.allocator.destroy(node);
         return storage;
     }
 
@@ -580,7 +582,7 @@ pub const Scene = struct {
         {
             return error.InvalidOptions;
         }
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 1 and paint.borderSides != 0) return error.InvalidOptions;
         // Check even a paint-only change against a poisoned/active Yoga owner.
         try yoga.check(yoga.nodeTeardownStatus(value.yoga_node));
@@ -624,7 +626,7 @@ pub const Scene = struct {
     }
 
     pub fn setBoxDetails(self: *Scene, value: *native.NativeRenderable, options: BoxDetails) !void {
-        const node = if (value.scene_node) |*state| state else return error.WrongKind;
+        const node = value.scene_node orelse return error.WrongKind;
         if (node.owner != self) return error.WrongSession;
         if (node.kind != 1) return error.WrongKind;
         if (options.title_alignment > 2 or options.bottom_title_alignment > 2) return error.InvalidOptions;
@@ -658,7 +660,7 @@ pub const Scene = struct {
     }
 
     pub fn setHooks(self: *Scene, value: *native.NativeRenderable, flags: u32, generation: u64, initial_width: f64, initial_height: f64) !void {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (flags & ~@as(u32, 255) != 0 or generation == 0 or flags & 65 == 65 or
             (flags & 184 != 0 and node.kind == 0) or
             (flags & 128 != 0 and (flags & 32 == 0 or node.kind != 7)) or
@@ -722,7 +724,7 @@ pub const Scene = struct {
     }
 
     pub fn selectTextViewPaint(self: *Scene, value: *native.NativeRenderable, ticket: FrameRequest, enabled: bool) !void {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         if (node.kind != 7) return error.WrongKind;
         _ = try self.checkFrameAccess(ticket);
         if (ticket.kind != 7 or !std.meta.eql(ticket.node, node.handle)) return error.StaleFrame;
@@ -817,13 +819,13 @@ pub const Scene = struct {
             active.preparing == .none and active.feedback_work_remaining == 0 and
             (self.preparation_dirty or try self.needsSolve(cli, root));
         if (active.rounds == 0 or active.preparing != .none or restart_feedback) {
-            if (!try self.prepareRound(objects, cli, root, reusable_work)) return self.request(&root.?.scene_node.?, 6);
+            if (!try self.prepareRound(objects, cli, root, reusable_work)) return self.request(root.?.scene_node.?, 6);
         }
         while (true) {
             if (self.layout_pending) {
                 if (root) |value| {
                     if (value.scene_node.?.hook_flags & 4 != 0 and try self.isVisibleMember(value)) {
-                        const result = try self.request(&value.scene_node.?, 3);
+                        const result = try self.request(value.scene_node.?, 3);
                         self.layout_pending = false;
                         return result;
                     }
@@ -833,14 +835,14 @@ pub const Scene = struct {
             // No host call or scene mutation intervenes while this proof is reused.
             var visible_member: ?*native.NativeRenderable = null;
             while (self.feedback.items.len != 0) {
-                if (active.remaining_work == 0) return self.request(&root.?.scene_node.?, 6);
+                if (active.remaining_work == 0) return self.request(root.?.scene_node.?, 6);
                 active.remaining_work -= 1;
                 active.feedback_work_remaining -|= 1;
                 const operation = self.feedback.pop().?;
                 if (builtin.is_test and operation.kind == .filtered_refresh) self.test_filtered_refresh_steps += 1;
                 const value = objects.get(operation.node, .native_renderable, native.NativeRenderable) catch continue;
                 if (value.scene_node == null or value.scene_node.?.owner != self) continue;
-                const node = &value.scene_node.?;
+                const node = value.scene_node.?;
                 if (operation.kind == .update) node.feedback_state = .unseen;
                 const member = if (operation.kind == .filtered_refresh) blk: {
                     const parent = node.parent orelse continue;
@@ -875,7 +877,7 @@ pub const Scene = struct {
                         self.feedback.appendAssumeCapacity(operation);
                         const start = self.feedback.items.len;
                         for (node.children.items) |child| {
-                            const state = &child.scene_node.?;
+                            const state = child.scene_node.?;
                             if (state.prepared_frame != active.frame_id or state.prepared_round != active.rounds) continue;
                             if (state.placement != 0) self.feedback.appendAssumeCapacity(.{
                                 .node = state.handle,
@@ -897,14 +899,14 @@ pub const Scene = struct {
                             if (node.viewport != null) {
                                 self.feedback.appendAssumeCapacity(.{ .node = node.handle, .kind = .select });
                                 for (node.paint_children.items, 0..) |child, index| {
-                                    const state = &child.scene_node.?;
+                                    const state = child.scene_node.?;
                                     if (state.prepared_frame != active.frame_id or state.prepared_round != active.rounds) continue;
                                     if (try self.refresh(child, true)) |request_value| {
                                         // Snapshot the remaining batch before a host callback can change siblings.
                                         var remaining = node.paint_children.items.len;
                                         while (remaining > index + 1) {
                                             remaining -= 1;
-                                            const next = &node.paint_children.items[remaining].scene_node.?;
+                                            const next = node.paint_children.items[remaining].scene_node.?;
                                             if (next.prepared_frame != active.frame_id or next.prepared_round != active.rounds) continue;
                                             self.feedback.appendAssumeCapacity(.{ .node = next.handle, .kind = .filtered_refresh, .parent = node.handle });
                                         }
@@ -921,7 +923,7 @@ pub const Scene = struct {
                         var index = node.paint_children.items.len;
                         while (index != 0) {
                             index -= 1;
-                            const state = &node.paint_children.items[index].scene_node.?;
+                            const state = node.paint_children.items[index].scene_node.?;
                             if (state.prepared_frame != active.frame_id or state.prepared_round != active.rounds or state.feedback_state != .unseen) continue;
                             if (filter) |bounds| {
                                 var layout = state.layout;
@@ -938,7 +940,7 @@ pub const Scene = struct {
                 if (result) |request_value| return request_value;
             }
             if (self.preparation_dirty or try self.needsSolve(cli, root)) {
-                if (!try self.prepareRound(objects, cli, root, reusable_work)) return self.request(&root.?.scene_node.?, 6);
+                if (!try self.prepareRound(objects, cli, root, reusable_work)) return self.request(root.?.scene_node.?, 6);
                 continue;
             }
             // Resumed calls rebuild transient paint pointers from current accepted topology.
@@ -1048,7 +1050,7 @@ pub const Scene = struct {
     }
 
     fn refresh(self: *Scene, value: *native.NativeRenderable, check_display: bool) !?FrameRequest {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         const active = &self.attempt.?;
         if (node.observed_frame == active.frame_id and node.observed_round == active.rounds) return null;
         const changed = node.resize_width != node.layout.width or node.resize_height != node.layout.height;
@@ -1121,7 +1123,7 @@ pub const Scene = struct {
     fn prepareRound(self: *Scene, objects: *const handles.Table, cli: *renderer.CliRenderer, root: ?*native.NativeRenderable, reusable_work: bool) !bool {
         const active = &self.attempt.?;
         const phases = self.layout_hook_count != 0 or self.filter_count != 0;
-        const root_node = if (root) |value| &value.scene_node.? else null;
+        const root_node = if (root) |value| value.scene_node.? else null;
         const reuse = reusable_work and active.rounds == 0 and root_node != null and
             self.work.items.len != 0 and !self.preparation_dirty and !try self.needsSolve(cli, root) and
             (root_node.?.prepared_frame > self.solve_frame or
@@ -1168,7 +1170,7 @@ pub const Scene = struct {
                 const entry = self.prepared.items[active.prepare_cursor];
                 active.prepare_cursor += 1;
                 const value = objects.get(entry.node, .native_renderable, native.NativeRenderable) catch continue;
-                if (!entry.filtered) try prepareView(&value.scene_node.?, entry.layout);
+                if (!entry.filtered) try prepareView(value.scene_node.?, entry.layout);
             }
             // Publish only after every candidate and view has validated. Raw pointers never survive a yield.
             for (self.prepared.items) |entry| {
@@ -1179,7 +1181,7 @@ pub const Scene = struct {
             for (self.work.items) |entry| {
                 if (reuse and !entry.visible) continue;
                 // Yoga measurement is observational; culled text keeps its last refreshed viewport.
-                if (!entry.filtered) try prepareView(&entry.node.scene_node.?, entry.layout);
+                if (!entry.filtered) try prepareView(entry.node.scene_node.?, entry.layout);
             }
         }
         if (phases) {
@@ -1193,7 +1195,7 @@ pub const Scene = struct {
         for (self.work.items) |entry| {
             // Newly placed hidden nodes were observed by the producer, not subsequent frames.
             if (reuse and !entry.visible) continue;
-            const node = &entry.node.scene_node.?;
+            const node = entry.node.scene_node.?;
             node.layout = entry.layout;
             node.prepared_frame = active.frame_id;
             node.prepared_round = active.rounds;
@@ -1214,7 +1216,7 @@ pub const Scene = struct {
         self.prepared.clearRetainingCapacity();
         self.preparation_stack.clearRetainingCapacity();
         if (phases and self.work.items.len != 0) {
-            const node = &self.work.items[0].node.scene_node.?;
+            const node = self.work.items[0].node.scene_node.?;
             self.feedback.appendAssumeCapacity(.{ .node = node.handle, .kind = .update });
             node.feedback_state = .queued;
         }
@@ -1249,7 +1251,7 @@ pub const Scene = struct {
         defer target.clearOpacity();
         try self.beginPaint(cli, options);
         for (self.work.items) |entry| {
-            const node = &entry.node.scene_node.?;
+            const node = entry.node.scene_node.?;
             if (node.kind == 0 or !entry.visible) continue;
             if (node.kind != 1 or hasBoxPaint(&node.paint)) {
                 if (builtin.is_test) self.test_paint_setups += 1;
@@ -1274,7 +1276,7 @@ pub const Scene = struct {
                 std.debug.assert(prefix.phase == .before and prefix.removed == null and !prefix.editor_cursor_pending and !prefix.text_paint_pending);
                 target.clearScissorRects();
                 target.clearOpacity();
-                return try self.request(&self.root.?.scene_node.?, 6);
+                return try self.request(self.root.?.scene_node.?, 6);
             }
             // Charge once on completion or skip, so hook replies cannot replenish the run.
             const member = self.paint_members.items[prefix.cursor];
@@ -1320,7 +1322,7 @@ pub const Scene = struct {
                 prefix.phase = .before;
                 continue;
             };
-            const node = &value.scene_node.?;
+            const node = value.scene_node.?;
             std.debug.assert(node.owner == self);
             // Layout dimensions stay prepared; only this node's transform setter
             // refreshes its paint coordinates while a prefix is active.
@@ -1381,7 +1383,7 @@ pub const Scene = struct {
 
     fn paintNode(self: *Scene, cli: *renderer.CliRenderer, entry: Work) !void {
         const target = cli.getNextBuffer();
-        const node = &entry.node.scene_node.?;
+        const node = entry.node.scene_node.?;
         const x: i32 = @intFromFloat(entry.layout.screenX);
         const y: i32 = @intFromFloat(entry.layout.screenY);
         const width: u32 = @intFromFloat(entry.layout.width);
@@ -1550,7 +1552,7 @@ pub const Scene = struct {
     }
 
     fn childFilter(self: *Scene, objects: *const handles.Table, value: *native.NativeRenderable) !?Filter {
-        const node = &value.scene_node.?;
+        const node = value.scene_node.?;
         const viewport = try self.viewportNode(objects, node.viewport orelse return null);
         const layout = try composedLayout(viewport, false);
         try validateLayout(layout);
@@ -1575,7 +1577,7 @@ pub const Scene = struct {
                 depth -= 1;
                 continue;
             } else frame.node;
-            const node = &value.scene_node.?;
+            const node = value.scene_node.?;
             if (!frame.entered) {
                 if (retained) {
                     if (self.attempt.?.remaining_work == 0) return false;
@@ -1781,7 +1783,7 @@ fn composedLayout(value: *const native.NativeRenderable, comptime observed: bool
     result.screenY = 0;
     while (count != 0) {
         count -= 1;
-        const node = &ancestors[count].scene_node.?;
+        const node = ancestors[count].scene_node.?;
         const layout = if (observed) node.observed_layout else node.layout;
         result.screenX = result.screenX + @as(f64, layout.left) + node.paint.translateX;
         result.screenY = result.screenY + @as(f64, layout.top) + node.paint.translateY;
@@ -1845,8 +1847,8 @@ fn removeChild(children: *std.ArrayListUnmanaged(*native.NativeRenderable), valu
 }
 
 fn paintLessThan(_: void, left: *native.NativeRenderable, right: *native.NativeRenderable) bool {
-    const a = &left.scene_node.?;
-    const b = &right.scene_node.?;
+    const a = left.scene_node.?;
+    const b = right.scene_node.?;
     if (builtin.is_test) a.owner.test_sort_steps += 1;
     return if (a.paint.zIndex == b.paint.zIndex) a.paint_rank < b.paint_rank else a.paint.zIndex < b.paint.zIndex;
 }

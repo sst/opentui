@@ -1836,7 +1836,7 @@ test "Context Box details ABI validates records before publishing titles and sty
     var title = "owned".*;
     try std.testing.expectEqual(c.OT_OK, ot_scene_set_box_details(&owner, &id, &details, &title, title.len, null, 0));
     @memset(&title, 'x');
-    const node = &(try owner.core.getRenderable(box)).scene_node.?;
+    const node = (try owner.core.getRenderable(box)).scene_node.?;
     try std.testing.expectEqualStrings("owned", node.control.box.?.title);
     for (0..8) |field| {
         var invalid = details;
@@ -3041,7 +3041,7 @@ test "Scene flush ABI copies background and preserves paint on acceptance and re
         .focusedBorderColor = .{ 60, 40, 20, 255 },
     };
     try core.sceneSetPaint(box, accepted);
-    const node = &(try core.getRenderable(box)).scene_node.?;
+    const node = (try core.getRenderable(box)).scene_node.?;
     var input: [1]c.ot_scene_background_update = .{.{ .node = id, .background = undefined, .fields = c.OT_SCENE_UPDATE_APPLY, .reserved = 0 }};
     var applied: u32 = 0;
     for ([_]ansi.RGBA{ ansi.rgbColor(0, 200, 0, 128), ansi.indexedColor(255, 10, 20, 30), ansi.defaultColor(30, 20, 10, 255) }) |color| {
