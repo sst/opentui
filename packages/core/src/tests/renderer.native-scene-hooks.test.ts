@@ -1,5 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { NativeScene } from "../NativeScene.js"
+import { getYogaNode } from "../lib/renderable-layout.js"
 import { Renderable } from "../Renderable.js"
 import { RGBA } from "../lib/RGBA.js"
 import { BoxRenderable } from "../renderables/Box.js"
@@ -34,6 +35,8 @@ test("box and text keep hook accessors on the prototype", async () => {
     expect(Object.getOwnPropertyDescriptor(Renderable.prototype, name)?.get).toBeTypeOf("function")
   }
 
+  expect(getYogaNode(box)).toBe(box)
+  expect(getYogaNode(text)).toBe(text)
   expect(box.selectable).toBe(false)
   expect(box.renderBefore).toBeUndefined()
   expect(box.renderAfter).toBeUndefined()

@@ -244,7 +244,7 @@ export type DirtiedFunction = (node: Node) => void
 type ValueInput = number | "auto" | `${number}%` | Value | undefined
 type ValueInputNoAuto = number | `${number}%` | Value | undefined
 
-const YogaEnumKind = {
+export const YogaEnumKind = {
   Direction: 0,
   FlexDirection: 1,
   JustifyContent: 2,
@@ -258,14 +258,14 @@ const YogaEnumKind = {
   BoxSizing: 10,
 } as const
 
-const YogaFloatKind = {
+export const YogaFloatKind = {
   Flex: 0,
   FlexGrow: 1,
   FlexShrink: 2,
   AspectRatio: 3,
 } as const
 
-const YogaValueKind = {
+export const YogaValueKind = {
   Width: 0,
   Height: 1,
   MinWidth: 2,
@@ -415,7 +415,7 @@ function isValueObject(value: unknown): value is Value {
   return typeof value === "object" && value !== null && "unit" in value && "value" in value
 }
 
-function parseValue(value: ValueInput): Value {
+export function parseYogaValue(value: ValueInput): Value {
   if (isValueObject(value)) {
     return value
   }
@@ -987,12 +987,12 @@ export class Node {
 
   setDimension(dimension: Dimension, input: ValueInput, disableFlexShrink: boolean = false): void {
     if (this.backing.kind === "scene") {
-      const value = parseValue(input)
+      const value = parseYogaValue(input)
       this.backing.owner.setStyle(this, 4, dimension, 0, value.unit, value.value, disableFlexShrink ? 1 : 0)
       return
     }
     if (this.freed) return
-    const value = parseValue(input)
+    const value = parseYogaValue(input)
     this.renderLib.yogaNodeStyleSetDimension(this.ptr, dimension, value.unit, value.value, disableFlexShrink)
   }
 
@@ -1004,7 +1004,7 @@ export class Node {
     let mask = 0
     for (let edge = 0; edge < 4; edge++) {
       if (positions[edge] === undefined) continue
-      const value = parseValue(positions[edge])
+      const value = parseYogaValue(positions[edge])
       if (!Number.isInteger(value.unit) || value.unit < Unit.Undefined || value.unit > Unit.Auto) {
         throw new YogaError("yogaNodeStyleSetPositionsChecked", YogaStatus.InvalidArgument)
       }
@@ -1300,12 +1300,12 @@ export class Node {
 
   private setValue(kind: number, edgeOrGutter: number, valueInput: ValueInput): void {
     if (this.backing.kind === "scene") {
-      const value = parseValue(valueInput)
+      const value = parseYogaValue(valueInput)
       this.backing.owner.setStyle(this, 2, kind, edgeOrGutter, value.unit, value.value)
       return
     }
     if (this.freed) return
-    const value = parseValue(valueInput)
+    const value = parseYogaValue(valueInput)
     this.renderLib.yogaNodeStyleSetValue(this.ptr, kind, edgeOrGutter, value.unit, value.value)
   }
 

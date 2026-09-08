@@ -1,17 +1,13 @@
 import type { BaseRenderable } from "../Renderable.js"
 import type { Node } from "../yoga.js"
 
-const nodes = new WeakMap<BaseRenderable, Node>()
-
 export function getYogaNode(renderable: BaseRenderable): Node {
-  const node = nodes.get(renderable)
-  if (!node) throw new Error("Renderable has no layout backing")
-  return node
+  const target = renderable as BaseRenderable & { _sceneHandle?: unknown; isFreed?: () => boolean }
+  if (!target._sceneHandle && !target.isFreed?.()) throw new Error("Renderable has no layout backing")
+  return renderable as unknown as Node
 }
 
-export function setYogaNode(renderable: BaseRenderable, node: Node): void {
-  nodes.set(renderable, node)
-}
+export function setYogaNode(_renderable: BaseRenderable, _node: Node): void {}
 
 export function assertRenderableMutable(renderable: BaseRenderable): void {
   getYogaNode(renderable).assertMutable()

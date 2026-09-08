@@ -1,4 +1,3 @@
-import { getYogaNode } from "./lib/renderable-layout.js"
 import type { NativeSession } from "./NativeSession.js"
 import { Renderable, RootRenderable, type RenderableOptions } from "./Renderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
@@ -17,7 +16,7 @@ import { RendererControlState, type CliRenderer } from "./renderer.js"
 import type { StyledText } from "./lib/styled-text.js"
 import type { RGBA } from "./lib/RGBA.js"
 import type { LocalSelectionBounds } from "./lib/selection.js"
-import { Node, type Value, type MeasureFunction, type YogaHost } from "./yoga.js"
+import { type Value, type MeasureFunction, type YogaHost } from "./yoga.js"
 import {
   NativeSessionRenderStatus,
   SceneStaging,
@@ -329,7 +328,7 @@ export class NativeScene {
   }
 
   /** @internal Scene nodes retain native ownership even when their body is a host hook. */
-  createNode(renderable: Renderable, options: RenderableOptions): Node {
+  createNode(renderable: Renderable, options: RenderableOptions): void {
     this.driver.renderLib.getYogaHost().assertMutable()
     this.assertAlive()
     if (this.destroying) throw new Error("Native scene is being destroyed")
@@ -361,9 +360,8 @@ export class NativeScene {
     if (options.enableLayout === false) throw new Error("Native scene requires Yoga layout")
     const handle = this.driver.renderLib.sceneCreateNode(this.driver.context, this.driver.session, kind, renderable.num)
     try {
-      const node = Node._createForScene(this, handle)
+      renderable._bindSceneHandle(handle)
       this.nodes.set(renderable.num, renderable)
-      return node
     } catch (error) {
       try {
         this.driver.renderLib.sceneDestroyNode(this.driver.context, handle)
@@ -375,7 +373,7 @@ export class NativeScene {
   }
 
   /** @internal Native acceptance precedes all wrapper topology changes. */
-  moveNode(child: Node, parent: Node | null, index: number): void {
+  moveNode(child: Renderable, parent: Renderable | null, index: number): void {
     const handle = child._getSceneHandle(this)
     const parentHandle = parent?._getSceneHandle(this) ?? null
     this.driver.renderLib.sceneMoveNode(this.driver.context, handle, parentHandle, index)
@@ -386,22 +384,22 @@ export class NativeScene {
     this.flushStaged()
     this.driver.renderLib.sceneSetViewport(
       this.driver.context,
-      getYogaNode(content)._getSceneHandle(this),
-      viewport ? getYogaNode(viewport)._getSceneHandle(this) : null,
+      content._getSceneHandle(this),
+      viewport ? viewport._getSceneHandle(this) : null,
     )
   }
 
   setFocus(renderable: Renderable, focused: boolean): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetFocus(this.driver.context, getYogaNode(renderable)._getSceneHandle(this), focused)
+    this.driver.renderLib.sceneSetFocus(this.driver.context, renderable._getSceneHandle(this), focused)
   }
 
   /** @internal The wrapper's existing cleanup walk releases nodes child-first. Staged
    * writes flush first so no entry outlives its handle; a flush failure must not
    * leave the native node alive behind a destroyed wrapper. */
-  destroyNode(renderable: Renderable, node: Node): void {
-    node.assertMutable()
-    const handle = node._getSceneHandle(this)
+  destroyNode(renderable: Renderable): void {
+    renderable.assertMutable()
+    const handle = renderable._getSceneHandle(this)
     let flushFailure: { error: unknown } | undefined
     try {
       this.flushStaged()
@@ -413,7 +411,7 @@ export class NativeScene {
       this.staging.discard(handle)
       if (!this.staging.pending) this.yogaHost.forgetScene(this)
       this.changeGeometry()
-      node._invalidateFromOwner()
+      renderable._releaseSceneHandle()
       this.nodes.delete(renderable.num)
       this.hookScans.delete(renderable)
       this.renderer.unregisterLifecyclePass(renderable)
@@ -447,7 +445,7 @@ export class NativeScene {
     if (flags & 32) flags |= 16
     this.driver.renderLib.sceneSetHooks(
       this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
+      renderable._getSceneHandle(this),
       flags,
       generation,
       initialWidth,
@@ -456,7 +454,15 @@ export class NativeScene {
   }
 
   /** @internal Shared Yoga normalization stages through the checked scene style boundary. */
-  setStyle(node: Node, group: number, kind: number, edge: number, unit: number, value: number, flags = 0): void {
+  setStyle(
+    node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle },
+    group: number,
+    kind: number,
+    edge: number,
+    unit: number,
+    value: number,
+    flags = 0,
+  ): void {
     this.yogaHost.assertMutable()
     const handle = node._getSceneHandle(this)
     if (this.staging.styleFull) this.flushStaged()
@@ -467,23 +473,31 @@ export class NativeScene {
   }
 
   /** @internal Reads observe every staged write first. */
-  getStyle(node: Node, group: number, kind: number, edge: number): Value {
+  getStyle(
+    node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle },
+    group: number,
+    kind: number,
+    edge: number,
+  ): Value {
     const handle = node._getSceneHandle(this)
     this.flushStaged()
     return this.driver.renderLib.sceneGetStyle(this.driver.context, handle, group, kind, edge)
   }
 
-  setMeasureFunc(node: Node, measure: MeasureFunction | null): void {
+  setMeasureFunc(
+    node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle },
+    measure: MeasureFunction | null,
+  ): void {
     this.flushStaged()
     this.driver.renderLib.sceneSetMeasure(this.driver.context, node._getSceneHandle(this), measure)
   }
 
-  hasMeasureFunc(node: Node): boolean {
+  hasMeasureFunc(node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle }): boolean {
     this.flushStaged()
     return this.driver.renderLib.sceneHasMeasure(this.driver.context, node._getSceneHandle(this))
   }
 
-  markDirty(node: Node): void {
+  markDirty(node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle }): void {
     this.flushStaged()
     this.driver.renderLib.sceneMarkDirty(this.driver.context, node._getSceneHandle(this))
   }
@@ -491,7 +505,12 @@ export class NativeScene {
   /** @internal Masked position edges stage as ordinary Yoga position values (group 2, kind 9).
    * Every masked value is validated before the first edge is staged so a rejected edge
    * leaves no partial position behind. */
-  setPositions(node: Node, mask: number, units: Uint32Array, values: Float32Array): void {
+  setPositions(
+    node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle },
+    mask: number,
+    units: Uint32Array,
+    values: Float32Array,
+  ): void {
     if (!Number.isInteger(mask) || mask < 0 || mask > 15)
       throw new RangeError("Scene position mask must use four edges")
     for (let edge = 0; edge < 4; edge++) {
@@ -506,33 +525,27 @@ export class NativeScene {
   /** @internal Paint includes Yoga border widths so border changes commit together. */
   setPaint(renderable: Renderable, paint: NativeScenePaint): void {
     this.yogaHost.assertMutable()
-    const node = getYogaNode(renderable)
-    const handle = node._getSceneHandle(this)
+    const handle = renderable._getSceneHandle(this)
     if (this.staging.paintFull) this.flushStaged()
-    if (this.staging.stagePaint(this.driver.context, handle, paint, node)) this.yogaHost.stageScene(this)
+    if (this.staging.stagePaint(this.driver.context, handle, paint, renderable)) this.yogaHost.stageScene(this)
     this.changeGeometry()
   }
 
   setBackground(renderable: Renderable, color: RGBA): void {
     this.yogaHost.assertMutable()
-    const node = getYogaNode(renderable)
-    const handle = node._getSceneHandle(this)
+    const handle = renderable._getSceneHandle(this)
     if (this.staging.backgroundFull) this.flushStaged()
-    if (this.staging.stageBackground(this.driver.context, handle, color, node)) this.yogaHost.stageScene(this)
+    if (this.staging.stageBackground(this.driver.context, handle, color, renderable)) this.yogaHost.stageScene(this)
   }
 
   setBoxDetails(renderable: Renderable, details: NativeSceneBoxDetails): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetBoxDetails(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-      details,
-    )
+    this.driver.renderLib.sceneSetBoxDetails(this.driver.context, renderable._getSceneHandle(this), details)
   }
 
   /** Native read-modify-writes the node's paint, so staged paint must land first. */
   setBoxBorderStyle(renderable: Renderable, style: NativeScenePaint["borderStyle"], sides: number): void {
-    const handle = getYogaNode(renderable)._getSceneHandle(this)
+    const handle = renderable._getSceneHandle(this)
     this.flushStaged()
     this.driver.renderLib.sceneSetBoxBorderStyle(this.driver.context, handle, style, sides)
     this.changeGeometry()
@@ -541,7 +554,7 @@ export class NativeScene {
   /** @internal Native copies bytes and styles before the wrapper publishes caller identity. */
   setText(renderable: Renderable, content: string | StyledText): void {
     this.flushStaged()
-    const node = getYogaNode(renderable)._getSceneHandle(this)
+    const node = renderable._getSceneHandle(this)
     if (typeof content === "string") {
       this.driver.renderLib.sceneSetText(this.driver.context, node, this.driver.renderLib.encoder.encode(content))
     } else {
@@ -552,29 +565,25 @@ export class NativeScene {
   /** @internal Text options commit together without exposing the node-owned buffer or view. */
   setTextOptions(renderable: Renderable, options: NativeSceneTextOptions): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetTextOptions(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-      options,
-    )
+    this.driver.renderLib.sceneSetTextOptions(this.driver.context, renderable._getSceneHandle(this), options)
   }
 
   /** @internal Native owns slider drawing and thumb geometry; the host retains input callbacks. */
   setSlider(renderable: Renderable, options: NativeSceneSliderOptions): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetSlider(this.driver.context, getYogaNode(renderable)._getSceneHandle(this), options)
+    this.driver.renderLib.sceneSetSlider(this.driver.context, renderable._getSceneHandle(this), options)
   }
 
   /** @internal Input-time query only, never a per-node frame pass. */
   getSliderThumb(renderable: Renderable): { size: number; start: number } {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetSliderThumb(this.driver.context, getYogaNode(renderable)._getSceneHandle(this))
+    return this.driver.renderLib.sceneGetSliderThumb(this.driver.context, renderable._getSceneHandle(this))
   }
 
   /** @internal Standard arrow paint commits before its wrapper projection. */
   setArrow(renderable: Renderable, options: NativeSceneArrowOptions): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetArrow(this.driver.context, getYogaNode(renderable)._getSceneHandle(this), options)
+    this.driver.renderLib.sceneSetArrow(this.driver.context, renderable._getSceneHandle(this), options)
   }
 
   setImage(
@@ -588,7 +597,7 @@ export class NativeScene {
     const { renderLib: lib, context } = this.driver
     lib.sceneSetImage(
       context,
-      getYogaNode(renderable)._getSceneHandle(this),
+      renderable._getSceneHandle(this),
       image?._getContextHandle(lib, context) ?? null,
       fit,
       protocol,
@@ -598,14 +607,14 @@ export class NativeScene {
 
   setEditorView(renderable: Renderable, view: ContextEditorViewHandle): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetEditorView(this.driver.context, getYogaNode(renderable)._getSceneHandle(this), view)
+    this.driver.renderLib.sceneSetEditorView(this.driver.context, renderable._getSceneHandle(this), view)
   }
 
   setSurface(renderable: Renderable, buffer: OptimizedBuffer | null): void {
     this.flushStaged()
     this.driver.renderLib.sceneSetSurface(
       this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
+      renderable._getSceneHandle(this),
       buffer?._getSceneHandle(this) ?? null,
     )
   }
@@ -616,16 +625,12 @@ export class NativeScene {
 
   setTextView(renderable: Renderable, view: ContextTextBufferViewHandle | null): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetTextView(this.driver.context, getYogaNode(renderable)._getSceneHandle(this), view)
+    this.driver.renderLib.sceneSetTextView(this.driver.context, renderable._getSceneHandle(this), view)
   }
 
   setTextViewPaint(renderable: Renderable, enabled: boolean): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetTextViewPaint(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-      enabled,
-    )
+    this.driver.renderLib.sceneSetTextViewPaint(this.driver.context, renderable._getSceneHandle(this), enabled)
   }
 
   selectTextViewPaint(renderable: Renderable, enabled: boolean): void {
@@ -634,7 +639,7 @@ export class NativeScene {
     if (!frame) throw new Error("Native text paint selection requires an active frame")
     this.driver.renderLib.sceneSelectTextViewPaint(
       this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
+      renderable._getSceneHandle(this),
       frame,
       enabled,
     )
@@ -642,17 +647,13 @@ export class NativeScene {
 
   setEditorOptions(renderable: Renderable, options: NativeSceneEditorOptions): void {
     this.flushStaged()
-    this.driver.renderLib.sceneSetEditorOptions(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-      options,
-    )
+    this.driver.renderLib.sceneSetEditorOptions(this.driver.context, renderable._getSceneHandle(this), options)
   }
 
   /** @internal Query native text metrics only when requested, never during JS frame traversal. */
   getText(renderable: Renderable): string {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetText(this.driver.context, getYogaNode(renderable)._getSceneHandle(this))
+    return this.driver.renderLib.sceneGetText(this.driver.context, renderable._getSceneHandle(this))
   }
 
   /** @internal Inherited Text drawing runs at the caller's exact paint position. */
@@ -663,7 +664,7 @@ export class NativeScene {
       target.context,
       target.target,
       target.frame,
-      getYogaNode(renderable)._getSceneHandle(this),
+      renderable._getSceneHandle(this),
       x,
       y,
     )
@@ -677,55 +678,45 @@ export class NativeScene {
     fg?: RGBA,
   ): boolean {
     this.flushStaged()
-    return this.driver.renderLib.sceneSetTextSelection(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-      {
-        operation,
-        anchorX: bounds?.anchorX ?? 0,
-        anchorY: bounds?.anchorY ?? 0,
-        focusX: bounds?.focusX ?? 0,
-        focusY: bounds?.focusY ?? 0,
-        behavior: bounds?.behavior ?? "cell",
-        bg,
-        fg,
-      },
-    )
+    return this.driver.renderLib.sceneSetTextSelection(this.driver.context, renderable._getSceneHandle(this), {
+      operation,
+      anchorX: bounds?.anchorX ?? 0,
+      anchorY: bounds?.anchorY ?? 0,
+      focusX: bounds?.focusX ?? 0,
+      focusY: bounds?.focusY ?? 0,
+      behavior: bounds?.behavior ?? "cell",
+      bg,
+      fg,
+    })
   }
 
   getTextSelection(renderable: Renderable): { start: number; end: number } | null {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetTextSelection(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-    )
+    return this.driver.renderLib.sceneGetTextSelection(this.driver.context, renderable._getSceneHandle(this))
   }
 
   getSelectedText(renderable: Renderable): string {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetSelectedText(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-    )
+    return this.driver.renderLib.sceneGetSelectedText(this.driver.context, renderable._getSceneHandle(this))
   }
 
   /** @internal Line arrays are copied only for explicit line-info queries. */
   getTextLineInfo(renderable: Renderable) {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetTextLineInfo(
-      this.driver.context,
-      getYogaNode(renderable)._getSceneHandle(this),
-    )
+    return this.driver.renderLib.sceneGetTextLineInfo(this.driver.context, renderable._getSceneHandle(this))
   }
 
   /** @internal Scalar metrics do not copy the document or its line arrays. */
   getTextMetrics(renderable: Renderable) {
     this.flushStaged()
-    return this.driver.renderLib.sceneGetTextMetrics(this.driver.context, getYogaNode(renderable)._getSceneHandle(this))
+    return this.driver.renderLib.sceneGetTextMetrics(this.driver.context, renderable._getSceneHandle(this))
   }
 
   /** @internal Native owns callback-time geometry projections and composes accepted ancestor translations. */
-  getLayout(node: Node, rawYoga: boolean | "paint" = false): NativeSceneLayout {
+  getLayout(
+    node: { _getSceneHandle(owner: NativeScene): SceneNodeHandle },
+    rawYoga: boolean | "paint" = false,
+  ): NativeSceneLayout {
     const handle = node._getSceneHandle(this)
     this.flushStaged()
     return this.driver.renderLib.sceneGetLayout(this.driver.context, handle, rawYoga)
@@ -737,7 +728,7 @@ export class NativeScene {
     this.assertAlive()
     if (this.frame) throw new Error("Cannot measure a snapshot during a native scene frame")
     const owner = this.renderer.root
-    getYogaNode(root)._getSceneHandle(this)
+    root._getSceneHandle(this)
     const attached = root.parent === owner
     if (root === owner || (root.parent && !attached)) throw new Error("Snapshot root belongs to another parent")
     if (!attached) owner.add(root)
@@ -747,12 +738,8 @@ export class NativeScene {
       this.drainHookScans()
       this.assertAlive()
       this.flushStaged()
-      this.driver.renderLib.sceneMeasureLayout(
-        this.driver.context,
-        this.driver.session,
-        getYogaNode(owner)._getSceneHandle(this),
-      )
-      return Math.max(1, Math.trunc(this.getLayout(getYogaNode(root), true).height))
+      this.driver.renderLib.sceneMeasureLayout(this.driver.context, this.driver.session, owner._getSceneHandle(this))
+      return Math.max(1, Math.trunc(this.getLayout(root, true).height))
     } finally {
       if (!attached && root.parent === owner) owner.remove(root)
     }
@@ -883,8 +870,8 @@ export class NativeScene {
         currentPaint = undefined
         const renderable = retained?.renderable ?? this.nodes.get(request.num)
         if (!renderable || (renderable.isDestroyed && !retained)) continue
-        const handle = retained?.handle ?? getYogaNode(renderable)._getSceneHandle(this)
-        const root = getYogaNode(this.renderer.root)._getSceneHandle(this)
+        const handle = retained?.handle ?? renderable._getSceneHandle(this)
+        const root = this.renderer.root._getSceneHandle(this)
         const session = this.driver.session
         if (
           request.session.contextId !== session.contextId ||
