@@ -98,7 +98,7 @@ test "Context reuse ordinary Text retains controls and frees rope backing withou
     try testing.expectEqual(@as(usize, 0), arena.queryCapacity());
     try testing.expectEqual(measure_capacity, view.measure_arena.queryCapacity());
     const warm_before = failing.alloc_index;
-    // Only a fresh empty rope needs backing; its controls and tables stay allocated.
+    // Sentinel leaf plus a fresh scene.Node. First sceneSetText writes the document.
     failing.fail_index = warm_before + 2;
     failing.resize_fail_index = failing.resize_index;
     const fresh = try owner.sceneCreateNode(id, 2, 3);
@@ -122,6 +122,30 @@ test "Context reuse ordinary Text retains controls and frees rope backing withou
     try testing.expect(!failing.has_induced_failure);
     try testing.expectEqual(@as(usize, 2), failing.alloc_index - warm_before);
     try testing.expect(cold_allocations > failing.alloc_index - warm_before);
+}
+
+test "Context scene text skips the empty document until the first setText" {
+    const owner = try context.Context.init(testing.allocator, testing.io, .{});
+    defer owner.deinit() catch unreachable;
+    const id = try session(owner);
+    const node = try owner.sceneCreateNode(id, 2, 2);
+    const buffer = (try owner.getRenderable(node)).scene_node.?.text.?.buffer;
+    try testing.expectEqual(@as(u32, 0), buffer.getByteSize());
+    try testing.expectEqual(@as(u32, 0), buffer.getLineCount());
+    try testing.expectEqual(@as(u32, 0), buffer.rope().count());
+    _ = try owner.sceneGetTextInfo(node);
+    try owner.sceneSetText(node, "hello");
+    try testing.expectEqual(@as(u32, 5), buffer.getByteSize());
+    try testing.expectEqual(@as(u32, 1), buffer.getLineCount());
+    var out: [5]u8 = undefined;
+    try testing.expectEqual(@as(u32, 5), try owner.sceneGetText(node, &out));
+    try testing.expectEqualStrings("hello", &out);
+    try owner.sceneSetText(node, "world");
+    try testing.expectEqual(@as(u32, 5), try owner.sceneGetText(node, &out));
+    try testing.expectEqualStrings("world", &out);
+    try owner.sceneSetText(node, "");
+    try testing.expectEqual(@as(u32, 0), buffer.getByteSize());
+    try testing.expectEqual(@as(u32, 1), buffer.getLineCount());
 }
 
 test "Context reuse failed idle entry growth preserves storage and allocation-free retirement" {
@@ -173,27 +197,25 @@ test "Context reuse applies current Yoga configuration defaults at checkout" {
 }
 
 test "Context reuse failed arena reconstruction discards dormant Text storage" {
-    for (0..2) |offset| {
-        var failing = testing.FailingAllocator.init(testing.allocator, .{});
-        const owner = try context.Context.init(failing.allocator(), testing.io, .{});
-        defer owner.deinit() catch unreachable;
-        const id = try session(owner);
-        const old = try owner.sceneCreateNode(id, 2, 2);
-        try owner.sceneSetText(old, "stale contents");
-        try owner.destroy(old);
-        try testing.expectEqual(@as(u32, 1), owner.text_pool_count);
-        try testing.expectEqual(@as(usize, 0), owner.text_pool.?.buffer.arena.queryCapacity());
-        failing.fail_index = failing.alloc_index + offset;
-        failing.resize_fail_index = failing.resize_index;
-        try testing.expectError(error.OutOfMemory, owner.sceneCreateNode(id, 2, 3));
-        try testing.expectEqual(@as(u32, 0), owner.text_pool_count);
-        try testing.expectEqual(@as(usize, 0), owner.text_pool_bytes);
-        try testing.expectEqual(@as(u32, 2), owner.objects.live_count);
-        failing.fail_index = std.math.maxInt(usize);
-        failing.resize_fail_index = std.math.maxInt(usize);
-        const fresh = try owner.sceneCreateNode(id, 2, 3);
-        try testing.expectEqual(@as(u32, 0), (try owner.getRenderable(fresh)).scene_node.?.text.?.buffer.getByteSize());
-    }
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const owner = try context.Context.init(failing.allocator(), testing.io, .{});
+    defer owner.deinit() catch unreachable;
+    const id = try session(owner);
+    const old = try owner.sceneCreateNode(id, 2, 2);
+    try owner.sceneSetText(old, "stale contents");
+    try owner.destroy(old);
+    try testing.expectEqual(@as(u32, 1), owner.text_pool_count);
+    try testing.expectEqual(@as(usize, 0), owner.text_pool.?.buffer.arena.queryCapacity());
+    failing.fail_index = failing.alloc_index;
+    failing.resize_fail_index = failing.resize_index;
+    try testing.expectError(error.OutOfMemory, owner.sceneCreateNode(id, 2, 3));
+    try testing.expectEqual(@as(u32, 0), owner.text_pool_count);
+    try testing.expectEqual(@as(usize, 0), owner.text_pool_bytes);
+    try testing.expectEqual(@as(u32, 2), owner.objects.live_count);
+    failing.fail_index = std.math.maxInt(usize);
+    failing.resize_fail_index = std.math.maxInt(usize);
+    const fresh = try owner.sceneCreateNode(id, 2, 3);
+    try testing.expectEqual(@as(u32, 0), (try owner.getRenderable(fresh)).scene_node.?.text.?.buffer.getByteSize());
 }
 
 test "Context reuse preserves detached child capacity and clears measurement providers" {

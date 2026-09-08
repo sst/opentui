@@ -2506,7 +2506,7 @@ pub const Context = struct {
     }
 
     fn createTextResource(self: *Context, width_method: utf8.WidthMethod) !*Text {
-        // First sceneSetText registers the real bytes; an empty slot would be replaced.
+        // First sceneSetText writes the live rope; skip an empty linestart document.
         if (self.text_pool) |value| {
             self.text_pool = value.pool_next;
             self.text_pool_count -= 1;
@@ -2519,7 +2519,7 @@ pub const Context = struct {
         }
         const value = try self.allocator.create(Text);
         errdefer self.allocator.destroy(value);
-        const buffer = try text_buffer.UnifiedTextBuffer.initWithOptions(self.allocator, &self.graphemes, &self.links, width_method, .{
+        const buffer = try text_buffer.UnifiedTextBuffer.initForSceneText(self.allocator, &self.graphemes, &self.links, width_method, .{
             .io = self.io,
             .logger = &self.logger,
         });
@@ -3229,7 +3229,13 @@ pub const Context = struct {
         const copy = try self.allocator.dupe(u8, bytes);
         errdefer self.allocator.free(copy);
         // Owned scene/shared text excludes registrations borrowed from the rope arena.
-        text.input_mem_id = try text.buffer.replaceOwnedText(copy, text.input_mem_id);
+        // Scene text uses optional slot ids and writes the first fill into the live rope.
+        // Shared text keeps a live slot id, so every fill swaps arenas.
+        const first_live_fill = @TypeOf(text.input_mem_id) == ?u8 and text.input_mem_id == null;
+        text.input_mem_id = if (first_live_fill)
+            try text.buffer.replaceText(copy, null, true)
+        else
+            try text.buffer.replaceOwnedText(copy, text.input_mem_id);
     }
 
     fn textResourceChanged(text: *Text) void {

@@ -256,6 +256,29 @@ pub const UnifiedTextBuffer = struct {
         width_method: utf8.WidthMethod,
         options: InitOptions,
     ) TextBufferError!*Self {
+        return initInternal(global_allocator, pool, link_pool, width_method, options, false);
+    }
+
+    /// Init a scene text buffer. The first replace writes the live rope, so skip
+    /// the empty linestart document that ordinary buffers start with.
+    pub fn initForSceneText(
+        global_allocator: Allocator,
+        pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
+        width_method: utf8.WidthMethod,
+        options: InitOptions,
+    ) TextBufferError!*Self {
+        return initInternal(global_allocator, pool, link_pool, width_method, options, true);
+    }
+
+    fn initInternal(
+        global_allocator: Allocator,
+        pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
+        width_method: utf8.WidthMethod,
+        options: InitOptions,
+        pending_replace: bool,
+    ) TextBufferError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
@@ -264,7 +287,7 @@ pub const UnifiedTextBuffer = struct {
         internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
         errdefer internal_arena.deinit();
 
-        try self.initStorage(global_allocator, pool, link_pool, width_method, options, internal_arena);
+        try self.initStorage(global_allocator, pool, link_pool, width_method, options, internal_arena, pending_replace);
         return self;
     }
 
@@ -276,10 +299,14 @@ pub const UnifiedTextBuffer = struct {
         width_method: utf8.WidthMethod,
         options: InitOptions,
         internal_arena: *std.heap.ArenaAllocator,
+        pending_replace: bool,
     ) TextBufferError!void {
         const internal_allocator = internal_arena.allocator();
 
-        const init_rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
+        const init_rope = (if (pending_replace)
+            UnifiedRope.initSentinel(internal_allocator, .{})
+        else
+            UnifiedRope.init(internal_allocator)) catch return TextBufferError.OutOfMemory;
 
         var view_dirty_flags: std.ArrayListUnmanaged(bool) = .empty;
         errdefer view_dirty_flags.deinit(global_allocator);
@@ -394,7 +421,7 @@ pub const UnifiedTextBuffer = struct {
         try self.initStorage(self.global_allocator, self.pool, self.link_pool, width_method, .{
             .io = self.io,
             .logger = self.logger,
-        }, self.arena);
+        }, self.arena, true);
         self.mem_registry = registry;
         self.view_dirty_flags = view_dirty_flags;
         self.free_view_ids = free_view_ids;
@@ -835,9 +862,13 @@ pub const UnifiedTextBuffer = struct {
         const text = prepared.text;
         var result = try self.textToSegments(self.global_allocator, text, prepared.mem_id, 0, true);
         defer result.segments.deinit(result.allocator);
-        prepared.rope = try UnifiedRope.initWithConfig(prepared.arena.allocator(), self._rope.config);
+        prepared.rope = try UnifiedRope.from_sliceWithConfig(
+            prepared.arena.allocator(),
+            result.segments.items,
+            self._rope.config,
+        );
         prepared.rope.version = self._rope.version;
-        try prepared.rope.setSegments(result.segments.items);
+        prepared.rope.version += 1;
 
         const highlights = &prepared.highlights;
         const spans = &prepared.spans;
@@ -922,13 +953,21 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!void {
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
         defer result.segments.deinit(result.allocator);
-        // setSegments only changes root/version; do not query this copy's shared cache.
-        var candidate = if (replacement_arena) |arena|
-            try UnifiedRope.initWithConfig(arena.allocator(), self._rope.config)
-        else
-            self._rope;
-        candidate.version = self._rope.version;
-        try candidate.setSegments(result.segments.items);
+        // Candidate copies must not query this rope's shared marker cache.
+        const candidate = if (replacement_arena) |arena| blk: {
+            var next = try UnifiedRope.from_sliceWithConfig(
+                arena.allocator(),
+                result.segments.items,
+                self._rope.config,
+            );
+            next.version = self._rope.version;
+            next.version += 1;
+            break :blk next;
+        } else blk: {
+            var next = self._rope;
+            try next.setSegments(result.segments.items);
+            break :blk next;
+        };
 
         var spans: @TypeOf(self.line_spans) = .empty;
         defer {
