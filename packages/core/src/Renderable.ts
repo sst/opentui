@@ -238,15 +238,16 @@ export abstract class Renderable extends BaseRenderable {
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
-  protected _x: number = 0
-  protected _y: number = 0
-  // Supported paint hooks use the prepared position, even after same-frame reparenting.
-  protected _screenX: number = 0
-  protected _screenY: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
-  protected _widthValue: number = 0
-  protected _heightValue: number = 0
+  private _destroyedLayout?: {
+    x: number
+    y: number
+    screenX: number
+    screenY: number
+    width: number
+    height: number
+  }
   protected _zIndex: number
   declare public selectable: boolean
   protected buffered: boolean
@@ -268,7 +269,7 @@ export abstract class Renderable extends BaseRenderable {
   private _nativeSceneResize = false
   private _nativeSceneResizeCallbacks?: { onResize: unknown; onLayoutResize: unknown }
   private _nativeScenePaintBuffer?: { frameId: bigint; buffer: OptimizedBuffer }
-  private _nativeSceneHookLayout?: { revision: number; layout?: NativeSceneLayout }
+  private _nativeSceneHookLayout?: { revision: number; layout?: NativeSceneLayout; paintLayout?: NativeSceneLayout }
   private _nativeSceneMethods?: Partial<Record<(typeof nativeSceneMethodNames)[number], unknown>>
   private _nativeSceneMethodsPending = false
   private _mouseListener: ((event: MouseEvent) => void) | null = null
@@ -302,13 +303,6 @@ export abstract class Renderable extends BaseRenderable {
 
       this._width = options.width ?? "auto"
       this._height = options.height ?? "auto"
-
-      if (typeof this._width === "number") {
-        this._widthValue = this._width
-      }
-      if (typeof this._height === "number") {
-        this._heightValue = this._height
-      }
 
       this._zIndex = options.zIndex ?? 0
       this._visible = options.visible !== false
@@ -636,7 +630,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateX === value) return
     this.setNativeScenePaint({ translateX: value })
     this._translateX = value
-    this._screenX = this._ctx.nativeScene.getLayout(getYogaNode(this), "paint").screenX
     this.requestRender()
   }
 
@@ -648,24 +641,33 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateY === value) return
     this.setNativeScenePaint({ translateY: value })
     this._translateY = value
-    this._screenY = this._ctx.nativeScene.getLayout(getYogaNode(this), "paint").screenY
     this.requestRender()
   }
 
   public get screenX(): number {
-    return this._isDestroyed ? this._screenX : this.getNativeSceneLayout().screenX
+    return this._isDestroyed ? (this._destroyedLayout?.screenX ?? 0) : this.getNativeSceneLayout().screenX
   }
 
   public get screenY(): number {
-    return this._isDestroyed ? this._screenY : this.getNativeSceneLayout().screenY
+    return this._isDestroyed ? (this._destroyedLayout?.screenY ?? 0) : this.getNativeSceneLayout().screenY
+  }
+
+  // Host paint uses the prepared snapshot even after same-frame reparenting.
+  protected get _screenX(): number {
+    return this._nativeSceneHookLayout?.paintLayout?.screenX ?? this.screenX
+  }
+
+  protected get _screenY(): number {
+    return this._nativeSceneHookLayout?.paintLayout?.screenY ?? this.screenY
   }
 
   public get x(): number {
     if (!this._isDestroyed) return this.getNativeSceneLayout().screenX
+    const left = this._destroyedLayout?.x ?? 0
     if (this.parent) {
-      return this.parent.x + this._x + this._translateX
+      return this.parent.x + left + this._translateX
     }
-    return this._x + this._translateX
+    return left + this._translateX
   }
 
   public set x(value: number) {
@@ -714,10 +716,11 @@ export abstract class Renderable extends BaseRenderable {
 
   public get y(): number {
     if (!this._isDestroyed) return this.getNativeSceneLayout().screenY
+    const top = this._destroyedLayout?.y ?? 0
     if (this.parent) {
-      return this.parent.y + this._y + this._translateY
+      return this.parent.y + top + this._translateY
     }
-    return this._y + this._translateY
+    return top + this._translateY
   }
 
   public set y(value: number) {
@@ -728,9 +731,9 @@ export abstract class Renderable extends BaseRenderable {
     if (!this._isDestroyed) {
       const layout = this.getNativeSceneLayout()
       // Native snapshots use zero before layout; completed dimensions are at least one cell.
-      return layout.width === 0 ? this._widthValue : layout.width
+      return layout.width === 0 ? this.styledDimension("width") : layout.width
     }
-    return this._widthValue
+    return this._destroyedLayout?.width ?? this.styledDimension("width")
   }
 
   public set width(value: number | "auto" | `${number}%`) {
@@ -744,9 +747,14 @@ export abstract class Renderable extends BaseRenderable {
   public get height(): number {
     if (!this._isDestroyed) {
       const layout = this.getNativeSceneLayout()
-      return layout.height === 0 ? this._heightValue : layout.height
+      return layout.height === 0 ? this.styledDimension("height") : layout.height
     }
-    return this._heightValue
+    return this._destroyedLayout?.height ?? this.styledDimension("height")
+  }
+
+  private styledDimension(kind: "width" | "height"): number {
+    const value = kind === "width" ? this._width : this._height
+    return typeof value === "number" ? value : 0
   }
 
   private getNativeSceneLayout(): NativeSceneLayout {
@@ -1688,7 +1696,16 @@ export abstract class Renderable extends BaseRenderable {
     flags = (flags & ~65) | update
     const generation = this._nativeSceneHookGeneration + 1n
     if (flags !== 0 || lineInfo || this._nativeSceneHooksRegistered) {
-      scene.setHooks(this, flags, generation, this._widthValue, this._heightValue, resize, renderSelf, lineInfo)
+      scene.setHooks(
+        this,
+        flags,
+        generation,
+        this.styledDimension("width"),
+        this.styledDimension("height"),
+        resize,
+        renderSelf,
+        lineInfo,
+      )
       this._nativeSceneHooksRegistered = true
     }
     this._nativeSceneResizeCallbacks = resize ? resizeCallbacks : undefined
@@ -1716,14 +1733,8 @@ export abstract class Renderable extends BaseRenderable {
           request.kind === 7 ||
           (request.kind === 2 && this._nativeSceneResize))
       ) {
-        const layout =
+        this._nativeSceneHookLayout.paintLayout =
           (currentGeometry && request.paintLayout) || this._ctx.nativeScene.getLayout(getYogaNode(this), "paint")
-        this._x = layout.left
-        this._y = layout.top
-        this._screenX = layout.screenX
-        this._screenY = layout.screenY
-        this._widthValue = Math.max(1, layout.width)
-        this._heightValue = Math.max(1, layout.height)
       }
       // Text/editor bodies draw into the supplied destination before native composition.
       let renderBuffer =
@@ -1917,8 +1928,14 @@ export abstract class Renderable extends BaseRenderable {
         run(() => {
           // Selection anchors retain local coordinates after detachment and release.
           const layout = scene.getLayout(yogaNode)
-          this._x = layout.left
-          this._y = layout.top
+          this._destroyedLayout = {
+            x: layout.left,
+            y: layout.top,
+            screenX: layout.screenX,
+            screenY: layout.screenY,
+            width: layout.width === 0 ? this.styledDimension("width") : layout.width,
+            height: layout.height === 0 ? this.styledDimension("height") : layout.height,
+          }
         })
       }
       if (cleanup) run(() => cleanup(run))

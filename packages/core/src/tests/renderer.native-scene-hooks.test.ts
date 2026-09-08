@@ -125,3 +125,16 @@ test("destroy skips layout reads unless selection needs local coordinates", asyn
   expect(getLayout).toHaveBeenCalled()
   expect(selected.x).toBe(left)
 })
+
+test("idle nodes do not keep a local geometry copy", async () => {
+  const { renderer, renderOnce } = await setup()
+  const box = new BoxRenderable(renderer, { width: 4, height: 2, left: 1, top: 1, position: "absolute" })
+  renderer.root.add(box)
+  await renderOnce()
+  expect(box.x).toBe(1)
+  expect(box.y).toBe(1)
+  expect(box.width).toBe(4)
+  expect(box.height).toBe(2)
+  box.destroy()
+  expect(box.width).toBe(4)
+})
