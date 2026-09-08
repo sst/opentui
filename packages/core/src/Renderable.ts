@@ -1913,7 +1913,7 @@ export abstract class Renderable extends BaseRenderable {
     this.runCleanup((run) => {
       // Constructor rollback must release ownership even when a previous callback failed.
       run(() => scene.driver.renderLib.getYogaHost().throwCallbackError())
-      if (yogaNode) {
+      if (yogaNode && this.selectable) {
         run(() => {
           // Selection anchors retain local coordinates after detachment and release.
           const layout = scene.getLayout(yogaNode)

@@ -87,3 +87,41 @@ test("Object.assign onUpdate publishes without an instance accessor", async () =
   await renderOnce()
   expect(calls).toEqual(["update"])
 })
+
+test("destroy skips layout reads unless selection needs local coordinates", async () => {
+  const { renderer, renderOnce } = await setup()
+  const box = new BoxRenderable(renderer, { width: 2, height: 1, left: 3, top: 1 })
+  const selected = new TextRenderable(renderer, {
+    content: "hi",
+    width: 2,
+    height: 1,
+    left: 4,
+    top: 2,
+    position: "absolute",
+  })
+  const idle = new TextRenderable(renderer, {
+    content: "no",
+    width: 2,
+    height: 1,
+    selectable: false,
+    left: 5,
+    top: 3,
+    position: "absolute",
+  })
+  renderer.root.add(box)
+  renderer.root.add(selected)
+  renderer.root.add(idle)
+  await renderOnce()
+
+  const getLayout = spyOn(renderer.nativeScene, "getLayout")
+  box.destroy()
+  expect(getLayout).not.toHaveBeenCalled()
+
+  idle.destroy()
+  expect(getLayout).not.toHaveBeenCalled()
+
+  const left = selected.x
+  selected.destroy()
+  expect(getLayout).toHaveBeenCalled()
+  expect(selected.x).toBe(left)
+})
