@@ -84,13 +84,17 @@ test.each([
 
   const driver = renderer.nativeScene!.driver
   const lib = driver.renderLib
+  const context = driver.context
   const destroyContext = lib.destroyContext.bind(lib)
   let nativeReleaseState: boolean[] | undefined
   const nativeDestroy = spyOn(lib, "destroyContext").mockImplementation((handle) => {
-    events.push("native")
-    nativeReleaseState = nodes.map((node) => getYogaNode(node).isFreed())
+    if (handle === context) {
+      events.push("native")
+      nativeReleaseState = nodes.map((node) => getYogaNode(node).isFreed())
+    }
     destroyContext(handle)
   })
+  const nativeCalls = () => nativeDestroy.mock.calls.filter(([handle]) => handle === context).length
   const errors = spyOn(console, "error").mockImplementation(() => {})
   const siblingError = new Error("injected sibling cleanup failure")
   let requestState: unknown
@@ -99,7 +103,7 @@ test.each([
     renderer.destroy()
     events.push("request-return")
     requestState = {
-      nativeCalls: nativeDestroy.mock.calls.length,
+      nativeCalls: nativeCalls(),
       bufferWidth: renderer.currentRenderBuffer.width,
       inputRestored: rawModeCalls.at(-1) === false,
     }
@@ -135,7 +139,7 @@ test.each([
     if (rootErrors.length > 0) expect(rootErrors[0][1]).toContain(siblingError.message)
     expect(driver.disposed).toBe(true)
     renderer.destroy()
-    expect(nativeDestroy).toHaveBeenCalledTimes(1)
+    expect(nativeCalls()).toBe(1)
   } finally {
     renderer.destroy()
     await renderer.closed
