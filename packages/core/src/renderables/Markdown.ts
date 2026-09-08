@@ -276,6 +276,7 @@ interface ListItemRenderInput {
 }
 
 export class MarkdownRenderable extends Renderable {
+  static readonly nativeSceneGrowsHooks = false
   private static _capabilitySubscriptions = new WeakMap<
     RenderContext,
     { renderables: Set<MarkdownRenderable>; listener: (capabilities: TerminalCapabilities) => void }

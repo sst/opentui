@@ -50,6 +50,7 @@ function borderMask(sides: BorderSidesConfig): number {
 }
 
 export class BoxRenderable extends Renderable {
+  static readonly nativeSceneGrowsHooks = false
   protected _backgroundColor: RGBA
   protected _border: boolean | BorderSides[]
   protected _borderStyle: BorderStyle

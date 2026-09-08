@@ -46,7 +46,6 @@ import {
 } from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
-const lookupGetter = Reflect.get(Object.prototype, "__lookupGetter__") as (this: object, key: string) => unknown
 const nativeSceneMethodNames = [
   "renderSelf",
   "onResize",
@@ -57,6 +56,12 @@ const nativeSceneMethodNames = [
   "onLifecyclePass",
   "selectable",
 ] as const
+const nativeSceneMethodDefaults: Partial<Record<(typeof nativeSceneMethodNames)[number], unknown>> = {
+  selectable: false,
+  onLifecyclePass: null,
+  renderBefore: undefined,
+  renderAfter: undefined,
+}
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -264,13 +269,7 @@ export abstract class Renderable extends BaseRenderable {
   private _nativeSceneResizeCallbacks?: { onResize: unknown; onLayoutResize: unknown }
   private _nativeScenePaintBuffer?: { frameId: bigint; buffer: OptimizedBuffer }
   private _nativeSceneHookLayout?: { revision: number; layout?: NativeSceneLayout }
-  private _nativeSceneMethods: Partial<Record<(typeof nativeSceneMethodNames)[number], unknown>> = {
-    selectable: false,
-    onLifecyclePass: null,
-    renderBefore: undefined,
-    renderAfter: undefined,
-  }
-  private _nativeSceneInitialFields = 0
+  private _nativeSceneMethods?: Partial<Record<(typeof nativeSceneMethodNames)[number], unknown>>
   private _nativeSceneMethodsPending = false
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
@@ -299,13 +298,6 @@ export abstract class Renderable extends BaseRenderable {
 
     let yogaNode: YogaNode | null = null
     try {
-      // Replacing data fields with accessors puts the whole wrapper in dictionary storage on V8.
-      for (const method of Renderable.nativeSceneMethods) {
-        if (method.name in this._nativeSceneMethods) {
-          this._nativeSceneInitialFields |= method.mask
-          Object.defineProperty(this, method.name, { ...method.descriptor, enumerable: true })
-        }
-      }
       validateOptions(this.id, options)
 
       this._width = options.width ?? "auto"
@@ -327,10 +319,9 @@ export abstract class Renderable extends BaseRenderable {
 
       yogaNode = ctx.nativeScene.createNode(this, options)
       setYogaNode(this, yogaNode)
-      this._nativeSceneResizeCallbacks = { onResize: this.onResize, onLayoutResize: this.onLayoutResize }
-      this.renderBefore = options.renderBefore
-      this.renderAfter = options.renderAfter
-      this.refreshNativeSceneMethods()
+      if (options.renderBefore !== undefined) this.renderBefore = options.renderBefore
+      if (options.renderAfter !== undefined) this.renderAfter = options.renderAfter
+      if (this.nativeSceneNeedsHookPublish()) this.setNativeSceneHooks(this._nativeSceneHookFlags)
       getYogaNode(this).setDisplay(this._visible ? Display.Flex : Display.None)
       this.setupYogaProperties(options)
       // Native create already has default z-index, opacity, and translations.
@@ -344,8 +335,8 @@ export abstract class Renderable extends BaseRenderable {
       if (this.buffered) {
         this.createFrameBuffer()
       }
-      // Derived ECMAScript fields run after super(), including constructors that attach early.
-      ctx.nativeScene.scheduleHookScan(this)
+      // Derived class fields run after super(); leaf classes cannot grow hooks that way.
+      if (Renderable.constructorGrowsNativeSceneHooks(this)) ctx.nativeScene.scheduleHookScan(this)
     } catch (error) {
       try {
         this.destroyLayoutBacking(undefined, yogaNode)
@@ -1515,7 +1506,7 @@ export abstract class Renderable extends BaseRenderable {
       if (name === "selectable") return value
       if (name === "onLifecyclePass") value ??= null
       else if (name === "renderBefore" || name === "renderAfter") value ??= undefined
-      else if (name === "onUpdate") value ??= Renderable.prototype.onUpdate
+      else if (name === "onUpdate") value ??= nativeSceneMethodDefaults.onUpdate
       if (
         typeof value !== "function" &&
         !((name === "renderBefore" || name === "renderAfter" || name === "onLifecyclePass") && value == null)
@@ -1530,23 +1521,20 @@ export abstract class Renderable extends BaseRenderable {
       descriptor: {
         configurable: true,
         get(this: Renderable) {
-          return this._nativeSceneMethods[name]
+          const methods = this._nativeSceneMethods
+          if (methods && name in methods) return methods[name]
+          return nativeSceneMethodDefaults[name]
         },
         set(this: Renderable, value: unknown) {
-          // Unscanned constructor fields still behave like the original data properties.
-          if ((this._nativeSceneInitialFields & mask) !== 0 && !this._isDestroyed) {
-            this._nativeSceneMethods[name] = value
-            return
-          }
           if (name === "selectable") {
             getYogaNode(this).assertMutable()
-            this._nativeSceneMethods[name] = value
+            this.ensureNativeSceneMethods()[name] = value
             return
           }
           value = normalize(value)
-          if (value === this._nativeSceneMethods[name]) return
+          if (value === this.nativeSceneMethodValue(name)) return
           this.setNativeSceneHooks(this._nativeSceneHookFlags, { [name]: value })
-          this._nativeSceneMethods[name] = value
+          this.ensureNativeSceneMethods()[name] = value
           if (name === "onLifecyclePass") {
             if (!value) this._ctx.unregisterLifecyclePass(this)
             else if (this.parent) this._ctx.registerLifecyclePass(this)
@@ -1556,6 +1544,25 @@ export abstract class Renderable extends BaseRenderable {
       },
     }
   })
+
+  static {
+    const prototype = this.prototype as Renderable
+    nativeSceneMethodDefaults.renderSelf = prototype.renderSelf
+    nativeSceneMethodDefaults.onResize = prototype.onResize
+    nativeSceneMethodDefaults.onLayoutResize = prototype.onLayoutResize
+    nativeSceneMethodDefaults.onUpdate = prototype.onUpdate
+    for (const method of this.nativeSceneMethods) {
+      Object.defineProperty(prototype, method.name, method.descriptor)
+    }
+  }
+
+  private static constructorGrowsNativeSceneHooks(renderable: Renderable): boolean {
+    const ctor = renderable.constructor
+    return (
+      !Object.hasOwn(ctor, "nativeSceneGrowsHooks") ||
+      (ctor as { nativeSceneGrowsHooks?: boolean }).nativeSceneGrowsHooks !== false
+    )
+  }
 
   /** Snapshot reflective hook replacements and restore normal callback assignment.
    * Call after defineProperty/delete, or to finalize fields after early constructor attachment.
@@ -1577,18 +1584,39 @@ export abstract class Renderable extends BaseRenderable {
     if (!this._isDestroyed) this.refreshNativeSceneMethods()
   }
 
+  private nativeSceneMethodValue(name: (typeof nativeSceneMethodNames)[number]): unknown {
+    const methods = this._nativeSceneMethods
+    if (methods && name in methods) return methods[name]
+    return nativeSceneMethodDefaults[name]
+  }
+
+  private ensureNativeSceneMethods(): NonNullable<Renderable["_nativeSceneMethods"]> {
+    return (this._nativeSceneMethods ??= {})
+  }
+
+  private nativeSceneNeedsHookPublish(): boolean {
+    const scene = this._ctx.nativeScene
+    if (this.buffered) return true
+    if (this._sizeChangeListener) return true
+    if (!scene.usesNativeDrawing(this, this.renderSelf)) return true
+    if (scene.hostUpdateFlags(this, this.onUpdate) !== 0) return true
+    const onResize = this.onResize
+    const onLayoutResize = this.onLayoutResize
+    if (onLayoutResize !== nativeSceneMethodDefaults.onLayoutResize) return true
+    return onResize !== nativeSceneMethodDefaults.onResize && !scene.usesNativeResize(this, onResize)
+  }
+
   private refreshNativeSceneMethods(): void {
     this._ctx.nativeScene.refreshSurface(this)
     const methods = Renderable.nativeSceneMethods
     for (let index = 0; index < methods.length; index++) {
       const method = methods[index]
       const name = method.name
-      const installed = name in this._nativeSceneMethods && lookupGetter.call(this, name) === method.descriptor.get
-      if (installed && (this._nativeSceneInitialFields & method.mask) === 0) continue
-      const handler = method.normalize(this[name])
-      if (!installed) Object.defineProperty(this, name, method.descriptor)
-      this._nativeSceneMethods[name] = handler
-      this._nativeSceneInitialFields &= ~method.mask
+      const own = Object.getOwnPropertyDescriptor(this, name)
+      if (!own || own.get === method.descriptor.get) continue
+      const handler = method.normalize(this[name as keyof this])
+      this.ensureNativeSceneMethods()[name] = handler
+      Object.defineProperty(this, name, method.descriptor)
       this._nativeSceneMethodsPending = true
     }
     if (this._nativeSceneMethodsPending) {
@@ -1636,9 +1664,12 @@ export abstract class Renderable extends BaseRenderable {
     const changed = (previousFlags ^ this._nativeSceneHookFlags) & ~overridden
     flags = (flags & ~changed) | (this._nativeSceneHookFlags & changed)
     const resizeCallbacks = {
-      onResize: "onResize" in overrides ? overrides.onResize : this._nativeSceneResizeCallbacks!.onResize,
+      onResize:
+        "onResize" in overrides ? overrides.onResize : (this._nativeSceneResizeCallbacks?.onResize ?? this.onResize),
       onLayoutResize:
-        "onLayoutResize" in overrides ? overrides.onLayoutResize : this._nativeSceneResizeCallbacks!.onLayoutResize,
+        "onLayoutResize" in overrides
+          ? overrides.onLayoutResize
+          : (this._nativeSceneResizeCallbacks?.onLayoutResize ?? this.onLayoutResize),
     }
     const resize =
       this.buffered ||
@@ -1660,7 +1691,7 @@ export abstract class Renderable extends BaseRenderable {
       scene.setHooks(this, flags, generation, this._widthValue, this._heightValue, resize, renderSelf, lineInfo)
       this._nativeSceneHooksRegistered = true
     }
-    this._nativeSceneResizeCallbacks = resizeCallbacks
+    this._nativeSceneResizeCallbacks = resize ? resizeCallbacks : undefined
     this._nativeSceneResize = resize
     this._nativeSceneHookFlags = flags
     this._nativeSceneHookGeneration = generation
@@ -2148,6 +2179,7 @@ export abstract class Renderable extends BaseRenderable {
 }
 
 export class RootRenderable extends Renderable {
+  static readonly nativeSceneGrowsHooks = false
   private _currentRenderable: Renderable | undefined
 
   constructor(ctx: RenderContext) {

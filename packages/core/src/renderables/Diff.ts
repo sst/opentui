@@ -54,6 +54,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 }
 
 export class DiffRenderable extends Renderable {
+  static readonly nativeSceneGrowsHooks = false
   private _diff: string
   private _syncScroll: boolean = false
   private _view: "unified" | "split"
