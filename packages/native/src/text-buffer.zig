@@ -835,9 +835,13 @@ pub const UnifiedTextBuffer = struct {
         const text = prepared.text;
         var result = try self.textToSegments(self.global_allocator, text, prepared.mem_id, 0, true);
         defer result.segments.deinit(result.allocator);
-        prepared.rope = try UnifiedRope.initWithConfig(prepared.arena.allocator(), self._rope.config);
+        prepared.rope = try UnifiedRope.from_sliceWithConfig(
+            prepared.arena.allocator(),
+            result.segments.items,
+            self._rope.config,
+        );
         prepared.rope.version = self._rope.version;
-        try prepared.rope.setSegments(result.segments.items);
+        prepared.rope.version += 1;
 
         const highlights = &prepared.highlights;
         const spans = &prepared.spans;
@@ -922,13 +926,22 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!void {
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
         defer result.segments.deinit(result.allocator);
-        // setSegments only changes root/version; do not query this copy's shared cache.
-        var candidate = if (replacement_arena) |arena|
-            try UnifiedRope.initWithConfig(arena.allocator(), self._rope.config)
-        else
-            self._rope;
-        candidate.version = self._rope.version;
-        try candidate.setSegments(result.segments.items);
+        // The segments are the document. Do not build an empty rope just to replace it.
+        // Candidate copies must not query this rope's shared marker cache.
+        const candidate = if (replacement_arena) |arena| blk: {
+            var next = try UnifiedRope.from_sliceWithConfig(
+                arena.allocator(),
+                result.segments.items,
+                self._rope.config,
+            );
+            next.version = self._rope.version;
+            next.version += 1;
+            break :blk next;
+        } else blk: {
+            var next = self._rope;
+            try next.setSegments(result.segments.items);
+            break :blk next;
+        };
 
         var spans: @TypeOf(self.line_spans) = .empty;
         defer {
