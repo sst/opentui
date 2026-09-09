@@ -473,14 +473,6 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn initWithConfig(allocator: Allocator, config: Config) error{OutOfMemory}!Self {
-            var self = try initSentinel(allocator, config);
-            try self.applyEndsInvariant();
-            return self;
-        }
-
-        /// Create a rope that owns only the empty sentinel leaf.
-        /// The first setSegments or from_slice call becomes the document.
-        pub fn initSentinel(allocator: Allocator, config: Config) error{OutOfMemory}!Self {
             const empty_data = if (@hasDecl(T, "empty"))
                 T.empty()
             else
@@ -489,13 +481,17 @@ pub fn Rope(comptime T: type) type {
             const node = try allocator.create(Node);
             node.* = .{ .leaf = .{ .data = empty_data, .is_sentinel = true } };
 
-            return .{
+            var self = Self{
                 .root = node,
                 .allocator = allocator,
                 .empty_leaf = node,
                 .config = config,
                 .marker_cache = MarkerCache.init(allocator),
             };
+
+            try self.applyEndsInvariant();
+
+            return self;
         }
 
         pub fn from_item(allocator: Allocator, data: T) !Self {
