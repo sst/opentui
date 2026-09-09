@@ -3996,12 +3996,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const splitFooterActive = this._screenMode === "split-footer"
 
     if (splitFooterActive) {
-      // Width shrink historically needs a broader scrub band, but if resize interrupts
-      // a deferred footer transition we also need to clear from that visible source surface.
+      // Width shrink historically needs a broader bottom-anchored scrub band so wrapped
+      // footer cells above a pinned surface are erased. Never start that clear below the
+      // visible footer origin, or a settling footer leaves stale rows. Interrupted
+      // transitions may still have an earlier source that must also be included.
       let clearStart: number | null = null
 
       if (width < prevWidth && visiblePreviousSplitHeight > 0) {
-        clearStart = Math.max(previousTerminalHeight - visiblePreviousSplitHeight * 2, 1)
+        clearStart = Math.min(
+          this.renderOffset + 1,
+          Math.max(previousTerminalHeight - visiblePreviousSplitHeight * 2, 1),
+        )
       }
 
       if (pendingSplitFooterTransition !== null) {
