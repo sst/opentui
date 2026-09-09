@@ -48,7 +48,7 @@ pub const EditorView = struct {
     text_buffer_view: *UnifiedTextBufferView,
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
-    desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
+    desired_visual_col: ?u32, // Preserved painted column (including wrap indent) for visual up/down navigation
     cursor_visual_affinity: ?CursorVisualAffinity,
     selection_updates_cursor: bool,
     selection_follow_cursor: bool, // Keep viewport synced during selection
@@ -721,17 +721,18 @@ pub const EditorView = struct {
 
         const target_visual_row = vcursor.visual_row - 1;
 
-        // This persists across empty/narrow lines to restore column when possible
+        // Preserve painted X across empty/narrow lines and different continuation pads.
         if (self.desired_visual_col == null) {
-            self.desired_visual_col = vcursor.visual_col;
+            self.desired_visual_col = vcursor.visual_col + self.padColsForVisualRow(vcursor.visual_row);
         }
         const desired_visual_col = self.desired_visual_col.?;
 
         const vlines = self.text_buffer_view.virtual_lines.items;
+        const target_content_col = desired_visual_col -| vlines[target_visual_row].pad_cols;
         const target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
-            @min(desired_visual_col, vlines[target_visual_row].width_cols)
+            @min(target_content_col, vlines[target_visual_row].width_cols)
         else
-            clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
+            clampVisualColToStayOnVisualRow(vlines, target_visual_row, target_content_col);
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
@@ -764,15 +765,16 @@ pub const EditorView = struct {
 
         const target_visual_row = vcursor.visual_row + 1;
 
-        // This persists across empty/narrow lines to restore column when possible
+        // Preserve painted X across empty/narrow lines and different continuation pads.
         if (self.desired_visual_col == null) {
-            self.desired_visual_col = vcursor.visual_col;
+            self.desired_visual_col = vcursor.visual_col + self.padColsForVisualRow(vcursor.visual_row);
         }
         const desired_visual_col = self.desired_visual_col.?;
+        const target_content_col = desired_visual_col -| vlines[target_visual_row].pad_cols;
         const target_visual_col = if (self.text_buffer_view.getSelectionOccupancy() == .boundary)
-            @min(desired_visual_col, vlines[target_visual_row].width_cols)
+            @min(target_content_col, vlines[target_visual_row].width_cols)
         else
-            clampVisualColToStayOnVisualRow(vlines, target_visual_row, desired_visual_col);
+            clampVisualColToStayOnVisualRow(vlines, target_visual_row, target_content_col);
 
         if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {

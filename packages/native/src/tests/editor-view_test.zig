@@ -3813,6 +3813,100 @@ test "EditorView wrap indent - moveDownVisual lands on content start" {
     try std.testing.expect(after.logical_col >= 20);
 }
 
+test "EditorView wrap indent - vertical movement preserves painted column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    for ([_]text_buffer.WrapMode{ .char, .word }) |wrap_mode| {
+        for ([_]text_buffer_view.SelectionOccupancy{ .cell, .boundary }) |occupancy| {
+            var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+            defer eb.deinit();
+            var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+            defer ev.deinit();
+            ev.setWrapMode(wrap_mode);
+            ev.setWrapIndent(.same);
+            ev.setSelectionOccupancy(occupancy);
+
+            try eb.setText(if (wrap_mode == .char) "    " ++ "a" ** 80 else "    " ++ "aaa " ** 20);
+            const vlines = ev.getVirtualLines();
+            try std.testing.expect(vlines.len >= 3);
+
+            for ([_]u32{ 4, 9, 19 }) |paint_col| {
+                // Start at the first non-indent cell, an interior cell, and the right edge.
+                try eb.setCursor(0, paint_col);
+                try std.testing.expectEqual(paint_col, ev.getVisualCursor().visual_col);
+                for (1..3) |row| {
+                    ev.moveDownVisual();
+                    const cursor = ev.getVisualCursor();
+                    try std.testing.expectEqual(@as(u32, @intCast(row)), cursor.visual_row);
+                    try std.testing.expectEqual(paint_col, cursor.visual_col);
+                    try std.testing.expectEqual(vlines[row].source_col_start + paint_col - 4, cursor.logical_col);
+                }
+
+                // Reset the sticky column so Up must derive it from a padded source row.
+                try eb.setCursor(0, vlines[2].source_col_start + paint_col - 4);
+                var row: u32 = 2;
+                while (row > 0) {
+                    row -= 1;
+                    ev.moveUpVisual();
+                    const cursor = ev.getVisualCursor();
+                    try std.testing.expectEqual(row, cursor.visual_row);
+                    try std.testing.expectEqual(paint_col, cursor.visual_col);
+                    try std.testing.expectEqual(vlines[row].source_col_start + paint_col - vlines[row].pad_cols, cursor.logical_col);
+                }
+            }
+        }
+    }
+}
+
+test "EditorView wrap indent - vertical movement restores painted column after clamping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    for ([_]text_buffer.WrapMode{ .char, .word }) |wrap_mode| {
+        for ([_]text_buffer_view.SelectionOccupancy{ .cell, .boundary }) |occupancy| {
+            var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+            defer eb.deinit();
+            var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+            defer ev.deinit();
+            ev.setWrapMode(wrap_mode);
+            ev.setWrapIndent(.same);
+            ev.setSelectionOccupancy(occupancy);
+            try eb.setText("    " ++ "aaa " ** 8 ++ "\n\n        " ++ "bbb " ** 6 ++ "\nxy\nabcdefghij");
+
+            try eb.setCursor(0, 21);
+            try std.testing.expectEqual(@as(u32, 5), ev.getVisualCursor().visual_col);
+
+            const expected_paint_cols = [_]u32{ 5, 0, 5, 8, 2, 5 };
+            const expected_logical_rows = [_]u32{ 0, 1, 2, 2, 3, 4 };
+            const expected_logical_cols = [_]u32{ 21, 0, 5, 20, 2, 5 };
+            for (1..expected_paint_cols.len) |i| {
+                ev.moveDownVisual();
+                const cursor = ev.getVisualCursor();
+                try std.testing.expectEqual(@as(u32, @intCast(i + 1)), cursor.visual_row);
+                try std.testing.expectEqual(expected_paint_cols[i], cursor.visual_col);
+                try std.testing.expectEqual(expected_logical_rows[i], cursor.logical_row);
+                try std.testing.expectEqual(expected_logical_cols[i], cursor.logical_col);
+            }
+
+            var i: usize = expected_paint_cols.len - 1;
+            while (i > 0) {
+                i -= 1;
+                ev.moveUpVisual();
+                const cursor = ev.getVisualCursor();
+                try std.testing.expectEqual(@as(u32, @intCast(i + 1)), cursor.visual_row);
+                try std.testing.expectEqual(expected_paint_cols[i], cursor.visual_col);
+                try std.testing.expectEqual(expected_logical_rows[i], cursor.logical_row);
+                try std.testing.expectEqual(expected_logical_cols[i], cursor.logical_col);
+            }
+        }
+    }
+}
+
 test "EditorView wrap indent - edit reflow matches fresh setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
