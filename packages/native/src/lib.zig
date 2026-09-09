@@ -1641,7 +1641,7 @@ export fn setCursorStyleOptions(renderer_handle: NativeHandle, options: *const C
     if (options.color) |rgba| {
         object_ptr.terminal.setCursorColor(ptrToRGBA(rgba));
     }
-    if (options.cursor <= 5) {
+    if (options.cursor < std.meta.tags(terminal.MousePointerStyle).len) {
         object_ptr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
     }
 }
