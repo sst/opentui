@@ -3960,7 +3960,7 @@ test "FeedBackend - failed frame retries unsent terminal controls" {
 
     try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b]12;#123456\x07") != null);
     try std.testing.expect(std.mem.find(u8, output[0..output_len], ansi.ANSI.cursorLine) != null);
-    try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b]22;pointer\x07") != null);
+    try std.testing.expect(std.mem.find(u8, output[0..output_len], "\x1b]22;pointer\x1b\\") != null);
 }
 
 test "FeedBackend - failed Sixel frame does not publish an unterminated DCS" {
